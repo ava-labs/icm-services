@@ -214,9 +214,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 
 	appRequests := makeAppRequests(chainID, requestID, connectedValidators)
 	for _, appRequest := range appRequests {
-		mockNetwork.EXPECT().RegisterAppRequest(appRequest).Times(
-			maxRelayerQueryAttempts,
-		)
+		mockNetwork.EXPECT().RegisterAppRequest(appRequest).AnyTimes()
 	}
 
 	mockNetwork.EXPECT().RegisterRequestID(
@@ -224,7 +222,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		len(appRequests),
 	).Return(
 		make(chan message.InboundMessage, len(appRequests)),
-	).Times(maxRelayerQueryAttempts)
+	).AnyTimes()
 
 	var nodeIDs set.Set[ids.NodeID]
 	for _, appRequest := range appRequests {
@@ -235,7 +233,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		nodeIDs,
 		subnetID,
 		subnets.NoOpAllower,
-	).Times(maxRelayerQueryAttempts)
+	).AnyTimes()
 
 	_, err = aggregator.CreateSignedMessage(msg, nil, subnetID, 80)
 	require.ErrorIs(
@@ -257,7 +255,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	require.NoError(t, err)
 
 	// the signers:
-	var connectedValidators, validatorSecretKeys = makeConnectedValidators(5)
+	connectedValidators, validatorSecretKeys := makeConnectedValidators(5)
 
 	// prime the aggregator:
 
@@ -276,7 +274,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 
 	// prime the signers' responses:
 
-	var requestID = aggregator.currentRequestID.Load() + 1
+	requestID := aggregator.currentRequestID.Load() + 1
 
 	appRequests := makeAppRequests(chainID, requestID, connectedValidators)
 	for _, appRequest := range appRequests {

@@ -234,7 +234,7 @@ func (mc *MessageCoordinator) ProcessBlock(
 		zap.Stringer("blockchainID", blockchainID),
 	)
 	// Parse the logs in the block, and group by application relayer
-	block, err := relayerTypes.NewWarpBlockInfo(blockHeader, ethClient)
+	block, err := relayerTypes.NewWarpBlockInfo(mc.logger, blockHeader, ethClient)
 	if err != nil {
 		mc.logger.Error("Failed to create Warp block info", zap.Error(err))
 		errChan <- err

@@ -6,7 +6,9 @@ package types
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/subnet-evm/core/types"
@@ -38,7 +40,7 @@ type WarpMessageInfo struct {
 }
 
 // Extract Warp logs from the block, if they exist
-func NewWarpBlockInfo(header *types.Header, ethClient ethclient.Client) (*WarpBlockInfo, error) {
+func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethclient.Client) (*WarpBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
@@ -47,16 +49,16 @@ func NewWarpBlockInfo(header *types.Header, ethClient ethclient.Client) (*WarpBl
 	if header.Bloom.Test(WarpPrecompileLogFilter[:]) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCRetryTimeout)
 		defer cancel()
-		logs, err = utils.CallWithRetry[[]types.Log](
-			cctx,
-			func() ([]types.Log, error) {
-				return ethClient.FilterLogs(context.Background(), interfaces.FilterQuery{
-					Topics:    [][]common.Hash{{WarpPrecompileLogFilter}},
-					Addresses: []common.Address{warp.ContractAddress},
-					FromBlock: header.Number,
-					ToBlock:   header.Number,
-				})
+		operation := func() (err error) {
+			logs, err = ethClient.FilterLogs(cctx, interfaces.FilterQuery{
+				Topics:    [][]common.Hash{{WarpPrecompileLogFilter}},
+				Addresses: []common.Address{warp.ContractAddress},
+				FromBlock: header.Number,
+				ToBlock:   header.Number,
 			})
+			return err
+		}
+		err = utils.WithMaxRetries(operation, 5*time.Second, logger)
 		if err != nil {
 			return nil, err
 		}

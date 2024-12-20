@@ -364,12 +364,12 @@ func (m *messageHandler) waitForReceipt(
 	destinationBlockchainID := destinationClient.DestinationBlockchainID()
 	callCtx, callCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer callCtxCancel()
-	receipt, err := utils.CallWithRetry[*types.Receipt](
-		callCtx,
-		func() (*types.Receipt, error) {
-			return destinationClient.Client().(ethclient.Client).TransactionReceipt(callCtx, txHash)
-		},
-	)
+	var receipt *types.Receipt
+	operation := func() (err error) {
+		receipt, err = destinationClient.Client().(ethclient.Client).TransactionReceipt(callCtx, txHash)
+		return err
+	}
+	err := utils.WithMaxRetries(operation, 30*time.Second, m.logger)
 	if err != nil {
 		m.logger.Error(
 			"Failed to get transaction receipt",
