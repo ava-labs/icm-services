@@ -5,12 +5,13 @@ package evm
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math/big"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/subnet-evm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/interfaces"
@@ -20,9 +21,8 @@ import (
 const (
 	// Max buffer size for ethereum subscription channels
 	maxClientSubscriptionBuffer = 20000
-	subscribeRetryTimeout       = 1 * time.Second
 	MaxBlocksPerRequest         = 200
-	rpcMaxRetries               = 5
+	resubscribeMaxElapsedTime   = 5 * time.Second
 )
 
 // subscriber implements Subscriber
@@ -128,75 +128,53 @@ func (s *subscriber) processBlockRange(
 func (s *subscriber) getHeaderByNumberRetryable(headerNumber *big.Int) (*types.Header, error) {
 	var err error
 	var header *types.Header
-	attempt := 1
-	for {
+	operation := func() (err error) {
 		header, err = s.rpcClient.HeaderByNumber(context.Background(), headerNumber)
-		if err == nil {
-			return header, nil
-		}
-		s.logger.Warn(
+		return err
+	}
+	err = utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout)
+	if err != nil {
+		s.logger.Error(
 			"Failed to get header by number",
 			zap.String("blockchainID", s.blockchainID.String()),
-			zap.Int("attempt", attempt),
 			zap.Error(err),
 		)
-		if attempt >= rpcMaxRetries {
-			return nil, err
-		}
-		time.Sleep(subscribeRetryTimeout)
-		attempt++
+		return nil, err
 	}
+	return header, nil
 }
 
 // Loops forever iff maxResubscribeAttempts == 0
-func (s *subscriber) Subscribe(maxResubscribeAttempts int) error {
-	// Retry subscribing until successful. Attempt to resubscribe maxResubscribeAttempts times
-	attempt := 1
-	for {
-		// Unsubscribe before resubscribing
-		// s.sub should only be nil on the first call to Subscribe
-		if s.sub != nil {
-			s.sub.Unsubscribe()
-		}
-		err := s.subscribe()
-		if err == nil {
-			s.logger.Info(
-				"Successfully subscribed",
-				zap.String("blockchainID", s.blockchainID.String()),
-			)
-			return nil
-		}
-
-		s.logger.Warn(
-			"Failed to subscribe to node",
-			zap.Int("attempt", attempt),
-			zap.String("blockchainID", s.blockchainID.String()),
-			zap.Error(err),
-		)
-
-		if attempt == maxResubscribeAttempts {
-			break
-		}
-
-		time.Sleep(subscribeRetryTimeout)
-		attempt++
+func (s *subscriber) Subscribe(retryMaxElapsedTime time.Duration) error {
+	// Unsubscribe before resubscribing
+	// s.sub should only be nil on the first call to Subscribe
+	if s.sub != nil {
+		s.sub.Unsubscribe()
 	}
 
-	return fmt.Errorf("failed to subscribe to node with all %d attempts", maxResubscribeAttempts)
+	err := s.subscribe(retryMaxElapsedTime)
+	if err != nil {
+		return errors.New("failed to subscribe to node")
+	}
+	return nil
 }
 
-func (s *subscriber) subscribe() error {
-	sub, err := s.wsClient.SubscribeNewHead(context.Background(), s.headers)
+// subscribe until it succeeds or reached maxSubscribeAttempts.
+func (s *subscriber) subscribe(retryMaxElapsedTime time.Duration) error {
+	var sub interfaces.Subscription
+	operation := func() (err error) {
+		sub, err = s.wsClient.SubscribeNewHead(context.Background(), s.headers)
+		return err
+	}
+	err := utils.WithRetriesTimeout(s.logger, operation, retryMaxElapsedTime)
 	if err != nil {
 		s.logger.Error(
-			"Failed to subscribe to logs",
+			"Failed to subscribe to node",
 			zap.String("blockchainID", s.blockchainID.String()),
-			zap.Error(err),
 		)
 		return err
 	}
 	s.sub = sub
-
 	return nil
 }
 

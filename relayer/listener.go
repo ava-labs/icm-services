@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -20,10 +21,10 @@ import (
 )
 
 const (
-	maxSubscribeAttempts = 10
+	retryMaxSubscribeElapsedTime = 10 * time.Second
 	// TODO attempt to resubscribe in perpetuity once we are able to process missed blocks and
 	// refresh the chain config on reconnect.
-	maxResubscribeAttempts = 10
+	retryMaxResubscribeElapsedTime = 10 * time.Second
 )
 
 // Listener handles all messages sent from a given source chain
@@ -137,7 +138,7 @@ func newListener(
 
 	// Open the subscription. We must do this before processing any missed messages, otherwise we may
 	// miss an incoming message in between fetching the latest block and subscribing.
-	err = lstnr.Subscriber.Subscribe(maxSubscribeAttempts)
+	err = lstnr.Subscriber.Subscribe(retryMaxSubscribeElapsedTime)
 	if err != nil {
 		logger.Error(
 			"Failed to subscribe to node",
@@ -228,7 +229,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 // Sets the listener health status to false while attempting to reconnect.
 func (lstnr *Listener) reconnectToSubscriber() error {
 	// Attempt to reconnect the subscription
-	err := lstnr.Subscriber.Subscribe(maxResubscribeAttempts)
+	err := lstnr.Subscriber.Subscribe(retryMaxResubscribeElapsedTime)
 	if err != nil {
 		return fmt.Errorf("failed to resubscribe to node: %w", err)
 	}

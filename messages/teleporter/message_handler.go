@@ -29,9 +29,12 @@ import (
 	"google.golang.org/grpc"
 )
 
-// The maximum gas limit that can be specified for a Teleporter message
-// Based on the C-Chain 15_000_000 gas limit per block, with other Warp message gas overhead conservatively estimated.
-const maxTeleporterGasLimit = 12_000_000
+const (
+	// The maximum gas limit that can be specified for a Teleporter message
+	// Based on the C-Chain 15_000_000 gas limit per block, with other Warp message gas overhead conservatively estimated.
+	maxTeleporterGasLimit         = 12_000_000
+	defaultBlockAcceptanceTimeout = 30 * time.Second
+)
 
 type factory struct {
 	messageConfig   Config
@@ -362,14 +365,14 @@ func (m *messageHandler) waitForReceipt(
 	teleporterMessageID ids.ID,
 ) error {
 	destinationBlockchainID := destinationClient.DestinationBlockchainID()
-	callCtx, callCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	callCtx, callCtxCancel := context.WithTimeout(context.Background(), defaultBlockAcceptanceTimeout)
 	defer callCtxCancel()
-	receipt, err := utils.CallWithRetry[*types.Receipt](
-		callCtx,
-		func() (*types.Receipt, error) {
-			return destinationClient.Client().(ethclient.Client).TransactionReceipt(callCtx, txHash)
-		},
-	)
+	var receipt *types.Receipt
+	operation := func() (err error) {
+		receipt, err = destinationClient.Client().(ethclient.Client).TransactionReceipt(callCtx, txHash)
+		return err
+	}
+	err := utils.WithRetriesTimeout(m.logger, operation, defaultBlockAcceptanceTimeout)
 	if err != nil {
 		m.logger.Error(
 			"Failed to get transaction receipt",

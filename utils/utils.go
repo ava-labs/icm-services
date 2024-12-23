@@ -28,7 +28,7 @@ var (
 )
 
 const (
-	DefaultRPCRetryTimeout = 5 * time.Second
+	DefaultRPCTimeout = 5 * time.Second
 )
 
 //

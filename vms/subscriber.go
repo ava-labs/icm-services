@@ -5,6 +5,7 @@ package vms
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -25,7 +26,7 @@ type Subscriber interface {
 	// Subscribe registers a subscription. After Subscribe is called,
 	// log events that match [filter] are written to the channel returned
 	// by Logs
-	Subscribe(maxResubscribeAttempts int) error
+	Subscribe(retryMaxElapsedTime time.Duration) error
 
 	// Headers returns the channel that the subscription writes block headers to
 	Headers() <-chan *types.Header
