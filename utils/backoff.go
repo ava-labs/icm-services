@@ -8,7 +8,8 @@ import (
 )
 
 // WithRetriesTimeout uses an exponential backoff to run the operation until it
-// succeeds or timeout limit has been reached.
+// succeeds or timeout limit has been reached. It is the caller's responsibility
+// to ensure {operation} returns. It is safe for {operation} to take longer than {timeout}.
 func WithRetriesTimeout(
 	logger logging.Logger,
 	operation backoff.Operation,

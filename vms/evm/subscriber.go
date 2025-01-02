@@ -125,10 +125,14 @@ func (s *subscriber) processBlockRange(
 }
 
 func (s *subscriber) getHeaderByNumberRetryable(headerNumber *big.Int) (*types.Header, error) {
-	var err error
-	var header *types.Header
+	var (
+		err    error
+		header *types.Header
+	)
+	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer cancel()
 	operation := func() (err error) {
-		header, err = s.rpcClient.HeaderByNumber(context.Background(), headerNumber)
+		header, err = s.rpcClient.HeaderByNumber(cctx, headerNumber)
 		return err
 	}
 	err = utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout)
@@ -161,8 +165,10 @@ func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
 // subscribe until it succeeds or reached timeout.
 func (s *subscriber) subscribe(retryTimeout time.Duration) error {
 	var sub interfaces.Subscription
+	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer cancel()
 	operation := func() (err error) {
-		sub, err = s.wsClient.SubscribeNewHead(context.Background(), s.headers)
+		sub, err = s.wsClient.SubscribeNewHead(cctx, s.headers)
 		return err
 	}
 	err := utils.WithRetriesTimeout(s.logger, operation, retryTimeout)

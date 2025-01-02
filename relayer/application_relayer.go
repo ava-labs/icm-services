@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	retryTimeout = 10 * time.Second
+	retryTimeout   = 10 * time.Second
+	warpAPITimeout = utils.DefaultRPCTimeout + peers.DefaultAppRequestTimeout
 )
 
 // Errors
@@ -270,9 +271,11 @@ func (r *ApplicationRelayer) createSignedMessage(
 		signedWarpMessageBytes hexutil.Bytes
 		err                    error
 	)
+	cctx, cancel := context.WithTimeout(context.Background(), warpAPITimeout)
+	defer cancel()
 	operation := func() error {
 		return r.sourceWarpSignatureClient.CallContext(
-			context.Background(),
+			cctx,
 			&signedWarpMessageBytes,
 			"warp_getMessageAggregateSignature",
 			unsignedMessage.ID(),
