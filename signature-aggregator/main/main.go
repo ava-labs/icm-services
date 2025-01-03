@@ -109,7 +109,7 @@ func main() {
 	network, err := peers.NewNetwork(
 		networkLogger,
 		prometheus.DefaultRegisterer,
-		nil,
+		cfg.GetTrackedL1s(),
 		nil,
 		&cfg,
 	)
