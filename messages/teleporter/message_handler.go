@@ -30,9 +30,6 @@ import (
 )
 
 const (
-	// The maximum gas limit that can be specified for a Teleporter message
-	// Based on the C-Chain 15_000_000 gas limit per block, with other Warp message gas overhead conservatively estimated.
-	maxTeleporterGasLimit         = 12_000_000
 	defaultBlockAcceptanceTimeout = 30 * time.Second
 )
 
@@ -165,15 +162,16 @@ func (m *messageHandler) ShouldSendMessage(destinationClient vms.DestinationClie
 	if err != nil {
 		return false, fmt.Errorf("failed to calculate Teleporter message ID: %w", err)
 	}
-
+	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
+	destBlockGasLimit := destinationClient.BlockGasLimit()
 	// Check if the specified gas limit is below the maximum threshold
-	if m.teleporterMessage.RequiredGasLimit.Uint64() > maxTeleporterGasLimit {
+	if requiredGasLimit > destBlockGasLimit {
 		m.logger.Info(
 			"Gas limit exceeds maximum threshold",
 			zap.String("destinationBlockchainID", destinationBlockchainID.String()),
 			zap.String("teleporterMessageID", teleporterMessageID.String()),
 			zap.Uint64("requiredGasLimit", m.teleporterMessage.RequiredGasLimit.Uint64()),
-			zap.Uint64("maxGasLimit", maxTeleporterGasLimit),
+			zap.Uint64("blockGasLimit", destBlockGasLimit),
 		)
 		return false, nil
 	}

@@ -44,6 +44,7 @@ type destinationClient struct {
 	signer                  signer.Signer
 	evmChainID              *big.Int
 	currentNonce            uint64
+	blockGasLimit           uint64
 	logger                  logging.Logger
 }
 
@@ -51,21 +52,6 @@ func NewDestinationClient(
 	logger logging.Logger,
 	destinationBlockchain *config.DestinationBlockchain,
 ) (*destinationClient, error) {
-	// Dial the destination RPC endpoint
-	client, err := utils.NewEthClientWithConfig(
-		context.Background(),
-		destinationBlockchain.RPCEndpoint.BaseURL,
-		destinationBlockchain.RPCEndpoint.HTTPHeaders,
-		destinationBlockchain.RPCEndpoint.QueryParams,
-	)
-	if err != nil {
-		logger.Error(
-			"Failed to dial rpc endpoint",
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
 	destinationID, err := ids.FromString(destinationBlockchain.BlockchainID)
 	if err != nil {
 		logger.Error(
@@ -79,6 +65,21 @@ func NewDestinationClient(
 	if err != nil {
 		logger.Error(
 			"Failed to create signer",
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	// Dial the destination RPC endpoint
+	client, err := utils.NewEthClientWithConfig(
+		context.Background(),
+		destinationBlockchain.RPCEndpoint.BaseURL,
+		destinationBlockchain.RPCEndpoint.HTTPHeaders,
+		destinationBlockchain.RPCEndpoint.QueryParams,
+	)
+	if err != nil {
+		logger.Error(
+			"Failed to dial rpc endpoint",
 			zap.Error(err),
 		)
 		return nil, err
@@ -117,6 +118,7 @@ func NewDestinationClient(
 		evmChainID:              evmChainID,
 		currentNonce:            nonce,
 		logger:                  logger,
+		blockGasLimit:           destinationBlockchain.BlockGasLimit,
 	}, nil
 }
 
@@ -209,4 +211,8 @@ func (c *destinationClient) SenderAddress() common.Address {
 
 func (c *destinationClient) DestinationBlockchainID() ids.ID {
 	return c.destinationBlockchainID
+}
+
+func (c *destinationClient) BlockGasLimit() uint64 {
+	return c.blockGasLimit
 }

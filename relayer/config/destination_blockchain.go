@@ -13,6 +13,12 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+const (
+	// The block gas limit that can be specified for a Teleporter message
+	// Based on the C-Chain 15_000_000 gas limit per block, with other Warp message gas overhead conservatively estimated.
+	DefaultBlockGasLimit = 12_000_000
+)
+
 // Destination blockchain configuration. Specifies how to connect to and issue
 // transactions on the destination blockchain.
 type DestinationBlockchain struct {
@@ -23,6 +29,7 @@ type DestinationBlockchain struct {
 	KMSKeyID          string            `mapstructure:"kms-key-id" json:"kms-key-id"`
 	KMSAWSRegion      string            `mapstructure:"kms-aws-region" json:"kms-aws-region"`
 	AccountPrivateKey string            `mapstructure:"account-private-key" json:"account-private-key"`
+	BlockGasLimit     uint64            `mapstructure:"block-gas-limit" json:"block-gas-limit"`
 
 	// Fetched from the chain after startup
 	warpConfig WarpConfig
@@ -34,6 +41,9 @@ type DestinationBlockchain struct {
 
 // Validates the destination subnet configuration
 func (s *DestinationBlockchain) Validate() error {
+	if s.BlockGasLimit == 0 {
+		s.BlockGasLimit = DefaultBlockGasLimit
+	}
 	if err := s.RPCEndpoint.Validate(); err != nil {
 		return fmt.Errorf("invalid rpc-endpoint in destination subnet configuration: %w", err)
 	}
@@ -67,6 +77,11 @@ func (s *DestinationBlockchain) Validate() error {
 		return fmt.Errorf("invalid subnetID '%s' in configuration. error: %w", s.SubnetID, err)
 	}
 	s.subnetID = subnetID
+
+	if s.subnetID == constants.PrimaryNetworkID &&
+		s.BlockGasLimit > DefaultBlockGasLimit {
+		return fmt.Errorf("C-Chain block-gas-limit '%d' exceeded", s.BlockGasLimit)
+	}
 
 	return nil
 }

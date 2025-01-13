@@ -34,9 +34,14 @@ type DestinationClient interface {
 
 	// DestinationBlockchainID returns the ID of the destination chain
 	DestinationBlockchainID() ids.ID
+
+	// BlockGasLimit returns destination blockchain block gas limit
+	BlockGasLimit() uint64
 }
 
-func NewDestinationClient(logger logging.Logger, subnetInfo *config.DestinationBlockchain) (DestinationClient, error) {
+func NewDestinationClient(
+	logger logging.Logger, subnetInfo *config.DestinationBlockchain,
+) (DestinationClient, error) {
 	switch config.ParseVM(subnetInfo.VM) {
 	case config.EVM:
 		return evm.NewDestinationClient(logger, subnetInfo)
