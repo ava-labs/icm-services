@@ -68,8 +68,8 @@ github.com/ava-labs/icm-contracts v1.0.9-0.20241231155804-0845b3c9fd39 h1:gDvyXi
 github.com/ava-labs/icm-contracts v1.0.9-0.20241231155804-0845b3c9fd39/go.mod h1:hZS72/9tbM+9JKdTs/UuGIWF3z+FEVlcGW4B9C8gECs=
 github.com/ava-labs/subnet-evm v0.6.13-0.20241205165027-6c98da796f35 h1:CbXWon0fwGDEDCCiChx2VeIIwO3UML9+8OUTyNwPsxA=
 github.com/ava-labs/subnet-evm v0.6.13-0.20241205165027-6c98da796f35/go.mod h1:SfAF4jjYPkezKWShPY/T31WQdD/UHrDyqy0kxA0LE0w=
-github.com/aws/aws-sdk-go-v2 v1.32.8 h1:cZV+NUS/eGxKXMtmyhtYPJ7Z4YLoI/V8bkTdRZfYhGo=
-github.com/aws/aws-sdk-go-v2 v1.32.8/go.mod h1:P5WJBrYqqbWVaOxgH0X/FYYD47/nooaPOZPlQdmiN2U=
+github.com/aws/aws-sdk-go-v2 v1.33.0 h1:Evgm4DI9imD81V0WwD+TN4DCwjUMdc94TrduMLbgZJs=
+github.com/aws/aws-sdk-go-v2 v1.33.0/go.mod h1:P5WJBrYqqbWVaOxgH0X/FYYD47/nooaPOZPlQdmiN2U=
 github.com/aws/aws-sdk-go-v2/config v1.28.11 h1:7Ekru0IkRHRnSRWGQLnLN6i0o1Jncd0rHo2T130+tEQ=
 github.com/aws/aws-sdk-go-v2/config v1.28.11/go.mod h1:x78TpPvBfHH16hi5tE3OCWQ0pzNfyXA349p5/Wp82Yo=
 github.com/aws/aws-sdk-go-v2/credentials v1.17.52 h1:I4ymSk35LHogx2Re2Wu6LOHNTRaRWkLVoJgWS5Wd40M=
