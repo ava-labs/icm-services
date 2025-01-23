@@ -56,10 +56,6 @@ func (i *InfoAPI) GetNodeVersion(ctx context.Context) (*info.GetNodeVersionReply
 	return i.client.GetNodeVersion(ctx, i.options...)
 }
 
-func (i *InfoAPI) GetTxFee(ctx context.Context) (*info.GetTxFeeResponse, error) {
-	return i.client.GetTxFee(ctx, i.options...)
-}
-
 func (i *InfoAPI) GetVMs(ctx context.Context) (map[ids.ID][]string, error) {
 	return i.client.GetVMs(ctx, i.options...)
 }
