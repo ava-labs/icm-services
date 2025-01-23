@@ -6,7 +6,7 @@ require (
 	github.com/alexliesenfeld/health v0.8.0
 	github.com/ava-labs/avalanchego v1.12.1
 	github.com/ava-labs/icm-contracts v1.0.9-0.20241231155804-0845b3c9fd39
-	github.com/ava-labs/subnet-evm v0.6.13-0.20241205165027-6c98da796f35
+	github.com/ava-labs/subnet-evm v0.7.1-rc.0.0.20250122111752-68711e03580d
 	github.com/aws/aws-sdk-go-v2 v1.33.0
 	github.com/aws/aws-sdk-go-v2/config v1.29.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.37.13
@@ -162,6 +162,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
+	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
