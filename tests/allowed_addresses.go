@@ -21,10 +21,12 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const relayerCfgFname1 = "relayer-config-1.json"
-const relayerCfgFname2 = "relayer-config-2.json"
-const relayerCfgFname3 = "relayer-config-3.json"
-const relayerCfgFname4 = "relayer-config-4.json"
+const (
+	relayerCfgFname1 = "relayer-config-1.json"
+	relayerCfgFname2 = "relayer-config-2.json"
+	relayerCfgFname3 = "relayer-config-3.json"
+	relayerCfgFname4 = "relayer-config-4.json"
+)
 
 const numKeys = 4
 

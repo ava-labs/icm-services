@@ -68,7 +68,7 @@ func NewJSONFileStorage(logger logging.Logger, dir string, relayerIDs []RelayerI
 
 	// 0755: The owner can read, write, execute.
 	// Everyone else can read and execute but not modify the file.
-	err = os.MkdirAll(dir, 0755)
+	err = os.MkdirAll(dir, 0o755)
 	if err != nil {
 		storage.logger.Error("failed to create directory",
 			zap.String("dir", dir),
@@ -165,7 +165,7 @@ func (s *JSONFileStorage) write(relayerID common.Hash, v interface{}) error {
 	// If  the write fails, the original file is not affected.
 	// Set file permissions to 0644 so only the owner can read and write.
 	// Everyone else can only read. No one can execute the file.
-	if err := os.WriteFile(tmpPath, b, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, b, 0o644); err != nil {
 		return errors.Wrap(err, "failed to write file")
 	}
 

@@ -14,10 +14,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var (
-	ErrFailedToCreateSignatureAggregatorMetrics = errors.New(
-		"failed to create signature aggregator metrics",
-	)
+var ErrFailedToCreateSignatureAggregatorMetrics = errors.New(
+	"failed to create signature aggregator metrics",
 )
 
 var Opts = struct {

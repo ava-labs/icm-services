@@ -9,9 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	ErrFailedToCreateApplicationRelayerMetrics = errors.New("failed to create application relayer metrics")
-)
+var ErrFailedToCreateApplicationRelayerMetrics = errors.New("failed to create application relayer metrics")
 
 type ApplicationRelayerMetrics struct {
 	successfulRelayMessageCount   *prometheus.CounterVec

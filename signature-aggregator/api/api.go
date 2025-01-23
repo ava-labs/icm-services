@@ -196,7 +196,6 @@ func signatureAggregationAPIHandler(
 				),
 			},
 		)
-
 		if err != nil {
 			msg := "Failed to marshal response"
 			logger.Error(msg, zap.Error(err))

@@ -13,10 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-var (
-	// AllAllowedAddress is used to construct relayer IDs when all addresses are allowed
-	AllAllowedAddress = utils.ZeroAddress
-)
+// AllAllowedAddress is used to construct relayer IDs when all addresses are allowed
+var AllAllowedAddress = utils.ZeroAddress
 
 // RelayerID is a unique identifier for an application relayer
 type RelayerID struct {

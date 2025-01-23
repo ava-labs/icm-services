@@ -86,7 +86,7 @@ func SignatureAggregatorAPI(network *network.LocalNetwork, teleporter utils.Tele
 
 	requestURL := fmt.Sprintf("http://localhost:%d%s", signatureAggregatorConfig.APIPort, api.APIPath)
 
-	var sendRequestToAPI = func() {
+	sendRequestToAPI := func() {
 		b, err := json.Marshal(reqBody)
 		Expect(err).Should(BeNil())
 		bodyReader := bytes.NewReader(b)

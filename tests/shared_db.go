@@ -13,8 +13,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const relayerCfgFnameA = "relayer-config-a.json"
-const relayerCfgFnameB = "relayer-config-b.json"
+const (
+	relayerCfgFnameA = "relayer-config-a.json"
+	relayerCfgFnameB = "relayer-config-b.json"
+)
 
 func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	l1AInfo := network.GetPrimaryNetworkInfo()

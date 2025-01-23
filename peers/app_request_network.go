@@ -374,9 +374,11 @@ func (n *appRequestNetwork) Send(
 func (n *appRequestNetwork) RegisterAppRequest(requestID ids.RequestID) {
 	n.handler.RegisterAppRequest(requestID)
 }
+
 func (n *appRequestNetwork) RegisterRequestID(requestID uint32, numExpectedResponse int) chan message.InboundMessage {
 	return n.handler.RegisterRequestID(requestID, numExpectedResponse)
 }
+
 func (n *appRequestNetwork) GetSubnetID(blockchainID ids.ID) (ids.ID, error) {
 	return n.validatorClient.GetSubnetID(context.Background(), blockchainID)
 }

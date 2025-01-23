@@ -6,9 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	ErrFailedToCreateAppRequestNetworkMetrics = errors.New("failed to create app request network metrics")
-)
+var ErrFailedToCreateAppRequestNetworkMetrics = errors.New("failed to create app request network metrics")
 
 type AppRequestNetworkMetrics struct {
 	pChainAPICallLatencyMS prometheus.Histogram

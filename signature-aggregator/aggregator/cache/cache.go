@@ -18,8 +18,10 @@ type Cache struct {
 	signatures *lru.Cache[ids.ID, map[PublicKeyBytes]SignatureBytes]
 }
 
-type PublicKeyBytes [bls.PublicKeyLen]byte
-type SignatureBytes [bls.SignatureLen]byte
+type (
+	PublicKeyBytes [bls.PublicKeyLen]byte
+	SignatureBytes [bls.SignatureLen]byte
+)
 
 func NewCache(size uint64, logger logging.Logger) (*Cache, error) {
 	if size > math.MaxInt {
