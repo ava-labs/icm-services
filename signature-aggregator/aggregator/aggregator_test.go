@@ -74,7 +74,7 @@ func instantiateAggregator(t *testing.T) (
 // Generate the validator values.
 type validatorInfo struct {
 	nodeID            ids.NodeID
-	blsSecretKey      *bls.SecretKey
+	blsSigner         *bls.LocalSigner
 	blsPublicKey      *bls.PublicKey
 	blsPublicKeyBytes []byte
 }
@@ -83,18 +83,18 @@ func (v validatorInfo) Compare(o validatorInfo) int {
 	return bytes.Compare(v.blsPublicKeyBytes, o.blsPublicKeyBytes)
 }
 
-func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValidators, []*bls.SecretKey) {
+func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValidators, []*bls.LocalSigner) {
 	validatorValues := make([]validatorInfo, validatorCount)
 	for i := 0; i < validatorCount; i++ {
-		secretKey, err := bls.NewSecretKey()
+		signer, err := bls.NewSigner()
 		if err != nil {
 			panic(err)
 		}
-		pubKey := bls.PublicFromSecretKey(secretKey)
+		pubKey := signer.PublicKey()
 		nodeID := ids.GenerateTestNodeID()
 		validatorValues[i] = validatorInfo{
 			nodeID:            nodeID,
-			blsSecretKey:      secretKey,
+			blsSigner:         signer,
 			blsPublicKey:      pubKey,
 			blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
 		}
@@ -105,10 +105,10 @@ func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValid
 
 	// Placeholder for results
 	validatorSet := make([]*warp.Validator, validatorCount)
-	validatorSecretKeys := make([]*bls.SecretKey, validatorCount)
+	validatorSigners := make([]*bls.LocalSigner, validatorCount)
 	nodeValidatorIndexMap := make(map[ids.NodeID]int)
 	for i, validator := range validatorValues {
-		validatorSecretKeys[i] = validator.blsSecretKey
+		validatorSigners[i] = validator.blsSigner
 		validatorSet[i] = &warp.Validator{
 			PublicKey:      validator.blsPublicKey,
 			PublicKeyBytes: validator.blsPublicKeyBytes,
@@ -123,7 +123,7 @@ func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValid
 		TotalValidatorWeight:  uint64(validatorCount),
 		ValidatorSet:          validatorSet,
 		NodeValidatorIndexMap: nodeValidatorIndexMap,
-	}, validatorSecretKeys
+	}, validatorSigners
 }
 
 func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
@@ -255,7 +255,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	require.NoError(t, err)
 
 	// the signers:
-	connectedValidators, validatorSecretKeys := makeConnectedValidators(5)
+	connectedValidators, validatorSigners := makeConnectedValidators(5)
 
 	// prime the aggregator:
 
@@ -285,14 +285,11 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	responseChan := make(chan message.InboundMessage, len(appRequests))
 	for _, appRequest := range appRequests {
 		nodeIDs.Add(appRequest.NodeID)
-		validatorSecretKey := validatorSecretKeys[connectedValidators.NodeValidatorIndexMap[appRequest.NodeID]]
+		validatorSigner := validatorSigners[connectedValidators.NodeValidatorIndexMap[appRequest.NodeID]]
 		responseBytes, err := proto.Marshal(
 			&sdk.SignatureResponse{
 				Signature: bls.SignatureToBytes(
-					bls.Sign(
-						validatorSecretKey,
-						msg.Bytes(),
-					),
+					validatorSigner.Sign(msg.Bytes()),
 				),
 			},
 		)

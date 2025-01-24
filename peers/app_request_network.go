@@ -9,7 +9,9 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ava-labs/avalanchego/api/info"
@@ -52,7 +54,7 @@ type AppRequestNetwork interface {
 	) chan message.InboundMessage
 	Send(
 		msg message.OutboundMessage,
-		nodeIDs set.Set[ids.NodeID],
+		nodeIDs avagoCommon.SendConfig,
 		subnetID ids.ID,
 		allower subnets.Allower,
 	) set.Set[ids.NodeID]
@@ -69,8 +71,9 @@ type appRequestNetwork struct {
 	validatorClient *validators.CanonicalValidatorClient
 	metrics         *AppRequestNetworkMetrics
 
-	trackedSubnets set.Set[ids.ID]
-	manager        vdrs.Manager
+	trackedSubnets   set.Set[ids.ID]
+	manager          vdrs.Manager
+	currentRequestID atomic.Uint32
 }
 
 // NewNetwork creates a P2P network client for interacting with validators
@@ -220,6 +223,7 @@ func NewNetwork(
 		trackedSubnets:  trackedSubnets,
 		manager:         manager,
 	}
+	arNetwork.currentRequestID.Store(rand.Uint32())
 
 	arNetwork.startUpdateValidators()
 
@@ -364,11 +368,11 @@ func (n *appRequestNetwork) ConnectToCanonicalValidators(subnetID ids.ID) (*Conn
 
 func (n *appRequestNetwork) Send(
 	msg message.OutboundMessage,
-	nodeIDs set.Set[ids.NodeID],
+	sendConfig avagoCommon.SendConfig,
 	subnetID ids.ID,
 	allower subnets.Allower,
 ) set.Set[ids.NodeID] {
-	return n.network.Send(msg, avagoCommon.SendConfig{NodeIDs: nodeIDs}, subnetID, allower)
+	return n.network.Send(msg, sendConfig, subnetID, allower)
 }
 
 func (n *appRequestNetwork) RegisterAppRequest(requestID ids.RequestID) {

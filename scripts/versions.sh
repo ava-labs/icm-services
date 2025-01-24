@@ -23,8 +23,8 @@ AVALANCHEGO_VERSION=v1.12.0
 GINKGO_VERSION=${GINKGO_VERSION:-$(getDepVersion github.com/onsi/ginkgo/v2)}
 
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(getDepVersion github.com/ava-labs/subnet-evm)}
-# Temporarily hardcode the Subnet EVM version until there is a tagged release
-SUBNET_EVM_VERSION=6c98da796f359335f2dcfd1151af191584be8d74
+# Temporarily harcode the Subnet EVM version until there is a tagged release
+SUBNET_EVM_VERSION=v0.7.1-rc.0
 
 # Set golangci-lint version
 GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION:-'v1.60'}

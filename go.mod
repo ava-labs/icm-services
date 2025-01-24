@@ -4,9 +4,9 @@ go 1.22.10
 
 require (
 	github.com/alexliesenfeld/health v0.8.0
-	github.com/ava-labs/avalanchego v1.12.1-0.20241210172525-c7ebd8fbae88
+	github.com/ava-labs/avalanchego v1.12.2-0.20250109155921-72af1d8818fa
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250116150448-9c7dfe812349
-	github.com/ava-labs/subnet-evm v0.6.13-0.20241205165027-6c98da796f35
+	github.com/ava-labs/subnet-evm v0.7.1-rc.0
 	github.com/aws/aws-sdk-go-v2 v1.33.0
 	github.com/aws/aws-sdk-go-v2/config v1.29.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.37.13
@@ -30,11 +30,17 @@ require (
 	google.golang.org/protobuf v1.36.3
 )
 
+replace github.com/ava-labs/avalanchego => ../avalanchego
+
+replace github.com/ava-labs/subnet-evm => ../subnet-evm
+
+replace github.com/ava-labs/icm-contracts => ../teleporter
+
 require (
 	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
-	github.com/ava-labs/coreth v0.13.9-rc.1 // indirect
+	github.com/ava-labs/coreth v0.14.1-0.20241230191223-351149733d35 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.54 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.24 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.28 // indirect
@@ -95,7 +101,6 @@ require (
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/rpc v1.2.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
-	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.0 // indirect
 	github.com/hashicorp/go-bexpr v0.1.10 // indirect
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d // indirect
@@ -103,9 +108,6 @@ require (
 	github.com/holiman/billy v0.0.0-20240216141850-2abb0c79d3c4 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
 	github.com/holiman/uint256 v1.2.4 // indirect
-	github.com/huin/goupnp v1.3.0 // indirect
-	github.com/jackpal/gateway v1.0.6 // indirect
-	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect

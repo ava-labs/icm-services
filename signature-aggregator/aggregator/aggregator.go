@@ -5,6 +5,7 @@ package aggregator
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,9 +18,9 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
+	"github.com/ava-labs/avalanchego/network/p2p/acp118"
 	"github.com/ava-labs/avalanchego/proto/pb/p2p"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
-	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
@@ -28,7 +29,7 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator/cache"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/cenkalti/backoff/v4"
+	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
@@ -47,6 +48,13 @@ var (
 	errNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
 )
 
+// Combination of a subnet ID and a blockchain ID
+// used to key the p2pSignatureAggregators map
+type subnetChainID struct {
+	subnetID ids.ID // signing subnetID of the message being signed
+	chainID  ids.ID // sourceChainID of the message being signed
+}
+
 type SignatureAggregator struct {
 	network peers.AppRequestNetwork
 	// protected by subnetsMapLock
@@ -57,6 +65,9 @@ type SignatureAggregator struct {
 	subnetsMapLock          sync.RWMutex
 	metrics                 *metrics.SignatureAggregatorMetrics
 	cache                   *cache.Cache
+
+	p2pSigAggLock           sync.RWMutex
+	p2pSignatureAggregators map[subnetChainID]*acp118.SignatureAggregator
 }
 
 func NewSignatureAggregator(
@@ -66,6 +77,7 @@ func NewSignatureAggregator(
 	signatureCacheSize uint64,
 	metrics *metrics.SignatureAggregatorMetrics,
 ) (*SignatureAggregator, error) {
+	fmt.Println("CREATED AGGREGATOR")
 	cache, err := cache.NewCache(signatureCacheSize, logger)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -81,8 +93,10 @@ func NewSignatureAggregator(
 		currentRequestID:        atomic.Uint32{},
 		cache:                   cache,
 		messageCreator:          messageCreator,
+		p2pSignatureAggregators: make(map[subnetChainID]*acp118.SignatureAggregator),
 	}
 	sa.currentRequestID.Store(rand.Uint32())
+
 	return &sa, nil
 }
 
@@ -96,6 +110,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	inputSigningSubnet ids.ID,
 	quorumPercentage uint64,
 ) (*avalancheWarp.Message, error) {
+	fmt.Println("HERE")
 	s.logger.Debug("Creating signed message", zap.String("warpMessageID", unsignedMessage.ID().String()))
 	var signingSubnet ids.ID
 	var err error
@@ -136,58 +151,9 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		float64(connectedValidators.ConnectedWeight) /
 			float64(connectedValidators.TotalValidatorWeight) * 100,
 	)
-
-	if !utils.CheckStakeWeightExceedsThreshold(
-		big.NewInt(0).SetUint64(connectedValidators.ConnectedWeight),
-		connectedValidators.TotalValidatorWeight,
-		quorumPercentage,
-	) {
-		s.logger.Error(
-			"Failed to connect to a threshold of stake",
-			zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
-			zap.Uint64("totalValidatorWeight", connectedValidators.TotalValidatorWeight),
-			zap.Uint64("quorumPercentage", quorumPercentage),
-		)
-		s.metrics.FailuresToConnectToSufficientStake.Inc()
-		return nil, errNotEnoughConnectedStake
-	}
-
-	accumulatedSignatureWeight := big.NewInt(0)
-
-	signatureMap := make(map[int][bls.SignatureLen]byte)
-	if cachedSignatures, ok := s.cache.Get(unsignedMessage.ID()); ok {
-		for i, validator := range connectedValidators.ValidatorSet {
-			cachedSignature, found := cachedSignatures[cache.PublicKeyBytes(validator.PublicKeyBytes)]
-			if found {
-				signatureMap[i] = cachedSignature
-				accumulatedSignatureWeight.Add(
-					accumulatedSignatureWeight,
-					new(big.Int).SetUint64(validator.Weight),
-				)
-			}
-		}
-		s.metrics.SignatureCacheHits.Add(float64(len(signatureMap)))
-	}
-	if signedMsg, err := s.aggregateIfSufficientWeight(
-		unsignedMessage,
-		signatureMap,
-		accumulatedSignatureWeight,
-		connectedValidators,
-		quorumPercentage,
-	); err != nil {
-		return nil, err
-	} else if signedMsg != nil {
-		return signedMsg, nil
-	}
-	if len(signatureMap) > 0 {
-		s.metrics.SignatureCacheMisses.Add(float64(
-			len(connectedValidators.ValidatorSet) - len(signatureMap),
-		))
-	}
-
-	reqBytes, err := s.marshalRequest(unsignedMessage, justification, sourceSubnet)
+	aggregator, err := s.getAggregator(signingSubnet, unsignedMessage.SourceChainID)
 	if err != nil {
-		msg := "Failed to marshal request bytes"
+		msg := "Failed to get aggregator"
 		s.logger.Error(
 			msg,
 			zap.String("warpMessageID", unsignedMessage.ID().String()),
@@ -195,149 +161,258 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		)
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
-
-	// Construct the AppRequest
-	requestID := s.currentRequestID.Add(1)
-	outMsg, err := s.messageCreator.AppRequest(
-		unsignedMessage.SourceChainID,
-		requestID,
-		peers.DefaultAppRequestTimeout,
-		reqBytes,
-	)
-	if err != nil {
-		msg := "Failed to create app request message"
-		s.logger.Error(
-			msg,
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
-			zap.Error(err),
-		)
-		return nil, fmt.Errorf("%s: %w", msg, err)
+	msg := avalancheWarp.Message{
+		UnsignedMessage: *unsignedMessage,
+		Signature:       &avalancheWarp.BitSetSignature{},
 	}
 
-	var signedMsg *avalancheWarp.Message
-	// Query the validators with retries. On each retry, query one node per unique BLS pubkey
+	s.logger.Info("Unsigned message", zap.String("warpMessageID", unsignedMessage.ID().String()))
+	// ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	var signedMessage *avalancheWarp.Message
 	operation := func() error {
-		responsesExpected := len(connectedValidators.ValidatorSet) - len(signatureMap)
-		s.logger.Debug(
-			"Aggregator collecting signatures from peers.",
-			zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
-			zap.String("signingSubnetID", signingSubnet.String()),
-			zap.Int("validatorSetSize", len(connectedValidators.ValidatorSet)),
-			zap.Int("signatureMapSize", len(signatureMap)),
-			zap.Int("responsesExpected", responsesExpected),
+		var aggregatedStake *big.Int
+		var totalStake *big.Int
+		var finished bool
+		signedMessage, aggregatedStake, totalStake, finished, err = aggregator.AggregateSignatures(
+			context.Background(),
+			&msg,
+			justification,
+			connectedValidators.ValidatorSet,
+			quorumPercentage,
+			warp.WarpQuorumDenominator,
 		)
-
-		vdrSet := set.NewSet[ids.NodeID](len(connectedValidators.ValidatorSet))
-		for i, vdr := range connectedValidators.ValidatorSet {
-			// If we already have the signature for this validator, do not query any of the composite nodes again
-			if _, ok := signatureMap[i]; ok {
-				continue
-			}
-
-			// TODO: Track failures and iterate through the validator's node list on subsequent query attempts
-			nodeID := vdr.NodeIDs[0]
-			vdrSet.Add(nodeID)
-			s.logger.Debug(
-				"Added node ID to query.",
-				zap.String("nodeID", nodeID.String()),
+		if err != nil {
+			msg := "Failed to aggregate signatures via p2p client"
+			s.logger.Error(
+				msg,
 				zap.String("warpMessageID", unsignedMessage.ID().String()),
-				zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+				zap.Error(err),
 			)
-
-			// Register a timeout response for each queried node
-			reqID := ids.RequestID{
-				NodeID:    nodeID,
-				ChainID:   unsignedMessage.SourceChainID,
-				RequestID: requestID,
-				Op:        byte(message.AppResponseOp),
-			}
-			s.network.RegisterAppRequest(reqID)
+			return fmt.Errorf("%s: %w", msg, err)
 		}
-		responseChan := s.network.RegisterRequestID(requestID, vdrSet.Len())
-
-		sentTo := s.network.Send(outMsg, vdrSet, sourceSubnet, subnets.NoOpAllower)
-		s.metrics.AppRequestCount.Inc()
-		s.logger.Debug(
-			"Sent signature request to network",
+		if !finished {
+			msg := "Failed to aggregate sufficient stake"
+			s.logger.Error(
+				msg,
+				zap.String("warpMessageID", unsignedMessage.ID().String()),
+				zap.String("aggregatedStake", aggregatedStake.String()),
+				zap.String("totalStake", totalStake.String()),
+			)
+			return fmt.Errorf("%s", msg)
+		}
+		s.logger.Info(
+			"Successfully aggregated signatures",
 			zap.String("warpMessageID", unsignedMessage.ID().String()),
-			zap.Any("sentTo", sentTo),
-			zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
-			zap.String("sourceSubnetID", sourceSubnet.String()),
-			zap.String("signingSubnetID", signingSubnet.String()),
-		)
-		for nodeID := range vdrSet {
-			if !sentTo.Contains(nodeID) {
-				s.logger.Warn(
-					"Failed to make async request to node",
-					zap.String("nodeID", nodeID.String()),
-					zap.Error(err),
-				)
-				responsesExpected--
-				s.metrics.FailuresSendingToNode.Inc()
-			}
-		}
-
-		responseCount := 0
-		if responsesExpected > 0 {
-			for response := range responseChan {
-				s.logger.Debug(
-					"Processing response from node",
-					zap.String("nodeID", response.NodeID().String()),
-					zap.String("warpMessageID", unsignedMessage.ID().String()),
-					zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
-				)
-				var relevant bool
-				signedMsg, relevant, err = s.handleResponse(
-					response,
-					sentTo,
-					requestID,
-					connectedValidators,
-					unsignedMessage,
-					signatureMap,
-					accumulatedSignatureWeight,
-					quorumPercentage,
-				)
-				if err != nil {
-					// don't increase node failures metric here, because we did
-					// it in handleResponse
-					return backoff.Permanent(fmt.Errorf(
-						"failed to handle response: %w",
-						err,
-					))
-				}
-				if relevant {
-					responseCount++
-				}
-				// If we have sufficient signatures, return here.
-				if signedMsg != nil {
-					s.logger.Info(
-						"Created signed message.",
-						zap.String("warpMessageID", unsignedMessage.ID().String()),
-						zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-						zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
-					)
-					return nil
-				}
-				// Break once we've had successful or unsuccessful responses from each requested node
-				if responseCount == responsesExpected {
-					break
-				}
-			}
-		}
-		return errNotEnoughSignatures
+			zap.String("aggregatedStake", aggregatedStake.String()),
+			zap.String("totalStake", totalStake.String()))
+		return nil
 	}
-
 	err = utils.WithRetriesTimeout(s.logger, operation, signatureRequestTimeout)
 	if err != nil {
-		s.logger.Warn(
-			"Failed to collect a threshold of signatures",
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
-			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
-			zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
-		)
-		return nil, errNotEnoughSignatures
+		return nil, err
 	}
-	return signedMsg, nil
+	return signedMessage, nil
+	// if !utils.CheckStakeWeightExceedsThreshold(
+	// 	big.NewInt(0).SetUint64(connectedValidators.ConnectedWeight),
+	// 	connectedValidators.TotalValidatorWeight,
+	// 	quorumPercentage,
+	// ) {
+	// 	s.logger.Error(
+	// 		"Failed to connect to a threshold of stake",
+	// 		zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
+	// 		zap.Uint64("totalValidatorWeight", connectedValidators.TotalValidatorWeight),
+	// 		zap.Uint64("quorumPercentage", quorumPercentage),
+	// 	)
+	// 	s.metrics.FailuresToConnectToSufficientStake.Inc()
+	// 	return nil, errNotEnoughConnectedStake
+	// }
+
+	// accumulatedSignatureWeight := big.NewInt(0)
+
+	// signatureMap := make(map[int][bls.SignatureLen]byte)
+	// if cachedSignatures, ok := s.cache.Get(unsignedMessage.ID()); ok {
+	// 	for i, validator := range connectedValidators.ValidatorSet {
+	// 		cachedSignature, found := cachedSignatures[cache.PublicKeyBytes(validator.PublicKeyBytes)]
+	// 		if found {
+	// 			signatureMap[i] = cachedSignature
+	// 			accumulatedSignatureWeight.Add(
+	// 				accumulatedSignatureWeight,
+	// 				new(big.Int).SetUint64(validator.Weight),
+	// 			)
+	// 		}
+	// 	}
+	// 	s.metrics.SignatureCacheHits.Add(float64(len(signatureMap)))
+	// }
+	// if signedMsg, err := s.aggregateIfSufficientWeight(
+	// 	unsignedMessage,
+	// 	signatureMap,
+	// 	accumulatedSignatureWeight,
+	// 	connectedValidators,
+	// 	quorumPercentage,
+	// ); err != nil {
+	// 	return nil, err
+	// } else if signedMsg != nil {
+	// 	return signedMsg, nil
+	// }
+	// if len(signatureMap) > 0 {
+	// 	s.metrics.SignatureCacheMisses.Add(float64(
+	// 		len(connectedValidators.ValidatorSet) - len(signatureMap),
+	// 	))
+	// }
+
+	// reqBytes, err := s.marshalRequest(unsignedMessage, justification, sourceSubnet)
+	// if err != nil {
+	// 	msg := "Failed to marshal request bytes"
+	// 	s.logger.Error(
+	// 		msg,
+	// 		zap.String("warpMessageID", unsignedMessage.ID().String()),
+	// 		zap.Error(err),
+	// 	)
+	// 	return nil, fmt.Errorf("%s: %w", msg, err)
+	// }
+
+	// // Construct the AppRequest
+	// requestID := s.currentRequestID.Add(1)
+	// outMsg, err := s.messageCreator.AppRequest(
+	// 	unsignedMessage.SourceChainID,
+	// 	requestID,
+	// 	peers.DefaultAppRequestTimeout,
+	// 	reqBytes,
+	// )
+	// if err != nil {
+	// 	msg := "Failed to create app request message"
+	// 	s.logger.Error(
+	// 		msg,
+	// 		zap.String("warpMessageID", unsignedMessage.ID().String()),
+	// 		zap.Error(err),
+	// 	)
+	// 	return nil, fmt.Errorf("%s: %w", msg, err)
+	// }
+
+	// var signedMsg *avalancheWarp.Message
+	// // Query the validators with retries. On each retry, query one node per unique BLS pubkey
+	// operation := func() error {
+	// 	responsesExpected := len(connectedValidators.ValidatorSet) - len(signatureMap)
+	// 	s.logger.Debug(
+	// 		"Aggregator collecting signatures from peers.",
+	// 		zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+	// 		zap.String("signingSubnetID", signingSubnet.String()),
+	// 		zap.Int("validatorSetSize", len(connectedValidators.ValidatorSet)),
+	// 		zap.Int("signatureMapSize", len(signatureMap)),
+	// 		zap.Int("responsesExpected", responsesExpected),
+	// 	)
+
+	// 	vdrSet := set.NewSet[ids.NodeID](len(connectedValidators.ValidatorSet))
+	// 	for i, vdr := range connectedValidators.ValidatorSet {
+	// 		// If we already have the signature for this validator, do not query any of the composite nodes again
+	// 		if _, ok := signatureMap[i]; ok {
+	// 			continue
+	// 		}
+
+	// 		// TODO: Track failures and iterate through the validator's node list on subsequent query attempts
+	// 		nodeID := vdr.NodeIDs[0]
+	// 		vdrSet.Add(nodeID)
+	// 		s.logger.Debug(
+	// 			"Added node ID to query.",
+	// 			zap.String("nodeID", nodeID.String()),
+	// 			zap.String("warpMessageID", unsignedMessage.ID().String()),
+	// 			zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+	// 		)
+
+	// 		// Register a timeout response for each queried node
+	// 		reqID := ids.RequestID{
+	// 			NodeID:    nodeID,
+	// 			ChainID:   unsignedMessage.SourceChainID,
+	// 			RequestID: requestID,
+	// 			Op:        byte(message.AppResponseOp),
+	// 		}
+	// 		s.network.RegisterAppRequest(reqID)
+	// 	}
+	// 	responseChan := s.network.RegisterRequestID(requestID, vdrSet.Len())
+
+	// 	sentTo := s.network.Send(outMsg, avagoCommon.SendConfig{NodeIDs: vdrSet}, sourceSubnet, subnets.NoOpAllower)
+	// 	s.metrics.AppRequestCount.Inc()
+	// 	s.logger.Debug(
+	// 		"Sent signature request to network",
+	// 		zap.String("warpMessageID", unsignedMessage.ID().String()),
+	// 		zap.Any("sentTo", sentTo),
+	// 		zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+	// 		zap.String("sourceSubnetID", sourceSubnet.String()),
+	// 		zap.String("signingSubnetID", signingSubnet.String()),
+	// 	)
+	// 	for nodeID := range vdrSet {
+	// 		if !sentTo.Contains(nodeID) {
+	// 			s.logger.Warn(
+	// 				"Failed to make async request to node",
+	// 				zap.String("nodeID", nodeID.String()),
+	// 				zap.Error(err),
+	// 			)
+	// 			responsesExpected--
+	// 			s.metrics.FailuresSendingToNode.Inc()
+	// 		}
+	// 	}
+
+	// 	responseCount := 0
+	// 	if responsesExpected > 0 {
+	// 		for response := range responseChan {
+	// 			s.logger.Debug(
+	// 				"Processing response from node",
+	// 				zap.String("nodeID", response.NodeID().String()),
+	// 				zap.String("warpMessageID", unsignedMessage.ID().String()),
+	// 				zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+	// 			)
+	// 			var relevant bool
+	// 			signedMsg, relevant, err = s.handleResponse(
+	// 				response,
+	// 				sentTo,
+	// 				requestID,
+	// 				connectedValidators,
+	// 				unsignedMessage,
+	// 				signatureMap,
+	// 				accumulatedSignatureWeight,
+	// 				quorumPercentage,
+	// 			)
+	// 			if err != nil {
+	// 				// don't increase node failures metric here, because we did
+	// 				// it in handleResponse
+	// 				return backoff.Permanent(fmt.Errorf(
+	// 					"failed to handle response: %w",
+	// 					err,
+	// 				))
+	// 			}
+	// 			if relevant {
+	// 				responseCount++
+	// 			}
+	// 			// If we have sufficient signatures, return here.
+	// 			if signedMsg != nil {
+	// 				s.logger.Info(
+	// 					"Created signed message.",
+	// 					zap.String("warpMessageID", unsignedMessage.ID().String()),
+	// 					zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+	// 					zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+	// 				)
+	// 				return nil
+	// 			}
+	// 			// Break once we've had successful or unsuccessful responses from each requested node
+	// 			if responseCount == responsesExpected {
+	// 				break
+	// 			}
+	// 		}
+	// 	}
+	// 	return errNotEnoughSignatures
+	// }
+
+	// err = utils.WithRetriesTimeout(s.logger, operation, signatureRequestTimeout)
+	// if err != nil {
+	// 	s.logger.Warn(
+	// 		"Failed to collect a threshold of signatures",
+	// 		zap.String("warpMessageID", unsignedMessage.ID().String()),
+	// 		zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
+	// 		zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+	// 	)
+	// 	return nil, errNotEnoughSignatures
+	// }
+	// return signedMsg, nil
 }
 
 func (s *SignatureAggregator) getSubnetID(blockchainID ids.ID) (ids.ID, error) {
@@ -360,6 +435,29 @@ func (s *SignatureAggregator) setSubnetID(blockchainID ids.ID, subnetID ids.ID) 
 	s.subnetsMapLock.Lock()
 	s.subnetIDsByBlockchainID[blockchainID] = subnetID
 	s.subnetsMapLock.Unlock()
+}
+
+func (s *SignatureAggregator) getAggregator(subnetID ids.ID, chainID ids.ID) (*acp118.SignatureAggregator, error) {
+	s.p2pSigAggLock.RLock()
+	aggregator, ok := s.p2pSignatureAggregators[subnetChainID{subnetID: subnetID, chainID: chainID}]
+	s.p2pSigAggLock.RUnlock()
+	if ok {
+		return aggregator, nil
+	}
+	s.logger.Info("No P2P signature aggregator found, creating a new one", zap.String("subnetID", subnetID.String()))
+	p2pClient, err := peers.NewP2PClient(s.logger, s.network, s.messageCreator, subnetID, chainID)
+	if err != nil {
+		return nil, err
+	}
+	aggregator = acp118.NewSignatureAggregator(s.logger, p2pClient)
+	s.setAggregator(subnetID, chainID, aggregator)
+	return aggregator, nil
+}
+
+func (s *SignatureAggregator) setAggregator(subnetID ids.ID, chainID ids.ID, aggregator *acp118.SignatureAggregator) {
+	s.p2pSigAggLock.Lock()
+	s.p2pSignatureAggregators[subnetChainID{subnetID: subnetID, chainID: chainID}] = aggregator
+	s.p2pSigAggLock.Unlock()
 }
 
 // Attempts to create a signed Warp message from the accumulated responses.

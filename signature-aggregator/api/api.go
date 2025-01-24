@@ -6,12 +6,14 @@ package api
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/types"
@@ -176,7 +178,8 @@ func signatureAggregationAPIHandler(
 				return
 			}
 		}
-
+		addressedCall, _ := payload.ParseAddressedCall(message.Payload)
+		fmt.Println(hex.EncodeToString(addressedCall.SourceAddress))
 		signedMessage, err := aggregator.CreateSignedMessage(
 			message,
 			justification,

@@ -14,6 +14,7 @@ import (
 
 	ids "github.com/ava-labs/avalanchego/ids"
 	message "github.com/ava-labs/avalanchego/message"
+	common "github.com/ava-labs/avalanchego/snow/engine/common"
 	subnets "github.com/ava-labs/avalanchego/subnets"
 	set "github.com/ava-labs/avalanchego/utils/set"
 	peers "github.com/ava-labs/icm-services/peers"
@@ -101,7 +102,7 @@ func (mr *MockAppRequestNetworkMockRecorder) RegisterRequestID(requestID, numExp
 }
 
 // Send mocks base method.
-func (m *MockAppRequestNetwork) Send(msg message.OutboundMessage, nodeIDs set.Set[ids.NodeID], subnetID ids.ID, allower subnets.Allower) set.Set[ids.NodeID] {
+func (m *MockAppRequestNetwork) Send(msg message.OutboundMessage, nodeIDs common.SendConfig, subnetID ids.ID, allower subnets.Allower) set.Set[ids.NodeID] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Send", msg, nodeIDs, subnetID, allower)
 	ret0, _ := ret[0].(set.Set[ids.NodeID])

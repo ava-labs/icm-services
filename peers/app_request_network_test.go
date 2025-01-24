@@ -49,9 +49,9 @@ func TestCalculateConnectedWeight(t *testing.T) {
 }
 
 func makeValidator(t *testing.T, weight uint64, numNodeIDs int) warp.Validator {
-	sk, err := bls.NewSecretKey()
+	sk, err := bls.NewSigner()
 	require.NoError(t, err)
-	pk := bls.PublicFromSecretKey(sk)
+	pk := sk.PublicKey()
 
 	nodeIDs := make([]ids.NodeID, numNodeIDs)
 	for i := 0; i < numNodeIDs; i++ {

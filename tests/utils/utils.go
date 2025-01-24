@@ -600,7 +600,7 @@ func runExecutable(
 			log.Error("Executable exited abnormally", "appName", appName, "err", err)
 		}
 	}()
-	go func() { // wait for health check to report healthy
+	go func() {
 		for {
 			resp, err := http.Get(healthCheckUrl)
 			if err == nil && resp.StatusCode == 200 {
