@@ -208,24 +208,13 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		))
 	}
 
-	reqBytes, err := s.marshalRequest(unsignedMessage, justification, sourceSubnet)
-	if err != nil {
-		msg := "Failed to marshal request"
-		s.logger.Error(
-			msg,
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
-			zap.Error(err),
-		)
-		return nil, fmt.Errorf("%s: %w", msg, err)
-	}
 	msg := avalancheWarp.Message{
 		UnsignedMessage: *unsignedMessage,
 		Signature:       &avalancheWarp.BitSetSignature{},
 	}
 
 	s.logger.Info("Unsigned message", zap.String("warpMessageID", unsignedMessage.ID().String()))
-	// ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	var signedMessage *avalancheWarp.Message
+	signedMessage := &avalancheWarp.Message{}
 	operation := func() error {
 		var aggregatedStake *big.Int
 		var totalStake *big.Int
