@@ -9,9 +9,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"math/rand/v2"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ava-labs/avalanchego/api/info"
@@ -71,9 +69,8 @@ type appRequestNetwork struct {
 	validatorClient *validators.CanonicalValidatorClient
 	metrics         *AppRequestNetworkMetrics
 
-	trackedSubnets   set.Set[ids.ID]
-	manager          vdrs.Manager
-	currentRequestID atomic.Uint32
+	trackedSubnets set.Set[ids.ID]
+	manager        vdrs.Manager
 }
 
 // NewNetwork creates a P2P network client for interacting with validators
@@ -223,7 +220,6 @@ func NewNetwork(
 		trackedSubnets:  trackedSubnets,
 		manager:         manager,
 	}
-	arNetwork.currentRequestID.Store(rand.Uint32())
 
 	arNetwork.startUpdateValidators()
 
