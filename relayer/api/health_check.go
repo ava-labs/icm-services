@@ -9,7 +9,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"go.uber.org/atomic"
-	"go.uber.org/zap"
 )
 
 const HealthAPIPath = "/health"
@@ -32,7 +31,6 @@ func healthCheckHandler(logger logging.Logger, relayerHealth map[ids.ID]*atomic.
 				}
 
 				if len(unhealthyRelayers) > 0 {
-					logger.Fatal("Relayers are unhealthy for blockchains", zap.Strings("blockchains", unhealthyRelayers))
 					return fmt.Errorf("relayers are unhealthy for blockchains %v", unhealthyRelayers)
 				}
 				return nil

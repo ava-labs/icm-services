@@ -139,7 +139,7 @@ func main() {
 		metricsInstance,
 		signatureAggregator,
 	)
-	healthcheck.HandleHealthCheckRequest()
+	healthcheck.HandleHealthCheckRequest(network)
 
 	logger.Info("Initialization complete")
 	err = http.ListenAndServe(fmt.Sprintf(":%d", cfg.APIPort), nil)

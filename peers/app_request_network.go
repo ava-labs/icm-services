@@ -351,8 +351,16 @@ func (n *appRequestNetwork) ConnectToCanonicalValidators(subnetID ids.ID) (*Conn
 		}
 	}
 
+	peerInfo := n.network.PeerInfo(nil)
+	connectedPeers := set.NewSet[ids.NodeID](len(nodeIDs))
+	for _, peer := range peerInfo {
+		if nodeIDs.Contains(peer.ID) {
+			connectedPeers.Add(peer.ID)
+		}
+	}
+
 	// Calculate the total weight of connected validators.
-	connectedWeight := calculateConnectedWeight(validatorSet, nodeValidatorIndexMap, nodeIDs)
+	connectedWeight := calculateConnectedWeight(validatorSet, nodeValidatorIndexMap, connectedPeers)
 
 	return &ConnectedCanonicalValidators{
 		ConnectedWeight:       connectedWeight,

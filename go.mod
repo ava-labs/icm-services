@@ -5,6 +5,7 @@ go 1.22.10
 require (
 	github.com/alexliesenfeld/health v0.8.0
 	github.com/ava-labs/avalanchego v1.12.2-0.20250109155921-72af1d8818fa
+	github.com/ava-labs/coreth v0.14.1-0.20241230191223-351149733d35
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250116150448-9c7dfe812349
 	github.com/ava-labs/subnet-evm v0.7.1-rc.0
 	github.com/aws/aws-sdk-go-v2 v1.33.0
@@ -40,7 +41,6 @@ require (
 	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
-	github.com/ava-labs/coreth v0.14.1-0.20241230191223-351149733d35 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.54 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.24 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.28 // indirect

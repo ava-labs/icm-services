@@ -39,13 +39,16 @@ type blsSignatureBuf [bls.SignatureLen]byte
 const (
 	// Maximum amount of time to spend waiting (in addition to network round trip time per attempt)
 	// during relayer signature query routine
-	signatureRequestTimeout = 20 * time.Second
+	signatureRequestTimeout = 5 * time.Second
+	// Maximum amount of time to spend waiting for a connection to a quorum of validators for
+	// a given subnetID
+	connectToValidatorsTimeout = 5 * time.Second
 )
 
 var (
 	// Errors
 	errNotEnoughSignatures     = errors.New("failed to collect a threshold of signatures")
-	errNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
+	ErrNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
 )
 
 // Combination of a subnet ID and a blockchain ID
@@ -133,27 +136,81 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
-	connectedValidators, err := s.network.ConnectToCanonicalValidators(signingSubnet)
-	if err != nil {
-		msg := "Failed to connect to canonical validators"
-		s.logger.Error(
-			msg,
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
-			zap.Error(err),
-		)
-		s.metrics.FailuresToGetValidatorSet.Inc()
-		return nil, fmt.Errorf("%s: %w", msg, err)
-	}
-	s.logger.Debug("Connected to canonical validators", zap.String("warpMessageID", unsignedMessage.ID().String()))
-	s.metrics.ConnectedStakeWeightPercentage.WithLabelValues(
-		signingSubnet.String(),
-	).Set(
-		float64(connectedValidators.ConnectedWeight) /
-			float64(connectedValidators.TotalValidatorWeight) * 100,
-	)
 	aggregator, err := s.getAggregator(signingSubnet, unsignedMessage.SourceChainID)
+	var connectedValidators *peers.ConnectedCanonicalValidators
+	connectOp := func() error {
+		connectedValidators, err = s.network.ConnectToCanonicalValidators(signingSubnet)
+		if err != nil {
+			msg := "Failed to connect to canonical validators"
+			s.logger.Error(
+				msg,
+				zap.String("warpMessageID", unsignedMessage.ID().String()),
+				zap.Error(err),
+			)
+			s.metrics.FailuresToGetValidatorSet.Inc()
+			return fmt.Errorf("%s: %w", msg, err)
+		}
+		s.logger.Debug("Connected to canonical validators", zap.String("warpMessageID", unsignedMessage.ID().String()))
+		s.metrics.ConnectedStakeWeightPercentage.WithLabelValues(
+			signingSubnet.String(),
+		).Set(
+			float64(connectedValidators.ConnectedWeight) /
+				float64(connectedValidators.TotalValidatorWeight) * 100,
+		)
+		if !utils.CheckStakeWeightExceedsThreshold(
+			big.NewInt(0).SetUint64(connectedValidators.ConnectedWeight),
+			connectedValidators.TotalValidatorWeight,
+			quorumPercentage,
+		) {
+			s.logger.Error(
+				"Failed to connect to a threshold of stake",
+				zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
+				zap.Uint64("totalValidatorWeight", connectedValidators.TotalValidatorWeight),
+				zap.Uint64("quorumPercentage", quorumPercentage),
+			)
+			s.metrics.FailuresToConnectToSufficientStake.Inc()
+			return ErrNotEnoughConnectedStake
+		}
+		return nil
+	}
+	err = utils.WithRetriesTimeout(s.logger, connectOp, connectToValidatorsTimeout)
+
+	accumulatedSignatureWeight := big.NewInt(0)
+
+	signatureMap := make(map[int][bls.SignatureLen]byte)
+	if cachedSignatures, ok := s.cache.Get(unsignedMessage.ID()); ok {
+		for i, validator := range connectedValidators.ValidatorSet {
+			cachedSignature, found := cachedSignatures[cache.PublicKeyBytes(validator.PublicKeyBytes)]
+			if found {
+				signatureMap[i] = cachedSignature
+				accumulatedSignatureWeight.Add(
+					accumulatedSignatureWeight,
+					new(big.Int).SetUint64(validator.Weight),
+				)
+			}
+		}
+		s.metrics.SignatureCacheHits.Add(float64(len(signatureMap)))
+	}
+	if signedMsg, err := s.aggregateIfSufficientWeight(
+		unsignedMessage,
+		signatureMap,
+		accumulatedSignatureWeight,
+		connectedValidators,
+		quorumPercentage,
+	); err != nil {
+		return nil, err
+	} else if signedMsg != nil {
+		return signedMsg, nil
+	}
+	if len(signatureMap) > 0 {
+		s.metrics.SignatureCacheMisses.Add(float64(
+			len(connectedValidators.ValidatorSet) - len(signatureMap),
+		))
+	}
+
+	reqBytes, err := s.marshalRequest(unsignedMessage, justification, sourceSubnet)
 	if err != nil {
-		msg := "Failed to get aggregator"
+		msg := "Failed to marshal request"
 		s.logger.Error(
 			msg,
 			zap.String("warpMessageID", unsignedMessage.ID().String()),
