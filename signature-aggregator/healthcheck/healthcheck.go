@@ -7,11 +7,11 @@ import (
 	"github.com/alexliesenfeld/health"
 )
 
-func HandleHealthCheckRequest() {
+func HandleHealthCheckRequest(checkFunc func(context.Context) error) {
 	healthChecker := health.NewChecker(
 		health.WithCheck(health.Check{
-			Name:  "signature-aggregator",
-			Check: func(context.Context) error { return nil },
+			Name:  "signature-aggregator-health",
+			Check: checkFunc,
 		}),
 	)
 

@@ -139,7 +139,11 @@ func main() {
 		metricsInstance,
 		signatureAggregator,
 	)
-	healthcheck.HandleHealthCheckRequest()
+
+	healthCheckSubnets := cfg.GetTrackedSubnets().List()
+	healthCheckSubnets = append(healthCheckSubnets, constants.PrimaryNetworkID)
+	networkHealthcheckFunc := peers.GetNetworkHealthFunc(network, healthCheckSubnets)
+	healthcheck.HandleHealthCheckRequest(networkHealthcheckFunc)
 
 	logger.Info("Initialization complete")
 	err = http.ListenAndServe(fmt.Sprintf(":%d", cfg.APIPort), nil)

@@ -9,16 +9,23 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"go.uber.org/atomic"
-	"go.uber.org/zap"
 )
 
 const HealthAPIPath = "/health"
 
-func HandleHealthCheck(logger logging.Logger, relayerHealth map[ids.ID]*atomic.Bool) {
-	http.Handle(HealthAPIPath, healthCheckHandler(logger, relayerHealth))
+func HandleHealthCheck(
+	logger logging.Logger,
+	relayerHealth map[ids.ID]*atomic.Bool,
+	networkHealth func(context.Context) error,
+) {
+	http.Handle(HealthAPIPath, healthCheckHandler(logger, relayerHealth, networkHealth))
 }
 
-func healthCheckHandler(logger logging.Logger, relayerHealth map[ids.ID]*atomic.Bool) http.Handler {
+func healthCheckHandler(
+	logger logging.Logger,
+	relayerHealth map[ids.ID]*atomic.Bool,
+	networkHealth func(context.Context) error,
+) http.Handler {
 	return health.NewHandler(health.NewChecker(
 		health.WithCheck(health.Check{
 			Name: "relayers-all",
@@ -32,11 +39,14 @@ func healthCheckHandler(logger logging.Logger, relayerHealth map[ids.ID]*atomic.
 				}
 
 				if len(unhealthyRelayers) > 0 {
-					logger.Fatal("Relayers are unhealthy for blockchains", zap.Strings("blockchains", unhealthyRelayers))
 					return fmt.Errorf("relayers are unhealthy for blockchains %v", unhealthyRelayers)
 				}
 				return nil
 			},
+		}),
+		health.WithCheck(health.Check{
+			Name:  "network-all",
+			Check: networkHealth,
 		}),
 	))
 }

@@ -58,7 +58,8 @@ func connectToNonPrimaryNetworkPeers(
 	sourceBlockchain *config.SourceBlockchain,
 ) error {
 	subnetID := sourceBlockchain.GetSubnetID()
-	connectedValidators, err := network.ConnectToCanonicalValidators(subnetID)
+	network.TrackSubnet(subnetID)
+	connectedValidators, err := network.GetConnectedCanonicalValidators(subnetID)
 	if err != nil {
 		logger.Error(
 			"Failed to connect to canonical validators",
@@ -94,7 +95,8 @@ func connectToPrimaryNetworkPeers(
 	for _, destination := range sourceBlockchain.SupportedDestinations {
 		blockchainID := destination.GetBlockchainID()
 		subnetID := cfg.GetSubnetID(blockchainID)
-		connectedValidators, err := network.ConnectToCanonicalValidators(subnetID)
+		network.TrackSubnet(subnetID)
+		connectedValidators, err := network.GetConnectedCanonicalValidators(subnetID)
 		if err != nil {
 			logger.Error(
 				"Failed to connect to canonical validators",
