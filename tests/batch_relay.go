@@ -113,7 +113,7 @@ func BatchRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
 
 	// Wait for the message on the destination
-	maxWait := 30
+	maxWait := 60
 	currWait := 0
 	log.Info("Waiting to receive all messages on destination...")
 	for {

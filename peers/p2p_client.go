@@ -77,7 +77,7 @@ func (s *AppRequestSender) SendAppRequest(
 	requestID uint32,
 	appRequestBytes []byte,
 ) error {
-	connectedValidators, err := s.network.ConnectToCanonicalValidators(s.subnetID)
+	connectedValidators, err := s.network.GetConnectedCanonicalValidators(s.subnetID)
 	if err != nil {
 		return err
 	}
@@ -151,9 +151,13 @@ func (s *AppRequestSender) handleResponses(
 	for response := range responseChan {
 		appResponse, ok := response.Message().(*protop2p.AppResponse)
 		if ok {
-			err := s.p2pNetwork.AppResponse(context.Background(), response.NodeID(), appResponse.GetRequestId(), appResponse.GetAppBytes())
+			err := s.p2pNetwork.AppResponse(
+				context.Background(),
+				response.NodeID(),
+				appResponse.GetRequestId(),
+				appResponse.GetAppBytes())
 			if err != nil {
-				s.logger.Warn("Failed to handle ApprResponse", zap.Error(err))
+				s.logger.Warn("Failed to handle AppResponse", zap.Error(err))
 			}
 		}
 	}
