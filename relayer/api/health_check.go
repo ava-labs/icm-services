@@ -13,11 +13,19 @@ import (
 
 const HealthAPIPath = "/health"
 
-func HandleHealthCheck(logger logging.Logger, relayerHealth map[ids.ID]*atomic.Bool) {
-	http.Handle(HealthAPIPath, healthCheckHandler(logger, relayerHealth))
+func HandleHealthCheck(
+	logger logging.Logger,
+	relayerHealth map[ids.ID]*atomic.Bool,
+	networkHealth func(context.Context) error,
+) {
+	http.Handle(HealthAPIPath, healthCheckHandler(logger, relayerHealth, networkHealth))
 }
 
-func healthCheckHandler(logger logging.Logger, relayerHealth map[ids.ID]*atomic.Bool) http.Handler {
+func healthCheckHandler(
+	logger logging.Logger,
+	relayerHealth map[ids.ID]*atomic.Bool,
+	networkHealth func(context.Context) error,
+) http.Handler {
 	return health.NewHandler(health.NewChecker(
 		health.WithCheck(health.Check{
 			Name: "relayers-all",
@@ -35,6 +43,10 @@ func healthCheckHandler(logger logging.Logger, relayerHealth map[ids.ID]*atomic.
 				}
 				return nil
 			},
+		}),
+		health.WithCheck(health.Check{
+			Name:  "network-all",
+			Check: networkHealth,
 		}),
 	))
 }

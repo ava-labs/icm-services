@@ -266,8 +266,10 @@ func main() {
 		sourceClients,
 	)
 
+	networkHealthFunc := peers.GetNetworkHealthFunc(network, cfg.GetTrackedSubnets().List())
+
 	// Each Listener goroutine will have an atomic bool that it can set to false to indicate an unrecoverable error
-	api.HandleHealthCheck(logger, relayerHealth)
+	api.HandleHealthCheck(logger, relayerHealth, networkHealthFunc)
 	api.HandleRelay(logger, messageCoordinator)
 	api.HandleRelayMessage(logger, messageCoordinator)
 

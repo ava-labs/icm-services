@@ -107,6 +107,54 @@ func (s *SignatureAggregator) Shutdown() {
 	s.network.Shutdown()
 }
 
+func (s *SignatureAggregator) connectToQuorumValidators(
+	signingSubnet ids.ID,
+	quorumPercentage uint64,
+) (*peers.ConnectedCanonicalValidators, error) {
+	s.network.TrackSubnet(signingSubnet)
+
+	var connectedValidators *peers.ConnectedCanonicalValidators
+	var err error
+	connectOp := func() error {
+		connectedValidators, err = s.network.GetConnectedCanonicalValidators(signingSubnet)
+		if err != nil {
+			msg := "Failed to connect to canonical validators"
+			s.logger.Error(
+				msg,
+				zap.Error(err),
+			)
+			s.metrics.FailuresToGetValidatorSet.Inc()
+			return fmt.Errorf("%s: %w", msg, err)
+		}
+		s.metrics.ConnectedStakeWeightPercentage.WithLabelValues(
+			signingSubnet.String(),
+		).Set(
+			float64(connectedValidators.ConnectedWeight) /
+				float64(connectedValidators.TotalValidatorWeight) * 100,
+		)
+		if !utils.CheckStakeWeightExceedsThreshold(
+			big.NewInt(0).SetUint64(connectedValidators.ConnectedWeight),
+			connectedValidators.TotalValidatorWeight,
+			quorumPercentage,
+		) {
+			s.logger.Warn(
+				"Failed to connect to a threshold of stake",
+				zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
+				zap.Uint64("totalValidatorWeight", connectedValidators.TotalValidatorWeight),
+				zap.Uint64("quorumPercentage", quorumPercentage),
+			)
+			s.metrics.FailuresToConnectToSufficientStake.Inc()
+			return errNotEnoughConnectedStake
+		}
+		return nil
+	}
+	err = utils.WithRetriesTimeout(s.logger, connectOp, connectToValidatorsTimeout)
+	if err != nil {
+		return nil, err
+	}
+	return connectedValidators, nil
+}
+
 func (s *SignatureAggregator) CreateSignedMessage(
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	justification []byte,
@@ -137,46 +185,15 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	)
 
 	aggregator, err := s.getAggregator(signingSubnet, unsignedMessage.SourceChainID)
-	var connectedValidators *peers.ConnectedCanonicalValidators
-	connectOp := func() error {
-		connectedValidators, err = s.network.ConnectToCanonicalValidators(signingSubnet)
-		if err != nil {
-			msg := "Failed to connect to canonical validators"
-			s.logger.Error(
-				msg,
-				zap.String("warpMessageID", unsignedMessage.ID().String()),
-				zap.Error(err),
-			)
-			s.metrics.FailuresToGetValidatorSet.Inc()
-			return fmt.Errorf("%s: %w", msg, err)
-		}
-		s.logger.Debug("Connected to canonical validators", zap.String("warpMessageID", unsignedMessage.ID().String()))
-		s.metrics.ConnectedStakeWeightPercentage.WithLabelValues(
-			signingSubnet.String(),
-		).Set(
-			float64(connectedValidators.ConnectedWeight) /
-				float64(connectedValidators.TotalValidatorWeight) * 100,
+	connectedValidators, err := s.connectToQuorumValidators(signingSubnet, quorumPercentage)
+	if err != nil {
+		s.logger.Error(
+			"Failed to connect to quorum of validators",
 		)
-		if !utils.CheckStakeWeightExceedsThreshold(
-			big.NewInt(0).SetUint64(connectedValidators.ConnectedWeight),
-			connectedValidators.TotalValidatorWeight,
-			quorumPercentage,
-		) {
-			s.logger.Error(
-				"Failed to connect to a threshold of stake",
-				zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
-				zap.Uint64("totalValidatorWeight", connectedValidators.TotalValidatorWeight),
-				zap.Uint64("quorumPercentage", quorumPercentage),
-			)
-			s.metrics.FailuresToConnectToSufficientStake.Inc()
-			return ErrNotEnoughConnectedStake
-		}
-		return nil
+		return nil, err
 	}
-	err = utils.WithRetriesTimeout(s.logger, connectOp, connectToValidatorsTimeout)
 
 	accumulatedSignatureWeight := big.NewInt(0)
-
 	signatureMap := make(map[int][bls.SignatureLen]byte)
 	if cachedSignatures, ok := s.cache.Get(unsignedMessage.ID()); ok {
 		for i, validator := range connectedValidators.ValidatorSet {
