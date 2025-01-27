@@ -7,7 +7,7 @@ require (
 	github.com/ava-labs/avalanchego v1.12.1-0.20241210172525-c7ebd8fbae88
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250116150448-9c7dfe812349
 	github.com/ava-labs/subnet-evm v0.6.13-0.20241205165027-6c98da796f35
-	github.com/aws/aws-sdk-go-v2 v1.33.0
+	github.com/aws/aws-sdk-go-v2 v1.34.0
 	github.com/aws/aws-sdk-go-v2/config v1.29.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.37.13
 	github.com/cenkalti/backoff/v4 v4.3.0
@@ -45,7 +45,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.24.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.9 // indirect
-	github.com/aws/smithy-go v1.22.1 // indirect
+	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.10.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
