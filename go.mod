@@ -7,7 +7,7 @@ require (
 	github.com/ava-labs/avalanchego v1.12.1-0.20241210172525-c7ebd8fbae88
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250116150448-9c7dfe812349
 	github.com/ava-labs/subnet-evm v0.6.13-0.20241205165027-6c98da796f35
-	github.com/aws/aws-sdk-go-v2 v1.35.0
+	github.com/aws/aws-sdk-go-v2 v1.36.0
 	github.com/aws/aws-sdk-go-v2/config v1.29.3
 	github.com/aws/aws-sdk-go-v2/service/kms v1.37.15
 	github.com/cenkalti/backoff/v4 v4.3.0
