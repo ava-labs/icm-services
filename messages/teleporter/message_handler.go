@@ -340,6 +340,20 @@ func (m *messageHandler) SendMessage(
 	return txHash, nil
 }
 
+func (m *messageHandler) GetLogContext(destinationClient vms.DestinationClient) []zap.Field {
+	destinationBlockchainID := destinationClient.DestinationBlockchainID()
+	teleporterMessageID, _ := teleporterUtils.CalculateMessageID(
+		m.factory.protocolAddress,
+		m.unsignedMessage.SourceChainID,
+		destinationBlockchainID,
+		m.teleporterMessage.MessageNonce,
+	)
+	return []zap.Field{
+		zap.String("unsignedWarpMessageID", m.unsignedMessage.ID().String()),
+		zap.String("teleporterMessageID", teleporterMessageID.String()),
+	}
+}
+
 func (m *messageHandler) waitForReceipt(
 	signedMessage *warp.Message,
 	destinationClient vms.DestinationClient,
