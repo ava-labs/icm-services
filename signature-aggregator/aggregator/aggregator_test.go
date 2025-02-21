@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"bytes"
-	"os"
 	"testing"
 
 	"crypto/rand"
@@ -24,8 +23,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -54,16 +51,6 @@ func instantiateAggregator(t *testing.T) (
 	}
 	aggregator, err := NewSignatureAggregator(
 		mockNetwork,
-		logging.NewLogger(
-			"aggregator_test",
-			logging.NewWrappedCore(
-				logging.Debug,
-				os.Stdout,
-				zapcore.NewConsoleEncoder(
-					zap.NewProductionEncoderConfig(),
-				),
-			),
-		),
 		messageCreator,
 		1024,
 		sigAggMetrics,
@@ -145,7 +132,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 		},
 		nil,
 	)
-	_, err = aggregator.CreateSignedMessage(msg, nil, ids.Empty, 80)
+	_, err = aggregator.CreateSignedMessage(logging.NoLog{}, msg, nil, ids.Empty, 80)
 	require.ErrorContains(t, err, "no signatures")
 }
 
@@ -165,7 +152,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 		},
 		nil,
 	).AnyTimes()
-	_, err = aggregator.CreateSignedMessage(msg, nil, ids.Empty, 80)
+	_, err = aggregator.CreateSignedMessage(logging.NoLog{}, msg, nil, ids.Empty, 80)
 	require.ErrorContains(
 		t,
 		err,
@@ -245,7 +232,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		subnets.NoOpAllower,
 	).AnyTimes()
 
-	_, err = aggregator.CreateSignedMessage(msg, nil, subnetID, 80)
+	_, err = aggregator.CreateSignedMessage(logging.NoLog{}, msg, nil, subnetID, 80)
 	require.ErrorIs(
 		t,
 		err,
@@ -330,6 +317,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	// aggregate the signatures:
 	var quorumPercentage uint64 = 80
 	signedMessage, err := aggregator.CreateSignedMessage(
+		logging.NoLog{},
 		msg,
 		nil,
 		subnetID,
