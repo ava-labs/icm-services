@@ -21,7 +21,7 @@ Namely:
 - `SignatureCacheSize` integer (optional) defaults to 1024KB
 - `AllowPrivateIPs` bool (optional)
 - `TrackedSubnetIDs` []string (optional)
-- `ManuallyTrackedPeers` []PeerConfig
+- `ManuallyTrackedPeers` []PeerConfig (optional)
 -
 
 Sample config that can be used for local testing is `signature-aggregator/sample-signature-aggregator-config.json`
