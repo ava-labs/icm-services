@@ -10,6 +10,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ethereum/go-ethereum/common"
+	"go.uber.org/zap"
 )
 
 // MessageManager is specific to each message protocol. The interface handles choosing which messages to send
@@ -29,6 +30,10 @@ type MessageHandler interface {
 	// the VM rules is also passed in, since MessageManager does not assume any particular VM
 	// returns the transaction hash if the transaction is successful.
 	SendMessage(signedMessage *warp.Message, destinationClient vms.DestinationClient) (common.Hash, error)
+
+	// GetLogContext returns extra fields to be set in the logger
+	// when passing it along to the signature aggregator
+	GetLogContext(destinationClient vms.DestinationClient) []zap.Field
 
 	// GetMessageRoutingInfo returns the source chain ID, origin sender address,
 	// destination chain ID, and destination address.

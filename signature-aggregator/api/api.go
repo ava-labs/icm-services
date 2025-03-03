@@ -178,6 +178,7 @@ func signatureAggregationAPIHandler(
 		}
 
 		signedMessage, err := aggregator.CreateSignedMessage(
+			logger,
 			message,
 			justification,
 			signingSubnetID,
