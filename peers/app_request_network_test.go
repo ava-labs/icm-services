@@ -9,6 +9,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers/avago_mocks"
@@ -151,14 +152,14 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 
 			ret, err := arNetwork.GetConnectedCanonicalValidators(subnetID)
 			require.Equal(t, testCase.expectedConnectedWeight, ret.ConnectedWeight)
-			require.Equal(t, testCase.expectedTotalWeight, ret.TotalValidatorWeight)
+			require.Equal(t, testCase.expectedTotalWeight, ret.ValidatorSet.TotalWeight)
 			require.NoError(t, err)
 		})
 	}
 }
 
 func makeValidator(t *testing.T, weight uint64, numNodeIDs int) warp.Validator {
-	localSigner, err := bls.NewSigner()
+	localSigner, err := localsigner.New()
 	require.NoError(t, err)
 	pk := localSigner.PublicKey()
 

@@ -35,7 +35,7 @@ GINKGO_VERSION=${GINKGO_VERSION:-$(extract_commit "$(getDepVersion github.com/on
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/subnet-evm)")}
 
 # Set golangci-lint version
-GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION:-'v1.60'}
+GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION:-'v1.64.5'}
 
 # Set buf version
 BUF_VERSION=${BUF_VERSION:-'v1.44.0'}

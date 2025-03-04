@@ -75,7 +75,7 @@ func connectToNonPrimaryNetworkPeers(
 				"Failed to connect to a threshold of stake",
 				zap.String("destinationBlockchainID", blockchainID.String()),
 				zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
-				zap.Uint64("totalValidatorWeight", connectedValidators.TotalValidatorWeight),
+				zap.Uint64("totalValidatorWeight", connectedValidators.ValidatorSet.TotalWeight),
 				zap.Any("WarpConfig", warpConfig),
 			)
 			return err
@@ -111,7 +111,7 @@ func connectToPrimaryNetworkPeers(
 				"Failed to connect to a threshold of stake",
 				zap.String("destinationBlockchainID", blockchainID.String()),
 				zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
-				zap.Uint64("totalValidatorWeight", connectedValidators.TotalValidatorWeight),
+				zap.Uint64("totalValidatorWeight", connectedValidators.ValidatorSet.TotalWeight),
 				zap.Any("WarpConfig", warpConfig),
 			)
 			return err
@@ -138,7 +138,7 @@ func checkForSufficientConnectedStake(
 	}
 	return utils.CheckStakeWeightExceedsThreshold(
 		big.NewInt(0).SetUint64(connectedValidators.ConnectedWeight),
-		connectedValidators.TotalValidatorWeight,
+		connectedValidators.ValidatorSet.TotalWeight,
 		warpConfig.QuorumNumerator,
 	), &warpConfig, nil
 }

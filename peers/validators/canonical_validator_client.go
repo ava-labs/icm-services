@@ -28,7 +28,7 @@ var _ CanonicalValidatorState = &CanonicalValidatorClient{}
 type CanonicalValidatorState interface {
 	validators.State
 
-	GetCurrentCanonicalValidatorSet(subnetID ids.ID) ([]*avalancheWarp.Validator, uint64, error)
+	GetCurrentCanonicalValidatorSet(subnetID ids.ID) (avalancheWarp.CanonicalValidatorSet, error)
 	GetProposedValidators(ctx context.Context, subnetID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
 }
 
@@ -51,9 +51,9 @@ func NewCanonicalValidatorClient(logger logging.Logger, apiConfig *config.APICon
 
 func (v *CanonicalValidatorClient) GetCurrentCanonicalValidatorSet(
 	subnetID ids.ID,
-) ([]*avalancheWarp.Validator, uint64, error) {
+) (avalancheWarp.CanonicalValidatorSet, error) {
 	// Get the current canonical validator set of the source subnet.
-	canonicalSubnetValidators, totalValidatorWeight, err := avalancheWarp.GetCanonicalValidatorSet(
+	canonicalSubnetValidators, err := avalancheWarp.GetCanonicalValidatorSetFromSubnetID(
 		context.Background(),
 		v,
 		pchainapi.ProposedHeight,
@@ -65,10 +65,10 @@ func (v *CanonicalValidatorClient) GetCurrentCanonicalValidatorSet(
 			zap.String("subnetID", subnetID.String()),
 			zap.Error(err),
 		)
-		return nil, 0, err
+		return avalancheWarp.CanonicalValidatorSet{}, err
 	}
 
-	return canonicalSubnetValidators, totalValidatorWeight, nil
+	return canonicalSubnetValidators, nil
 }
 
 func (v *CanonicalValidatorClient) GetMinimumHeight(ctx context.Context) (uint64, error) {

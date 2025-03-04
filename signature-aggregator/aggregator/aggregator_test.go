@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"testing"
 
@@ -11,11 +10,11 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
-	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -76,7 +75,7 @@ func instantiateAggregator(t *testing.T) (
 // Generate the validator values.
 type validatorInfo struct {
 	nodeID            ids.NodeID
-	blsSigner         *bls.LocalSigner
+	blsSigner         *localsigner.LocalSigner
 	blsPublicKey      *bls.PublicKey
 	blsPublicKeyBytes []byte
 }
@@ -85,10 +84,10 @@ func (v validatorInfo) Compare(o validatorInfo) int {
 	return bytes.Compare(v.blsPublicKeyBytes, o.blsPublicKeyBytes)
 }
 
-func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValidators, []*bls.LocalSigner) {
+func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValidators, []*localsigner.LocalSigner) {
 	validatorValues := make([]validatorInfo, validatorCount)
 	for i := 0; i < validatorCount; i++ {
-		localSigner, err := bls.NewSigner()
+		localSigner, err := localsigner.New()
 		if err != nil {
 			panic(err)
 		}
@@ -107,7 +106,7 @@ func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValid
 
 	// Placeholder for results
 	validatorSet := make([]*warp.Validator, validatorCount)
-	validatorSigners := make([]*bls.LocalSigner, validatorCount)
+	validatorSigners := make([]*localsigner.LocalSigner, validatorCount)
 	nodeValidatorIndexMap := make(map[ids.NodeID]int)
 	for i, validator := range validatorValues {
 		validatorSigners[i] = validator.blsSigner
@@ -121,9 +120,11 @@ func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValid
 	}
 
 	return &peers.ConnectedCanonicalValidators{
-		ConnectedWeight:       uint64(validatorCount),
-		TotalValidatorWeight:  uint64(validatorCount),
-		ValidatorSet:          validatorSet,
+		ConnectedWeight: uint64(validatorCount),
+		ValidatorSet: warp.CanonicalValidatorSet{
+			Validators:  validatorSet,
+			TotalWeight: uint64(validatorCount),
+		},
 		NodeValidatorIndexMap: nodeValidatorIndexMap,
 	}, validatorSigners
 }
@@ -136,9 +137,11 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
 	mockNetwork.EXPECT().GetConnectedCanonicalValidators(ids.Empty).Return(
 		&peers.ConnectedCanonicalValidators{
-			ConnectedWeight:      0,
-			TotalValidatorWeight: 0,
-			ValidatorSet:         []*warp.Validator{},
+			ConnectedWeight: 0,
+			ValidatorSet: warp.CanonicalValidatorSet{
+				Validators:  []*warp.Validator{},
+				TotalWeight: 0,
+			},
 		},
 		nil,
 	)
@@ -154,9 +157,11 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
 	mockNetwork.EXPECT().GetConnectedCanonicalValidators(ids.Empty).Return(
 		&peers.ConnectedCanonicalValidators{
-			ConnectedWeight:      0,
-			TotalValidatorWeight: 1,
-			ValidatorSet:         []*warp.Validator{},
+			ConnectedWeight: 0,
+			ValidatorSet: warp.CanonicalValidatorSet{
+				Validators:  []*warp.Validator{},
+				TotalWeight: 1,
+			},
 		},
 		nil,
 	).AnyTimes()
@@ -174,7 +179,7 @@ func makeAppRequests(
 	connectedValidators *peers.ConnectedCanonicalValidators,
 ) []ids.RequestID {
 	var appRequests []ids.RequestID
-	for _, validator := range connectedValidators.ValidatorSet {
+	for _, validator := range connectedValidators.ValidatorSet.Validators {
 		for _, nodeID := range validator.NodeIDs {
 			appRequests = append(
 				appRequests,
@@ -292,10 +297,13 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	for _, appRequest := range appRequests {
 		nodeIDs.Add(appRequest.NodeID)
 		validatorSigner := validatorSigners[connectedValidators.NodeValidatorIndexMap[appRequest.NodeID]]
+
+		signature, err := validatorSigner.Sign(msg.Bytes())
+		require.NoError(t, err)
 		responseBytes, err := proto.Marshal(
 			&sdk.SignatureResponse{
 				Signature: bls.SignatureToBytes(
-					validatorSigner.Sign(msg.Bytes()),
+					signature,
 				),
 			},
 		)
@@ -329,19 +337,10 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// verify the aggregated signature:
-	pChainState := newPChainStateStub(
-		chainID,
-		subnetID,
-		1,
-		connectedValidators,
-	)
 	verifyErr := signedMessage.Signature.Verify(
-		context.Background(),
 		msg,
 		networkID,
-		pChainState,
-		pChainState.currentHeight,
+		connectedValidators.ValidatorSet,
 		quorumPercentage,
 		100,
 	)
@@ -394,59 +393,4 @@ func TestUnmarshalResponse(t *testing.T) {
 			require.Equal(t, tc.expectedSignature, signature)
 		})
 	}
-}
-
-type pChainStateStub struct {
-	subnetIDByChainID            map[ids.ID]ids.ID
-	connectedCanonicalValidators *peers.ConnectedCanonicalValidators
-	currentHeight                uint64
-}
-
-func newPChainStateStub(
-	chainID, subnetID ids.ID,
-	currentHeight uint64,
-	connectedValidators *peers.ConnectedCanonicalValidators,
-) *pChainStateStub {
-	subnetIDByChainID := make(map[ids.ID]ids.ID)
-	subnetIDByChainID[chainID] = subnetID
-	return &pChainStateStub{
-		subnetIDByChainID:            subnetIDByChainID,
-		connectedCanonicalValidators: connectedValidators,
-		currentHeight:                currentHeight,
-	}
-}
-
-func (p pChainStateStub) GetSubnetID(ctx context.Context, chainID ids.ID) (ids.ID, error) {
-	return p.subnetIDByChainID[chainID], nil
-}
-
-func (p pChainStateStub) GetMinimumHeight(context.Context) (uint64, error) { return 0, nil }
-
-func (p pChainStateStub) GetCurrentHeight(context.Context) (uint64, error) {
-	return p.currentHeight, nil
-}
-
-func (p pChainStateStub) GetValidatorSet(
-	ctx context.Context,
-	height uint64,
-	subnetID ids.ID,
-) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
-	output := make(map[ids.NodeID]*validators.GetValidatorOutput)
-	for _, validator := range p.connectedCanonicalValidators.ValidatorSet {
-		for _, nodeID := range validator.NodeIDs {
-			output[nodeID] = &validators.GetValidatorOutput{
-				NodeID:    nodeID,
-				PublicKey: validator.PublicKey,
-				Weight:    validator.Weight,
-			}
-		}
-	}
-	return output, nil
-}
-
-func (p pChainStateStub) GetCurrentValidatorSet(
-	_ context.Context,
-	_ ids.ID,
-) (map[ids.ID]*validators.GetCurrentValidatorOutput, uint64, error) {
-	return nil, 0, nil
 }

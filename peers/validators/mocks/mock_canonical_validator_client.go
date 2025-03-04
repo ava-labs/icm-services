@@ -44,13 +44,12 @@ func (m *MockCanonicalValidatorState) EXPECT() *MockCanonicalValidatorStateMockR
 }
 
 // GetCurrentCanonicalValidatorSet mocks base method.
-func (m *MockCanonicalValidatorState) GetCurrentCanonicalValidatorSet(subnetID ids.ID) ([]*warp.Validator, uint64, error) {
+func (m *MockCanonicalValidatorState) GetCurrentCanonicalValidatorSet(subnetID ids.ID) (warp.CanonicalValidatorSet, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCurrentCanonicalValidatorSet", subnetID)
-	ret0, _ := ret[0].([]*warp.Validator)
-	ret1, _ := ret[1].(uint64)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(warp.CanonicalValidatorSet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetCurrentCanonicalValidatorSet indicates an expected call of GetCurrentCanonicalValidatorSet.
