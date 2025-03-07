@@ -216,3 +216,7 @@ func (m *messageHandler) GetMessageRoutingInfo() (
 		m.factory.registryAddress,
 		nil
 }
+
+func (m *messageHandler) GetLogContext(destinationClient vms.DestinationClient) []zap.Field {
+	return []zap.Field{zap.String("unsignedWarpMessageID", m.unsignedMessage.ID().String())}
+}

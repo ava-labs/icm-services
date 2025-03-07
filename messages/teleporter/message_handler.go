@@ -340,6 +340,10 @@ func (m *messageHandler) SendMessage(
 	return txHash, nil
 }
 
+func (*messageHandler) GetLogContext(_ vms.DestinationClient) []zap.Field {
+	return nil
+}
+
 func (m *messageHandler) waitForReceipt(
 	signedMessage *warp.Message,
 	destinationClient vms.DestinationClient,
