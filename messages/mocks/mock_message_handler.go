@@ -18,6 +18,7 @@ import (
 	vms "github.com/ava-labs/icm-services/vms"
 	common "github.com/ethereum/go-ethereum/common"
 	gomock "go.uber.org/mock/gomock"
+	zap "go.uber.org/zap"
 )
 
 // MockMessageHandlerFactory is a mock of MessageHandlerFactory interface.
@@ -81,6 +82,20 @@ func NewMockMessageHandler(ctrl *gomock.Controller) *MockMessageHandler {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockMessageHandler) EXPECT() *MockMessageHandlerMockRecorder {
 	return m.recorder
+}
+
+// GetLogContext mocks base method.
+func (m *MockMessageHandler) GetLogContext() []zap.Field {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLogContext")
+	ret0, _ := ret[0].([]zap.Field)
+	return ret0
+}
+
+// GetLogContext indicates an expected call of GetLogContext.
+func (mr *MockMessageHandlerMockRecorder) GetLogContext() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogContext", reflect.TypeOf((*MockMessageHandler)(nil).GetLogContext))
 }
 
 // GetMessageRoutingInfo mocks base method.
