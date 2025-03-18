@@ -5,6 +5,7 @@ package config
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/url"
@@ -65,8 +66,11 @@ type Config struct {
 	SignatureCacheSize     uint64                   `mapstructure:"signature-cache-size" json:"signature-cache-size"`
 	ManuallyTrackedPeers   []*basecfg.PeerConfig    `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"`
 	AllowPrivateIPs        bool                     `mapstructure:"allow-private-ips" json:"allow-private-ips"`
+	TLSCertPath            string                   `json:"tls-cert-path,omitempty"`
+	TLSKeyPath             string                   `json:"tls-key-path,omitempty"`
 
 	// convenience field to fetch a blockchain's subnet ID
+	tlsCert                *tls.Certificate
 	blockchainIDToSubnetID map[ids.ID]ids.ID
 	overwrittenOptions     []string
 	trackedSubnets         set.Set[ids.ID]
@@ -264,4 +268,8 @@ func (c *Config) GetAllowPrivateIPs() bool {
 
 func (c *Config) GetTrackedSubnets() set.Set[ids.ID] {
 	return c.trackedSubnets
+}
+
+func (c *Config) GetTLSCert() *tls.Certificate {
+	return c.tlsCert
 }

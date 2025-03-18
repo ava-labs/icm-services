@@ -210,4 +210,7 @@ var _ = ginkgo.Describe("[ICM Relayer Integration Tests", func() {
 	ginkgo.It("Signature Aggregator", func() {
 		SignatureAggregatorAPI(localNetworkInstance, teleporterInfo)
 	})
+	ginkgo.It("Validators Only Network", func() {
+		ValidatorsOnlyNetwork(localNetworkInstance, teleporterInfo)
+	})
 })

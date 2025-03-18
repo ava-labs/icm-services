@@ -8,6 +8,8 @@ package peers
 
 import (
 	"context"
+	"crypto"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,9 +21,11 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network"
+	"github.com/ava-labs/avalanchego/network/peer"
 	avagoCommon "github.com/ava-labs/avalanchego/snow/engine/common"
 	snowVdrs "github.com/ava-labs/avalanchego/snow/validators"
 	vdrs "github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -142,6 +146,20 @@ func NewNetwork(
 		return nil, err
 	}
 	testNetworkConfig.AllowPrivateIPs = cfg.GetAllowPrivateIPs()
+	// Set the TLS config if exists and log the NodeID
+	var cert *tls.Certificate
+	if cert = cfg.GetTLSCert(); cert != nil {
+		testNetworkConfig.TLSConfig = peer.TLSConfig(*cert, nil)
+		testNetworkConfig.TLSKey = cert.PrivateKey.(crypto.Signer)
+	} else {
+		cert = &testNetworkConfig.TLSConfig.Certificates[0]
+	}
+	parsedCert, err := staking.ParseCertificate(cert.Leaf.Raw)
+	if err != nil {
+		return nil, err
+	}
+	nodeId := ids.NodeIDFromCert(parsedCert)
+	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeId))
 
 	testNetwork, err := network.NewTestNetwork(logger, networkMetrics, testNetworkConfig, handler)
 	if err != nil {

@@ -4,6 +4,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -38,9 +39,13 @@ type Config struct {
 	SignatureCacheSize uint64             `mapstructure:"signature-cache-size" json:"signature-cache-size"`
 	AllowPrivateIPs    bool               `mapstructure:"allow-private-ips" json:"allow-private-ips"`
 	TrackedSubnetIDs   []string           `mapstructure:"tracked-subnet-ids" json:"tracked-subnet-ids"`
+	TLSCertPath        string             `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"`
+	TLSKeyPath         string             `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
 
 	// convenience fields
 	trackedSubnets set.Set[ids.ID]
+	myNodeID       ids.NodeID
+	tlsCert        *tls.Certificate
 }
 
 func DisplayUsageText() {
@@ -85,4 +90,12 @@ func (c *Config) GetAllowPrivateIPs() bool {
 
 func (c *Config) GetTrackedSubnets() set.Set[ids.ID] {
 	return c.trackedSubnets
+}
+
+func (c *Config) GetNodeID() ids.NodeID {
+	return c.myNodeID
+}
+
+func (c *Config) GetTLSCert() *tls.Certificate {
+	return c.tlsCert
 }
