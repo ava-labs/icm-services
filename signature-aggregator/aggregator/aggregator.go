@@ -260,24 +260,26 @@ func (s *SignatureAggregator) CreateSignedMessage(
 				continue
 			}
 
-			// TODO: Track failures and iterate through the validator's node list on subsequent query attempts
-			nodeID := vdr.NodeIDs[0]
-			vdrSet.Add(nodeID)
-			s.logger.Debug(
-				"Added node ID to query.",
-				zap.String("nodeID", nodeID.String()),
-				zap.String("warpMessageID", unsignedMessage.ID().String()),
-				zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
-			)
-
-			// Register a timeout response for each queried node
-			reqID := ids.RequestID{
-				NodeID:    nodeID,
-				ChainID:   unsignedMessage.SourceChainID,
-				RequestID: requestID,
-				Op:        byte(message.AppResponseOp),
+			// Add connected nodes to the request
+			for _, nodeID := range vdr.NodeIDs {
+				if connectedValidators.ConnectedNodes.Contains(nodeID) && !vdrSet.Contains(nodeID) {
+					vdrSet.Add(nodeID)
+					s.logger.Debug(
+						"Added node ID to query.",
+						zap.String("nodeID", nodeID.String()),
+						zap.String("warpMessageID", unsignedMessage.ID().String()),
+						zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+					)
+					// Register a timeout response for each queried node
+					reqID := ids.RequestID{
+						NodeID:    nodeID,
+						ChainID:   unsignedMessage.SourceChainID,
+						RequestID: requestID,
+						Op:        byte(message.AppResponseOp),
+					}
+					s.network.RegisterAppRequest(reqID)
+				}
 			}
-			s.network.RegisterAppRequest(reqID)
 		}
 		responseChan := s.network.RegisterRequestID(requestID, vdrSet.Len())
 
@@ -358,8 +360,9 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		s.logger.Warn(
 			"Failed to collect a threshold of signatures",
 			zap.String("warpMessageID", unsignedMessage.ID().String()),
-			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
 			zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
+			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
+			zap.Uint64("totalValidatorWeight", connectedValidators.ValidatorSet.TotalWeight),
 		)
 		return nil, errNotEnoughSignatures
 	}

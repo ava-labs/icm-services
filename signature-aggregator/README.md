@@ -10,7 +10,7 @@ To build the application run `scripts/build_signature_aggregator.sh` which will 
 ## Running
 
 To run the binary you must supply a config file via `./signature-aggregator --config-file`
-Currently required configurations are a small subset of the [`icm-relayer` configuration](https://github.com/ava-labs/icm-services?tab=readme-ov-file#configuration).
+Currently required configurations are a small subset of the [`icm-relayer` configuration](https://github.com/ava-labs/icm-services/tree/main/relayer#configuration).
 
 Namely:
 - `LogLevel`: string
@@ -18,6 +18,11 @@ Namely:
 - `InfoAPI` : APIConfig
 - `APIPort` : (optional) defaults to 8080
 - `MetricsPort`: (optional) defaults to 8081
+- `SignatureCacheSize` integer (optional) defaults to 1024KB
+- `AllowPrivateIPs` bool (optional)
+- `TrackedSubnetIDs` []string (optional)
+- `ManuallyTrackedPeers` []PeerConfig
+-
 
 Sample config that can be used for local testing is `signature-aggregator/sample-signature-aggregator-config.json`
 

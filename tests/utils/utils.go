@@ -199,16 +199,17 @@ func CreateDefaultRelayerConfig(
 		InfoAPI: &config.APIConfig{
 			BaseURL: sourceL1sInfo[0].NodeURIs[0],
 		},
-		StorageLocation:        StorageLocation,
-		DBWriteIntervalSeconds: DBUpdateSeconds,
-		ProcessMissedBlocks:    false,
-		MetricsPort:            9090,
-		SourceBlockchains:      sources,
-		DestinationBlockchains: destinations,
-		APIPort:                8080,
-		DeciderURL:             "localhost:50051",
-		SignatureCacheSize:     (1024 * 1024),
-		AllowPrivateIPs:        true,
+		StorageLocation:                 StorageLocation,
+		DBWriteIntervalSeconds:          DBUpdateSeconds,
+		ProcessMissedBlocks:             false,
+		MetricsPort:                     9090,
+		SourceBlockchains:               sources,
+		DestinationBlockchains:          destinations,
+		APIPort:                         8080,
+		DeciderURL:                      "localhost:50051",
+		SignatureCacheSize:              (1024 * 1024),
+		AllowPrivateIPs:                 true,
+		InitialConnectionTimeoutSeconds: 300,
 	}
 }
 

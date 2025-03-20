@@ -108,6 +108,7 @@ func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValid
 	validatorSet := make([]*warp.Validator, validatorCount)
 	validatorSigners := make([]*localsigner.LocalSigner, validatorCount)
 	nodeValidatorIndexMap := make(map[ids.NodeID]int)
+	connectedNodes := set.NewSet[ids.NodeID](validatorCount)
 	for i, validator := range validatorValues {
 		validatorSigners[i] = validator.blsSigner
 		validatorSet[i] = &warp.Validator{
@@ -117,10 +118,12 @@ func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValid
 			NodeIDs:        []ids.NodeID{validator.nodeID},
 		}
 		nodeValidatorIndexMap[validator.nodeID] = i
+		connectedNodes.Add(validator.nodeID)
 	}
 
 	return &peers.ConnectedCanonicalValidators{
 		ConnectedWeight: uint64(validatorCount),
+		ConnectedNodes:  connectedNodes,
 		ValidatorSet: warp.CanonicalValidatorSet{
 			Validators:  validatorSet,
 			TotalWeight: uint64(validatorCount),

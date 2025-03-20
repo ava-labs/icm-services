@@ -30,14 +30,15 @@ signature-aggregator --help                                  Display signature-a
 `
 
 type Config struct {
-	LogLevel           string             `mapstructure:"log-level" json:"log-level"`
-	PChainAPI          *basecfg.APIConfig `mapstructure:"p-chain-api" json:"p-chain-api"`
-	InfoAPI            *basecfg.APIConfig `mapstructure:"info-api" json:"info-api"`
-	APIPort            uint16             `mapstructure:"api-port" json:"api-port"`
-	MetricsPort        uint16             `mapstructure:"metrics-port" json:"metrics-port"`
-	SignatureCacheSize uint64             `mapstructure:"signature-cache-size" json:"signature-cache-size"`
-	AllowPrivateIPs    bool               `mapstructure:"allow-private-ips" json:"allow-private-ips"`
-	TrackedSubnetIDs   []string           `mapstructure:"tracked-subnet-ids" json:"tracked-subnet-ids"`
+	LogLevel             string                `mapstructure:"log-level" json:"log-level"`
+	PChainAPI            *basecfg.APIConfig    `mapstructure:"p-chain-api" json:"p-chain-api"`
+	InfoAPI              *basecfg.APIConfig    `mapstructure:"info-api" json:"info-api"`
+	APIPort              uint16                `mapstructure:"api-port" json:"api-port"`
+	MetricsPort          uint16                `mapstructure:"metrics-port" json:"metrics-port"`
+	SignatureCacheSize   uint64                `mapstructure:"signature-cache-size" json:"signature-cache-size"`
+	AllowPrivateIPs      bool                  `mapstructure:"allow-private-ips" json:"allow-private-ips"`
+	TrackedSubnetIDs     []string              `mapstructure:"tracked-subnet-ids" json:"tracked-subnet-ids"`
+	ManuallyTrackedPeers []*basecfg.PeerConfig `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"`
 
 	// convenience fields
 	trackedSubnets set.Set[ids.ID]
@@ -64,6 +65,11 @@ func (c *Config) Validate() error {
 			return err
 		}
 		c.trackedSubnets.Add(trackedL1ID)
+	}
+	for _, p := range c.ManuallyTrackedPeers {
+		if err := p.Validate(); err != nil {
+			return err
+		}
 	}
 
 	return nil
