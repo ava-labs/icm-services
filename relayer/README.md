@@ -82,7 +82,7 @@ The Fuji and Mainnet [public API nodes](https://docs.avax.network/tooling/rpc-pr
 
 ### Private Key Management
 
-- Each configured destination blockchain requires a private key to sign transactions. This key can be provided as a hex-encoded string in the configuration (see `account-private-key` in [Configuration](#configuration)) or environment variable, or stored in KMS and used to sign transactions remotely (see `kms-key-id` and `kms-aws-region` in [Configuration](#configuration)). 
+- Each configured destination blockchain requires a private key to sign transactions. This key can be provided as a hex-encoded string in the configuration (see `account-private-keys` in [Configuration](#configuration)) or environment variable, or stored in KMS and used to sign transactions remotely (see `kms-key-ids` and `kms-aws-regions` in [Configuration](#configuration)).
 - **Each private key used by the relayer should not be used to sign transactions outside of the relayer**, as this may cause the relayer to fail to sign transactions due to nonce mismatches.
 
 ## Usage
@@ -279,17 +279,17 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   - The RPC endpoint configuration of the destination blockchains's API node.
 
-  `"account-private-key": string`
+  `"account-private-keys": []string`
 
   - The hex-encoded private key to use for signing transactions on the destination blockchain. May be provided by the environment variable `ACCOUNT_PRIVATE_KEY`. Each `destination-subnet` may use a separate private key by appending the cb58 encoded blockchain ID to the private key environment variable name, for example `ACCOUNT_PRIVATE_KEY_11111111111111111111111111111111LpoYY`
   - Please note that the private key should be exclusive to the relayer, see [Private Key Management](#private-key-management).
 
-  `"kms-key-id": string`
+  `"kms-key-ids": []string`
 
-  - The ID of the KMS key to use for signing transactions on the destination blockchain. Only one of `account-private-key` or `kms-key-id` should be provided. If `kms-key-id` is provided, then `kms-aws-region` is required.
+  - The ID of the KMS key to use for signing transactions on the destination blockchain. If `kms-key-ids` is provided, then `kms-aws-regions` is required for each.
   - Please note that the private key in KMS should be exclusive to the relayer, see [Private Key Management](#private-key-management).
 
-  `"kms-aws-region": string`
+  `"kms-aws-regions": []string`
 
   - The AWS region in which the KMS key is located. Required if `kms-key-id` is provided.
 

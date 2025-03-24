@@ -61,10 +61,10 @@ var (
 				RPCEndpoint: basecfg.APIConfig{
 					BaseURL: fmt.Sprintf("http://test.avax.network/ext/bc/%s/rpc", testBlockchainID),
 				},
-				BlockchainID:      testBlockchainID,
-				SubnetID:          testSubnetID,
-				VM:                "evm",
-				AccountPrivateKey: "0x56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027",
+				BlockchainID:       testBlockchainID,
+				SubnetID:           testSubnetID,
+				VM:                 "evm",
+				AccountPrivateKeys: []string{"0x56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
 			},
 		},
 	}
@@ -91,6 +91,6 @@ var (
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL: "http://test.avax.network/ext/bc/C/rpc",
 		},
-		AccountPrivateKey: "1234567890123456789012345678901234567890123456789012345678901234",
+		AccountPrivateKeys: []string{"1234567890123456789012345678901234567890123456789012345678901234"},
 	}
 )

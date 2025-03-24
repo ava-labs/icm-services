@@ -8,7 +8,7 @@ package evm
 import (
 	"context"
 	"math/big"
-	"sync"
+	"reflect"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -39,13 +39,18 @@ type Client interface {
 // Implements DestinationClient
 type destinationClient struct {
 	client                  ethclient.Client
-	lock                    *sync.Mutex
 	destinationBlockchainID ids.ID
-	signer                  signer.Signer
 	evmChainID              *big.Int
-	currentNonce            uint64
 	blockGasLimit           uint64
 	logger                  logging.Logger
+	accountSigners          []accountSigner
+	selectCases             []reflect.SelectCase
+}
+
+type accountSigner struct {
+	channel      chan int
+	signer       signer.Signer
+	currentNonce uint64
 }
 
 func NewDestinationClient(
@@ -56,15 +61,6 @@ func NewDestinationClient(
 	if err != nil {
 		logger.Error(
 			"Could not decode destination chain ID from string",
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	sgnr, err := signer.NewSigner(destinationBlockchain)
-	if err != nil {
-		logger.Error(
-			"Failed to create signer",
 			zap.Error(err),
 		)
 		return nil, err
@@ -85,13 +81,47 @@ func NewDestinationClient(
 		return nil, err
 	}
 
-	nonce, err := client.NonceAt(context.Background(), sgnr.Address(), nil)
+	sgnrs, err := signer.NewSigners(destinationBlockchain)
 	if err != nil {
 		logger.Error(
-			"Failed to get nonce",
+			"Failed to create signer",
 			zap.Error(err),
 		)
 		return nil, err
+	}
+
+	var accountSigners = make([]accountSigner, len(sgnrs))
+	var selectCases = make([]reflect.SelectCase, len(sgnrs))
+	for i, sgnr := range sgnrs {
+		nonce, err := client.NonceAt(context.Background(), sgnr.Address(), nil)
+		if err != nil {
+			logger.Error(
+				"Failed to get nonce",
+				zap.Error(err),
+			)
+			return nil, err
+		}
+
+		channel := make(chan int, 1)
+
+		accountSigners[i] = accountSigner{
+			channel:      channel,
+			signer:       sgnr,
+			currentNonce: nonce,
+		}
+
+		selectCases[i] = reflect.SelectCase{
+			Dir:  reflect.SelectSend,
+			Chan: reflect.ValueOf(channel),
+			Send: reflect.ValueOf(1),
+		}
+
+		logger.Info(
+			"Initialized account signer",
+			zap.String("blockchainID", destinationID.String()),
+			zap.Uint64("nonce", nonce),
+			zap.String("address", sgnr.Address().Hex()),
+		)
 	}
 
 	evmChainID, err := client.ChainID(context.Background())
@@ -107,18 +137,16 @@ func NewDestinationClient(
 		"Initialized destination client",
 		zap.String("blockchainID", destinationID.String()),
 		zap.String("evmChainID", evmChainID.String()),
-		zap.Uint64("nonce", nonce),
 	)
 
 	return &destinationClient{
 		client:                  client,
-		lock:                    new(sync.Mutex),
 		destinationBlockchainID: destinationID,
-		signer:                  sgnr,
+		accountSigners:          accountSigners,
 		evmChainID:              evmChainID,
-		currentNonce:            nonce,
 		logger:                  logger,
 		blockGasLimit:           destinationBlockchain.BlockGasLimit,
+		selectCases:             selectCases,
 	}, nil
 }
 
@@ -153,16 +181,16 @@ func (c *destinationClient) SendTx(
 	gasFeeCap := baseFee.Mul(baseFee, big.NewInt(BaseFeeFactor))
 	gasFeeCap.Add(gasFeeCap, big.NewInt(MaxPriorityFeePerGas))
 
-	// Synchronize nonce access so that we send transactions in nonce order.
-	// Hold the lock until the transaction is sent to minimize the chance of
-	// an out-of-order transaction being dropped from the mempool.
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	index, _, _ := reflect.Select(c.selectCases)
+	signer := c.accountSigners[index]
+	defer func() {
+		<-signer.channel // empty the channel once we're done
+	}()
 
 	// Construct the actual transaction to broadcast on the destination chain
 	tx := predicateutils.NewPredicateTx(
 		c.evmChainID,
-		c.currentNonce,
+		signer.currentNonce,
 		&to,
 		gasLimit,
 		gasFeeCap,
@@ -175,7 +203,7 @@ func (c *destinationClient) SendTx(
 	)
 
 	// Sign and send the transaction on the destination chain
-	signedTx, err := c.signer.SignTx(tx, c.evmChainID)
+	signedTx, err := signer.signer.SignTx(tx, c.evmChainID)
 	if err != nil {
 		c.logger.Error(
 			"Failed to sign transaction",
@@ -194,9 +222,9 @@ func (c *destinationClient) SendTx(
 	c.logger.Info(
 		"Sent transaction",
 		zap.String("txID", signedTx.Hash().String()),
-		zap.Uint64("nonce", c.currentNonce),
+		zap.Uint64("nonce", signer.currentNonce),
 	)
-	c.currentNonce++
+	signer.currentNonce++
 
 	return signedTx.Hash(), nil
 }
@@ -205,8 +233,10 @@ func (c *destinationClient) Client() interface{} {
 	return c.client
 }
 
-func (c *destinationClient) SenderAddress() common.Address {
-	return c.signer.Address()
+func (c *destinationClient) SenderAddresses() []common.Address {
+	return utils.Map(c.accountSigners, func(s accountSigner) common.Address {
+		return s.signer.Address()
+	})
 }
 
 func (c *destinationClient) DestinationBlockchainID() ids.ID {

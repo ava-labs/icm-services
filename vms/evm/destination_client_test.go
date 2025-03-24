@@ -6,7 +6,7 @@ package evm
 import (
 	"fmt"
 	"math/big"
-	"sync"
+	"reflect"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -26,11 +26,11 @@ var destinationSubnet = config.DestinationBlockchain{
 	RPCEndpoint: basecfg.APIConfig{
 		BaseURL: "https://subnets.avax.network/mysubnet/rpc",
 	},
-	AccountPrivateKey: "56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027",
+	AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
 }
 
 func TestSendTx(t *testing.T) {
-	txSigner, err := signer.NewTxSigner(destinationSubnet.AccountPrivateKey)
+	txSigner, err := signer.NewTxSigner(destinationSubnet.AccountPrivateKeys[0])
 	require.NoError(t, err)
 
 	testError := fmt.Errorf("call errored")
@@ -81,12 +81,20 @@ func TestSendTx(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockClient := mock_ethclient.NewMockClient(ctrl)
+			channel := make(chan int, 1)
 			destinationClient := &destinationClient{
-				lock:       &sync.Mutex{},
 				logger:     logging.NoLog{},
 				client:     mockClient,
 				evmChainID: big.NewInt(5),
-				signer:     txSigner,
+				accountSigners: []accountSigner{accountSigner{
+					channel:      channel,
+					signer:       txSigner,
+					currentNonce: 0,
+				}},
+				selectCases: []reflect.SelectCase{reflect.SelectCase{
+					Dir:  reflect.SelectSend,
+					Chan: reflect.ValueOf(channel),
+				}},
 			}
 			warpMsg := &avalancheWarp.Message{}
 			toAddress := "0x27aE10273D17Cd7e80de8580A51f476960626e5f"

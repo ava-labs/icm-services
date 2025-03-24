@@ -29,7 +29,7 @@ func TestNewTxSigner(t *testing.T) {
 		{
 			name: "valid",
 			dst: config.DestinationBlockchain{
-				AccountPrivateKey: "56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027",
+				AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
 			},
 			expectedResult: retStruct{
 				pk: &ecdsa.PrivateKey{
@@ -42,7 +42,7 @@ func TestNewTxSigner(t *testing.T) {
 		{
 			name: "invalid private key",
 			dst: config.DestinationBlockchain{
-				AccountPrivateKey: "invalid56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027",
+				AccountPrivateKeys: []string{"invalid56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
 			},
 			expectedResult: retStruct{
 				pk: &ecdsa.PrivateKey{
@@ -56,7 +56,7 @@ func TestNewTxSigner(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			txSigner, err := NewTxSigner(testCase.dst.AccountPrivateKey)
+			txSigner, err := NewTxSigner(testCase.dst.AccountPrivateKeys[0])
 			require.Equal(t, testCase.expectedResult.err, err)
 			if err == nil {
 				require.Equal(t, testCase.expectedResult.pk.D.Int64(), txSigner.pk.D.Int64())

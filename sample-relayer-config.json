@@ -34,7 +34,7 @@
       "rpc-endpoint": {
         "base-url": "https://subnets.avax.network/dispatch/testnet/rpc"
       },
-      "account-private-key": "0x7493..."
+      "account-private-keys": ["0x7493..."]
     }
   ]
 }

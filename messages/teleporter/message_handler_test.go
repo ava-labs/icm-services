@@ -139,7 +139,7 @@ func TestShouldSendMessage(t *testing.T) {
 		name                    string
 		destinationBlockchainID ids.ID
 		warpUnsignedMessage     *warp.UnsignedMessage
-		senderAddressResult     common.Address
+		senderAddressesResult   []common.Address
 		senderAddressTimes      int
 		clientTimes             int
 		messageReceivedCall     *CallContractChecker
@@ -150,7 +150,7 @@ func TestShouldSendMessage(t *testing.T) {
 			name:                    "valid message",
 			destinationBlockchainID: destinationBlockchainID,
 			warpUnsignedMessage:     warpUnsignedMessage,
-			senderAddressResult:     validRelayerAddress,
+			senderAddressesResult:   []common.Address{validRelayerAddress},
 			senderAddressTimes:      1,
 			clientTimes:             1,
 			messageReceivedCall: &CallContractChecker{
@@ -169,7 +169,7 @@ func TestShouldSendMessage(t *testing.T) {
 		{
 			name:                    "invalid destination chain id",
 			destinationBlockchainID: ids.Empty,
-			senderAddressResult:     common.Address{},
+			senderAddressesResult:   []common.Address{common.Address{}},
 			senderAddressTimes:      1,
 			warpUnsignedMessage:     warpUnsignedMessage,
 		},
@@ -177,7 +177,7 @@ func TestShouldSendMessage(t *testing.T) {
 			name:                    "not allowed",
 			destinationBlockchainID: destinationBlockchainID,
 			warpUnsignedMessage:     warpUnsignedMessage,
-			senderAddressResult:     common.Address{},
+			senderAddressesResult:   []common.Address{common.Address{}},
 			senderAddressTimes:      1,
 			clientTimes:             0,
 			expectedResult:          false,
@@ -186,7 +186,7 @@ func TestShouldSendMessage(t *testing.T) {
 			name:                    "message already delivered",
 			destinationBlockchainID: destinationBlockchainID,
 			warpUnsignedMessage:     warpUnsignedMessage,
-			senderAddressResult:     validRelayerAddress,
+			senderAddressesResult:   []common.Address{validRelayerAddress},
 			senderAddressTimes:      1,
 			clientTimes:             1,
 			messageReceivedCall: &CallContractChecker{
@@ -231,8 +231,8 @@ func TestShouldSendMessage(t *testing.T) {
 				Return(ethClient).
 				Times(test.clientTimes)
 			mockClient.EXPECT().
-				SenderAddress().
-				Return(test.senderAddressResult).
+				SenderAddresses().
+				Return(test.senderAddressesResult).
 				Times(test.senderAddressTimes)
 			mockClient.EXPECT().BlockGasLimit().Return(uint64(blockGasLimit)).AnyTimes()
 			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()

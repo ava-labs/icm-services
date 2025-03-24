@@ -26,7 +26,7 @@ var (
 	kmsKey1   string = "test-kms-id1"
 )
 
-// GetRelayerAccountPrivateKey tests. Individual cases must be run in their own functions
+// GetRelayerAccountPrivateKeys tests. Individual cases must be run in their own functions
 // because they modify the environment variables.
 type configMondifierEnvVarTestCase struct {
 	baseConfig          Config
@@ -79,13 +79,13 @@ func TestGetRelayerAccountPrivateKey_set_pk_in_config(t *testing.T) {
 		resultVerifier: func(c Config) bool {
 			// All destination subnets should have the default private key
 			for i, subnet := range c.DestinationBlockchains {
-				if subnet.AccountPrivateKey != utils.SanitizeHexString(
-					TestValidConfig.DestinationBlockchains[i].AccountPrivateKey,
+				if subnet.AccountPrivateKeys[0] != utils.SanitizeHexString(
+					TestValidConfig.DestinationBlockchains[i].AccountPrivateKeys[0],
 				) {
 					fmt.Printf(
 						"expected: %s, got: %s\n",
-						utils.SanitizeHexString(TestValidConfig.DestinationBlockchains[i].AccountPrivateKey),
-						subnet.AccountPrivateKey,
+						utils.SanitizeHexString(TestValidConfig.DestinationBlockchains[i].AccountPrivateKeys[0]),
+						subnet.AccountPrivateKeys[0],
 					)
 					return false
 				}
@@ -103,7 +103,7 @@ func TestGetRelayerAccountPrivateKey_set_pk_with_subnet_env(t *testing.T) {
 			// Add a second destination subnet. This PK should NOT be overwritten
 			newSubnet := *c.DestinationBlockchains[0]
 			newSubnet.BlockchainID = testBlockchainID2
-			newSubnet.AccountPrivateKey = testPk1
+			newSubnet.AccountPrivateKeys = []string{testPk1}
 			c.DestinationBlockchains = append(c.DestinationBlockchains, &newSubnet)
 			return c
 		},
@@ -119,19 +119,19 @@ func TestGetRelayerAccountPrivateKey_set_pk_with_subnet_env(t *testing.T) {
 		expectedOverwritten: true,
 		resultVerifier: func(c Config) bool {
 			// All destination subnets should have testPk1
-			if c.DestinationBlockchains[0].AccountPrivateKey != utils.SanitizeHexString(testPk2) {
+			if c.DestinationBlockchains[0].AccountPrivateKeys[0] != utils.SanitizeHexString(testPk2) {
 				fmt.Printf(
 					"expected: %s, got: %s\n",
 					utils.SanitizeHexString(testPk2),
-					c.DestinationBlockchains[0].AccountPrivateKey,
+					c.DestinationBlockchains[0].AccountPrivateKeys[0],
 				)
 				return false
 			}
-			if c.DestinationBlockchains[1].AccountPrivateKey != utils.SanitizeHexString(testPk1) {
+			if c.DestinationBlockchains[1].AccountPrivateKeys[0] != utils.SanitizeHexString(testPk1) {
 				fmt.Printf(
 					"expected: %s, got: %s\n",
 					utils.SanitizeHexString(testPk1),
-					c.DestinationBlockchains[1].AccountPrivateKey,
+					c.DestinationBlockchains[1].AccountPrivateKeys[0],
 				)
 				return false
 			}
@@ -148,7 +148,7 @@ func TestGetRelayerAccountPrivateKey_set_pk_with_global_env(t *testing.T) {
 			// Add a second destination subnet. This PK SHOULD be overwritten
 			newSubnet := *c.DestinationBlockchains[0]
 			newSubnet.BlockchainID = testBlockchainID2
-			newSubnet.AccountPrivateKey = testPk1
+			newSubnet.AccountPrivateKeys = []string{testPk1}
 			c.DestinationBlockchains = append(c.DestinationBlockchains, &newSubnet)
 			return c
 		},
@@ -160,8 +160,8 @@ func TestGetRelayerAccountPrivateKey_set_pk_with_global_env(t *testing.T) {
 		resultVerifier: func(c Config) bool {
 			// All destination subnets should have testPk2
 			for _, subnet := range c.DestinationBlockchains {
-				if subnet.AccountPrivateKey != utils.SanitizeHexString(testPk2) {
-					fmt.Printf("expected: %s, got: %s\n", utils.SanitizeHexString(testPk2), subnet.AccountPrivateKey)
+				if subnet.AccountPrivateKeys[0] != utils.SanitizeHexString(testPk2) {
+					fmt.Printf("expected: %s, got: %s\n", utils.SanitizeHexString(testPk2), subnet.AccountPrivateKeys[0])
 					return false
 				}
 			}
@@ -174,9 +174,9 @@ func TestGetRelayerAccountPrivateKey_set_pk_with_global_env(t *testing.T) {
 func TestEitherKMSOrAccountPrivateKey(t *testing.T) {
 	dstCfg := *TestValidConfig.DestinationBlockchains[0]
 	// Zero out all fields under test
-	dstCfg.AccountPrivateKey = ""
-	dstCfg.KMSKeyID = ""
-	dstCfg.KMSAWSRegion = ""
+	dstCfg.AccountPrivateKeys = []string{""}
+	dstCfg.KMSKeyIDs = []string{""}
+	dstCfg.KMSAWSRegions = []string{""}
 
 	testCases := []struct {
 		name   string
@@ -187,8 +187,8 @@ func TestEitherKMSOrAccountPrivateKey(t *testing.T) {
 			name: "kms supplied",
 			dstCfg: func() DestinationBlockchain {
 				cfg := dstCfg
-				cfg.KMSKeyID = kmsKey1
-				cfg.KMSAWSRegion = awsRegion
+				cfg.KMSKeyIDs = []string{kmsKey1}
+				cfg.KMSAWSRegions = []string{awsRegion}
 				return cfg
 			},
 			valid: true,
@@ -197,7 +197,7 @@ func TestEitherKMSOrAccountPrivateKey(t *testing.T) {
 			name: "account private key supplied",
 			dstCfg: func() DestinationBlockchain {
 				cfg := dstCfg
-				cfg.AccountPrivateKey = "56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"
+				cfg.AccountPrivateKeys = []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"}
 				return cfg
 			},
 			valid: true,
@@ -213,9 +213,9 @@ func TestEitherKMSOrAccountPrivateKey(t *testing.T) {
 			name: "both supplied",
 			dstCfg: func() DestinationBlockchain {
 				cfg := dstCfg
-				cfg.KMSKeyID = kmsKey1
-				cfg.KMSAWSRegion = awsRegion
-				cfg.AccountPrivateKey = "0x56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"
+				cfg.KMSKeyIDs = []string{kmsKey1}
+				cfg.KMSAWSRegions = []string{awsRegion}
+				cfg.AccountPrivateKeys = []string{"0x56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"}
 				return cfg
 			},
 			valid: false,
@@ -224,7 +224,7 @@ func TestEitherKMSOrAccountPrivateKey(t *testing.T) {
 			name: "missing aws region",
 			dstCfg: func() DestinationBlockchain {
 				cfg := dstCfg
-				cfg.KMSKeyID = kmsKey1
+				cfg.KMSKeyIDs = []string{kmsKey1}
 				// Missing AWS region
 				return cfg
 			},

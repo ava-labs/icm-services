@@ -99,16 +99,16 @@ func (mr *MockDestinationClientMockRecorder) SendTx(signedMessage, toAddress, ga
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendTx", reflect.TypeOf((*MockDestinationClient)(nil).SendTx), signedMessage, toAddress, gasLimit, callData)
 }
 
-// SenderAddress mocks base method.
-func (m *MockDestinationClient) SenderAddress() common.Address {
+// SenderAddresses mocks base method.
+func (m *MockDestinationClient) SenderAddresses() []common.Address {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SenderAddress")
-	ret0, _ := ret[0].(common.Address)
+	ret := m.ctrl.Call(m, "SenderAddresses")
+	ret0, _ := ret[0].([]common.Address)
 	return ret0
 }
 
-// SenderAddress indicates an expected call of SenderAddress.
-func (mr *MockDestinationClientMockRecorder) SenderAddress() *gomock.Call {
+// SenderAddresses indicates an expected call of SenderAddresses.
+func (mr *MockDestinationClientMockRecorder) SenderAddresses() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SenderAddress", reflect.TypeOf((*MockDestinationClient)(nil).SenderAddress))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SenderAddresses", reflect.TypeOf((*MockDestinationClient)(nil).SenderAddresses))
 }

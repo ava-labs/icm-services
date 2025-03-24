@@ -28,6 +28,10 @@ func NewTxSigner(hexPrivateKey string) (*TxSigner, error) {
 		return nil, utils.ErrInvalidPrivateKeyHex
 	}
 
+	return NewTxSignerFromPk(pk), nil
+}
+
+func NewTxSignerFromPk(pk *ecdsa.PrivateKey) *TxSigner {
 	// Explicitly zero the private key when it is gc'd
 	runtime.SetFinalizer(pk, func(pk *ecdsa.PrivateKey) {
 		pk.D.SetInt64(0)
@@ -38,7 +42,7 @@ func NewTxSigner(hexPrivateKey string) (*TxSigner, error) {
 	return &TxSigner{
 		pk:  pk,
 		eoa: address,
-	}, nil
+	}
 }
 
 func (s *TxSigner) SignTx(tx *types.Transaction, evmChainID *big.Int) (*types.Transaction, error) {

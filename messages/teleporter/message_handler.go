@@ -116,6 +116,15 @@ func isAllowedRelayer(allowedRelayers []common.Address, eoa common.Address) bool
 	return slices.Contains(allowedRelayers, eoa)
 }
 
+func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Address) bool {
+	for _, eoa := range eoas {
+		if isAllowedRelayer(allowedRelayers, eoa) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *messageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
 	return m.unsignedMessage
 }
@@ -146,6 +155,7 @@ func (m *messageHandler) ShouldSendMessage(destinationClient vms.DestinationClie
 	if err != nil {
 		return false, fmt.Errorf("failed to calculate Teleporter message ID: %w", err)
 	}
+
 	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
 	destBlockGasLimit := destinationClient.BlockGasLimit()
 	// Check if the specified gas limit is below the maximum threshold
@@ -161,8 +171,7 @@ func (m *messageHandler) ShouldSendMessage(destinationClient vms.DestinationClie
 	}
 
 	// Check if the relayer is allowed to deliver this message
-	senderAddress := destinationClient.SenderAddress()
-	if !isAllowedRelayer(m.teleporterMessage.AllowedRelayerAddresses, senderAddress) {
+	if !containsAllowedRelayer(m.teleporterMessage.AllowedRelayerAddresses, destinationClient.SenderAddresses()) {
 		m.logger.Info(
 			"Relayer EOA not allowed to deliver this message.",
 			zap.String("destinationBlockchainID", destinationBlockchainID.String()),
@@ -397,6 +406,7 @@ func (f *factory) parseTeleporterMessage(
 		f.logger.Error(
 			"Failed unpacking teleporter message.",
 			zap.String("warpMessageID", unsignedMessage.ID().String()),
+			zap.Error(err),
 		)
 		return nil, err
 	}

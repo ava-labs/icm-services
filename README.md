@@ -11,6 +11,9 @@ Currently implemented applications are
 
 ## Updating dependencies and E2E testing
 
+> [!NOTE]
+> The `avalanchego` dependency used by both the relayer and signature aggregator applications must be kept up to date with the minimum required `avalanchego` version on a given network.
+
 Applications in this repository depend on the following upstream repositories, both directly in terms of code imports defined in the `go.mod` file as well as indirectly for E2E tests where binary versions are used to spin up the test network via `tmpnet`:
 
 1.  [avalanchego](https://github.com/ava-labs/avalanchego/)
@@ -22,7 +25,7 @@ Applications in this repository depend on the following upstream repositories, b
 
 When developing such features that require updates to one or more of the above, care must be taken to understand where the relevant code comes from. The binaries of applications built in this repo are built against versions referenced in the `go.mod` file. The E2E tests run against a simulated network running locally that is started by calling a separately compiled `avalanchego` binary as well as its plugins. These are compiled based on the values of `AVALANCHEGO_VERSION` in this repository's `./scripts/versions.sh`.
 
-`avalanchego` and `coreth` have a direct circular dependency and this repository is only indirectly dependent on `coreth` but directly dependent on `avalanchego`. Therefore if any updates are required from the `coreth` side, a corresponding `avalanchego` commit referencing those changes is required. On the other hand `subnet-evm` just depends directly on `avalanchego`.
+`avalanchego` and `coreth` have a direct circular dependency and this repository is only indirectly dependent on `coreth` but directly dependent on `avalanchego`. Therefore, if any updates are required from the `coreth` side, a corresponding `avalanchego` commit referencing those changes is required. On the other hand `subnet-evm` just depends directly on `avalanchego`.
 
 > [!NOTE]
 > It's possible that a `subnet-evm` version is compatible with multiple different `avalanchego` versions and not limited to the one listed in `subnet-evm`'s `/scripts/versions.sh`

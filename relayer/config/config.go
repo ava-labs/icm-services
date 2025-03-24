@@ -31,12 +31,13 @@ const (
 )
 
 const (
-	defaultStorageLocation     = "./.icm-relayer-storage"
-	defaultProcessMissedBlocks = true
-	defaultAPIPort             = uint16(8080)
-	defaultMetricsPort         = uint16(9090)
-	defaultIntervalSeconds     = uint64(10)
-	defaultSignatureCacheSize  = uint64(1024 * 1024)
+	defaultStorageLocation                 = "./.icm-relayer-storage"
+	defaultProcessMissedBlocks             = true
+	defaultAPIPort                         = uint16(8080)
+	defaultMetricsPort                     = uint16(9090)
+	defaultIntervalSeconds                 = uint64(10)
+	defaultSignatureCacheSize              = uint64(1024 * 1024)
+	defaultInitialConnectionTimeoutSeconds = uint64(300)
 )
 
 var defaultLogLevel = logging.Info.String()
@@ -50,21 +51,22 @@ icm-relayer --help                                      Display icm-relayer usag
 
 // Top-level configuration
 type Config struct {
-	LogLevel               string                   `mapstructure:"log-level" json:"log-level"`
-	StorageLocation        string                   `mapstructure:"storage-location" json:"storage-location"`
-	RedisURL               string                   `mapstructure:"redis-url" json:"redis-url"`
-	APIPort                uint16                   `mapstructure:"api-port" json:"api-port"`
-	MetricsPort            uint16                   `mapstructure:"metrics-port" json:"metrics-port"`
-	DBWriteIntervalSeconds uint64                   `mapstructure:"db-write-interval-seconds" json:"db-write-interval-seconds"` //nolint:lll
-	PChainAPI              *basecfg.APIConfig       `mapstructure:"p-chain-api" json:"p-chain-api"`
-	InfoAPI                *basecfg.APIConfig       `mapstructure:"info-api" json:"info-api"`
-	SourceBlockchains      []*SourceBlockchain      `mapstructure:"source-blockchains" json:"source-blockchains"`
-	DestinationBlockchains []*DestinationBlockchain `mapstructure:"destination-blockchains" json:"destination-blockchains"`
-	ProcessMissedBlocks    bool                     `mapstructure:"process-missed-blocks" json:"process-missed-blocks"`
-	DeciderURL             string                   `mapstructure:"decider-url" json:"decider-url"`
-	SignatureCacheSize     uint64                   `mapstructure:"signature-cache-size" json:"signature-cache-size"`
-	ManuallyTrackedPeers   []*basecfg.PeerConfig    `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"`
-	AllowPrivateIPs        bool                     `mapstructure:"allow-private-ips" json:"allow-private-ips"`
+	LogLevel                        string                   `mapstructure:"log-level" json:"log-level"`
+	StorageLocation                 string                   `mapstructure:"storage-location" json:"storage-location"`
+	RedisURL                        string                   `mapstructure:"redis-url" json:"redis-url"`
+	APIPort                         uint16                   `mapstructure:"api-port" json:"api-port"`
+	MetricsPort                     uint16                   `mapstructure:"metrics-port" json:"metrics-port"`
+	DBWriteIntervalSeconds          uint64                   `mapstructure:"db-write-interval-seconds" json:"db-write-interval-seconds"` //nolint:lll
+	PChainAPI                       *basecfg.APIConfig       `mapstructure:"p-chain-api" json:"p-chain-api"`
+	InfoAPI                         *basecfg.APIConfig       `mapstructure:"info-api" json:"info-api"`
+	SourceBlockchains               []*SourceBlockchain      `mapstructure:"source-blockchains" json:"source-blockchains"`
+	DestinationBlockchains          []*DestinationBlockchain `mapstructure:"destination-blockchains" json:"destination-blockchains"` //nolint:lll
+	ProcessMissedBlocks             bool                     `mapstructure:"process-missed-blocks" json:"process-missed-blocks"`     //nolint:lll
+	DeciderURL                      string                   `mapstructure:"decider-url" json:"decider-url"`
+	SignatureCacheSize              uint64                   `mapstructure:"signature-cache-size" json:"signature-cache-size"`     //nolint: lll
+	ManuallyTrackedPeers            []*basecfg.PeerConfig    `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"` //nolint:lll
+	AllowPrivateIPs                 bool                     `mapstructure:"allow-private-ips" json:"allow-private-ips"`
+	InitialConnectionTimeoutSeconds uint64                   `mapstructure:"initial-connection-timeout-seconds" json:"initial-connection-timeout-seconds"` // nolint:lll
 
 	// convenience field to fetch a blockchain's subnet ID
 	blockchainIDToSubnetID map[ids.ID]ids.ID

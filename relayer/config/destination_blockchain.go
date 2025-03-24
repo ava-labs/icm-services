@@ -22,14 +22,14 @@ const (
 // Destination blockchain configuration. Specifies how to connect to and issue
 // transactions on the destination blockchain.
 type DestinationBlockchain struct {
-	SubnetID          string            `mapstructure:"subnet-id" json:"subnet-id"`
-	BlockchainID      string            `mapstructure:"blockchain-id" json:"blockchain-id"`
-	VM                string            `mapstructure:"vm" json:"vm"`
-	RPCEndpoint       basecfg.APIConfig `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
-	KMSKeyID          string            `mapstructure:"kms-key-id" json:"kms-key-id"`
-	KMSAWSRegion      string            `mapstructure:"kms-aws-region" json:"kms-aws-region"`
-	AccountPrivateKey string            `mapstructure:"account-private-key" json:"account-private-key"`
-	BlockGasLimit     uint64            `mapstructure:"block-gas-limit" json:"block-gas-limit"`
+	SubnetID           string            `mapstructure:"subnet-id" json:"subnet-id"`
+	BlockchainID       string            `mapstructure:"blockchain-id" json:"blockchain-id"`
+	VM                 string            `mapstructure:"vm" json:"vm"`
+	RPCEndpoint        basecfg.APIConfig `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
+	KMSKeyIDs          []string          `mapstructure:"kms-key-ids" json:"kms-key-ids"`
+	KMSAWSRegions      []string          `mapstructure:"kms-aws-regions" json:"kms-aws-regions"`
+	AccountPrivateKeys []string          `mapstructure:"account-private-keys" json:"account-private-keys"`
+	BlockGasLimit      uint64            `mapstructure:"block-gas-limit" json:"block-gas-limit"`
 
 	// Fetched from the chain after startup
 	warpConfig WarpConfig
@@ -47,16 +47,18 @@ func (s *DestinationBlockchain) Validate() error {
 	if err := s.RPCEndpoint.Validate(); err != nil {
 		return fmt.Errorf("invalid rpc-endpoint in destination subnet configuration: %w", err)
 	}
-	if s.KMSKeyID != "" {
-		if s.KMSAWSRegion == "" {
-			return errors.New("KMS key ID provided without an AWS region")
-		}
-		if s.AccountPrivateKey != "" {
-			return errors.New("only one of account private key or KMS key ID can be provided")
+	if len(s.KMSKeyIDs) != 0 {
+		if len(s.KMSAWSRegions) != len(s.KMSKeyIDs) {
+			return errors.New("KMS key IDs provided without matching AWS regions")
 		}
 	} else {
-		if _, err := crypto.HexToECDSA(utils.SanitizeHexString(s.AccountPrivateKey)); err != nil {
-			return utils.ErrInvalidPrivateKeyHex
+		if len(s.AccountPrivateKeys) == 0 {
+			return errors.New("No keys provided")
+		}
+		for _, pkey := range s.AccountPrivateKeys {
+			if _, err := crypto.HexToECDSA(utils.SanitizeHexString(pkey)); err != nil {
+				return utils.ErrInvalidPrivateKeyHex
+			}
 		}
 	}
 
