@@ -4,6 +4,8 @@
 package peers
 
 import (
+	"crypto/tls"
+
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/icm-services/config"
@@ -15,4 +17,5 @@ type Config interface {
 	GetPChainAPI() *config.APIConfig
 	GetAllowPrivateIPs() bool
 	GetTrackedSubnets() set.Set[ids.ID]
+	GetTLSCert() *tls.Certificate
 }

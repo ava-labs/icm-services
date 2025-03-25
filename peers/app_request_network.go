@@ -8,6 +8,8 @@ package peers
 
 import (
 	"context"
+	"crypto"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,9 +21,11 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network"
+	"github.com/ava-labs/avalanchego/network/peer"
 	avagoCommon "github.com/ava-labs/avalanchego/snow/engine/common"
 	snowVdrs "github.com/ava-labs/avalanchego/snow/validators"
 	vdrs "github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/linked"
@@ -77,18 +81,21 @@ type AppRequestNetwork interface {
 }
 
 type appRequestNetwork struct {
-	network         network.Network
-	handler         *RelayerExternalHandler
-	infoAPI         *InfoAPI
-	logger          logging.Logger
-	lock            *sync.Mutex
-	validatorClient validators.CanonicalValidatorState
-	metrics         *AppRequestNetworkMetrics
+	network          network.Network
+	handler          *RelayerExternalHandler
+	infoAPI          *InfoAPI
+	logger           logging.Logger
+	validatorSetLock *sync.Mutex
+	validatorClient  validators.CanonicalValidatorState
+	metrics          *AppRequestNetworkMetrics
 
+	// The set of subnetIDs to track. Shared with the underlying Network object, so access
+	// must be protected by the trackedSubnetsLock
 	trackedSubnets set.Set[ids.ID]
 	// invariant: members of lruSubnets should always be exactly the same as trackedSubnets
 	// and the size of lruSubnets should be less than or equal to maxNumSubnets
-	lruSubnets *linked.Hashmap[ids.ID, interface{}]
+	lruSubnets         *linked.Hashmap[ids.ID, interface{}]
+	trackedSubnetsLock *sync.RWMutex
 
 	manager vdrs.Manager
 }
@@ -144,11 +151,13 @@ func NewNetwork(
 	if trackedSubnets.Len() > maxNumSubnets {
 		return nil, errTrackingTooManySubnets
 	}
+	trackedSubnetsLock := new(sync.RWMutex)
 	testNetworkConfig, err := network.NewTestNetworkConfig(
 		networkMetrics,
 		networkID,
 		manager,
 		trackedSubnets,
+		trackedSubnetsLock,
 	)
 	if err != nil {
 		logger.Error(
@@ -158,6 +167,20 @@ func NewNetwork(
 		return nil, err
 	}
 	testNetworkConfig.AllowPrivateIPs = cfg.GetAllowPrivateIPs()
+	// Set the TLS config if exists and log the NodeID
+	var cert *tls.Certificate
+	if cert = cfg.GetTLSCert(); cert != nil {
+		testNetworkConfig.TLSConfig = peer.TLSConfig(*cert, nil)
+		testNetworkConfig.TLSKey = cert.PrivateKey.(crypto.Signer)
+	} else {
+		cert = &testNetworkConfig.TLSConfig.Certificates[0]
+	}
+	parsedCert, err := staking.ParseCertificate(cert.Leaf.Raw)
+	if err != nil {
+		return nil, err
+	}
+	nodeID := ids.NodeIDFromCert(parsedCert)
+	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeID))
 
 	testNetwork, err := network.NewTestNetwork(logger, networkMetrics, testNetworkConfig, handler)
 	if err != nil {
@@ -240,16 +263,17 @@ func NewNetwork(
 	}
 
 	arNetwork := &appRequestNetwork{
-		network:         testNetwork,
-		handler:         handler,
-		infoAPI:         infoAPI,
-		logger:          logger,
-		lock:            new(sync.Mutex),
-		validatorClient: validatorClient,
-		metrics:         metrics,
-		trackedSubnets:  trackedSubnets,
-		manager:         manager,
-		lruSubnets:      lruSubnets,
+		network:            testNetwork,
+		handler:            handler,
+		infoAPI:            infoAPI,
+		logger:             logger,
+		validatorSetLock:   new(sync.Mutex),
+		validatorClient:    validatorClient,
+		metrics:            metrics,
+		trackedSubnets:     trackedSubnets,
+		trackedSubnetsLock: trackedSubnetsLock,
+		manager:            manager,
+		lruSubnets:         lruSubnets,
 	}
 
 	arNetwork.startUpdateValidators()
@@ -259,8 +283,8 @@ func NewNetwork(
 
 // Helper to scope lock acquisition
 func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) {
-	n.lock.Lock()
-	defer n.lock.Unlock()
+	n.trackedSubnetsLock.Lock()
+	defer n.trackedSubnetsLock.Unlock()
 	if n.trackedSubnets.Contains(subnetID) {
 		// update the access to keep it in the LRU
 		n.lruSubnets.Put(subnetID, nil)
@@ -292,12 +316,17 @@ func (n *appRequestNetwork) startUpdateValidators() {
 		// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
 		ticker := time.NewTicker(ValidatorRefreshPeriod)
 		for ; true; <-ticker.C {
+			n.trackedSubnetsLock.RLock()
+			subnets := n.trackedSubnets.List()
+			n.trackedSubnetsLock.RUnlock()
+
 			n.logger.Debug(
 				"Fetching validators for subnets",
-				zap.Any("subnetIDs", append([]ids.ID{constants.PrimaryNetworkID}, n.trackedSubnets.List()...)),
+				zap.Any("subnetIDs", append([]ids.ID{constants.PrimaryNetworkID}, subnets...)),
 			)
+
 			n.updateValidatorSet(context.Background(), constants.PrimaryNetworkID)
-			for _, subnet := range n.trackedSubnets.List() {
+			for _, subnet := range subnets {
 				n.updateValidatorSet(context.Background(), subnet)
 			}
 		}
@@ -308,8 +337,8 @@ func (n *appRequestNetwork) updateValidatorSet(
 	ctx context.Context,
 	subnetID ids.ID,
 ) error {
-	n.lock.Lock()
-	defer n.lock.Unlock()
+	n.validatorSetLock.Lock()
+	defer n.validatorSetLock.Unlock()
 
 	// Fetch the subnet validators from the P-Chain
 	validators, err := n.validatorClient.GetProposedValidators(ctx, subnetID)

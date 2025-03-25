@@ -171,13 +171,14 @@ func TestTrackSubnets(t *testing.T) {
 	mockNetwork := avago_mocks.NewMockNetwork(ctrl)
 	mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
 	arNetwork := appRequestNetwork{
-		network:         mockNetwork,
-		logger:          logging.NoLog{},
-		validatorClient: mockValidatorClient,
-		metrics:         metrics,
-		manager:         snowVdrs.NewManager(),
-		lruSubnets:      linked.NewHashmapWithSize[ids.ID, interface{}](maxNumSubnets),
-		lock:            new(sync.Mutex),
+		network:            mockNetwork,
+		logger:             logging.NoLog{},
+		validatorClient:    mockValidatorClient,
+		metrics:            metrics,
+		manager:            snowVdrs.NewManager(),
+		lruSubnets:         linked.NewHashmapWithSize[ids.ID, interface{}](maxNumSubnets),
+		validatorSetLock:   new(sync.Mutex),
+		trackedSubnetsLock: new(sync.RWMutex),
 	}
 	require.Zero(t, arNetwork.trackedSubnets.Len())
 	require.Zero(t, arNetwork.lruSubnets.Len())

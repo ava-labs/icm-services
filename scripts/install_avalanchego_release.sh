@@ -6,14 +6,14 @@
 set -e
 
 # Load the versions
-ICM_OFFCHAIN_CONTRACTS_PATH=$(
+ICM_SERVICES_PATH=$(
   cd "$(dirname "${BASH_SOURCE[0]}")"
   cd .. && pwd
 )
-source "$ICM_OFFCHAIN_CONTRACTS_PATH"/scripts/versions.sh
+source "$ICM_SERVICES_PATH"/scripts/versions.sh
 
 # Load the constants
-source "$ICM_OFFCHAIN_CONTRACTS_PATH"/scripts/constants.sh
+source "$ICM_SERVICES_PATH"/scripts/constants.sh
 
 ############################
 # download avalanchego

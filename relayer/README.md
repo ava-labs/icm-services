@@ -191,6 +191,14 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
 - The interval at which the relayer will write to the database. Defaults to `10`.
 
+`"tls-cert-path": string`
+
+- The path to a TLS cert file. Should only be set if a static NodeID is required for connecting to private networks. 
+
+`"tls-key-path": string`
+
+- The path to a TLS key file. Should only be set if a static NodeID is required for connecting to private networks.
+
 `"manual-warp-messages": []ManualWarpMessage`
 
 - The list of Warp messages to relay on startup, independent of the catch-up mechanism or normal operation. Each `ManualWarpMessage` has the following configuration:

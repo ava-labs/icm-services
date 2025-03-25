@@ -4,6 +4,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -30,17 +31,22 @@ signature-aggregator --help                                  Display signature-a
 `
 
 type Config struct {
-	LogLevel           string             `mapstructure:"log-level" json:"log-level"`
-	PChainAPI          *basecfg.APIConfig `mapstructure:"p-chain-api" json:"p-chain-api"`
-	InfoAPI            *basecfg.APIConfig `mapstructure:"info-api" json:"info-api"`
-	APIPort            uint16             `mapstructure:"api-port" json:"api-port"`
-	MetricsPort        uint16             `mapstructure:"metrics-port" json:"metrics-port"`
-	SignatureCacheSize uint64             `mapstructure:"signature-cache-size" json:"signature-cache-size"`
-	AllowPrivateIPs    bool               `mapstructure:"allow-private-ips" json:"allow-private-ips"`
-	TrackedSubnetIDs   []string           `mapstructure:"tracked-subnet-ids" json:"tracked-subnet-ids"`
+	LogLevel             string                `mapstructure:"log-level" json:"log-level"`
+	PChainAPI            *basecfg.APIConfig    `mapstructure:"p-chain-api" json:"p-chain-api"`
+	InfoAPI              *basecfg.APIConfig    `mapstructure:"info-api" json:"info-api"`
+	APIPort              uint16                `mapstructure:"api-port" json:"api-port"`
+	MetricsPort          uint16                `mapstructure:"metrics-port" json:"metrics-port"`
+	SignatureCacheSize   uint64                `mapstructure:"signature-cache-size" json:"signature-cache-size"`
+	AllowPrivateIPs      bool                  `mapstructure:"allow-private-ips" json:"allow-private-ips"`
+	TrackedSubnetIDs     []string              `mapstructure:"tracked-subnet-ids" json:"tracked-subnet-ids"`
+	TLSCertPath          string                `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"`
+	TLSKeyPath           string                `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
+	ManuallyTrackedPeers []*basecfg.PeerConfig `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"`
 
 	// convenience fields
 	trackedSubnets set.Set[ids.ID]
+	myNodeID       ids.NodeID
+	tlsCert        *tls.Certificate
 }
 
 func DisplayUsageText() {
@@ -65,6 +71,11 @@ func (c *Config) Validate() error {
 		}
 		c.trackedSubnets.Add(trackedL1ID)
 	}
+	for _, p := range c.ManuallyTrackedPeers {
+		if err := p.Validate(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -85,4 +96,12 @@ func (c *Config) GetAllowPrivateIPs() bool {
 
 func (c *Config) GetTrackedSubnets() set.Set[ids.ID] {
 	return c.trackedSubnets
+}
+
+func (c *Config) GetNodeID() ids.NodeID {
+	return c.myNodeID
+}
+
+func (c *Config) GetTLSCert() *tls.Certificate {
+	return c.tlsCert
 }

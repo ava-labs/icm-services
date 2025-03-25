@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/message"
+	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/peers"
@@ -106,11 +108,21 @@ func main() {
 		panic(err)
 	}
 
+	var manuallyTrackedPeers []info.Peer
+	for _, p := range cfg.ManuallyTrackedPeers {
+		manuallyTrackedPeers = append(manuallyTrackedPeers, info.Peer{
+			Info: peer.Info{
+				PublicIP: p.GetIP(),
+				ID:       p.GetID(),
+			},
+		})
+	}
+
 	network, err := peers.NewNetwork(
 		networkLogger,
 		prometheus.DefaultRegisterer,
 		cfg.GetTrackedSubnets(),
-		nil,
+		manuallyTrackedPeers,
 		&cfg,
 	)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	commonConfig "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -112,6 +113,14 @@ func BuildConfig(v *viper.Viper) (Config, error) {
 			)
 		}
 		cfg.DestinationBlockchains[i].AccountPrivateKey = utils.SanitizeHexString(privateKey)
+	}
+
+	if v.IsSet(commonConfig.TLSKeyPathKey) || v.IsSet(commonConfig.TLSCertPathKey) {
+		cert, err := commonConfig.GetTLSCertFromFile(v)
+		if err != nil {
+			return cfg, fmt.Errorf("failed to initialize TLS certificate: %w", err)
+		}
+		cfg.tlsCert = cert
 	}
 
 	return cfg, nil

@@ -38,7 +38,7 @@ cwd=$(pwd)
 # Install the avalanchego and subnet-evm binaries
 rm -rf $BASEDIR/avalanchego
 BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego ./scripts/install_avalanchego_release.sh
-BASEDIR=$BASEDIR "${ICM_CONTRACTS_PATH}/scripts/install_subnetevm_release.sh"
+BASEDIR=$BASEDIR ./scripts/install_subnetevm_release.sh
 
 # Install signature-aggregator to the location used by the tests
 SIGNATURE_AGGREGATOR_PATH=$BASEDIR/icm-services/signature-aggregator
