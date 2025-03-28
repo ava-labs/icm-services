@@ -4,7 +4,7 @@ go 1.23.6
 
 require (
 	github.com/alexliesenfeld/health v0.8.0
-	github.com/ava-labs/avalanchego v1.13.1-0.20250326010016-044f93f83526 // branch icm-services-patch-v1.13.0
+	github.com/ava-labs/avalanchego v1.13.1-0.20250328202636-14dea8025061 // branch icm-services-patch-v1.13.0
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250307173936-f6a36b902f4f
 	github.com/ava-labs/subnet-evm v0.7.2
 	github.com/aws/aws-sdk-go-v2 v1.36.3

@@ -140,6 +140,7 @@ func main() {
 		messageCreator,
 		cfg.SignatureCacheSize,
 		metricsInstance,
+		cfg.GetPChainAPI(),
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
