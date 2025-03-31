@@ -21,7 +21,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers"
 	avago_mocks "github.com/ava-labs/icm-services/peers/avago_mocks"
-	peers_mocks "github.com/ava-labs/icm-services/peers/mocks"
+	"github.com/ava-labs/icm-services/peers/mocks"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -38,11 +38,11 @@ var (
 
 func instantiateAggregator(t *testing.T) (
 	*SignatureAggregator,
-	*peers_mocks.MockAppRequestNetwork,
+	*mocks.MockAppRequestNetwork,
 	*avago_mocks.MockClient,
 ) {
 	mockController := gomock.NewController(t)
-	mockNetwork := peers_mocks.NewMockAppRequestNetwork(mockController)
+	mockNetwork := mocks.NewMockAppRequestNetwork(mockController)
 	if sigAggMetrics == nil {
 		sigAggMetrics = metrics.NewSignatureAggregatorMetrics(prometheus.DefaultRegisterer)
 	}
