@@ -74,6 +74,20 @@ func (mr *MockAppRequestNetworkMockRecorder) GetSubnetID(blockchainID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnetID", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetSubnetID), blockchainID)
 }
 
+// IsL1 mocks base method.
+func (m *MockAppRequestNetwork) IsL1(subnetID ids.ID) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsL1", subnetID)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsL1 indicates an expected call of IsL1.
+func (mr *MockAppRequestNetworkMockRecorder) IsL1(subnetID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsL1", reflect.TypeOf((*MockAppRequestNetwork)(nil).IsL1), subnetID)
+}
+
 // NumConnectedPeers mocks base method.
 func (m *MockAppRequestNetwork) NumConnectedPeers() int {
 	m.ctrl.T.Helper()

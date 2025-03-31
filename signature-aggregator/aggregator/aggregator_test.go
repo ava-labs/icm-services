@@ -18,11 +18,10 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers"
-	peersMock "github.com/ava-labs/icm-services/peers/mocks"
-	"github.com/ava-labs/icm-services/signature-aggregator/aggregator/mocks"
+	avago_mocks "github.com/ava-labs/icm-services/peers/avago_mocks"
+	peers_mocks "github.com/ava-labs/icm-services/peers/mocks"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -39,11 +38,11 @@ var (
 
 func instantiateAggregator(t *testing.T) (
 	*SignatureAggregator,
-	*peersMock.MockAppRequestNetwork,
-	*mocks.MockClient,
+	*peers_mocks.MockAppRequestNetwork,
+	*avago_mocks.MockClient,
 ) {
 	mockController := gomock.NewController(t)
-	mockNetwork := peersMock.NewMockAppRequestNetwork(mockController)
+	mockNetwork := peers_mocks.NewMockAppRequestNetwork(mockController)
 	if sigAggMetrics == nil {
 		sigAggMetrics = metrics.NewSignatureAggregatorMetrics(prometheus.DefaultRegisterer)
 	}
@@ -57,7 +56,7 @@ func instantiateAggregator(t *testing.T) (
 		)
 		require.NoError(t, err)
 	}
-	mockPClient := mocks.NewMockClient(mockController)
+	mockPClient := avago_mocks.NewMockClient(mockController)
 	aggregator, err := NewSignatureAggregator(
 		mockNetwork,
 		logging.NewLogger(
@@ -156,6 +155,11 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 		},
 		nil,
 	)
+
+	mockNetwork.EXPECT().IsL1(
+		gomock.Any(),
+	).Return(false).AnyTimes()
+
 	_, err = aggregator.CreateSignedMessage(context.Background(), msg, nil, ids.Empty, 80)
 	require.ErrorContains(t, err, "no signatures")
 }
@@ -209,7 +213,7 @@ func makeAppRequests(
 }
 
 func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
-	aggregator, mockNetwork, mockPClient := instantiateAggregator(t)
+	aggregator, mockNetwork, _ := instantiateAggregator(t)
 
 	var (
 		connectedValidators, _ = makeConnectedValidators(2)
@@ -256,10 +260,9 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		subnets.NoOpAllower,
 	).AnyTimes()
 
-	mockPClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
-		platformvm.GetSubnetClientResponse{},
-		nil,
-	).Times(1)
+	mockNetwork.EXPECT().IsL1(
+		gomock.Any(),
+	).Return(false).AnyTimes()
 
 	_, err = aggregator.CreateSignedMessage(context.Background(), msg, nil, subnetID, 80)
 	require.ErrorIs(
@@ -285,7 +288,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 
 	// prime the aggregator:
 
-	aggregator, mockNetwork, mockPClient := instantiateAggregator(t)
+	aggregator, mockNetwork, _ := instantiateAggregator(t)
 
 	subnetID := ids.GenerateTestID()
 	mockNetwork.EXPECT().GetSubnetID(chainID).Return(
@@ -298,11 +301,6 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 		connectedValidators,
 		nil,
 	)
-
-	mockPClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
-		platformvm.GetSubnetClientResponse{},
-		nil,
-	).Times(1)
 
 	// prime the signers' responses:
 
@@ -347,6 +345,10 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 		subnetID,
 		subnets.NoOpAllower,
 	).Times(1).Return(nodeIDs)
+
+	mockNetwork.EXPECT().IsL1(
+		gomock.Any(),
+	).Return(false).AnyTimes()
 
 	// aggregate the signatures:
 	var quorumPercentage uint64 = 80

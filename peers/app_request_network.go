@@ -31,6 +31,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/linked"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/utils/sampler"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
@@ -48,6 +49,7 @@ import (
 const (
 	InboundMessageChannelSize = 1000
 	ValidatorRefreshPeriod    = time.Second * 5
+	L1RefreshPeriod           = time.Minute
 	NumBootstrapNodes         = 5
 	// Maximum number of subnets that can be tracked by the app request network
 	// This value is defined in avalanchego peers package
@@ -80,6 +82,7 @@ type AppRequestNetwork interface {
 	Shutdown()
 	TrackSubnet(subnetID ids.ID)
 	NumConnectedPeers() int
+	IsL1(subnetID ids.ID) bool
 }
 
 type appRequestNetwork struct {
@@ -88,8 +91,12 @@ type appRequestNetwork struct {
 	infoAPI          *InfoAPI
 	logger           logging.Logger
 	validatorSetLock *sync.Mutex
-	validatorClient  validators.CanonicalValidatorState
+	validatorState   validators.CanonicalValidatorState
 	metrics          *AppRequestNetworkMetrics
+	pClient          platformvm.Client
+	pClientOptions   []rpc.Option
+	l1s              set.Set[ids.ID]
+	l1sLock          *sync.RWMutex
 
 	// The set of subnetIDs to track. Shared with the underlying Network object, so access
 	// must be protected by the trackedSubnetsLock
@@ -143,7 +150,7 @@ func NewNetwork(
 		return nil, err
 	}
 
-	validatorClient := validators.NewCanonicalValidatorClient(logger, cfg.GetPChainAPI())
+	validatorState := validators.NewCanonicalValidatorClient(logger, cfg.GetPChainAPI())
 	manager := snowVdrs.NewManager()
 
 	networkMetrics := prometheus.NewRegistry()
@@ -154,6 +161,8 @@ func NewNetwork(
 		return nil, errTrackingTooManySubnets
 	}
 	trackedSubnetsLock := new(sync.RWMutex)
+
+	// Create the Network configuration
 	testNetworkConfig, err := network.NewTestNetworkConfig(
 		networkMetrics,
 		networkID,
@@ -279,15 +288,20 @@ func NewNetwork(
 		infoAPI:            infoAPI,
 		logger:             logger,
 		validatorSetLock:   new(sync.Mutex),
-		validatorClient:    validatorClient,
+		validatorState:     validatorState,
 		metrics:            metrics,
 		trackedSubnets:     trackedSubnets,
 		trackedSubnetsLock: trackedSubnetsLock,
 		manager:            manager,
 		lruSubnets:         lruSubnets,
+		pClient:            pClient,
+		pClientOptions:     options,
+		l1s:                set.NewSet[ids.ID](0),
+		l1sLock:            new(sync.RWMutex),
 	}
 
 	arNetwork.startUpdateValidators()
+	arNetwork.startUpdateL1List()
 
 	return arNetwork, nil
 }
@@ -344,6 +358,50 @@ func (n *appRequestNetwork) startUpdateValidators() {
 	}()
 }
 
+func (n *appRequestNetwork) startUpdateL1List() {
+	go func() {
+		ticker := time.NewTicker(L1RefreshPeriod)
+		for ; true; <-ticker.C {
+			n.trackedSubnetsLock.RLock()
+			trackedSubnets := n.trackedSubnets.List()
+			n.trackedSubnetsLock.RUnlock()
+
+			unconvertedSubnets := make([]ids.ID, 0, len(trackedSubnets))
+			for _, subnetID := range trackedSubnets {
+				if !n.IsL1(subnetID) {
+					unconvertedSubnets = append(unconvertedSubnets, subnetID)
+				}
+			}
+			if len(unconvertedSubnets) == 0 {
+				continue
+			}
+
+			n.logger.Debug(
+				"Checking for converted L1s",
+				zap.Any("subnetIDs", unconvertedSubnets),
+			)
+			for _, subnetID := range unconvertedSubnets {
+				if !n.IsL1(subnetID) {
+					subnet, err := n.pClient.GetSubnet(context.Background(), subnetID, n.pClientOptions...)
+					if err != nil {
+						n.logger.Error(
+							"Failed to get subnet",
+							zap.String("subnetID", subnetID.String()),
+							zap.Error(err),
+						)
+						continue
+					}
+					if subnet.ConversionID != ids.Empty {
+						n.l1sLock.Lock()
+						n.l1s.Add(subnetID)
+						n.l1sLock.Unlock()
+					}
+				}
+			}
+		}
+	}()
+}
+
 func (n *appRequestNetwork) updateValidatorSet(
 	ctx context.Context,
 	subnetID ids.ID,
@@ -352,7 +410,7 @@ func (n *appRequestNetwork) updateValidatorSet(
 	defer n.validatorSetLock.Unlock()
 
 	// Fetch the subnet validators from the P-Chain
-	validators, err := n.validatorClient.GetProposedValidators(ctx, subnetID)
+	validators, err := n.validatorState.GetProposedValidators(ctx, subnetID)
 	if err != nil {
 		return err
 	}
@@ -392,6 +450,13 @@ func (n *appRequestNetwork) updateValidatorSet(
 	return nil
 }
 
+func (n *appRequestNetwork) IsL1(subnetID ids.ID) bool {
+	n.l1sLock.RLock()
+	defer n.l1sLock.RUnlock()
+
+	return n.l1s.Contains(subnetID)
+}
+
 func (n *appRequestNetwork) Shutdown() {
 	n.network.StartClose()
 }
@@ -416,7 +481,7 @@ func (c *ConnectedCanonicalValidators) GetValidator(nodeID ids.NodeID) (*warp.Va
 func (n *appRequestNetwork) GetConnectedCanonicalValidators(subnetID ids.ID) (*ConnectedCanonicalValidators, error) {
 	// Get the subnet's current canonical validator set
 	startPChainAPICall := time.Now()
-	validatorSet, err := n.validatorClient.GetCurrentCanonicalValidatorSet(subnetID)
+	validatorSet, err := n.validatorState.GetCurrentCanonicalValidatorSet(subnetID)
 	n.setPChainAPICallLatencyMS(float64(time.Since(startPChainAPICall).Milliseconds()))
 	if err != nil {
 		return nil, err
@@ -473,7 +538,7 @@ func (n *appRequestNetwork) RegisterRequestID(requestID uint32, numExpectedRespo
 	return n.handler.RegisterRequestID(requestID, numExpectedResponse)
 }
 func (n *appRequestNetwork) GetSubnetID(blockchainID ids.ID) (ids.ID, error) {
-	return n.validatorClient.GetSubnetID(context.Background(), blockchainID)
+	return n.validatorState.GetSubnetID(context.Background(), blockchainID)
 }
 
 //

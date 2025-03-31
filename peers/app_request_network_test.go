@@ -134,9 +134,9 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			mockNetwork := avago_mocks.NewMockNetwork(ctrl)
 			mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
 			arNetwork := appRequestNetwork{
-				network:         mockNetwork,
-				validatorClient: mockValidatorClient,
-				metrics:         metrics,
+				network:        mockNetwork,
+				validatorState: mockValidatorClient,
+				metrics:        metrics,
 			}
 			var totalWeight uint64
 			for _, vdr := range testCase.validators {
@@ -173,7 +173,7 @@ func TestTrackSubnets(t *testing.T) {
 	arNetwork := appRequestNetwork{
 		network:            mockNetwork,
 		logger:             logging.NoLog{},
-		validatorClient:    mockValidatorClient,
+		validatorState:     mockValidatorClient,
 		metrics:            metrics,
 		manager:            snowVdrs.NewManager(),
 		lruSubnets:         linked.NewHashmapWithSize[ids.ID, interface{}](maxNumSubnets),

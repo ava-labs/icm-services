@@ -21,7 +21,6 @@ import (
 	"github.com/ava-labs/avalanchego/proto/pb/p2p"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
 	"github.com/ava-labs/avalanchego/subnets"
-	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/rpc"
@@ -195,31 +194,14 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		return nil, err
 	}
 
-	isL1 := false
-	if signingSubnet != constants.PrimaryNetworkID {
-		subnet, err := s.pChainClient.GetSubnet(ctx, signingSubnet, s.pChainClientOptions...)
-		if err != nil {
-			s.logger.Error(
-				"Failed to get subnet",
-				zap.String("signingSubnetID", signingSubnet.String()),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		isL1 = subnet.ConversionID != ids.Empty
-	}
-
 	// Tracks all collected signatures.
-	// For L1s, we must take care to *not* include inactive validators in the signature map.
+	// For L1s, we must take care to *not* include inactive validators in the aggregate signature.
 	// Inactive validator's stake weight still contributes to the total weight, but the verifying
 	// node will not be able to verify the aggregate signature if it includes an inactive validator.
 	signatureMap := make(map[int][bls.SignatureLen]byte)
 	excludedValidators := set.NewSet[int](0)
 
-	// Fetch L1 validators and find the node IDs with Balance = 0
-	// Find the corresponding canonical validator set index for each of these, and add to the exclusion list
-	// if ALL of the node IDs for a validator have Balance = 0
-	if isL1 {
+	if s.network.IsL1(signingSubnet) {
 		s.logger.Debug("Checking L1 validators for zero balance nodes")
 		l1Validators, err := s.pChainClient.GetCurrentL1Validators(ctx, signingSubnet, nil, s.pChainClientOptions...)
 		if err != nil {
@@ -231,8 +213,8 @@ func (s *SignatureAggregator) CreateSignedMessage(
 			return nil, err
 		}
 
-		// Set of unfunded L1 validator nodes
-		unfundedNodes := set.NewSet[ids.NodeID](0)
+		// Set of underfunded L1 validator nodes
+		underfundedNodes := set.NewSet[ids.NodeID](0)
 		for _, validator := range l1Validators {
 			s.logger.Debug(
 				"Node has balance",
@@ -240,7 +222,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 				zap.Uint64("balance", uint64(validator.Balance)),
 			)
 			if uint64(validator.Balance) <= minimumL1ValidatorBalance {
-				unfundedNodes.Add(validator.NodeID)
+				underfundedNodes.Add(validator.NodeID)
 			} else {
 				s.logger.Debug(
 					"Node has insufficient balance",
@@ -257,7 +239,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 				// This check will pass if either
 				// 1) the node is an L1 validator with insufficient balance or
 				// 2) the node is a non-L1 (legacy) validator
-				if !unfundedNodes.Contains(nodeID) {
+				if !underfundedNodes.Contains(nodeID) {
 					exclude = false
 					break
 				}
@@ -276,7 +258,8 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	if cachedSignatures, ok := s.cache.Get(unsignedMessage.ID()); ok {
 		for i, validator := range connectedValidators.ValidatorSet.Validators {
 			cachedSignature, found := cachedSignatures[cache.PublicKeyBytes(validator.PublicKeyBytes)]
-			// Do not include explicitly excluded validators in the aggregation
+			// Do not include explicitly excluded validators in the aggregation, even if we
+			// already have their signature for this message cached.
 			if found && !excludedValidators.Contains(i) {
 				signatureMap[i] = cachedSignature
 				accumulatedSignatureWeight.Add(
