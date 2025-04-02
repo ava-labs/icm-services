@@ -2,6 +2,8 @@ module github.com/ava-labs/icm-services
 
 go 1.23.6
 
+toolchain go1.24.1
+
 require (
 	github.com/alexliesenfeld/health v0.8.0
 	github.com/ava-labs/avalanchego v1.13.1-0.20250328202636-14dea8025061 // branch icm-services-patch-v1.13.0
@@ -20,7 +22,7 @@ require (
 	github.com/prometheus/client_golang v1.21.1
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/spf13/pflag v1.0.6
-	github.com/spf13/viper v1.20.0
+	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/atomic v1.11.0
 	go.uber.org/mock v0.5.0
