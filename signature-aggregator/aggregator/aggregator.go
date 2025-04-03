@@ -216,14 +216,8 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		// Set of underfunded L1 validator nodes
 		underfundedNodes := set.NewSet[ids.NodeID](0)
 		for _, validator := range l1Validators {
-			s.logger.Debug(
-				"Node has balance",
-				zap.String("nodeID", validator.NodeID.String()),
-				zap.Uint64("balance", uint64(validator.Balance)),
-			)
-			if uint64(validator.Balance) <= minimumL1ValidatorBalance {
+			if uint64(validator.Balance) < minimumL1ValidatorBalance {
 				underfundedNodes.Add(validator.NodeID)
-			} else {
 				s.logger.Debug(
 					"Node has insufficient balance",
 					zap.String("nodeID", validator.NodeID.String()),

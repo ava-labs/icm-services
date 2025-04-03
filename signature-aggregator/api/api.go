@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -189,8 +190,8 @@ func signatureAggregationAPIHandler(
 			quorumPercentage,
 		)
 		if err != nil {
-			msg := "Failed to aggregate signatures"
-			logger.Warn(msg, zap.Error(err))
+			logger.Warn("Failed to aggregate signatures", zap.Error(err))
+			msg := fmt.Errorf("Failed to aggregate signatures. Error: %w", err).Error()
 			writeJSONError(logger, w, http.StatusInternalServerError, msg)
 			return
 		}
