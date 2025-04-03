@@ -381,21 +381,19 @@ func (n *appRequestNetwork) startUpdateL1List() {
 				zap.Any("subnetIDs", unconvertedSubnets),
 			)
 			for _, subnetID := range unconvertedSubnets {
-				if !n.IsL1(subnetID) {
-					subnet, err := n.pClient.GetSubnet(context.Background(), subnetID, n.pClientOptions...)
-					if err != nil {
-						n.logger.Error(
-							"Failed to get subnet",
-							zap.String("subnetID", subnetID.String()),
-							zap.Error(err),
-						)
-						continue
-					}
-					if subnet.ConversionID != ids.Empty {
-						n.l1sLock.Lock()
-						n.l1s.Add(subnetID)
-						n.l1sLock.Unlock()
-					}
+				subnet, err := n.pClient.GetSubnet(context.Background(), subnetID, n.pClientOptions...)
+				if err != nil {
+					n.logger.Error(
+						"Failed to get subnet",
+						zap.String("subnetID", subnetID.String()),
+						zap.Error(err),
+					)
+					continue
+				}
+				if subnet.ConversionID != ids.Empty {
+					n.l1sLock.Lock()
+					n.l1s.Add(subnetID)
+					n.l1sLock.Unlock()
 				}
 			}
 		}
