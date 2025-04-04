@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	retryTimeout = 10 * time.Second
+	retryTimeout  = 10 * time.Second
+	maxRetryCount = 5
 )
 
 // Errors
@@ -181,7 +182,7 @@ func (r *ApplicationRelayer) ProcessHeight(
 
 // Relays a message to the destination chain. Does not checkpoint the height.
 // returns the transaction hash if the message is successfully relayed.
-func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (common.Hash, error) {
+func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler) (common.Hash, error) {
 	r.logger.Debug(
 		"Relaying message",
 		zap.String("sourceBlockchainID", r.sourceBlockchain.BlockchainID),
@@ -260,6 +261,35 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 	r.incSuccessfulRelayMessageCount()
 
 	return txHash, nil
+}
+
+func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (common.Hash, error) {
+	var txHash common.Hash
+	var err error
+	// Retry processing the message if it fails to account for cases where the signature is successfully aggregated
+	// but the message fails to verify on the destination chain due to validator churn
+	// No delays are implemented between retries since the failure scenario here involves timing differences
+	// and the signature aggregator will not re-query the individual validators from which it has already
+	// acquired the signatures.
+	for i := 0; i < maxRetryCount; i++ {
+		startProcessMessageTime := time.Now()
+		txHash, err = r.processMessage(handler)
+		if err == nil {
+			return txHash, nil
+		}
+		r.logger.Warn(
+			"failed to process message",
+			zap.Int("attempt", i+1),
+			zap.Int64("latencyMS", time.Since(startProcessMessageTime).Milliseconds()),
+			zap.Error(err),
+		)
+		time.Sleep(2 * time.Second)
+	}
+	r.logger.Error(
+		"failed to process message after max retries",
+		zap.Error(err),
+	)
+	return common.Hash{}, err
 }
 
 func (r *ApplicationRelayer) RelayerID() database.RelayerID {
