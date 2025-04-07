@@ -164,6 +164,48 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	requiredQuorumPercentage uint64,
 	quorumPercentageBuffer uint64,
 ) (*avalancheWarp.Message, error) {
+	// Call createSignedMessage first to query validators for their signatures
+	// initially and add them to the cache. Then, if successful, call it again
+	// to get an updated view of the signing validator set, and construct the
+	// signature from cached signatures. This reduces the time between checking
+	// the canonical validator set and constructing the signature, which increases
+	// the likelihood that the signature will be valid when verified on-chain.
+	// Pad the quorum percentage buffer by 2% to attempt to ensure that sufficient
+	// signatures will be collected and cached such that no additional signature
+	// requests need to be made during the second call to createSignedMessage.
+	initialQuorumPercentageBuffer := utils.CalculateQuorumPercentageBuffer(
+		requiredQuorumPercentage,
+		quorumPercentageBuffer+2,
+	)
+	_, err := s.createSignedMessage(
+		ctx,
+		unsignedMessage,
+		justification,
+		inputSigningSubnet,
+		requiredQuorumPercentage,
+		initialQuorumPercentageBuffer,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return s.createSignedMessage(
+		ctx,
+		unsignedMessage,
+		justification,
+		inputSigningSubnet,
+		requiredQuorumPercentage,
+		quorumPercentageBuffer,
+	)
+}
+
+func (s *SignatureAggregator) createSignedMessage(
+	ctx context.Context,
+	unsignedMessage *avalancheWarp.UnsignedMessage,
+	justification []byte,
+	inputSigningSubnet ids.ID,
+	requiredQuorumPercentage uint64,
+	quorumPercentageBuffer uint64,
+) (*avalancheWarp.Message, error) {
 	s.logger.Debug("Creating signed message", zap.String("warpMessageID", unsignedMessage.ID().String()))
 	var signingSubnet ids.ID
 	var err error

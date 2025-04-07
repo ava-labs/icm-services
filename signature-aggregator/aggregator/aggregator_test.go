@@ -313,16 +313,16 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				nil,
 			)
 
-			mockNetwork.EXPECT().TrackSubnet(subnetID)
+			mockNetwork.EXPECT().TrackSubnet(subnetID).Times(2)
 			mockNetwork.EXPECT().GetConnectedCanonicalValidators(subnetID).Return(
 				connectedValidators,
 				nil,
-			)
+			).Times(2)
 
 			mockPClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
 				platformvm.GetSubnetClientResponse{},
 				nil,
-			).Times(1)
+			).Times(2)
 
 			// prime the signers' responses:
 
