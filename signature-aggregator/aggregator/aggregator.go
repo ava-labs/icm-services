@@ -381,11 +381,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		failedSendNodes := make([]ids.NodeID, 0, responsesExpected)
 		for nodeID := range vdrSet {
 			if !sentTo.Contains(nodeID) {
-				log.Debug(
-					"Failed to make async request to node",
-					zap.String("nodeID", nodeID.String()),
-					zap.Error(err),
-				)
 				responsesExpected--
 				failedSendNodes = append(failedSendNodes, nodeID)
 				s.metrics.FailuresSendingToNode.Inc()

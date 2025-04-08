@@ -46,6 +46,7 @@ type messageHandler struct {
 	unsignedMessage   *warp.UnsignedMessage
 	factory           *factory
 	deciderClient     pbDecider.DeciderServiceClient
+	logFields         []zap.Field
 }
 
 // define an "empty" decider client to use when a connection isn't provided:
@@ -98,12 +99,17 @@ func (f *factory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage) (mess
 		)
 		return nil, err
 	}
+	logFields := []zap.Field{
+		zap.Stringer("warpMessageID", unsignedMessage.ID()),
+		zap.String("teleporterMessageID", teleporterMessage.ID()),
+	}
 	return &messageHandler{
-		logger:            f.logger,
+		logger:            f.logger.With(logFields...),
 		teleporterMessage: teleporterMessage,
 		unsignedMessage:   unsignedMessage,
 		factory:           f,
 		deciderClient:     f.deciderClient,
+		logFields:         logFields,
 	}, nil
 }
 
@@ -340,8 +346,8 @@ func (m *messageHandler) SendMessage(
 	return txHash, nil
 }
 
-func (*messageHandler) GetLogContext() []zap.Field {
-	return nil
+func (m *messageHandler) GetLogContext() []zap.Field {
+	return m.logFields
 }
 
 func (m *messageHandler) waitForReceipt(
