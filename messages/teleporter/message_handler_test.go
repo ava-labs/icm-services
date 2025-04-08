@@ -217,6 +217,7 @@ func TestShouldSendMessage(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
+			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
 			messageHandler, err := factory.NewMessageHandler(test.warpUnsignedMessage, mockClient)
 			if test.expectedParseError {
 				// If we expect an error parsing the Warp message, we should not call ShouldSendMessage
@@ -235,7 +236,6 @@ func TestShouldSendMessage(t *testing.T) {
 				Return(test.senderAddressResult).
 				Times(test.senderAddressTimes)
 			mockClient.EXPECT().BlockGasLimit().Return(uint64(blockGasLimit)).AnyTimes()
-			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
 			if test.messageReceivedCall != nil {
 				messageReceivedInput := interfaces.CallMsg{
 					From: bind.CallOpts{}.From,

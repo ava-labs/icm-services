@@ -70,7 +70,10 @@ func NewMessageHandlerFactory(
 	}, nil
 }
 
-func (f *factory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
+func (f *factory) NewMessageHandler(
+	unsignedMessage *warp.UnsignedMessage,
+	destinationClient vms.DestinationClient,
+) (messages.MessageHandler, error) {
 	logFields := []zap.Field{
 		zap.Stringer("warpMessageID", unsignedMessage.ID()),
 		zap.Stringer("destinationBlockchainID", destinationClient.DestinationBlockchainID()),

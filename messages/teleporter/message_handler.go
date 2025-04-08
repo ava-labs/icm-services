@@ -92,7 +92,10 @@ func NewMessageHandlerFactory(
 	}, nil
 }
 
-func (f *factory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
+func (f *factory) NewMessageHandler(
+	unsignedMessage *warp.UnsignedMessage,
+	destinationClient vms.DestinationClient,
+) (messages.MessageHandler, error) {
 	teleporterMessage, err := f.parseTeleporterMessage(unsignedMessage)
 	if err != nil {
 		f.logger.Error(
@@ -111,10 +114,10 @@ func (f *factory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage, desti
 	if err != nil {
 		f.logger.Error(
 			"Failed to calculate Teleporter message ID.",
-			zap.Stringer("warpMessageID", unsignedMessage.ID())
+			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 			zap.Error(err),
 		)
-		return &messageHandler{}, err 
+		return &messageHandler{}, err
 	}
 
 	logFields := []zap.Field{

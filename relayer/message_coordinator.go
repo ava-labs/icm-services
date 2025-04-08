@@ -94,7 +94,10 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	if appRelayer == nil {
 		return nil, nil, nil
 	}
-	messageHandler, err := messageHandlerFactory.NewMessageHandler(warpMessageInfo.UnsignedMessage, appRelayer.destinationClient)
+	messageHandler, err := messageHandlerFactory.NewMessageHandler(
+		warpMessageInfo.UnsignedMessage,
+		appRelayer.destinationClient,
+	)
 	if err != nil {
 		mc.logger.Error("Failed to create message handler", zap.Error(err))
 		return nil, nil, err
