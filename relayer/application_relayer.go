@@ -188,7 +188,7 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 		zap.String("sourceBlockchainID", r.sourceBlockchain.BlockchainID),
 		zap.String("relayerID", r.relayerID.ID.String()),
 	)
-	shouldSend, err := handler.ShouldSendMessage(r.destinationClient)
+	shouldSend, err := handler.ShouldSendMessage()
 	if err != nil {
 		r.logger.Error(
 			"Failed to check if message should be sent",
@@ -246,7 +246,7 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 	// create signed message latency (ms)
 	r.setCreateSignedMessageLatencyMS(float64(time.Since(startCreateSignedMessageTime).Milliseconds()))
 
-	txHash, err := handler.SendMessage(signedMessage, r.destinationClient)
+	txHash, err := handler.SendMessage(signedMessage)
 	if err != nil {
 		r.logger.Error(
 			"Failed to send warp message",

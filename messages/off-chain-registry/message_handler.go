@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
@@ -35,9 +34,11 @@ type factory struct {
 }
 
 type messageHandler struct {
-	logger          logging.Logger
-	unsignedMessage *warp.UnsignedMessage
-	factory         *factory
+	logger            logging.Logger
+	unsignedMessage   *warp.UnsignedMessage
+	destinationClient vms.DestinationClient
+	factory           *factory
+	logFields         []zap.Field
 }
 
 func NewMessageHandlerFactory(
@@ -69,12 +70,39 @@ func NewMessageHandlerFactory(
 	}, nil
 }
 
-func (f *factory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage) (messages.MessageHandler, error) {
+func (f *factory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
+	logFields := []zap.Field{
+		zap.Stringer("warpMessageID", unsignedMessage.ID()),
+		zap.Stringer("destinationBlockchainID", destinationClient.DestinationBlockchainID()),
+	}
 	return &messageHandler{
-		logger:          f.logger,
-		unsignedMessage: unsignedMessage,
-		factory:         f,
+		logger:            f.logger.With(logFields...),
+		unsignedMessage:   unsignedMessage,
+		destinationClient: destinationClient,
+		factory:           f,
+		logFields:         logFields,
 	}, nil
+}
+
+func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (
+	messages.MessageRoutingInfo,
+	error,
+) {
+	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)
+	if err != nil {
+		f.logger.Error(
+			"Failed parsing addressed payload",
+			zap.Error(err),
+		)
+		return messages.MessageRoutingInfo{}, err
+	}
+	return messages.MessageRoutingInfo{
+			SourceChainID:      unsignedMessage.SourceChainID,
+			SenderAddress:      common.BytesToAddress(addressedPayload.SourceAddress),
+			DestinationChainID: unsignedMessage.SourceChainID,
+			DestinationAddress: f.registryAddress,
+		},
+		nil
 }
 
 func (m *messageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
@@ -84,7 +112,7 @@ func (m *messageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
 // ShouldSendMessage returns false if any contract is already registered as the specified version
 // in the TeleporterRegistry contract. This is because a single contract address can be registered
 // to multiple versions, but each version may only map to a single contract address.
-func (m *messageHandler) ShouldSendMessage(destinationClient vms.DestinationClient) (bool, error) {
+func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	addressedPayload, err := warpPayload.ParseAddressedCall(m.unsignedMessage.Payload)
 	if err != nil {
 		m.logger.Error(
@@ -113,11 +141,11 @@ func (m *messageHandler) ShouldSendMessage(destinationClient vms.DestinationClie
 	}
 
 	// Get the correct destination client from the global map
-	client, ok := destinationClient.Client().(ethclient.Client)
+	client, ok := m.destinationClient.Client().(ethclient.Client)
 	if !ok {
 		panic(fmt.Sprintf(
 			"Destination client for chain %s is not an Ethereum client",
-			destinationClient.DestinationBlockchainID().String()),
+			m.destinationClient.DestinationBlockchainID().String()),
 		)
 	}
 
@@ -152,24 +180,16 @@ func (m *messageHandler) ShouldSendMessage(destinationClient vms.DestinationClie
 
 func (m *messageHandler) SendMessage(
 	signedMessage *warp.Message,
-	destinationClient vms.DestinationClient,
 ) (common.Hash, error) {
 	// Construct the transaction call data to call the TeleporterRegistry contract.
 	// Only one off-chain registry Warp message is sent at a time, so we hardcode the index to 0 in the call.
 	callData, err := teleporterregistry.PackAddProtocolVersion(0)
 	if err != nil {
-		m.logger.Error(
-			"Failed packing receiveCrossChainMessage call data",
-			zap.String(
-				"destinationBlockchainID",
-				destinationClient.DestinationBlockchainID().String(),
-			),
-			zap.String("warpMessageID", signedMessage.ID().String()),
-		)
+		m.logger.Error("Failed packing receiveCrossChainMessage call data")
 		return common.Hash{}, err
 	}
 
-	txHash, err := destinationClient.SendTx(
+	txHash, err := m.destinationClient.SendTx(
 		signedMessage,
 		m.factory.registryAddress.Hex(),
 		addProtocolVersionGasLimit,
@@ -178,45 +198,14 @@ func (m *messageHandler) SendMessage(
 	if err != nil {
 		m.logger.Error(
 			"Failed to send tx.",
-			zap.String(
-				"destinationBlockchainID",
-				destinationClient.DestinationBlockchainID().String(),
-			),
-			zap.String("warpMessageID", signedMessage.ID().String()),
 			zap.Error(err),
 		)
 		return common.Hash{}, err
 	}
-	m.logger.Info(
-		"Sent message to destination chain",
-		zap.String("destinationBlockchainID", destinationClient.DestinationBlockchainID().String()),
-		zap.String("warpMessageID", signedMessage.ID().String()),
-	)
+	m.logger.Info("Sent message to destination chain")
 	return txHash, nil
 }
 
-func (m *messageHandler) GetMessageRoutingInfo() (
-	ids.ID,
-	common.Address,
-	ids.ID,
-	common.Address,
-	error,
-) {
-	addressedPayload, err := warpPayload.ParseAddressedCall(m.unsignedMessage.Payload)
-	if err != nil {
-		m.logger.Error(
-			"Failed parsing addressed payload",
-			zap.Error(err),
-		)
-		return ids.ID{}, common.Address{}, ids.ID{}, common.Address{}, err
-	}
-	return m.unsignedMessage.SourceChainID,
-		common.BytesToAddress(addressedPayload.SourceAddress),
-		m.unsignedMessage.SourceChainID,
-		m.factory.registryAddress,
-		nil
-}
-
 func (m *messageHandler) GetLogContext() []zap.Field {
-	return []zap.Field{zap.String("unsignedWarpMessageID", m.unsignedMessage.ID().String())}
+	return m.logFields
 }

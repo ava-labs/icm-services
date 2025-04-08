@@ -217,7 +217,7 @@ func TestShouldSendMessage(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
-			messageHandler, err := factory.NewMessageHandler(test.warpUnsignedMessage)
+			messageHandler, err := factory.NewMessageHandler(test.warpUnsignedMessage, mockClient)
 			if test.expectedParseError {
 				// If we expect an error parsing the Warp message, we should not call ShouldSendMessage
 				require.Error(t, err)
@@ -248,7 +248,7 @@ func TestShouldSendMessage(t *testing.T) {
 					Times(test.messageReceivedCall.times)
 			}
 
-			result, err := messageHandler.ShouldSendMessage(mockClient)
+			result, err := messageHandler.ShouldSendMessage()
 			require.NoError(t, err)
 			require.Equal(t, test.expectedResult, result)
 		})
