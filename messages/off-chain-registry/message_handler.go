@@ -37,7 +37,7 @@ type messageHandler struct {
 	logger            logging.Logger
 	unsignedMessage   *warp.UnsignedMessage
 	destinationClient vms.DestinationClient
-	factory           *factory
+	registryAddress   common.Address
 	logFields         []zap.Field
 }
 
@@ -82,7 +82,7 @@ func (f *factory) NewMessageHandler(
 		logger:            f.logger.With(logFields...),
 		unsignedMessage:   unsignedMessage,
 		destinationClient: destinationClient,
-		factory:           f,
+		registryAddress:   f.registryAddress,
 		logFields:         logFields,
 	}, nil
 }
@@ -134,11 +134,11 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 		)
 		return false, err
 	}
-	if destination != m.factory.registryAddress {
+	if destination != m.registryAddress {
 		m.logger.Info(
 			"Message is not intended for the configured registry",
-			zap.String("destination", destination.String()),
-			zap.String("configuredRegistry", m.factory.registryAddress.String()),
+			zap.Stringer("destination", destination),
+			zap.Stringer("configuredRegistry", m.registryAddress),
 		)
 		return false, nil
 	}
@@ -153,7 +153,7 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	}
 
 	// Check if the version is already registered in the TeleporterRegistry contract.
-	registry, err := teleporterregistry.NewTeleporterRegistryCaller(m.factory.registryAddress, client)
+	registry, err := teleporterregistry.NewTeleporterRegistryCaller(m.registryAddress, client)
 	if err != nil {
 		m.logger.Error(
 			"Failed to create TeleporterRegistry caller",
@@ -194,7 +194,7 @@ func (m *messageHandler) SendMessage(
 
 	txHash, err := m.destinationClient.SendTx(
 		signedMessage,
-		m.factory.registryAddress.Hex(),
+		m.registryAddress.Hex(),
 		addProtocolVersionGasLimit,
 		callData,
 	)

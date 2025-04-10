@@ -44,10 +44,11 @@ type messageHandler struct {
 	logger              logging.Logger
 	teleporterMessage   *teleportermessenger.TeleporterMessage
 	unsignedMessage     *warp.UnsignedMessage
-	factory             *factory
 	deciderClient       pbDecider.DeciderServiceClient
 	destinationClient   vms.DestinationClient
 	teleporterMessageID ids.ID
+	messageConfig       *Config
+	protocolAddress     common.Address
 	logFields           []zap.Field
 }
 
@@ -130,11 +131,13 @@ func (f *factory) NewMessageHandler(
 		teleporterMessage: teleporterMessage,
 
 		unsignedMessage:     unsignedMessage,
-		factory:             f,
 		deciderClient:       f.deciderClient,
 		destinationClient:   destinationClient,
 		teleporterMessageID: teleporterMessageID,
-		logFields:           logFields,
+		messageConfig:       f.messageConfig,
+		protocolAddress:     f.protocolAddress,
+
+		logFields: logFields,
 	}, nil
 }
 
@@ -204,7 +207,7 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	}
 
 	// Check if the message has already been delivered to the destination chain
-	teleporterMessenger := m.factory.getTeleporterMessenger(m.destinationClient)
+	teleporterMessenger := m.getTeleporterMessenger()
 	delivered, err := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
 	if err != nil {
 		m.logger.Error(
@@ -262,17 +265,6 @@ func (m *messageHandler) getShouldSendMessageFromDecider() (bool, error) {
 func (m *messageHandler) SendMessage(
 	signedMessage *warp.Message,
 ) (common.Hash, error) {
-	destinationBlockchainID := m.destinationClient.DestinationBlockchainID()
-	teleporterMessageID, err := teleporterUtils.CalculateMessageID(
-		m.factory.protocolAddress,
-		signedMessage.SourceChainID,
-		destinationBlockchainID,
-		m.teleporterMessage.MessageNonce,
-	)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to calculate Teleporter message ID: %w", err)
-	}
-
 	m.logger.Info("Sending message to destination chain")
 	numSigners, err := signedMessage.Signature.NumSigners()
 	if err != nil {
@@ -294,7 +286,7 @@ func (m *messageHandler) SendMessage(
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
 		0,
-		common.HexToAddress(m.factory.messageConfig.RewardAddress),
+		common.HexToAddress(m.messageConfig.RewardAddress),
 	)
 	if err != nil {
 		m.logger.Error("Failed packing receiveCrossChainMessage call data")
@@ -303,7 +295,7 @@ func (m *messageHandler) SendMessage(
 
 	txHash, err := m.destinationClient.SendTx(
 		signedMessage,
-		m.factory.protocolAddress.Hex(),
+		m.protocolAddress.Hex(),
 		gasLimit,
 		callData,
 	)
@@ -313,7 +305,7 @@ func (m *messageHandler) SendMessage(
 	}
 
 	// Wait for the message to be included in a block before returning
-	err = m.waitForReceipt(signedMessage, m.destinationClient, txHash, teleporterMessageID)
+	err = m.waitForReceipt(signedMessage, m.destinationClient, txHash, m.teleporterMessageID)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -389,19 +381,17 @@ func (f *factory) parseTeleporterMessage(
 // getTeleporterMessenger returns the Teleporter messenger instance for the destination chain.
 // Panic instead of returning errors because this should never happen, and if it does, we do not
 // want to log and swallow the error, since operations after this will fail too.
-func (f *factory) getTeleporterMessenger(
-	destinationClient vms.DestinationClient,
-) *teleportermessenger.TeleporterMessenger {
-	client, ok := destinationClient.Client().(ethclient.Client)
+func (m *messageHandler) getTeleporterMessenger() *teleportermessenger.TeleporterMessenger {
+	client, ok := m.destinationClient.Client().(ethclient.Client)
 	if !ok {
 		panic(fmt.Sprintf(
 			"Destination client for chain %s is not an Ethereum client",
-			destinationClient.DestinationBlockchainID().String()),
+			m.destinationClient.DestinationBlockchainID().String()),
 		)
 	}
 
 	// Get the teleporter messenger contract
-	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(f.protocolAddress, client)
+	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, client)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get teleporter messenger contract: %s", err.Error()))
 	}
