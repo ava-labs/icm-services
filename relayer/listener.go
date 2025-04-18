@@ -226,7 +226,6 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 	}
 }
 
-// Sets the listener health status to false while attempting to reconnect.
 func (lstnr *Listener) reconnectToSubscriber() error {
 	// Attempt to reconnect the subscription
 	err := lstnr.Subscriber.Subscribe(retryResubscribeTimeout)

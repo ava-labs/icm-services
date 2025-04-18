@@ -27,6 +27,7 @@ import (
 	vdrs "github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
+	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/linked"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -64,7 +65,7 @@ type AppRequestNetwork interface {
 		*ConnectedCanonicalValidators,
 		error,
 	)
-	GetSubnetID(blockchainID ids.ID) (ids.ID, error)
+	GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error)
 	RegisterAppRequest(requestID ids.RequestID)
 	RegisterRequestID(
 		requestID uint32,
@@ -78,6 +79,7 @@ type AppRequestNetwork interface {
 	) set.Set[ids.NodeID]
 	Shutdown()
 	TrackSubnet(subnetID ids.ID)
+	NumConnectedPeers() int
 }
 
 type appRequestNetwork struct {
@@ -103,12 +105,13 @@ type appRequestNetwork struct {
 // NewNetwork creates a P2P network client for interacting with validators
 func NewNetwork(
 	logger logging.Logger,
-	registerer prometheus.Registerer,
+	relayerRegistry prometheus.Registerer,
+	peerNetworkRegistry prometheus.Registerer,
 	trackedSubnets set.Set[ids.ID],
 	manuallyTrackedPeers []info.Peer,
 	cfg Config,
 ) (AppRequestNetwork, error) {
-	metrics, err := newAppRequestNetworkMetrics(registerer)
+	metrics, err := newAppRequestNetworkMetrics(relayerRegistry)
 	if err != nil {
 		logger.Error("Failed to create app request network metrics", zap.Error(err))
 		return nil, err
@@ -144,8 +147,6 @@ func NewNetwork(
 	validatorClient := validators.NewCanonicalValidatorClient(logger, cfg.GetPChainAPI())
 	manager := snowVdrs.NewManager()
 
-	networkMetrics := prometheus.NewRegistry()
-
 	// Primary network must not be explicitly tracked so removing it prior to creating TestNetworkConfig
 	trackedSubnets.Remove(constants.PrimaryNetworkID)
 	if trackedSubnets.Len() > maxNumSubnets {
@@ -153,7 +154,7 @@ func NewNetwork(
 	}
 	trackedSubnetsLock := new(sync.RWMutex)
 	testNetworkConfig, err := network.NewTestNetworkConfig(
-		networkMetrics,
+		peerNetworkRegistry,
 		networkID,
 		manager,
 		trackedSubnets,
@@ -182,7 +183,16 @@ func NewNetwork(
 	nodeID := ids.NodeIDFromCert(parsedCert)
 	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeID))
 
-	testNetwork, err := network.NewTestNetwork(logger, networkMetrics, testNetworkConfig, handler)
+	// Set the activation time for the latest network upgrade
+	upgradeTime := upgrade.GetConfig(networkID).FortunaTime
+
+	testNetwork, err := network.NewTestNetwork(
+		logger,
+		peerNetworkRegistry,
+		testNetworkConfig,
+		handler,
+		upgradeTime,
+	)
 	if err != nil {
 		logger.Error(
 			"Failed to create test network",
@@ -341,7 +351,9 @@ func (n *appRequestNetwork) updateValidatorSet(
 	defer n.validatorSetLock.Unlock()
 
 	// Fetch the subnet validators from the P-Chain
-	validators, err := n.validatorClient.GetProposedValidators(ctx, subnetID)
+	getProposedValidatorsCtx, getProposedValidatorsCtxCancel := context.WithTimeout(ctx, sharedUtils.DefaultRPCTimeout)
+	defer getProposedValidatorsCtxCancel()
+	validators, err := n.validatorClient.GetProposedValidators(getProposedValidatorsCtx, subnetID)
 	if err != nil {
 		return err
 	}
@@ -451,14 +463,18 @@ func (n *appRequestNetwork) Send(
 	return n.network.Send(msg, avagoCommon.SendConfig{NodeIDs: nodeIDs}, subnetID, allower)
 }
 
+func (n *appRequestNetwork) NumConnectedPeers() int {
+	return len(n.network.PeerInfo(nil))
+}
+
 func (n *appRequestNetwork) RegisterAppRequest(requestID ids.RequestID) {
 	n.handler.RegisterAppRequest(requestID)
 }
 func (n *appRequestNetwork) RegisterRequestID(requestID uint32, numExpectedResponse int) chan message.InboundMessage {
 	return n.handler.RegisterRequestID(requestID, numExpectedResponse)
 }
-func (n *appRequestNetwork) GetSubnetID(blockchainID ids.ID) (ids.ID, error) {
-	return n.validatorClient.GetSubnetID(context.Background(), blockchainID)
+func (n *appRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
+	return n.validatorClient.GetSubnetID(ctx, blockchainID)
 }
 
 //

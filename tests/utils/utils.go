@@ -210,6 +210,7 @@ func CreateDefaultRelayerConfig(
 		SignatureCacheSize:              (1024 * 1024),
 		AllowPrivateIPs:                 true,
 		InitialConnectionTimeoutSeconds: 300,
+		MaxConcurrentMessages:           250,
 	}
 }
 

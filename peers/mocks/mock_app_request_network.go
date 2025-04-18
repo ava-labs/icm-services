@@ -10,6 +10,7 @@
 package mocks
 
 import (
+	context "context"
 	reflect "reflect"
 
 	ids "github.com/ava-labs/avalanchego/ids"
@@ -60,18 +61,32 @@ func (mr *MockAppRequestNetworkMockRecorder) GetConnectedCanonicalValidators(sub
 }
 
 // GetSubnetID mocks base method.
-func (m *MockAppRequestNetwork) GetSubnetID(blockchainID ids.ID) (ids.ID, error) {
+func (m *MockAppRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSubnetID", blockchainID)
+	ret := m.ctrl.Call(m, "GetSubnetID", ctx, blockchainID)
 	ret0, _ := ret[0].(ids.ID)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetSubnetID indicates an expected call of GetSubnetID.
-func (mr *MockAppRequestNetworkMockRecorder) GetSubnetID(blockchainID any) *gomock.Call {
+func (mr *MockAppRequestNetworkMockRecorder) GetSubnetID(ctx, blockchainID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnetID", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetSubnetID), blockchainID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnetID", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetSubnetID), ctx, blockchainID)
+}
+
+// NumConnectedPeers mocks base method.
+func (m *MockAppRequestNetwork) NumConnectedPeers() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NumConnectedPeers")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// NumConnectedPeers indicates an expected call of NumConnectedPeers.
+func (mr *MockAppRequestNetworkMockRecorder) NumConnectedPeers() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NumConnectedPeers", reflect.TypeOf((*MockAppRequestNetwork)(nil).NumConnectedPeers))
 }
 
 // RegisterAppRequest mocks base method.

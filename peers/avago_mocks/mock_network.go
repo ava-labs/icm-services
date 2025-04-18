@@ -214,15 +214,15 @@ func (mr *MockNetworkMockRecorder) StartClose() *gomock.Call {
 }
 
 // Track mocks base method.
-func (m *MockNetwork) Track(ips []*ips.ClaimedIPPort) error {
+func (m *MockNetwork) Track(arg0 []*ips.ClaimedIPPort) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Track", ips)
+	ret := m.ctrl.Call(m, "Track", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Track indicates an expected call of Track.
-func (mr *MockNetworkMockRecorder) Track(ips any) *gomock.Call {
+func (mr *MockNetworkMockRecorder) Track(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Track", reflect.TypeOf((*MockNetwork)(nil).Track), ips)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Track", reflect.TypeOf((*MockNetwork)(nil).Track), arg0)
 }

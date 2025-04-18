@@ -12,7 +12,7 @@ package mocks
 import (
 	reflect "reflect"
 
-	ids "github.com/ava-labs/avalanchego/ids"
+	logging "github.com/ava-labs/avalanchego/utils/logging"
 	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	messages "github.com/ava-labs/icm-services/messages"
 	vms "github.com/ava-labs/icm-services/vms"
@@ -44,19 +44,34 @@ func (m *MockMessageHandlerFactory) EXPECT() *MockMessageHandlerFactoryMockRecor
 	return m.recorder
 }
 
-// NewMessageHandler mocks base method.
-func (m *MockMessageHandlerFactory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage) (messages.MessageHandler, error) {
+// GetMessageRoutingInfo mocks base method.
+func (m *MockMessageHandlerFactory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (messages.MessageRoutingInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewMessageHandler", unsignedMessage)
+	ret := m.ctrl.Call(m, "GetMessageRoutingInfo", unsignedMessage)
+	ret0, _ := ret[0].(messages.MessageRoutingInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMessageRoutingInfo indicates an expected call of GetMessageRoutingInfo.
+func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(unsignedMessage any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessageRoutingInfo", reflect.TypeOf((*MockMessageHandlerFactory)(nil).GetMessageRoutingInfo), unsignedMessage)
+}
+
+// NewMessageHandler mocks base method.
+func (m *MockMessageHandlerFactory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewMessageHandler", unsignedMessage, destinationClient)
 	ret0, _ := ret[0].(messages.MessageHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NewMessageHandler indicates an expected call of NewMessageHandler.
-func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(unsignedMessage any) *gomock.Call {
+func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(unsignedMessage, destinationClient any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), unsignedMessage)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), unsignedMessage, destinationClient)
 }
 
 // MockMessageHandler is a mock of MessageHandler interface.
@@ -83,24 +98,6 @@ func (m *MockMessageHandler) EXPECT() *MockMessageHandlerMockRecorder {
 	return m.recorder
 }
 
-// GetMessageRoutingInfo mocks base method.
-func (m *MockMessageHandler) GetMessageRoutingInfo() (ids.ID, common.Address, ids.ID, common.Address, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMessageRoutingInfo")
-	ret0, _ := ret[0].(ids.ID)
-	ret1, _ := ret[1].(common.Address)
-	ret2, _ := ret[2].(ids.ID)
-	ret3, _ := ret[3].(common.Address)
-	ret4, _ := ret[4].(error)
-	return ret0, ret1, ret2, ret3, ret4
-}
-
-// GetMessageRoutingInfo indicates an expected call of GetMessageRoutingInfo.
-func (mr *MockMessageHandlerMockRecorder) GetMessageRoutingInfo() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessageRoutingInfo", reflect.TypeOf((*MockMessageHandler)(nil).GetMessageRoutingInfo))
-}
-
 // GetUnsignedMessage mocks base method.
 func (m *MockMessageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
 	m.ctrl.T.Helper()
@@ -115,32 +112,46 @@ func (mr *MockMessageHandlerMockRecorder) GetUnsignedMessage() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnsignedMessage", reflect.TypeOf((*MockMessageHandler)(nil).GetUnsignedMessage))
 }
 
-// SendMessage mocks base method.
-func (m *MockMessageHandler) SendMessage(signedMessage *warp.Message, destinationClient vms.DestinationClient) (common.Hash, error) {
+// LoggerWithContext mocks base method.
+func (m *MockMessageHandler) LoggerWithContext(arg0 logging.Logger) logging.Logger {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendMessage", signedMessage, destinationClient)
+	ret := m.ctrl.Call(m, "LoggerWithContext", arg0)
+	ret0, _ := ret[0].(logging.Logger)
+	return ret0
+}
+
+// LoggerWithContext indicates an expected call of LoggerWithContext.
+func (mr *MockMessageHandlerMockRecorder) LoggerWithContext(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoggerWithContext", reflect.TypeOf((*MockMessageHandler)(nil).LoggerWithContext), arg0)
+}
+
+// SendMessage mocks base method.
+func (m *MockMessageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendMessage", signedMessage)
 	ret0, _ := ret[0].(common.Hash)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SendMessage indicates an expected call of SendMessage.
-func (mr *MockMessageHandlerMockRecorder) SendMessage(signedMessage, destinationClient any) *gomock.Call {
+func (mr *MockMessageHandlerMockRecorder) SendMessage(signedMessage any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockMessageHandler)(nil).SendMessage), signedMessage, destinationClient)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockMessageHandler)(nil).SendMessage), signedMessage)
 }
 
 // ShouldSendMessage mocks base method.
-func (m *MockMessageHandler) ShouldSendMessage(destinationClient vms.DestinationClient) (bool, error) {
+func (m *MockMessageHandler) ShouldSendMessage() (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ShouldSendMessage", destinationClient)
+	ret := m.ctrl.Call(m, "ShouldSendMessage")
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ShouldSendMessage indicates an expected call of ShouldSendMessage.
-func (mr *MockMessageHandlerMockRecorder) ShouldSendMessage(destinationClient any) *gomock.Call {
+func (mr *MockMessageHandlerMockRecorder) ShouldSendMessage() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldSendMessage", reflect.TypeOf((*MockMessageHandler)(nil).ShouldSendMessage), destinationClient)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldSendMessage", reflect.TypeOf((*MockMessageHandler)(nil).ShouldSendMessage))
 }

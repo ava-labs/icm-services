@@ -12,6 +12,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/peers"
@@ -22,14 +23,18 @@ import (
 	"github.com/ava-labs/subnet-evm/rpc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"golang.org/x/sync/errgroup"
-
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
-	retryTimeout   = 10 * time.Second
-	warpAPITimeout = utils.DefaultRPCTimeout + peers.DefaultAppRequestTimeout
+	retryTimeout  = 10 * time.Second
+	maxRetryCount = 5
+
+	// The additional percentage of stake weight that we will try to aggregate signatures from above the required
+	// quorum. This allows for small weight changes in between the time the signature is constructed and the time
+	// it is verified to not cause the verification to fail.
+	defaultQuorumPercentageBuffer = uint64(3)
 )
 
 // Errors
@@ -61,6 +66,7 @@ type ApplicationRelayer struct {
 	checkpointManager         CheckpointManager
 	sourceWarpSignatureClient *rpc.Client // nil if configured to fetch signatures via AppRequest for the source blockchain
 	signatureAggregator       *aggregator.SignatureAggregator
+	processMessageSemaphore   chan struct{}
 }
 
 func NewApplicationRelayer(
@@ -73,6 +79,7 @@ func NewApplicationRelayer(
 	checkpointManager CheckpointManager,
 	cfg *config.Config,
 	signatureAggregator *aggregator.SignatureAggregator,
+	processMessageSemaphore chan struct{},
 ) (*ApplicationRelayer, error) {
 	warpConfig, err := cfg.GetWarpConfig(relayerID.DestinationBlockchainID)
 	if err != nil {
@@ -88,6 +95,10 @@ func NewApplicationRelayer(
 	if sourceBlockchain.GetSubnetID() == constants.PrimaryNetworkID && !warpConfig.RequirePrimaryNetworkSigners {
 		// If the message originates from the primary network, and the primary network is validated by
 		// the destination subnet we can "self-sign" the message using the validators of the destination subnet.
+		logger.Info(
+			"Self-signing message originating from primary network",
+			zap.String("destinationBlockchainID", relayerID.DestinationBlockchainID.String()),
+		)
 		signingSubnet = cfg.GetSubnetID(relayerID.DestinationBlockchainID)
 	} else {
 		// Otherwise, the source subnet signs the message.
@@ -128,6 +139,7 @@ func NewApplicationRelayer(
 		checkpointManager:         checkpointManager,
 		sourceWarpSignatureClient: warpClient,
 		signatureAggregator:       signatureAggregator,
+		processMessageSemaphore:   processMessageSemaphore,
 	}
 
 	return &ar, nil
@@ -151,7 +163,13 @@ func (r *ApplicationRelayer) ProcessHeight(
 	)
 	var eg errgroup.Group
 	for _, handler := range handlers {
+		// Acquire the semaphore to limit the number of messages being processed concurrently globally.
+		r.processMessageSemaphore <- struct{}{}
+
 		eg.Go(func() error {
+			defer func() {
+				<-r.processMessageSemaphore
+			}()
 			_, err := r.ProcessMessage(handler)
 			return err
 		})
@@ -178,13 +196,12 @@ func (r *ApplicationRelayer) ProcessHeight(
 
 // Relays a message to the destination chain. Does not checkpoint the height.
 // returns the transaction hash if the message is successfully relayed.
-func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (common.Hash, error) {
-	r.logger.Debug(
+func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler) (common.Hash, error) {
+	r.logger.Info(
 		"Relaying message",
-		zap.String("sourceBlockchainID", r.sourceBlockchain.BlockchainID),
-		zap.String("relayerID", r.relayerID.ID.String()),
+		zap.Stringer("relayerID", r.relayerID.ID),
 	)
-	shouldSend, err := handler.ShouldSendMessage(r.destinationClient)
+	shouldSend, err := handler.ShouldSendMessage()
 	if err != nil {
 		r.logger.Error(
 			"Failed to check if message should be sent",
@@ -205,11 +222,21 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 
 	// sourceWarpSignatureClient is nil iff the source blockchain is configured to fetch signatures via AppRequest
 	if r.sourceWarpSignatureClient == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
+		defer cancel()
+
+		quorumPercentageBuffer := utils.CalculateQuorumPercentageBuffer(
+			r.warpConfig.QuorumNumerator,
+			defaultQuorumPercentageBuffer,
+		)
 		signedMessage, err = r.signatureAggregator.CreateSignedMessage(
+			ctx,
+			handler.LoggerWithContext(r.logger),
 			unsignedMessage,
 			nil,
 			r.signingSubnetID,
 			r.warpConfig.QuorumNumerator,
+			quorumPercentageBuffer,
 		)
 		r.incFetchSignatureAppRequestCount()
 		if err != nil {
@@ -236,7 +263,7 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 	// create signed message latency (ms)
 	r.setCreateSignedMessageLatencyMS(float64(time.Since(startCreateSignedMessageTime).Milliseconds()))
 
-	txHash, err := handler.SendMessage(signedMessage, r.destinationClient)
+	txHash, err := handler.SendMessage(signedMessage)
 	if err != nil {
 		r.logger.Error(
 			"Failed to send warp message",
@@ -247,12 +274,41 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 	}
 	r.logger.Info(
 		"Finished relaying message to destination chain",
-		zap.String("destinationBlockchainID", r.relayerID.DestinationBlockchainID.String()),
-		zap.String("txHash", txHash.Hex()),
+		zap.Stringer("relayerID", r.relayerID.ID),
+		zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
+		zap.Stringer("txHash", txHash),
 	)
 	r.incSuccessfulRelayMessageCount()
 
 	return txHash, nil
+}
+
+func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (common.Hash, error) {
+	var err error
+	// Retry processing the message if it fails to account for cases where the signature is successfully aggregated
+	// but the message fails to verify on the destination chain due to validator churn
+	// No delays are implemented between retries since the failure scenario here involves timing differences
+	// and the signature aggregator will not re-query the individual validators from which it has already
+	// acquired the signatures.
+	for i := 0; i < maxRetryCount; i++ {
+		var txHash common.Hash
+		startProcessMessageTime := time.Now()
+		txHash, err = r.processMessage(handler)
+		if err == nil {
+			return txHash, nil
+		}
+		r.logger.Warn(
+			"failed to process message",
+			zap.Int("attempt", i+1),
+			zap.Int64("latencyMS", time.Since(startProcessMessageTime).Milliseconds()),
+			zap.Error(err),
+		)
+	}
+	r.logger.Error(
+		"failed to process message after max retries",
+		zap.Error(err),
+	)
+	return common.Hash{}, err
 }
 
 func (r *ApplicationRelayer) RelayerID() database.RelayerID {
@@ -271,8 +327,11 @@ func (r *ApplicationRelayer) createSignedMessage(
 		signedWarpMessageBytes hexutil.Bytes
 		err                    error
 	)
-	cctx, cancel := context.WithTimeout(context.Background(), warpAPITimeout)
+	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
 	defer cancel()
+
+	// The warp_getMessageAggregateSignature method does not support the optional quorum percentage
+	// buffer, so just use the required quorum percentage here.
 	operation := func() error {
 		return r.sourceWarpSignatureClient.CallContext(
 			cctx,
@@ -283,7 +342,7 @@ func (r *ApplicationRelayer) createSignedMessage(
 			r.signingSubnetID.String(),
 		)
 	}
-	err = utils.WithRetriesTimeout(r.logger, operation, retryTimeout)
+	err = utils.WithRetriesTimeout(r.logger, operation, retryTimeout, "warp_getMessageAggregateSignature")
 	if err != nil {
 		r.logger.Error(
 			"Failed to get aggregate signature from node endpoint.",

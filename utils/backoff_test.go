@@ -20,6 +20,7 @@ func TestWithMaxRetries(t *testing.T) {
 			},
 			// using default values: we want to run max 2 tries.
 			624*time.Millisecond,
+			"NotEnoughRetry",
 		)
 		require.Error(t, err)
 	})
@@ -34,6 +35,7 @@ func TestWithMaxRetries(t *testing.T) {
 			},
 			// using default values we want to run 3 tries.
 			2000*time.Millisecond,
+			"EnoughRetry",
 		)
 		require.NoError(t, err)
 		require.True(t, res)

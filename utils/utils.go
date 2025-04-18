@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -29,6 +30,9 @@ var (
 
 const (
 	DefaultRPCTimeout = 5 * time.Second
+	// Re-exposing DefaultAppRequestTimeout for use by message creators to set deadlines
+	DefaultAppRequestTimeout          = constants.DefaultNetworkMaximumTimeout
+	DefaultCreateSignedMessageTimeout = DefaultRPCTimeout + DefaultAppRequestTimeout
 )
 
 //
@@ -52,6 +56,21 @@ func CheckStakeWeightExceedsThreshold(
 	scaledSigWeight := new(big.Int).Mul(accumulatedSignatureWeight, new(big.Int).SetUint64(warp.WarpQuorumDenominator))
 
 	return scaledTotalWeight.Cmp(scaledSigWeight) != 1
+}
+
+// CalculateQuorumPercentageBuffer calculates the quorum percentage buffer based on the required quorum percentage
+// and the desired quorum percentage buffer.
+func CalculateQuorumPercentageBuffer(
+	requiredQuorumPercentage uint64,
+	desiredQuorumPercentageBuffer uint64,
+) uint64 {
+	if requiredQuorumPercentage >= 100 {
+		return 0
+	}
+	if requiredQuorumPercentage+desiredQuorumPercentageBuffer > 100 {
+		return 100 - requiredQuorumPercentage
+	}
+	return desiredQuorumPercentageBuffer
 }
 
 //

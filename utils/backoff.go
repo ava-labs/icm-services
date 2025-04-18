@@ -5,6 +5,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/cenkalti/backoff/v4"
+	"go.uber.org/zap"
 )
 
 // WithRetriesTimeout uses an exponential backoff to run the operation until it
@@ -14,12 +15,13 @@ func WithRetriesTimeout(
 	logger logging.Logger,
 	operation backoff.Operation,
 	timeout time.Duration,
+	logMessage string,
 ) error {
 	expBackOff := backoff.NewExponentialBackOff(
 		backoff.WithMaxElapsedTime(timeout),
 	)
 	notify := func(err error, duration time.Duration) {
-		logger.Warn("operation failed, retrying...")
+		logger.Warn("operation failed, retrying...", zap.String("logMessage", logMessage))
 	}
 	err := backoff.RetryNotify(operation, expBackOff, notify)
 	return err

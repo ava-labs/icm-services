@@ -17,3 +17,6 @@ out/
 
 # Release build outputs
 osxcross/
+
+# Local DB
+.icm-relayer-storage/

@@ -5,13 +5,8 @@ package metrics
 
 import (
 	"errors"
-	"fmt"
-	"log"
-	"net/http"
 
-	"github.com/ava-labs/avalanchego/api/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -154,38 +149,4 @@ func NewSignatureAggregatorMetrics(
 	registerer.MustRegister(m.ConnectedStakeWeightPercentage)
 
 	return &m
-}
-
-func (m *SignatureAggregatorMetrics) HandleMetricsRequest(
-	gatherer metrics.MultiGatherer,
-) {
-	http.Handle(
-		"/metrics",
-		promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}),
-	)
-}
-
-func Initialize(port uint16) *prometheus.Registry {
-	gatherer := metrics.NewPrefixGatherer()
-	registry := prometheus.NewRegistry()
-	err := gatherer.Register("signature-aggregator", registry)
-	if err != nil {
-		panic(
-			fmt.Errorf(
-				"failed to register metrics gatherer: %w",
-				err,
-			),
-		)
-	}
-
-	http.Handle(
-		"/metrics",
-		promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}),
-	)
-
-	go func() {
-		log.Fatalln(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
-	}()
-
-	return registry
 }

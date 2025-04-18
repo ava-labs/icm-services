@@ -35,6 +35,7 @@ type WarpBlockInfo struct {
 // from the manual Warp message information provided via configuration.
 type WarpMessageInfo struct {
 	SourceAddress   common.Address
+	SourceTxID      common.Hash
 	UnsignedMessage *avalancheWarp.UnsignedMessage
 }
 
@@ -57,7 +58,7 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 			})
 			return err
 		}
-		err = utils.WithRetriesTimeout(logger, operation, utils.DefaultRPCTimeout)
+		err = utils.WithRetriesTimeout(logger, operation, utils.DefaultRPCTimeout, "get warp logs from block")
 		if err != nil {
 			return nil, err
 		}
@@ -92,6 +93,7 @@ func NewWarpMessageInfo(log types.Log) (*WarpMessageInfo, error) {
 
 	return &WarpMessageInfo{
 		SourceAddress:   common.BytesToAddress(log.Topics[1][:]),
+		SourceTxID:      log.TxHash,
 		UnsignedMessage: unsignedMsg,
 	}, nil
 }

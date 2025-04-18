@@ -2,7 +2,7 @@ package aggregator
 
 import (
 	"bytes"
-	"os"
+	"context"
 	"testing"
 
 	"crypto/rand"
@@ -17,15 +17,15 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
+	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers"
+	avago_mocks "github.com/ava-labs/icm-services/peers/avago_mocks"
 	"github.com/ava-labs/icm-services/peers/mocks"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -37,8 +37,10 @@ var (
 func instantiateAggregator(t *testing.T) (
 	*SignatureAggregator,
 	*mocks.MockAppRequestNetwork,
+	*avago_mocks.MockClient,
 ) {
-	mockNetwork := mocks.NewMockAppRequestNetwork(gomock.NewController(t))
+	mockController := gomock.NewController(t)
+	mockNetwork := mocks.NewMockAppRequestNetwork(mockController)
 	if sigAggMetrics == nil {
 		sigAggMetrics = metrics.NewSignatureAggregatorMetrics(prometheus.DefaultRegisterer)
 	}
@@ -52,24 +54,17 @@ func instantiateAggregator(t *testing.T) (
 		)
 		require.NoError(t, err)
 	}
+	mockPClient := avago_mocks.NewMockClient(mockController)
 	aggregator, err := NewSignatureAggregator(
 		mockNetwork,
-		logging.NewLogger(
-			"aggregator_test",
-			logging.NewWrappedCore(
-				logging.Debug,
-				os.Stdout,
-				zapcore.NewConsoleEncoder(
-					zap.NewProductionEncoderConfig(),
-				),
-			),
-		),
 		messageCreator,
 		1024,
 		sigAggMetrics,
+		mockPClient,
+		nil,
 	)
 	require.NoError(t, err)
-	return aggregator, mockNetwork
+	return aggregator, mockNetwork, mockPClient
 }
 
 // Generate the validator values.
@@ -132,11 +127,46 @@ func makeConnectedValidators(validatorCount int) (*peers.ConnectedCanonicalValid
 	}, validatorSigners
 }
 
+func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
+	testCases := []struct {
+		name                     string
+		requiredQuorumPercentage uint64
+		quorumPercentageBuffer   uint64
+	}{
+		{
+			name:                     "Zero required quorum percentage",
+			requiredQuorumPercentage: 0,
+			quorumPercentageBuffer:   5,
+		},
+		{
+			name:                     "Quorum percentage above 100",
+			requiredQuorumPercentage: 96,
+			quorumPercentageBuffer:   5,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			aggregator, _, _ := instantiateAggregator(t)
+			signedMsg, err := aggregator.CreateSignedMessage(
+				context.Background(),
+				logging.NoLog{},
+				nil,
+				nil,
+				ids.Empty,
+				tc.requiredQuorumPercentage,
+				tc.quorumPercentageBuffer,
+			)
+			require.Nil(t, signedMsg)
+			require.ErrorIs(t, err, errInvalidQuorumPercentage)
+		})
+	}
+}
+
 func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
-	aggregator, mockNetwork := instantiateAggregator(t)
+	aggregator, mockNetwork, _ := instantiateAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
-	mockNetwork.EXPECT().GetSubnetID(ids.Empty).Return(ids.Empty, nil)
+	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
 	mockNetwork.EXPECT().GetConnectedCanonicalValidators(ids.Empty).Return(
 		&peers.ConnectedCanonicalValidators{
@@ -148,15 +178,15 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 		},
 		nil,
 	)
-	_, err = aggregator.CreateSignedMessage(msg, nil, ids.Empty, 80)
+	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0)
 	require.ErrorContains(t, err, "no signatures")
 }
 
 func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
-	aggregator, mockNetwork := instantiateAggregator(t)
+	aggregator, mockNetwork, _ := instantiateAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
-	mockNetwork.EXPECT().GetSubnetID(ids.Empty).Return(ids.Empty, nil)
+	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
 	mockNetwork.EXPECT().GetConnectedCanonicalValidators(ids.Empty).Return(
 		&peers.ConnectedCanonicalValidators{
@@ -168,7 +198,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 		},
 		nil,
 	).AnyTimes()
-	_, err = aggregator.CreateSignedMessage(msg, nil, ids.Empty, 80)
+	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0)
 	require.ErrorContains(
 		t,
 		err,
@@ -201,7 +231,7 @@ func makeAppRequests(
 }
 
 func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
-	aggregator, mockNetwork := instantiateAggregator(t)
+	aggregator, mockNetwork, mockPClient := instantiateAggregator(t)
 
 	var (
 		connectedValidators, _ = makeConnectedValidators(2)
@@ -214,7 +244,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	require.NoError(t, err)
 
 	subnetID := ids.GenerateTestID()
-	mockNetwork.EXPECT().GetSubnetID(chainID).Return(
+	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(
 		subnetID,
 		nil,
 	)
@@ -248,7 +278,12 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		subnets.NoOpAllower,
 	).AnyTimes()
 
-	_, err = aggregator.CreateSignedMessage(msg, nil, subnetID, 80)
+	mockPClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+		platformvm.GetSubnetClientResponse{},
+		nil,
+	).Times(1)
+
+	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, subnetID, 80, 0)
 	require.ErrorIs(
 		t,
 		err,
@@ -257,101 +292,138 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 }
 
 func TestCreateSignedMessageSucceeds(t *testing.T) {
-	var msg *warp.UnsignedMessage // to be signed
-	chainID := ids.GenerateTestID()
-	networkID := constants.UnitTestID
-	msg, err := warp.NewUnsignedMessage(
-		networkID,
-		chainID,
-		utils.RandomBytes(1234),
-	)
-	require.NoError(t, err)
-
-	// the signers:
-	connectedValidators, validatorSigners := makeConnectedValidators(5)
-
-	// prime the aggregator:
-
-	aggregator, mockNetwork := instantiateAggregator(t)
-
-	subnetID := ids.GenerateTestID()
-	mockNetwork.EXPECT().GetSubnetID(chainID).Return(
-		subnetID,
-		nil,
-	)
-
-	mockNetwork.EXPECT().TrackSubnet(subnetID)
-	mockNetwork.EXPECT().GetConnectedCanonicalValidators(subnetID).Return(
-		connectedValidators,
-		nil,
-	)
-
-	// prime the signers' responses:
-
-	requestID := aggregator.currentRequestID.Load() + 1
-
-	appRequests := makeAppRequests(chainID, requestID, connectedValidators)
-	for _, appRequest := range appRequests {
-		mockNetwork.EXPECT().RegisterAppRequest(appRequest).Times(1)
+	// The test sets up valid signature responses from 4 of 5 equally weighted validators.
+	testCases := []struct {
+		name                     string
+		requiredQuorumPercentage uint64
+		quorumPercentageBuffer   uint64
+	}{
+		{
+			name:                     "Succeeds with buffer",
+			requiredQuorumPercentage: 67,
+			quorumPercentageBuffer:   5,
+		},
+		{
+			name:                     "Succeeds without buffer",
+			requiredQuorumPercentage: 80,
+			quorumPercentageBuffer:   5,
+		},
 	}
 
-	var nodeIDs set.Set[ids.NodeID]
-	responseChan := make(chan message.InboundMessage, len(appRequests))
-	for _, appRequest := range appRequests {
-		nodeIDs.Add(appRequest.NodeID)
-		validatorSigner := validatorSigners[connectedValidators.NodeValidatorIndexMap[appRequest.NodeID]]
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var msg *warp.UnsignedMessage // to be signed
+			chainID := ids.GenerateTestID()
+			networkID := constants.UnitTestID
+			msg, err := warp.NewUnsignedMessage(
+				networkID,
+				chainID,
+				utils.RandomBytes(1234),
+			)
+			require.NoError(t, err)
 
-		signature, err := validatorSigner.Sign(msg.Bytes())
-		require.NoError(t, err)
-		responseBytes, err := proto.Marshal(
-			&sdk.SignatureResponse{
-				Signature: bls.SignatureToBytes(
-					signature,
-				),
-			},
-		)
-		require.NoError(t, err)
-		responseChan <- message.InboundAppResponse(
-			chainID,
-			requestID,
-			responseBytes,
-			appRequest.NodeID,
-		)
+			// the signers:
+			connectedValidators, validatorSigners := makeConnectedValidators(5)
+
+			// prime the aggregator:
+
+			aggregator, mockNetwork, mockPClient := instantiateAggregator(t)
+
+			subnetID := ids.GenerateTestID()
+			mockNetwork.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(
+				subnetID,
+				nil,
+			)
+
+			mockNetwork.EXPECT().TrackSubnet(subnetID)
+			mockNetwork.EXPECT().GetConnectedCanonicalValidators(subnetID).Return(
+				connectedValidators,
+				nil,
+			)
+
+			mockPClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+				platformvm.GetSubnetClientResponse{},
+				nil,
+			).Times(1)
+
+			// prime the signers' responses:
+
+			requestID := aggregator.currentRequestID.Load() + 1
+
+			appRequests := makeAppRequests(chainID, requestID, connectedValidators)
+			for _, appRequest := range appRequests {
+				mockNetwork.EXPECT().RegisterAppRequest(appRequest).Times(1)
+			}
+
+			var nodeIDs set.Set[ids.NodeID]
+			responseChan := make(chan message.InboundMessage, len(appRequests))
+			for i, appRequest := range appRequests {
+				nodeIDs.Add(appRequest.NodeID)
+				validatorSigner := validatorSigners[connectedValidators.NodeValidatorIndexMap[appRequest.NodeID]]
+
+				// Simulate 1 of 5 validators responding with an invalid signature
+				var signatureBytes []byte
+				if i == len(appRequests)-1 {
+					signatureBytes = make([]byte, 0)
+				} else {
+					signature, err := validatorSigner.Sign(msg.Bytes())
+					require.NoError(t, err)
+					signatureBytes = bls.SignatureToBytes(signature)
+				}
+
+				responseBytes, err := proto.Marshal(
+					&sdk.SignatureResponse{
+						Signature: signatureBytes,
+					},
+				)
+				require.NoError(t, err)
+				responseChan <- message.InboundAppResponse(
+					chainID,
+					requestID,
+					responseBytes,
+					appRequest.NodeID,
+				)
+			}
+			mockNetwork.EXPECT().RegisterRequestID(
+				requestID,
+				len(appRequests),
+			).Return(responseChan).Times(1)
+
+			mockNetwork.EXPECT().Send(
+				gomock.Any(),
+				nodeIDs,
+				subnetID,
+				subnets.NoOpAllower,
+			).Times(1).Return(nodeIDs)
+
+			// aggregate the signatures:
+			// This should still succeed because we have 4 out of 5 valid signatures,
+			// even though we're not able to get the quorum percentage buffer.
+			signedMessage, err := aggregator.CreateSignedMessage(
+				context.Background(),
+				logging.NoLog{},
+				msg,
+				nil,
+				subnetID,
+				tc.requiredQuorumPercentage,
+				tc.quorumPercentageBuffer,
+			)
+			require.NoError(t, err)
+
+			verifyErr := signedMessage.Signature.Verify(
+				msg,
+				networkID,
+				connectedValidators.ValidatorSet,
+				tc.requiredQuorumPercentage,
+				100,
+			)
+			require.NoError(t, verifyErr)
+		})
 	}
-	mockNetwork.EXPECT().RegisterRequestID(
-		requestID,
-		len(appRequests),
-	).Return(responseChan).Times(1)
-
-	mockNetwork.EXPECT().Send(
-		gomock.Any(),
-		nodeIDs,
-		subnetID,
-		subnets.NoOpAllower,
-	).Times(1).Return(nodeIDs)
-
-	// aggregate the signatures:
-	var quorumPercentage uint64 = 80
-	signedMessage, err := aggregator.CreateSignedMessage(
-		msg,
-		nil,
-		subnetID,
-		quorumPercentage,
-	)
-	require.NoError(t, err)
-
-	verifyErr := signedMessage.Signature.Verify(
-		msg,
-		networkID,
-		connectedValidators.ValidatorSet,
-		quorumPercentage,
-		100,
-	)
-	require.NoError(t, verifyErr)
 }
 
 func TestUnmarshalResponse(t *testing.T) {
-	aggregator, _ := instantiateAggregator(t)
+	aggregator, _, _ := instantiateAggregator(t)
 
 	emptySignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: []byte{}})
 	require.NoError(t, err)

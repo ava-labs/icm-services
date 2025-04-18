@@ -10,6 +10,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCalculateQuorumPercentageBuffer(t *testing.T) {
+	testCases := []struct {
+		name                     string
+		requiredQuorumPercentage uint64
+		desiredQuorumPercentage  uint64
+		expectedResult           uint64
+	}{
+		{
+			name:                     "required already invalid",
+			requiredQuorumPercentage: 101,
+			desiredQuorumPercentage:  1,
+			expectedResult:           0,
+		},
+		{
+			name:                     "use desired",
+			requiredQuorumPercentage: 67,
+			desiredQuorumPercentage:  3,
+			expectedResult:           3,
+		},
+		{
+			name:                     "use remaining",
+			requiredQuorumPercentage: 67,
+			desiredQuorumPercentage:  35,
+			expectedResult:           33,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			actualResult := CalculateQuorumPercentageBuffer(
+				testCase.requiredQuorumPercentage,
+				testCase.desiredQuorumPercentage,
+			)
+			require.Equal(t, testCase.expectedResult, actualResult)
+		})
+	}
+}
+
 func TestHexOrCB58ToID(t *testing.T) {
 	testCases := []struct {
 		name           string

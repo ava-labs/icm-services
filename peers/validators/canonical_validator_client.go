@@ -16,6 +16,7 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/peers/utils"
+	sharedUtils "github.com/ava-labs/icm-services/utils"
 	"go.uber.org/zap"
 
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
@@ -53,8 +54,10 @@ func (v *CanonicalValidatorClient) GetCurrentCanonicalValidatorSet(
 	subnetID ids.ID,
 ) (avalancheWarp.CanonicalValidatorSet, error) {
 	// Get the current canonical validator set of the source subnet.
+	ctx, cancel := context.WithTimeout(context.Background(), sharedUtils.DefaultRPCTimeout)
+	defer cancel()
 	canonicalSubnetValidators, err := avalancheWarp.GetCanonicalValidatorSetFromSubnetID(
-		context.Background(),
+		ctx,
 		v,
 		pchainapi.ProposedHeight,
 		subnetID,

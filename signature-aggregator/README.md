@@ -32,10 +32,11 @@ Sample config that can be used for local testing is `signature-aggregator/sample
 The only exposed endpoint is `/aggregate-signatures`  expecting `application/json` encoded request with the following body. Note that all the fields are optional but at least one of `message` or `justification` must be non-empty:
 ```json
 {
-    "message": "",            // (string) hex-encoded unsigned message bytes to be signed
-    "justification": "",      // (string) hex-encoded bytes to supply to the validators as justification
-    "signing-subnet-id": "",  // (string) hex or cb58 encoded signing subnet ID. Defaults to source blockchain's subnet from data if omitted.
-    "quorum-percentage": 67   // (int) quorum percentage required to sign the message. Defaults to 67 if omitted
+    "message": "",                // (string) hex-encoded unsigned message bytes to be signed
+    "justification": "",          // (string) hex-encoded bytes to supply to the validators as justification
+    "signing-subnet-id": "",      // (string) hex or cb58 encoded signing subnet ID. Defaults to source blockchain's subnet from data if omitted.
+    "quorum-percentage": 67,      // (int) quorum percentage required to sign the message. Defaults to 67 if omitted
+    "quorum-percentage-buffer": 0 // (int) additional quorum percentage to attempt to include in the signed message. Defaults to 0 if omitted.
 }
 ```
 

@@ -199,6 +199,14 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
 - The path to a TLS key file. Should only be set if a static NodeID is required for connecting to private networks.
 
+`"initial-connection-timeout-seconds": unsigned integer`
+
+- The maximum number of seconds to wait during start up to connect to sufficient stake weight of each supported chain.
+
+`"max-concurrent-messages": unsigned integer`
+
+- The maximum number of messages the application will attempt to process concurrently. Processing messages involves making potentially multiple RPC requests, and issuing too many requests at once may cause failures.
+
 `"manual-warp-messages": []ManualWarpMessage`
 
 - The list of Warp messages to relay on startup, independent of the catch-up mechanism or normal operation. Each `ManualWarpMessage` has the following configuration:

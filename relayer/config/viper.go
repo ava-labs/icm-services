@@ -63,7 +63,8 @@ func SetDefaultConfigValues(v *viper.Viper) {
 		SignatureCacheSizeKey,
 		defaultSignatureCacheSize,
 	)
-	v.SetDefault(InitialConnectionTimeoutSeconds, defaultInitialConnectionTimeoutSeconds)
+	v.SetDefault(InitialConnectionTimeoutSecondsKey, defaultInitialConnectionTimeoutSeconds)
+	v.SetDefault(MaxConcurrentMessagesKey, defaultMaxConcurrentMessages)
 }
 
 // BuildConfig constructs the relayer config using Viper.

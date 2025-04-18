@@ -39,6 +39,7 @@ const (
 	defaultIntervalSeconds                 = uint64(10)
 	defaultSignatureCacheSize              = uint64(1024 * 1024)
 	defaultInitialConnectionTimeoutSeconds = uint64(300)
+	defaultMaxConcurrentMessages           = uint64(250)
 )
 
 var defaultLogLevel = logging.Info.String()
@@ -69,7 +70,8 @@ type Config struct {
 	AllowPrivateIPs                 bool                     `mapstructure:"allow-private-ips" json:"allow-private-ips"`
 	TLSCertPath                     string                   `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"` //nolint:lll
 	TLSKeyPath                      string                   `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
-	InitialConnectionTimeoutSeconds uint64                   `mapstructure:"initial-connection-timeout-seconds" json:"initial-connection-timeout-seconds"` // nolint:lll
+	InitialConnectionTimeoutSeconds uint64                   `mapstructure:"initial-connection-timeout-seconds" json:"initial-connection-timeout-seconds,omitempty"` // nolint:lll
+	MaxConcurrentMessages           uint64                   `mapstructure:"max-concurrent-messages" json:"max-concurrent-messages,omitempty"`                       //nolint:lll
 
 	// convenience field to fetch a blockchain's subnet ID
 	tlsCert                *tls.Certificate
@@ -157,6 +159,14 @@ func (c *Config) Validate() error {
 
 	for _, l1ID := range c.blockchainIDToSubnetID {
 		c.trackedSubnets.Add(l1ID)
+	}
+
+	if c.InitialConnectionTimeoutSeconds == 0 {
+		return errors.New("initial-connection-timeout-seconds must be greater than 0")
+	}
+
+	if c.MaxConcurrentMessages == 0 {
+		return errors.New("max-concurrent-messages must be greater than 0")
 	}
 
 	return nil

@@ -129,7 +129,9 @@ func (c *destinationClient) SendTx(
 	callData []byte,
 ) (common.Hash, error) {
 	// Get the current base fee estimation, which is based on the previous blocks gas usage.
-	baseFee, err := c.client.EstimateBaseFee(context.Background())
+	baseFeeCtx, baseFeeCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer baseFeeCtxCancel()
+	baseFee, err := c.client.EstimateBaseFee(baseFeeCtx)
 	if err != nil {
 		c.logger.Error(
 			"Failed to get base fee",
@@ -140,7 +142,9 @@ func (c *destinationClient) SendTx(
 
 	// Get the suggested gas tip cap of the network
 	// TODO: Add a configurable ceiling to this value
-	gasTipCap, err := c.client.SuggestGasTipCap(context.Background())
+	gasTipCapCtx, gasTipCapCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer gasTipCapCtxCancel()
+	gasTipCap, err := c.client.SuggestGasTipCap(gasTipCapCtx)
 	if err != nil {
 		c.logger.Error(
 			"Failed to get gas tip cap",
@@ -184,7 +188,9 @@ func (c *destinationClient) SendTx(
 		return common.Hash{}, err
 	}
 
-	if err := c.client.SendTransaction(context.Background(), signedTx); err != nil {
+	sendTxCtx, sendTxCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer sendTxCtxCancel()
+	if err := c.client.SendTransaction(sendTxCtx, signedTx); err != nil {
 		c.logger.Error(
 			"Failed to send transaction",
 			zap.Error(err),

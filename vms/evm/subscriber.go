@@ -70,7 +70,9 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	}
 
 	// Grab the latest block before filtering logs so we don't miss any before updating the db
-	latestBlockHeight, err := s.rpcClient.BlockNumber(context.Background())
+	latestBlockHeightCtx, latestBlockHeightCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer latestBlockHeightCtxCancel()
+	latestBlockHeight, err := s.rpcClient.BlockNumber(latestBlockHeightCtx)
 	if err != nil {
 		s.logger.Error(
 			"Failed to get latest block",
@@ -129,13 +131,13 @@ func (s *subscriber) getHeaderByNumberRetryable(headerNumber *big.Int) (*types.H
 		err    error
 		header *types.Header
 	)
-	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-	defer cancel()
 	operation := func() (err error) {
+		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+		defer cancel()
 		header, err = s.rpcClient.HeaderByNumber(cctx, headerNumber)
 		return err
 	}
-	err = utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout)
+	err = utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout, "get header by number")
 	if err != nil {
 		s.logger.Error(
 			"Failed to get header by number",
@@ -165,13 +167,13 @@ func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
 // subscribe until it succeeds or reached timeout.
 func (s *subscriber) subscribe(retryTimeout time.Duration) error {
 	var sub interfaces.Subscription
-	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-	defer cancel()
 	operation := func() (err error) {
+		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+		defer cancel()
 		sub, err = s.wsClient.SubscribeNewHead(cctx, s.headers)
 		return err
 	}
-	err := utils.WithRetriesTimeout(s.logger, operation, retryTimeout)
+	err := utils.WithRetriesTimeout(s.logger, operation, retryTimeout, "subscribe")
 	if err != nil {
 		s.logger.Error(
 			"Failed to subscribe to node",

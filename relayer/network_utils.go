@@ -91,6 +91,14 @@ func checkSufficientConnectedStake(
 			connectedValidators.ValidatorSet.TotalWeight,
 			maxQuorumNumerator,
 		) {
+			logger.Info(
+				"Connected to sufficient stake",
+				zap.Stringer("subnetID", subnetID),
+				zap.Uint64("quorumNumerator", maxQuorumNumerator),
+				zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
+				zap.Uint64("totalValidatorWeight", connectedValidators.ValidatorSet.TotalWeight),
+				zap.Int("numConnectedPeers", network.NumConnectedPeers()),
+			)
 			return nil
 		}
 		logger.Warn(
@@ -99,6 +107,7 @@ func checkSufficientConnectedStake(
 			zap.Uint64("quorumNumerator", maxQuorumNumerator),
 			zap.Uint64("connectedWeight", connectedValidators.ConnectedWeight),
 			zap.Uint64("totalValidatorWeight", connectedValidators.ValidatorSet.TotalWeight),
+			zap.Int("numConnectedPeers", network.NumConnectedPeers()),
 		)
 		return fmt.Errorf("failed to connect to sufficient stake")
 	}

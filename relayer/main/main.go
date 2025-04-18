@@ -5,25 +5,27 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"runtime"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/api/info"
-	"github.com/ava-labs/avalanchego/api/metrics"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/messages/teleporter"
+	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
+	peerUtils "github.com/ava-labs/icm-services/peers/utils"
 	"github.com/ava-labs/icm-services/relayer"
 	"github.com/ava-labs/icm-services/relayer/api"
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
@@ -35,15 +37,22 @@ import (
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	// Sets GOMAXPROCS to the CPU quota for containerized environments
+	_ "go.uber.org/automaxprocs"
 )
 
-var version = "v0.0.0-dev"
+const (
+	version = "v0.0.0-dev"
+
+	relayerMetricsPrefix     = "app"
+	peerNetworkMetricsPrefix = "peers"
+)
 
 func main() {
 	fs := config.BuildFlagSet()
@@ -123,11 +132,20 @@ func main() {
 	}
 
 	// Initialize metrics gathered through prometheus
-	gatherer, registerer, err := initializeMetrics()
+	registries, err := metricsServer.StartMetricsServer(
+		logger,
+		cfg.MetricsPort,
+		[]string{
+			relayerMetricsPrefix,
+			peerNetworkMetricsPrefix,
+		},
+	)
 	if err != nil {
-		logger.Fatal("Failed to set up prometheus metrics", zap.Error(err))
+		logger.Fatal("Failed to start metrics server", zap.Error(err))
 		panic(err)
 	}
+	relayerMetricsRegistry := registries[relayerMetricsPrefix]
+	peerNetworkMetricsRegistry := registries[peerNetworkMetricsPrefix]
 
 	// Initialize the global app request network
 	logger.Info("Initializing app request network")
@@ -151,7 +169,7 @@ func main() {
 	// We do not collect metrics for the message creator.
 	messageCreator, err := message.NewCreator(
 		logger,
-		prometheus.DefaultRegisterer,
+		prometheus.NewRegistry(), // isolate this from the rest of the metrics
 		constants.DefaultNetworkCompressionType,
 		constants.DefaultNetworkMaximumInboundTimeout,
 	)
@@ -172,7 +190,8 @@ func main() {
 
 	network, err := peers.NewNetwork(
 		networkLogger,
-		registerer,
+		relayerMetricsRegistry,
+		peerNetworkMetricsRegistry,
 		cfg.GetTrackedSubnets(),
 		manuallyTrackedPeers,
 		&cfg,
@@ -189,9 +208,7 @@ func main() {
 		panic(err)
 	}
 
-	startMetricsServer(logger, gatherer, cfg.MetricsPort)
-
-	relayerMetrics, err := relayer.NewApplicationRelayerMetrics(registerer)
+	relayerMetrics, err := relayer.NewApplicationRelayerMetrics(relayerMetricsRegistry)
 	if err != nil {
 		logger.Fatal("Failed to create application relayer metrics", zap.Error(err))
 		panic(err)
@@ -231,17 +248,22 @@ func main() {
 
 	signatureAggregator, err := aggregator.NewSignatureAggregator(
 		network,
-		logger,
 		messageCreator,
 		cfg.SignatureCacheSize,
 		sigAggMetrics.NewSignatureAggregatorMetrics(
-			prometheus.DefaultRegisterer,
+			relayerMetricsRegistry,
 		),
+		platformvm.NewClient(cfg.GetPChainAPI().BaseURL),
+		peerUtils.InitializeOptions(cfg.GetPChainAPI()),
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
 		panic(err)
 	}
+
+	// Limits the global number of messages that can be processed concurrently by the application
+	// to avoid trying to issue too many requests at once.
+	processMessageSemaphore := make(chan struct{}, cfg.MaxConcurrentMessages)
 
 	applicationRelayers, minHeights, err := createApplicationRelayers(
 		context.Background(),
@@ -254,6 +276,7 @@ func main() {
 		sourceClients,
 		destinationClients,
 		signatureAggregator,
+		processMessageSemaphore,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create application relayers", zap.Error(err))
@@ -275,7 +298,13 @@ func main() {
 
 	// start the health check server
 	go func() {
-		log.Fatalln(http.ListenAndServe(fmt.Sprintf(":%d", cfg.APIPort), nil))
+		err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.APIPort), nil)
+		if errors.Is(err, http.ErrServerClosed) {
+			logger.Info("Health check server closed")
+		} else if err != nil {
+			logger.Fatal("Health check server exited with error", zap.Error(err))
+			os.Exit(1)
+		}
 	}()
 
 	// Create listeners for each of the subnets configured as a source
@@ -384,6 +413,7 @@ func createApplicationRelayers(
 	sourceClients map[ids.ID]ethclient.Client,
 	destinationClients map[ids.ID]vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
+	processMessagesSemaphore chan struct{},
 ) (map[common.Hash]*relayer.ApplicationRelayer, map[ids.ID]uint64, error) {
 	applicationRelayers := make(map[common.Hash]*relayer.ApplicationRelayer)
 	minHeights := make(map[ids.ID]uint64)
@@ -407,6 +437,7 @@ func createApplicationRelayers(
 			currentHeight,
 			destinationClients,
 			signatureAggregator,
+			processMessagesSemaphore,
 		)
 		if err != nil {
 			logger.Error(
@@ -443,6 +474,7 @@ func createApplicationRelayersForSourceChain(
 	currentHeight uint64,
 	destinationClients map[ids.ID]vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
+	processMessageSemaphore chan struct{},
 ) (map[common.Hash]*relayer.ApplicationRelayer, uint64, error) {
 	// Create the ApplicationRelayers
 	logger.Info(
@@ -463,6 +495,7 @@ func createApplicationRelayersForSourceChain(
 		height = currentHeight + 1
 		minHeight = height
 	}
+
 	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(&sourceBlockchain) {
 		// Calculate the catch-up starting block height, and update the min height if necessary
 		if cfg.ProcessMissedBlocks {
@@ -507,6 +540,7 @@ func createApplicationRelayersForSourceChain(
 			checkpointManager,
 			cfg,
 			signatureAggregator,
+			processMessageSemaphore,
 		)
 		if err != nil {
 			logger.Error(
@@ -517,6 +551,15 @@ func createApplicationRelayersForSourceChain(
 			return nil, 0, err
 		}
 		applicationRelayers[relayerID.ID] = applicationRelayer
+
+		logger.Info(
+			"Created application relayer",
+			zap.String("relayerID", relayerID.ID.String()),
+			zap.String("sourceBlockchainID", relayerID.SourceBlockchainID.String()),
+			zap.String("destinationBlockchainID", relayerID.DestinationBlockchainID.String()),
+			zap.String("originSenderAddress", relayerID.OriginSenderAddress.String()),
+			zap.String("destinationAddress", relayerID.DestinationAddress.String()),
+		)
 	}
 	return applicationRelayers, minHeight, nil
 }
@@ -553,23 +596,4 @@ func createHealthTrackers(cfg *config.Config) map[ids.ID]*atomic.Bool {
 		healthTrackers[sourceBlockchain.GetBlockchainID()] = atomic.NewBool(true)
 	}
 	return healthTrackers
-}
-
-func startMetricsServer(logger logging.Logger, gatherer prometheus.Gatherer, port uint16) {
-	http.Handle("/metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}))
-
-	go func() {
-		logger.Info("starting metrics server...",
-			zap.Uint16("port", port))
-		log.Fatalln(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
-	}()
-}
-
-func initializeMetrics() (prometheus.Gatherer, prometheus.Registerer, error) {
-	gatherer := metrics.NewPrefixGatherer()
-	registry := prometheus.NewRegistry()
-	if err := gatherer.Register("app", registry); err != nil {
-		return nil, nil, err
-	}
-	return gatherer, registry, nil
 }
