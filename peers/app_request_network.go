@@ -34,6 +34,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/sampler"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers/utils"
@@ -82,6 +83,15 @@ type AppRequestNetwork interface {
 	NumConnectedPeers() int
 }
 
+type warpState struct {
+	avalancheWarp.ValidatorState
+	manager vdrs.Manager
+}
+
+func (w *warpState) GetValidatorSet(_ context.Context, _ uint64, subnetID ids.ID) (map[ids.NodeID]*vdrs.GetValidatorOutput, error) {
+	return w.manager.GetMap(subnetID), nil
+}
+
 type appRequestNetwork struct {
 	network          network.Network
 	handler          *RelayerExternalHandler
@@ -99,7 +109,7 @@ type appRequestNetwork struct {
 	lruSubnets         *linked.Hashmap[ids.ID, interface{}]
 	trackedSubnetsLock *sync.RWMutex
 
-	manager vdrs.Manager
+	manager *warpState
 }
 
 // NewNetwork creates a P2P network client for interacting with validators
@@ -282,7 +292,7 @@ func NewNetwork(
 		metrics:            metrics,
 		trackedSubnets:     trackedSubnets,
 		trackedSubnetsLock: trackedSubnetsLock,
-		manager:            manager,
+		manager:            &warpState{manager: manager},
 		lruSubnets:         lruSubnets,
 	}
 
@@ -364,12 +374,12 @@ func (n *appRequestNetwork) updateValidatorSet(
 	}
 
 	// Remove any elements from the manager that are not in the new validator set
-	currentVdrs := n.manager.GetValidatorIDs(subnetID)
+	currentVdrs := n.manager.manager.GetValidatorIDs(subnetID)
 	for _, nodeID := range currentVdrs {
 		if _, ok := validatorsMap[nodeID]; !ok {
 			n.logger.Debug("Removing validator", zap.Stringer("nodeID", nodeID), zap.Stringer("subnetID", subnetID))
-			weight := n.manager.GetWeight(subnetID, nodeID)
-			if err := n.manager.RemoveWeight(subnetID, nodeID, weight); err != nil {
+			weight := n.manager.manager.GetWeight(subnetID, nodeID)
+			if err := n.manager.manager.RemoveWeight(subnetID, nodeID, weight); err != nil {
 				return err
 			}
 		}
@@ -377,9 +387,9 @@ func (n *appRequestNetwork) updateValidatorSet(
 
 	// Add any elements from the new validator set that are not in the manager
 	for _, vdr := range validators {
-		if _, ok := n.manager.GetValidator(subnetID, vdr.NodeID); !ok {
+		if _, ok := n.manager.manager.GetValidator(subnetID, vdr.NodeID); !ok {
 			n.logger.Debug("Adding validator", zap.Stringer("nodeID", vdr.NodeID), zap.Stringer("subnetID", subnetID))
-			if err := n.manager.AddStaker(
+			if err := n.manager.manager.AddStaker(
 				subnetID,
 				vdr.NodeID,
 				vdr.PublicKey,
@@ -416,9 +426,23 @@ func (c *ConnectedCanonicalValidators) GetValidator(nodeID ids.NodeID) (*warp.Va
 // at the time of the call, as well as the total weight of the validators that this network is connected to
 func (n *appRequestNetwork) GetConnectedCanonicalValidators(subnetID ids.ID) (*ConnectedCanonicalValidators, error) {
 	// Get the subnet's current canonical validator set
-	startPChainAPICall := time.Now()
-	validatorSet, err := n.validatorClient.GetCurrentCanonicalValidatorSet(subnetID)
-	n.setPChainAPICallLatencyMS(float64(time.Since(startPChainAPICall).Milliseconds()))
+	// Get the current canonical validator set of the source subnet.
+	ctx, cancel := context.WithTimeout(context.Background(), sharedUtils.DefaultRPCTimeout)
+	defer cancel()
+	validatorSet, err := avalancheWarp.GetCanonicalValidatorSetFromSubnetID(
+		ctx,
+		n.manager,
+		pchainapi.ProposedHeight,
+		subnetID,
+	)
+	if err != nil {
+		n.logger.Error(
+			"Failed to get the canonical subnet validator set",
+			zap.String("subnetID", subnetID.String()),
+			zap.Error(err),
+		)
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}
