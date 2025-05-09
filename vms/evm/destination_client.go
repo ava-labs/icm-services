@@ -7,9 +7,9 @@ package evm
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -45,8 +45,7 @@ type Client interface {
 type destinationClient struct {
 	client ethclient.Client
 
-	keys        []accountSigner
-	selectCases []reflect.SelectCase
+	readonlyConcurrentSigners []*readonlyConcurrentSigner
 
 	destinationBlockchainID ids.ID
 	evmChainID              *big.Int
@@ -57,17 +56,42 @@ type destinationClient struct {
 	txInclusionTimeout      time.Duration
 }
 
-type accountSigner struct {
+// Type alias for the destinationClient to have access to the fields but not the methods of the concurrentSigner.
+type readonlyConcurrentSigner concurrentSigner
+
+type concurrentSigner struct {
+	logger       logging.Logger
 	signer       signer.Signer
 	currentNonce uint64
-	lock         *sync.Mutex
-	txQueue      chan struct{} // TODO determine the type
+	// Unbuffered channel to receive messages to be processed
+	messageChan chan txData
+	// Semaphore to limit the number of transactions in the mempool for
+	// each account, otherwise they may be dropped.
+	queuedTxSemaphore chan struct{}
+	destinationClient *destinationClient
+}
+
+type txData struct {
+	to            common.Address
+	gasLimit      uint64
+	gasFeeCap     *big.Int
+	gasTipCap     *big.Int
+	callData      []byte
+	signedMessage *avalancheWarp.Message
+	resultChan    chan txResult
+}
+
+type txResult struct {
+	receipt *types.Receipt
+	err     error
 }
 
 func NewDestinationClient(
 	logger logging.Logger,
 	destinationBlockchain *config.DestinationBlockchain,
 ) (*destinationClient, error) {
+	logger = logger.With(zap.String("blockchainID", destinationBlockchain.BlockchainID))
+
 	destinationID, err := ids.FromString(destinationBlockchain.BlockchainID)
 	if err != nil {
 		logger.Error(
@@ -76,8 +100,6 @@ func NewDestinationClient(
 		)
 		return nil, err
 	}
-
-	logger = logger.With(zap.String("blockchainID", destinationBlockchain.BlockchainID))
 
 	signers, err := signer.NewSigners(destinationBlockchain)
 	if err != nil {
@@ -113,9 +135,9 @@ func NewDestinationClient(
 	}
 
 	var (
+		destClient                 destinationClient
 		pendingNonce, currentNonce uint64
-		accountSigners             = make([]accountSigner, len(signers))
-		selectCases                = make([]reflect.SelectCase, len(signers))
+		readonlyConcurrentSigners  = make([]*readonlyConcurrentSigner, len(signers))
 	)
 
 	// Block until all pending txs are accepted
@@ -140,30 +162,36 @@ func NewDestinationClient(
 				)
 				return nil, err
 			}
-			if pendingNonce == currentNonce {
-				// Limit the number of transactions in the mempool for each account,
-				// otherwise they may be dropped.
-				txQueue := make(chan struct{}, poolTxsPerAccount)
-				accountSigners[i] = accountSigner{
-					signer:       signer,
-					currentNonce: currentNonce,
-					lock:         &sync.Mutex{},
-					txQueue:      txQueue,
-				}
-				selectCases[i] = reflect.SelectCase{
-					Dir:  reflect.SelectSend,
-					Chan: reflect.ValueOf(txQueue),
-					Send: reflect.ValueOf(struct{}{}),
-				}
-				break
+
+			// If the pending nonce is not equal to the current nonce, wait and check again
+			if pendingNonce != currentNonce {
+				logger.Info(
+					"Waiting for pending txs to be accepted",
+					zap.Uint64("pendingNonce", pendingNonce),
+					zap.Uint64("currentNonce", currentNonce),
+					zap.Stringer("address", signer.Address()),
+				)
+				<-ticker.C
+				continue
 			}
-			logger.Info(
-				"Waiting for pending txs to be accepted",
-				zap.Uint64("pendingNonce", pendingNonce),
-				zap.Uint64("currentNonce", currentNonce),
+
+			logger.Debug(
+				"Pending txs accepted",
 				zap.Stringer("address", signer.Address()),
 			)
-			<-ticker.C
+
+			concurrentSigner := &concurrentSigner{
+				logger:            logger.With(zap.Stringer("senderAddress", signer.Address())),
+				signer:            signer,
+				currentNonce:      currentNonce,
+				messageChan:       make(chan txData),
+				queuedTxSemaphore: make(chan struct{}, poolTxsPerAccount),
+				destinationClient: &destClient,
+			}
+
+			go concurrentSigner.processIncomingTransactions()
+
+			readonlyConcurrentSigners[i] = (*readonlyConcurrentSigner)(concurrentSigner)
 		}
 	}
 
@@ -173,18 +201,19 @@ func NewDestinationClient(
 		zap.Uint64("nonce", pendingNonce),
 	)
 
-	return &destinationClient{
-		client:                  client,
-		keys:                    accountSigners,
-		selectCases:             selectCases,
-		destinationBlockchainID: destinationID,
-		evmChainID:              evmChainID,
-		logger:                  logger,
-		blockGasLimit:           destinationBlockchain.BlockGasLimit,
-		maxBaseFee:              new(big.Int).SetUint64(destinationBlockchain.MaxBaseFee),
-		maxPriorityFeePerGas:    new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
-		txInclusionTimeout:      time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
-	}, nil
+	destClient = destinationClient{
+		client:                    client,
+		readonlyConcurrentSigners: readonlyConcurrentSigners,
+		destinationBlockchainID:   destinationID,
+		evmChainID:                evmChainID,
+		logger:                    logger,
+		blockGasLimit:             destinationBlockchain.BlockGasLimit,
+		maxBaseFee:                new(big.Int).SetUint64(destinationBlockchain.MaxBaseFee),
+		maxPriorityFeePerGas:      new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
+		txInclusionTimeout:        time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
+	}
+
+	return &destClient, nil
 }
 
 // SendTx constructs, signs, and broadcast a transaction to deliver the given {signedMessage}
@@ -239,165 +268,201 @@ func (c *destinationClient) SendTx(
 	to := common.HexToAddress(toAddress)
 	gasFeeCap := new(big.Int).Add(maxBaseFee, gasTipCap)
 
-	signedTx, signerIdx, err := c.issueTransaction(
-		deliverers,
-		to,
-		gasLimit,
-		gasFeeCap,
-		gasTipCap,
-		callData,
-		signedMessage,
-	)
-	if err != nil {
-		c.logger.Error(
-			"Failed to issue transaction",
-			zap.Stringer("messageID", signedMessage.ID()),
-			zap.Error(err),
-		)
-		return nil, err
+	resultChan := make(chan txResult)
+
+	messageData := txData{
+		to:            to,
+		gasLimit:      gasLimit,
+		gasFeeCap:     gasFeeCap,
+		gasTipCap:     gasTipCap,
+		callData:      callData,
+		signedMessage: signedMessage,
+		resultChan:    resultChan,
 	}
 
-	receipt, err := c.waitForReceipt(signedTx.Hash(), signerIdx)
-	if err != nil {
+	var cases []reflect.SelectCase
+	for _, concurrentSigner := range c.readonlyConcurrentSigners {
+		signerAddress := concurrentSigner.signer.Address()
+		if deliverers.Len() != 0 && !deliverers.Contains(signerAddress) {
+			c.logger.Debug(
+				"Signer not eligible to deliver message",
+				zap.Any("address", signerAddress),
+			)
+			continue
+		}
+		c.logger.Debug(
+			"Signer eligible to deliver message",
+			zap.Any("address", signerAddress),
+		)
+		cases = append(cases, reflect.SelectCase{
+			Dir:  reflect.SelectSend,
+			Chan: reflect.ValueOf(concurrentSigner.messageChan),
+			Send: reflect.ValueOf(messageData),
+		})
+	}
+
+	// Select an available, eligible signer
+	reflect.Select(cases)
+
+	// Wait for the receipt or error to be returned
+	timeout := time.NewTimer(c.txInclusionTimeout)
+	defer timeout.Stop()
+	var result txResult
+	var ok bool
+
+	select {
+	case result, ok = <-resultChan:
+		if !ok {
+			return nil, errors.New("channel closed unexpectedly")
+		}
+	case <-timeout.C:
+		return nil, errors.New("timed out waiting for transaction result")
+	}
+
+	if result.err != nil {
 		c.logger.Error(
 			"Failed to get transaction receipt",
-			zap.String("txID", signedTx.Hash().String()),
-			zap.Error(err),
+			zap.Error(result.err),
 		)
-		return nil, err
+		return nil, result.err
 	}
 	c.logger.Debug(
 		"Sent transaction",
 	)
 
-	return receipt, nil
+	return result.receipt, nil
 }
 
-func (c *destinationClient) issueTransaction(
-	deliverers set.Set[common.Address],
-	to common.Address,
-	gasLimit uint64,
-	gasFeeCap *big.Int,
-	gasTipCap *big.Int,
-	callData []byte,
-	signedMessage *avalancheWarp.Message,
-) (*types.Transaction, int, error) {
-	var cases []reflect.SelectCase
-	idxs := make(map[int]int) // map of index in cases to index in c.keys
-	if deliverers.Len() != 0 {
-		// Only select from the signers that are in the deliverers set
-		var addresses []common.Address
-		for i, signer := range c.keys {
-			if deliverers.Contains(signer.signer.Address()) {
-				idxs[len(cases)] = i
-				cases = append(cases, c.selectCases[i])
-				addresses = append(addresses, signer.signer.Address())
+// This function guarantees that for any messageData read from s.messageChan,
+// exactly 1 value is written to messageData.resultChan.
+func (s *concurrentSigner) processIncomingTransactions() {
+	for {
+		// We can only get to listen to messageChan if there is an open queued tx slot
+		s.queuedTxSemaphore <- struct{}{}
+		s.logger.Debug("Waiting for incoming transaction")
+
+		messageData := <-s.messageChan
+
+		err := s.issueTransaction(messageData)
+		if err != nil {
+			s.logger.Error(
+				"Failed to issue transaction",
+				zap.Error(err),
+			)
+			// If issueTransaction fails, we have not passed the resultChan to waitForReceipt
+			messageData.resultChan <- txResult{
+				receipt: nil,
+				err:     err,
 			}
+			close(messageData.resultChan)
 		}
-		c.logger.Debug(
-			"Selecting from signers",
-			zap.Any("addresses", addresses),
-		)
-	} else {
-		cases = c.selectCases
-		c.logger.Debug(
-			"Selecting from all signers",
-		)
 	}
+}
 
-	// Select an available, eligible signer and acquire a txQueue slot
-	idx, _, _ := reflect.Select(cases)
-	if deliverers.Len() != 0 {
-		idx = idxs[idx]
-	}
-
-	c.logger.Debug(
-		"Selected signer",
-		zap.Stringer("address", c.keys[idx].signer.Address()),
+// issueTransaction sends the transaction, but does not wait for confirmation.
+// This function must not be called concurrently for a given concurrentSigner instance
+// Access to this function should be managed by processIncomingTransactions().
+func (s *concurrentSigner) issueTransaction(
+	data txData,
+) error {
+	s.logger.Debug(
+		"Processing transaction",
+		zap.String("to", data.to.String()),
 	)
-
-	// Synchronize nonce access so that we send transactions in nonce order.
-	// Hold the lock until the transaction is sent to minimize the chance of
-	// an out-of-order transaction being dropped from the mempool.
-	c.keys[idx].lock.Lock()
-	defer c.keys[idx].lock.Unlock()
 
 	// Construct the actual transaction to broadcast on the destination chain
 	tx := predicateutils.NewPredicateTx(
-		c.evmChainID,
-		c.keys[idx].currentNonce,
-		&to,
-		gasLimit,
-		gasFeeCap,
-		gasTipCap,
+		s.destinationClient.evmChainID,
+		s.currentNonce,
+		&data.to,
+		data.gasLimit,
+		data.gasFeeCap,
+		data.gasTipCap,
 		big.NewInt(0),
-		callData,
+		data.callData,
 		types.AccessList{},
 		warp.ContractAddress,
-		signedMessage.Bytes(),
+		data.signedMessage.Bytes(),
 	)
 
 	// Sign and send the transaction on the destination chain
-	signedTx, err := c.keys[idx].signer.SignTx(tx, c.evmChainID)
+	signedTx, err := s.signer.SignTx(tx, s.destinationClient.evmChainID)
 	if err != nil {
-		c.logger.Error(
+		s.logger.Error(
 			"Failed to sign transaction",
 			zap.Error(err),
 		)
-		return nil, 0, err
+		return err
 	}
 
 	sendTxCtx, sendTxCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer sendTxCtxCancel()
 
-	c.logger.Info(
+	s.logger.Info(
 		"Sending transaction",
 		zap.String("txID", signedTx.Hash().String()),
-		zap.Uint64("nonce", c.keys[idx].currentNonce),
+		zap.Uint64("nonce", s.currentNonce),
 	)
 
-	if err := c.client.SendTransaction(sendTxCtx, signedTx); err != nil {
-		c.logger.Error(
+	if err := s.destinationClient.client.SendTransaction(sendTxCtx, signedTx); err != nil {
+		s.logger.Error(
 			"Failed to send transaction",
 			zap.Error(err),
 		)
-		return nil, 0, err
+		return err
 	}
-	c.logger.Info(
+	s.logger.Info(
 		"Sent transaction",
 		zap.String("txID", signedTx.Hash().String()),
-		zap.Uint64("nonce", c.keys[idx].currentNonce),
+		zap.Uint64("nonce", s.currentNonce),
 	)
 
-	c.keys[idx].currentNonce++
+	s.currentNonce++
 
-	return signedTx, idx, nil
+	// We wait for the transaction receipt asynchronously because the transaction has already
+	// been accepted by the mempool, so we can send another transaction using the same key
+	// while we wait for the receipt of the previous transaction.
+	go s.waitForReceipt(signedTx.Hash(), data.resultChan)
+
+	return nil
 }
 
-func (c *destinationClient) waitForReceipt(
+// waitForReceipt always writes to the result channel,
+// always closes the result channel,
+// may be called concurrently on a given concurrentSigner instance
+func (s *concurrentSigner) waitForReceipt(
 	txHash common.Hash,
-	signerIdx int,
-) (*types.Receipt, error) {
+	resultChan chan<- txResult,
+) {
+	defer close(resultChan)
+
 	var receipt *types.Receipt
 	operation := func() (err error) {
 		callCtx, callCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer callCtxCancel()
-		receipt, err = c.client.TransactionReceipt(callCtx, txHash)
+		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
 		return err
 	}
-	err := utils.WithRetriesTimeout(c.logger, operation, c.txInclusionTimeout, "waitForReceipt")
+	err := utils.WithRetriesTimeout(s.logger, operation, s.destinationClient.txInclusionTimeout, "waitForReceipt")
 	if err != nil {
-		c.logger.Error(
+		s.logger.Error(
 			"Failed to get transaction receipt",
 			zap.Error(err),
 		)
-		return nil, err
+		resultChan <- txResult{
+			receipt: nil,
+			err:     err,
+		}
+		return
 	}
 
-	// Release the txQueue slot once we have the receipt
-	<-c.keys[signerIdx].txQueue
+	// Release the queued tx slot
+	<-s.queuedTxSemaphore
 
-	return receipt, nil
+	resultChan <- txResult{
+		receipt: receipt,
+		err:     nil,
+	}
 }
 
 func (c *destinationClient) Client() interface{} {
@@ -405,9 +470,9 @@ func (c *destinationClient) Client() interface{} {
 }
 
 func (c *destinationClient) SenderAddresses() []common.Address {
-	addresses := make([]common.Address, len(c.keys))
-	for i, signer := range c.keys {
-		addresses[i] = signer.signer.Address()
+	addresses := make([]common.Address, len(c.readonlyConcurrentSigners))
+	for i, concurrentSigner := range c.readonlyConcurrentSigners {
+		addresses[i] = concurrentSigner.signer.Address()
 	}
 	return addresses
 }

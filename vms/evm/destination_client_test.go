@@ -6,8 +6,6 @@ package evm
 import (
 	"fmt"
 	"math/big"
-	"reflect"
-	"sync"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -32,25 +30,21 @@ var destinationSubnet = config.DestinationBlockchain{
 }
 
 func TestSendTx(t *testing.T) {
+	var destClient destinationClient
 	txSigners, err := signer.NewTxSigners(destinationSubnet.AccountPrivateKeys)
 	require.NoError(t, err)
 
-	txQueue := make(chan struct{}, poolTxsPerAccount)
-	keys := []accountSigner{
-		{
-			signer:       txSigners[0],
-			currentNonce: 0,
-			lock:         &sync.Mutex{},
-			txQueue:      txQueue,
-		},
+	queuedTxSemaphore := make(chan struct{}, poolTxsPerAccount)
+	messageChan := make(chan txData)
+	signer := concurrentSigner{
+		logger:            logging.NoLog{},
+		signer:            txSigners[0],
+		currentNonce:      0,
+		messageChan:       messageChan,
+		queuedTxSemaphore: queuedTxSemaphore,
+		destinationClient: &destClient,
 	}
-	selectCases := []reflect.SelectCase{
-		{
-			Dir:  reflect.SelectSend,
-			Chan: reflect.ValueOf(txQueue),
-			Send: reflect.ValueOf(struct{}{}),
-		},
-	}
+	go signer.processIncomingTransactions()
 
 	testError := fmt.Errorf("call errored")
 	testCases := []struct {
@@ -116,14 +110,17 @@ func TestSendTx(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockClient := mock_ethclient.NewMockClient(ctrl)
-			destinationClient := &destinationClient{
-				keys:                 keys,
-				selectCases:          selectCases,
+			destClient = destinationClient{
+				readonlyConcurrentSigners: []*readonlyConcurrentSigner{
+					(*readonlyConcurrentSigner)(&signer),
+				},
 				logger:               logging.NoLog{},
 				client:               mockClient,
 				evmChainID:           big.NewInt(5),
 				maxBaseFee:           test.maxBaseFee,
 				maxPriorityFeePerGas: big.NewInt(0),
+				blockGasLimit:        0,
+				txInclusionTimeout:   30,
 			}
 			warpMsg := &avalancheWarp.Message{}
 			toAddress := "0x27aE10273D17Cd7e80de8580A51f476960626e5f"
@@ -150,7 +147,7 @@ func TestSendTx(t *testing.T) {
 					).Times(test.txReceiptTimes),
 			)
 
-			_, err := destinationClient.SendTx(warpMsg, nil, toAddress, 0, []byte{})
+			_, err := destClient.SendTx(warpMsg, nil, toAddress, 0, []byte{})
 			if test.expectError {
 				require.Error(t, err)
 			} else {
