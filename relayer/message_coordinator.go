@@ -15,7 +15,6 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/subnet-evm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/interfaces"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
@@ -224,27 +223,19 @@ func (mc *MessageCoordinator) ProcessMessageID(
 
 // Meant to be ran asynchronously. Errors should be sent to errChan.
 func (mc *MessageCoordinator) ProcessBlock(
-	blockHeader *types.Header,
+	icmBlockInfo *relayerTypes.WarpBlockInfo,
 	blockchainID ids.ID,
-	ethClient ethclient.Client,
 	errChan chan error,
 ) {
 	mc.logger.Debug(
 		"Processing block",
-		zap.Uint64("blockNumber", blockHeader.Number.Uint64()),
+		zap.Uint64("blockNumber", icmBlockInfo.BlockNumber),
 		zap.Stringer("blockchainID", blockchainID),
 	)
-	// Parse the logs in the block, and group by application relayer
-	block, err := relayerTypes.NewWarpBlockInfo(mc.logger, blockHeader, ethClient)
-	if err != nil {
-		mc.logger.Error("Failed to create Warp block info", zap.Error(err))
-		errChan <- err
-		return
-	}
 
 	// Register each message in the block with the appropriate application relayer
 	messageHandlers := make(map[common.Hash][]messages.MessageHandler)
-	for _, warpLogInfo := range block.Messages {
+	for _, warpLogInfo := range icmBlockInfo.Messages {
 		appRelayer, handler, err := mc.getAppRelayerMessageHandler(warpLogInfo)
 		if err != nil {
 			mc.logger.Error(
@@ -288,7 +279,7 @@ func (mc *MessageCoordinator) ProcessBlock(
 			zap.Stringer("relayerID", appRelayer.relayerID.ID),
 			zap.Int("numMessages", len(handlers)),
 		)
-		go appRelayer.ProcessHeight(block.BlockNumber, handlers, errChan)
+		go appRelayer.ProcessHeight(icmBlockInfo.BlockNumber, handlers, errChan)
 	}
 }
 
