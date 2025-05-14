@@ -98,7 +98,8 @@ contract ERC20TokenStakingManager is Initializable, StakingManager, IERC20TokenS
         PChainOwner memory disableOwner,
         uint16 delegationFeeBips,
         uint64 minStakeDuration,
-        uint256 stakeAmount
+        uint256 stakeAmount,
+        address rewardRecipient
     ) external nonReentrant returns (bytes32) {
         return _initiateValidatorRegistration({
             nodeID: nodeID,
@@ -107,7 +108,8 @@ contract ERC20TokenStakingManager is Initializable, StakingManager, IERC20TokenS
             disableOwner: disableOwner,
             delegationFeeBips: delegationFeeBips,
             minStakeDuration: minStakeDuration,
-            stakeAmount: stakeAmount
+            stakeAmount: stakeAmount,
+            rewardRecipient: rewardRecipient
         });
     }
 
@@ -116,9 +118,12 @@ contract ERC20TokenStakingManager is Initializable, StakingManager, IERC20TokenS
      */
     function initiateDelegatorRegistration(
         bytes32 validationID,
-        uint256 delegationAmount
+        uint256 delegationAmount,
+        address rewardRecipient
     ) external nonReentrant returns (bytes32) {
-        return _initiateDelegatorRegistration(validationID, _msgSender(), delegationAmount);
+        return _initiateDelegatorRegistration(
+            validationID, _msgSender(), delegationAmount, rewardRecipient
+        );
     }
 
     /**

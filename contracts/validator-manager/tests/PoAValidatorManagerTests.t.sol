@@ -88,25 +88,34 @@ contract PoAValidatorManagerTest is ValidatorManagerTest {
         });
     }
 
+    function _initiateValidatorRegistration(
+        bytes memory nodeID,
+        bytes memory blsPublicKey,
+        PChainOwner memory remainingBalanceOwner,
+        PChainOwner memory disableOwner,
+        uint64 weight,
+        address
+    ) internal virtual override returns (bytes32) {
+        return app.initiateValidatorRegistration({
+            nodeID: nodeID,
+            blsPublicKey: blsPublicKey,
+            remainingBalanceOwner: remainingBalanceOwner,
+            disableOwner: disableOwner,
+            weight: weight
+        });
+    }
+
     function _completeValidatorRegistration(
         uint32 messageIndex
     ) internal virtual override returns (bytes32) {
         return app.completeValidatorRegistration(messageIndex);
     }
 
-    function _initiateValidatorRemoval(
-        bytes32 validationID,
-        bool,
-        address
-    ) internal virtual override {
+    function _initiateValidatorRemoval(bytes32 validationID, bool) internal virtual override {
         return app.initiateValidatorRemoval(validationID);
     }
 
-    function _forceInitiateValidatorRemoval(
-        bytes32 validationID,
-        bool,
-        address
-    ) internal virtual override {
+    function _forceInitiateValidatorRemoval(bytes32 validationID, bool) internal virtual override {
         return app.initiateValidatorRemoval(validationID);
     }
 
@@ -127,4 +136,11 @@ contract PoAValidatorManagerTest is ValidatorManagerTest {
 
     // solhint-disable-next-line no-empty-blocks
     function _beforeSend(uint256 amount, address spender) internal virtual override {}
+
+    function _beforeRegisterValidator(
+        bytes32 validationID,
+        address rewardRecipient
+    ) internal virtual override 
+    // solhint-disable-next-line no-empty-blocks
+    {}
 }

@@ -113,7 +113,11 @@ abstract contract ValidatorManagerTest is Test {
 
     function testInitiateValidatorRegistrationSuccess() public {
         _setUpInitiateValidatorRegistration(
-            DEFAULT_NODE_ID, DEFAULT_SUBNET_ID, DEFAULT_WEIGHT, DEFAULT_BLS_PUBLIC_KEY
+            DEFAULT_NODE_ID,
+            DEFAULT_SUBNET_ID,
+            DEFAULT_WEIGHT,
+            DEFAULT_BLS_PUBLIC_KEY,
+            address(this)
         );
     }
 
@@ -231,7 +235,11 @@ abstract contract ValidatorManagerTest is Test {
     // reference to the abstract type.
     function testResendRegisterValidatorMessage() public {
         bytes32 validationID = _setUpInitiateValidatorRegistration(
-            DEFAULT_NODE_ID, DEFAULT_SUBNET_ID, DEFAULT_WEIGHT, DEFAULT_BLS_PUBLIC_KEY
+            DEFAULT_NODE_ID,
+            DEFAULT_SUBNET_ID,
+            DEFAULT_WEIGHT,
+            DEFAULT_BLS_PUBLIC_KEY,
+            address(this)
         );
         (, bytes memory registerL1ValidatorMessage) = ValidatorMessages
             .packRegisterL1ValidatorMessage(
@@ -337,7 +345,11 @@ abstract contract ValidatorManagerTest is Test {
 
     function testCompleteInvalidatedValidation() public {
         bytes32 validationID = _setUpInitiateValidatorRegistration(
-            DEFAULT_NODE_ID, DEFAULT_SUBNET_ID, DEFAULT_WEIGHT, DEFAULT_BLS_PUBLIC_KEY
+            DEFAULT_NODE_ID,
+            DEFAULT_SUBNET_ID,
+            DEFAULT_WEIGHT,
+            DEFAULT_BLS_PUBLIC_KEY,
+            address(this)
         );
 
         uint64 totalWeight = validatorManager.l1TotalWeight();
@@ -383,7 +395,7 @@ abstract contract ValidatorManagerTest is Test {
 
         bytes32 validationID = sha256(abi.encodePacked(DEFAULT_SUBNET_ID, uint32(0)));
         vm.expectRevert(abi.encodeWithSelector(IValidatorManager.InvalidTotalWeight.selector, 4));
-        _forceInitiateValidatorRemoval(validationID, false, address(0));
+        _forceInitiateValidatorRemoval(validationID, false);
     }
 
     function testCumulativeChurnRegistration() public {
@@ -397,7 +409,8 @@ abstract contract ValidatorManagerTest is Test {
             subnetID: DEFAULT_SUBNET_ID,
             weight: churnThreshold,
             blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
-            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP
+            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP,
+            rewardRecipient: address(this)
         });
 
         _beforeSend(DEFAULT_MINIMUM_STAKE_AMOUNT, address(this));
@@ -425,7 +438,8 @@ abstract contract ValidatorManagerTest is Test {
             subnetID: DEFAULT_SUBNET_ID,
             weight: _valueToWeight(DEFAULT_MINIMUM_STAKE_AMOUNT),
             blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
-            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP
+            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP,
+            rewardRecipient: address(this)
         });
 
         uint64 churnThreshold =
@@ -440,7 +454,8 @@ abstract contract ValidatorManagerTest is Test {
             subnetID: DEFAULT_SUBNET_ID,
             weight: churnThreshold,
             blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
-            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP + 25 hours
+            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP + 25 hours,
+            rewardRecipient: address(this)
         });
 
         // Second call should fail
@@ -453,7 +468,7 @@ abstract contract ValidatorManagerTest is Test {
             )
         );
 
-        _initiateValidatorRemoval(validationID, false, address(0));
+        _initiateValidatorRemoval(validationID, false);
     }
 
     function testInitiateValidatorRegistrationUnauthorizedCaller() public {
@@ -550,7 +565,8 @@ abstract contract ValidatorManagerTest is Test {
         bytes memory nodeID,
         bytes32 subnetID,
         uint64 weight,
-        bytes memory blsPublicKey
+        bytes memory blsPublicKey,
+        address rewardRecipient
     ) internal returns (bytes32) {
         uint64 registrationExpiry = uint64(block.timestamp) + 1 days;
 
@@ -576,12 +592,14 @@ abstract contract ValidatorManagerTest is Test {
             validationID, fixedID, bytes32(0), registrationExpiry, weight
         );
 
+        _beforeRegisterValidator(validationID, rewardRecipient);
         _initiateValidatorRegistration({
             nodeID: nodeID,
             blsPublicKey: blsPublicKey,
             remainingBalanceOwner: DEFAULT_P_CHAIN_OWNER,
             disableOwner: DEFAULT_P_CHAIN_OWNER,
-            weight: weight
+            weight: weight,
+            rewardRecipient: rewardRecipient
         });
 
         return validationID;
@@ -592,9 +610,12 @@ abstract contract ValidatorManagerTest is Test {
         bytes32 subnetID,
         uint64 weight,
         bytes memory blsPublicKey,
-        uint64 registrationTimestamp
+        uint64 registrationTimestamp,
+        address rewardRecipient
     ) internal returns (bytes32 validationID) {
-        validationID = _setUpInitiateValidatorRegistration(nodeID, subnetID, weight, blsPublicKey);
+        validationID = _setUpInitiateValidatorRegistration(
+            nodeID, subnetID, weight, blsPublicKey, rewardRecipient
+        );
         bytes memory l1ValidatorRegistrationMessage =
             ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, true);
 
@@ -622,31 +643,9 @@ abstract contract ValidatorManagerTest is Test {
 
         vm.warp(completionTimestamp);
         if (force) {
-            _forceInitiateValidatorRemoval(validationID, includeUptime, address(0));
+            _forceInitiateValidatorRemoval(validationID, includeUptime);
         } else {
-            _initiateValidatorRemoval(validationID, includeUptime, address(0));
-        }
-    }
-
-    function _initiateValidatorRemoval(
-        bytes32 validationID,
-        uint64 completionTimestamp,
-        bytes memory setWeightMessage,
-        bool includeUptime,
-        bytes memory uptimeMessage,
-        bool force,
-        address recipientAddress
-    ) internal {
-        _mockSendWarpMessage(setWeightMessage, bytes32(0));
-        if (includeUptime) {
-            _mockGetUptimeWarpMessage(uptimeMessage, true);
-        }
-
-        vm.warp(completionTimestamp);
-        if (force) {
-            _forceInitiateValidatorRemoval(validationID, includeUptime, recipientAddress);
-        } else {
-            _initiateValidatorRemoval(validationID, includeUptime, recipientAddress);
+            _initiateValidatorRemoval(validationID, includeUptime);
         }
     }
 
@@ -656,7 +655,21 @@ abstract contract ValidatorManagerTest is Test {
             subnetID: DEFAULT_SUBNET_ID,
             weight: DEFAULT_WEIGHT,
             blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
-            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP
+            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP,
+            rewardRecipient: address(this)
+        });
+    }
+
+    function _registerDefaultValidatorWithRecipient(
+        address rewardRecipient
+    ) internal returns (bytes32 validationID) {
+        return _registerValidator({
+            nodeID: DEFAULT_NODE_ID,
+            subnetID: DEFAULT_SUBNET_ID,
+            weight: DEFAULT_WEIGHT,
+            blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
+            registrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP,
+            rewardRecipient: rewardRecipient
         });
     }
 
@@ -762,6 +775,15 @@ abstract contract ValidatorManagerTest is Test {
         bytes memory blsPublicKey,
         PChainOwner memory remainingBalanceOwner,
         PChainOwner memory disableOwner,
+        uint64 weight,
+        address rewardRecipient
+    ) internal virtual returns (bytes32);
+
+    function _initiateValidatorRegistration(
+        bytes memory nodeID,
+        bytes memory blsPublicKey,
+        PChainOwner memory remainingBalanceOwner,
+        PChainOwner memory disableOwner,
         uint64 weight
     ) internal virtual returns (bytes32);
 
@@ -769,16 +791,11 @@ abstract contract ValidatorManagerTest is Test {
         uint32 messageIndex
     ) internal virtual returns (bytes32);
 
-    function _initiateValidatorRemoval(
-        bytes32 validationID,
-        bool includeUptime,
-        address rewardRecipient
-    ) internal virtual;
+    function _initiateValidatorRemoval(bytes32 validationID, bool includeUptime) internal virtual;
 
     function _forceInitiateValidatorRemoval(
         bytes32 validationID,
-        bool includeUptime,
-        address rewardRecipient
+        bool includeUptime
     ) internal virtual;
 
     function _completeValidatorRemoval(
@@ -788,6 +805,11 @@ abstract contract ValidatorManagerTest is Test {
     function _setUp() internal virtual returns (IACP99Manager);
 
     function _beforeSend(uint256 amount, address spender) internal virtual;
+
+    function _beforeRegisterValidator(
+        bytes32 validationID,
+        address rewardRecipient
+    ) internal virtual;
 
     function _defaultConversionData() internal view returns (ConversionData memory) {
         InitialValidator[] memory initialValidators = new InitialValidator[](2);

@@ -184,7 +184,8 @@ contract NativeTokenStakingManagerTest is StakingManagerTest {
         PChainOwner memory disableOwner,
         uint16 delegationFeeBips,
         uint64 minStakeDuration,
-        uint256 stakeAmount
+        uint256 stakeAmount,
+        address rewardRecipient
     ) internal virtual override returns (bytes32) {
         return app.initiateValidatorRegistration{value: stakeAmount}({
             nodeID: nodeID,
@@ -192,7 +193,27 @@ contract NativeTokenStakingManagerTest is StakingManagerTest {
             remainingBalanceOwner: remainingBalanceOwner,
             disableOwner: disableOwner,
             delegationFeeBips: delegationFeeBips,
-            minStakeDuration: minStakeDuration
+            minStakeDuration: minStakeDuration,
+            rewardRecipient: rewardRecipient
+        });
+    }
+
+    function _initiateValidatorRegistration(
+        bytes memory nodeID,
+        bytes memory blsPublicKey,
+        PChainOwner memory remainingBalanceOwner,
+        PChainOwner memory disableOwner,
+        uint64 weight,
+        address rewardRecipient
+    ) internal virtual override returns (bytes32) {
+        return app.initiateValidatorRegistration{value: _weightToValue(weight)}({
+            nodeID: nodeID,
+            blsPublicKey: blsPublicKey,
+            remainingBalanceOwner: remainingBalanceOwner,
+            disableOwner: disableOwner,
+            delegationFeeBips: DEFAULT_DELEGATION_FEE_BIPS,
+            minStakeDuration: DEFAULT_MINIMUM_STAKE_DURATION,
+            rewardRecipient: rewardRecipient
         });
     }
 
@@ -209,19 +230,21 @@ contract NativeTokenStakingManagerTest is StakingManagerTest {
             remainingBalanceOwner: remainingBalanceOwner,
             disableOwner: disableOwner,
             delegationFeeBips: DEFAULT_DELEGATION_FEE_BIPS,
-            minStakeDuration: DEFAULT_MINIMUM_STAKE_DURATION
+            minStakeDuration: DEFAULT_MINIMUM_STAKE_DURATION,
+            rewardRecipient: address(this)
         });
     }
 
     function _initiateDelegatorRegistration(
         bytes32 validationID,
         address delegatorAddress,
-        uint64 weight
+        uint64 weight,
+        address rewardRecipient
     ) internal virtual override returns (bytes32) {
         uint256 value = _weightToValue(weight);
         vm.prank(delegatorAddress);
         vm.deal(delegatorAddress, value);
-        return app.initiateDelegatorRegistration{value: value}(validationID);
+        return app.initiateDelegatorRegistration{value: value}(validationID, rewardRecipient);
     }
 
     // solhint-disable no-empty-blocks

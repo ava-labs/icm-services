@@ -50,6 +50,7 @@ const (
 	DefaultChurnPeriodSeconds      uint64 = 1
 	DefaultWeightToValueFactor     uint64 = 1e12
 	DefaultPChainAddress           string = "P-local18jma8ppw3nhx5r4ap8clazz0dps7rv5u00z96u"
+	DefaultRewardRecipientAddress  string = "0x000000000000000000000000000000000000002a"
 )
 
 type ValidatorManagerConcreteType int
@@ -393,6 +394,7 @@ func InitiateNativeValidatorRegistration(
 		nativetokenstakingmanager.PChainOwner{},
 		DefaultMinDelegateFeeBips,
 		DefaultMinStakeDurationSeconds,
+		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
 	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
@@ -439,6 +441,7 @@ func InitiateERC20ValidatorRegistration(
 		DefaultMinDelegateFeeBips,
 		DefaultMinStakeDurationSeconds,
 		stakeAmount,
+		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
 	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
@@ -770,12 +773,11 @@ func InitiateEndPoSValidation(
 ) *types.Receipt {
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
-	tx, err := stakingManager.InitiateValidatorRemoval0(
+	tx, err := stakingManager.InitiateValidatorRemoval(
 		opts,
 		validationID,
 		false,
 		0,
-		common.Address{},
 	)
 	Expect(err).Should(BeNil())
 	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
@@ -977,6 +979,7 @@ func InitiateERC20DelegatorRegistration(
 		opts,
 		validationID,
 		delegationAmount,
+		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
 	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
@@ -1003,6 +1006,7 @@ func InitiateNativeDelegatorRegistration(
 	tx, err := stakingManager.InitiateDelegatorRegistration(
 		opts,
 		validationID,
+		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
 	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())

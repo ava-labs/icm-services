@@ -65,7 +65,8 @@ contract NativeTokenStakingManager is Initializable, StakingManager, INativeToke
         PChainOwner memory remainingBalanceOwner,
         PChainOwner memory disableOwner,
         uint16 delegationFeeBips,
-        uint64 minStakeDuration
+        uint64 minStakeDuration,
+        address rewardRecipient
     ) external payable nonReentrant returns (bytes32) {
         return _initiateValidatorRegistration({
             nodeID: nodeID,
@@ -74,7 +75,8 @@ contract NativeTokenStakingManager is Initializable, StakingManager, INativeToke
             disableOwner: disableOwner,
             delegationFeeBips: delegationFeeBips,
             minStakeDuration: minStakeDuration,
-            stakeAmount: msg.value
+            stakeAmount: msg.value,
+            rewardRecipient: rewardRecipient
         });
     }
 
@@ -82,9 +84,11 @@ contract NativeTokenStakingManager is Initializable, StakingManager, INativeToke
      * @notice See {INativeTokenStakingManager-initiateDelegatorRegistration}.
      */
     function initiateDelegatorRegistration(
-        bytes32 validationID
+        bytes32 validationID,
+        address rewardRecipient
     ) external payable nonReentrant returns (bytes32) {
-        return _initiateDelegatorRegistration(validationID, _msgSender(), msg.value);
+        return
+            _initiateDelegatorRegistration(validationID, _msgSender(), msg.value, rewardRecipient);
     }
 
     /**

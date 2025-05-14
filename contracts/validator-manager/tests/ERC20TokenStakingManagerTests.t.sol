@@ -210,7 +210,8 @@ contract ERC20TokenStakingManagerTest is StakingManagerTest {
             disableOwner: DEFAULT_P_CHAIN_OWNER,
             delegationFeeBips: DEFAULT_DELEGATION_FEE_BIPS,
             minStakeDuration: DEFAULT_MINIMUM_STAKE_DURATION - 1,
-            stakeAmount: stakeAmount
+            stakeAmount: stakeAmount,
+            rewardRecipient: DEFAULT_DELEGATOR_ADDRESS
         });
     }
 
@@ -226,9 +227,30 @@ contract ERC20TokenStakingManagerTest is StakingManagerTest {
         bytes memory blsPublicKey,
         PChainOwner memory remainingBalanceOwner,
         PChainOwner memory disableOwner,
+        uint64 weight,
+        address rewardRecipient
+    ) internal virtual override returns (bytes32) {
+        return app.initiateValidatorRegistration({
+            nodeID: nodeID,
+            blsPublicKey: blsPublicKey,
+            remainingBalanceOwner: remainingBalanceOwner,
+            disableOwner: disableOwner,
+            delegationFeeBips: DEFAULT_DELEGATION_FEE_BIPS,
+            minStakeDuration: DEFAULT_MINIMUM_STAKE_DURATION,
+            stakeAmount: _weightToValue(weight),
+            rewardRecipient: rewardRecipient
+        });
+    }
+
+    function _initiateValidatorRegistration(
+        bytes memory nodeID,
+        bytes memory blsPublicKey,
+        PChainOwner memory remainingBalanceOwner,
+        PChainOwner memory disableOwner,
         uint16 delegationFeeBips,
         uint64 minStakeDuration,
-        uint256 stakeAmount
+        uint256 stakeAmount,
+        address rewardRecipient
     ) internal virtual override returns (bytes32) {
         return app.initiateValidatorRegistration({
             nodeID: nodeID,
@@ -237,7 +259,8 @@ contract ERC20TokenStakingManagerTest is StakingManagerTest {
             disableOwner: disableOwner,
             delegationFeeBips: delegationFeeBips,
             minStakeDuration: minStakeDuration,
-            stakeAmount: stakeAmount
+            stakeAmount: stakeAmount,
+            rewardRecipient: rewardRecipient
         });
     }
 
@@ -255,18 +278,21 @@ contract ERC20TokenStakingManagerTest is StakingManagerTest {
             disableOwner: disableOwner,
             delegationFeeBips: DEFAULT_DELEGATION_FEE_BIPS,
             minStakeDuration: DEFAULT_MINIMUM_STAKE_DURATION,
-            stakeAmount: _weightToValue(weight)
+            stakeAmount: _weightToValue(weight),
+            rewardRecipient: address(this)
         });
     }
 
     function _initiateDelegatorRegistration(
         bytes32 validationID,
         address delegatorAddress,
-        uint64 weight
+        uint64 weight,
+        address rewardRecipient
     ) internal virtual override returns (bytes32) {
         uint256 value = _weightToValue(weight);
         vm.startPrank(delegatorAddress);
-        bytes32 delegationID = app.initiateDelegatorRegistration(validationID, value);
+        bytes32 delegationID =
+            app.initiateDelegatorRegistration(validationID, value, rewardRecipient);
         vm.stopPrank();
         return delegationID;
     }
