@@ -268,15 +268,9 @@ contract ValidatorMessagesTest is Test {
         assertEq(info.weight, DEFAULT_WEIGHT);
         assertEq(info.registrationExpiry, uint64(block.timestamp + REGISTRATION_EXPIRY_LENGTH));
         assertEq(info.blsPublicKey, DEFAULT_BLS_PUBLIC_KEY);
-        assertEq(
-            info.remainingBalanceOwner.threshold, DEFAULT_P_CHAIN_OWNER.threshold
-        );
-        assertEq(
-            info.remainingBalanceOwner.addresses[0], DEFAULT_P_CHAIN_OWNER.addresses[0]
-        );
-        assertEq(
-            info.disableOwner.threshold, DEFAULT_P_CHAIN_OWNER.threshold
-        );
+        assertEq(info.remainingBalanceOwner.threshold, DEFAULT_P_CHAIN_OWNER.threshold);
+        assertEq(info.remainingBalanceOwner.addresses[0], DEFAULT_P_CHAIN_OWNER.addresses[0]);
+        assertEq(info.disableOwner.threshold, DEFAULT_P_CHAIN_OWNER.threshold);
         assertEq(info.disableOwner.addresses[0], DEFAULT_P_CHAIN_OWNER.addresses[0]);
 
         (bytes32 recoveredID,) = ValidatorMessages.packRegisterL1ValidatorMessage(info);
