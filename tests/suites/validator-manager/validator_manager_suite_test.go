@@ -82,4 +82,9 @@ var _ = ginkgo.Describe("[Validator manager integration tests]", func() {
 		func() {
 			validatorManagerFlows.PoAMigrationToPoS(LocalNetworkInstance)
 		})
+	ginkgo.It("Delegate disable validator",
+		ginkgo.Label(validatorManagerLabel),
+		func() {
+			validatorManagerFlows.RemoveDelegatorInactiveValidator(LocalNetworkInstance)
+		})
 })
