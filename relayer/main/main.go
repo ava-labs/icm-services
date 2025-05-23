@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"runtime"
@@ -46,47 +47,15 @@ import (
 	_ "go.uber.org/automaxprocs"
 )
 
-const (
-	version = "v0.0.0-dev"
+var version = "v0.0.0-dev"
 
+const (
 	relayerMetricsPrefix     = "app"
 	peerNetworkMetricsPrefix = "peers"
 )
 
 func main() {
-	fs := config.BuildFlagSet()
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		config.DisplayUsageText()
-		panic(fmt.Errorf("couldn't parse flags: %w", err))
-	}
-	// If the version flag is set, display the version then exit
-	displayVersion, err := fs.GetBool(config.VersionKey)
-	if err != nil {
-		panic(fmt.Errorf("error reading %s flag value: %w", config.VersionKey, err))
-	}
-	if displayVersion {
-		fmt.Printf("%s\n", version)
-		os.Exit(0)
-	}
-	// If the help flag is set, output the usage text then exit
-	help, err := fs.GetBool(config.HelpKey)
-	if err != nil {
-		panic(fmt.Errorf("error reading %s flag value: %w", config.HelpKey, err))
-	}
-	if help {
-		config.DisplayUsageText()
-		os.Exit(0)
-	}
-
-	v, err := config.BuildViper(fs)
-	if err != nil {
-		panic(fmt.Errorf("couldn't configure flags: %w", err))
-	}
-
-	cfg, err := config.NewConfig(v)
-	if err != nil {
-		panic(fmt.Errorf("couldn't build config: %w", err))
-	}
+	cfg := buildConfig()
 
 	// Modify the default http.DefaultClient globally
 	// TODO: Remove this temporary fix once the RPC clients used by the relayer
@@ -103,18 +72,10 @@ func main() {
 			IdleConnTimeout:     0, // Unlimited since handled by context and timeout on the client level.
 		}
 	}
-
-	// Initialize the Warp Config values and trackedSubnets by fetching via RPC
-	// We do this here so that BuildConfig doesn't need to make RPC calls
-	if err = cfg.Initialize(); err != nil {
-		panic(fmt.Errorf("couldn't initialize config: %w", err))
-	}
-
 	logLevel, err := logging.ToLevel(cfg.LogLevel)
 	if err != nil {
-		panic(fmt.Errorf("error with log level: %w", err))
+		log.Fatalf("error reading log level from config: %s", err)
 	}
-
 	logger := logging.NewLogger(
 		"icm-relayer",
 		logging.NewWrappedCore(
@@ -123,15 +84,21 @@ func main() {
 			logging.JSON.ConsoleEncoder(),
 		),
 	)
-
 	logger.Info("Initializing icm-relayer")
+
+	// Initialize the Warp Config values and trackedSubnets by fetching via RPC
+	// We do this here so that BuildConfig doesn't need to make RPC calls
+	if err = cfg.Initialize(); err != nil {
+		logger.Fatal("couldn't initialize config", zap.Error(err))
+		os.Exit(1)
+	}
 
 	// Initialize all destination clients
 	logger.Info("Initializing destination clients")
 	destinationClients, err := vms.CreateDestinationClients(logger, cfg)
 	if err != nil {
 		logger.Fatal("Failed to create destination clients", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	// Initialize all source clients
@@ -139,7 +106,7 @@ func main() {
 	sourceClients, err := createSourceClients(context.Background(), logger, &cfg)
 	if err != nil {
 		logger.Fatal("Failed to create source clients", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	// Initialize metrics gathered through prometheus
@@ -153,7 +120,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to start metrics server", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 	relayerMetricsRegistry := registries[relayerMetricsPrefix]
 	peerNetworkMetricsRegistry := registries[peerNetworkMetricsPrefix]
@@ -186,7 +153,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create message creator", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	var manuallyTrackedPeers []info.Peer
@@ -209,27 +176,27 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create app request network", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 	defer network.Shutdown()
 
 	err = relayer.InitializeConnectionsAndCheckStake(logger, network, &cfg)
 	if err != nil {
 		logger.Fatal("Failed to initialize connections and check stake", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	relayerMetrics, err := relayer.NewApplicationRelayerMetrics(relayerMetricsRegistry)
 	if err != nil {
 		logger.Fatal("Failed to create application relayer metrics", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	// Initialize the database
 	db, err := database.NewDatabase(logger, &cfg)
 	if err != nil {
 		logger.Fatal("Failed to create database", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	// Initialize the global write ticker
@@ -244,7 +211,7 @@ func main() {
 			"Failed to instantiate decider connection",
 			zap.Error(err),
 		)
-		panic(err)
+		os.Exit(1)
 	}
 
 	messageHandlerFactories, err := createMessageHandlerFactories(
@@ -254,7 +221,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create message handler factories", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	signatureAggregator, err := aggregator.NewSignatureAggregator(
@@ -269,7 +236,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	// Limits the global number of messages that can be processed concurrently by the application
@@ -291,7 +258,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create application relayers", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 	messageCoordinator := relayer.NewMessageCoordinator(
 		logger,
@@ -340,6 +307,47 @@ func main() {
 	logger.Info("Initialization complete")
 	err = errGroup.Wait()
 	logger.Error("Relayer exiting.", zap.Error(err))
+}
+
+// buildConfig parses the flags and builds the config
+// Errors here should call log.Fatalf to exit the program
+// since these errors are prior to building the logger struct
+func buildConfig() config.Config {
+	fs := config.BuildFlagSet()
+	// Parse the flags
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		config.DisplayUsageText()
+		log.Fatalf("couldn't parse flags: %s", err)
+	}
+	// If the version flag is set, display the version then exit
+	displayVersion, err := fs.GetBool(config.VersionKey)
+	if err != nil {
+		log.Fatalf("error reading %s flag value: %s", config.VersionKey, err)
+	}
+	if displayVersion {
+		fmt.Printf("%s\n", version)
+		os.Exit(0)
+	}
+	// If the help flag is set, output the usage text then exit
+	help, err := fs.GetBool(config.HelpKey)
+	if err != nil {
+		log.Fatalf("error reading %s flag value: %s", config.HelpKey, err)
+	}
+	if help {
+		config.DisplayUsageText()
+		os.Exit(0)
+	}
+
+	v, err := config.BuildViper(fs)
+	if err != nil {
+		log.Fatalf("couldn't configure flags: %s", err)
+	}
+
+	cfg, err := config.NewConfig(v)
+	if err != nil {
+		log.Fatalf("couldn't build config: %s", err)
+	}
+	return cfg
 }
 
 func createMessageHandlerFactories(

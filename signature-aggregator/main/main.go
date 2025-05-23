@@ -6,6 +6,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 
@@ -27,49 +28,18 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	version = "v0.0.0-dev"
+var version = "v0.0.0-dev"
 
+const (
 	sigAggMetricsPrefix = "signature-aggregator"
 )
 
 func main() {
-	fs := config.BuildFlagSet()
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		config.DisplayUsageText()
-		panic(fmt.Errorf("Failed to parse flags: %w", err))
-	}
-
-	displayVersion, err := fs.GetBool(config.VersionKey)
-	if err != nil {
-		panic(fmt.Errorf("error reading %s flag: %w", config.VersionKey, err))
-	}
-	if displayVersion {
-		fmt.Printf("%s\n", version)
-		os.Exit(0)
-	}
-
-	help, err := fs.GetBool(config.HelpKey)
-	if err != nil {
-		panic(fmt.Errorf("error reading %s flag value: %w", config.HelpKey, err))
-	}
-	if help {
-		config.DisplayUsageText()
-		os.Exit(0)
-	}
-	v, err := config.BuildViper(fs)
-	if err != nil {
-		panic(fmt.Errorf("couldn't configure flags: %w", err))
-	}
-
-	cfg, err := config.NewConfig(v)
-	if err != nil {
-		panic(fmt.Errorf("couldn't build config: %w", err))
-	}
+	cfg := buildConfig()
 
 	logLevel, err := logging.ToLevel(cfg.LogLevel)
 	if err != nil {
-		panic(fmt.Errorf("error with log level: %w", err))
+		log.Fatalf("error reading log level from config: %s", err)
 	}
 
 	logger := logging.NewLogger(
@@ -111,7 +81,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create message creator", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	var manuallyTrackedPeers []info.Peer
@@ -134,7 +104,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create app request network", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 	defer network.Shutdown()
 
@@ -145,7 +115,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to start metrics server", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	metricsInstance := metrics.NewSignatureAggregatorMetrics(registries[sigAggMetricsPrefix])
@@ -160,7 +130,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
-		panic(err)
+		os.Exit(1)
 	}
 
 	api.HandleAggregateSignaturesByRawMsgRequest(
@@ -182,4 +152,43 @@ func main() {
 		logger.Fatal("Server error", zap.Error(err))
 		os.Exit(1)
 	}
+}
+
+// buildConfig parses the flags and builds the config
+// Errors here should call log.Fatalf to exit the program
+// since these errors are prior to building the logger struct
+func buildConfig() config.Config {
+	fs := config.BuildFlagSet()
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		config.DisplayUsageText()
+		log.Fatalf("Failed to parse flags: %s", err)
+	}
+
+	displayVersion, err := fs.GetBool(config.VersionKey)
+	if err != nil {
+		log.Fatalf("error reading %s flag: %s", config.VersionKey, err)
+	}
+	if displayVersion {
+		fmt.Printf("%s\n", version)
+		os.Exit(0)
+	}
+
+	help, err := fs.GetBool(config.HelpKey)
+	if err != nil {
+		log.Fatalf("error reading %s flag value: %s", config.HelpKey, err)
+	}
+	if help {
+		config.DisplayUsageText()
+		os.Exit(0)
+	}
+	v, err := config.BuildViper(fs)
+	if err != nil {
+		log.Fatalf("couldn't configure flags: %s", err)
+	}
+
+	cfg, err := config.NewConfig(v)
+	if err != nil {
+		log.Fatalf("couldn't build config: %s", err)
+	}
+	return cfg
 }

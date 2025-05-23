@@ -54,6 +54,6 @@ fi
 
 cd $RELAYER_PATH
 # Build ICM Relayer, which is run as a standalone process
-last_git_tag=$(git describe --tags --abbrev=0 2>/dev/null) || last_git_tag="v0.0.0-dev"
+last_git_tag=$(git describe --tags --match "icm-relayer*" --abbrev=0 2>/dev/null) || last_git_tag="v0.0.0-dev"
 echo "Building ICM Relayer Version: $last_git_tag at $binary_path"
 go build -ldflags "-X 'main.version=$last_git_tag'" -o "$binary_path" "main/"*.go
