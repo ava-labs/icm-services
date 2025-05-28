@@ -573,7 +573,7 @@ func (n *LocalNetwork) Dir() string {
 	return n.Network.Dir
 }
 
-func (n *LocalNetwork) GetPChainWallet() pwallet.Wallet {
+func (n *LocalNetwork) GetPChainWallet(validationIDs ...ids.ID) pwallet.Wallet {
 	// Create the P-Chain wallet to issue transactions
 	kc := secp256k1fx.NewKeychain(n.globalFundedKey)
 	var subnetIDs []ids.ID
@@ -586,7 +586,8 @@ func (n *LocalNetwork) GetPChainWallet() pwallet.Wallet {
 		kc,
 		kc,
 		primary.WalletConfig{
-			SubnetIDs: subnetIDs,
+			SubnetIDs:     subnetIDs,
+			ValidationIDs: validationIDs,
 		})
 	Expect(err).Should(BeNil())
 	return wallet.P()
