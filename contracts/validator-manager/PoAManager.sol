@@ -27,7 +27,7 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
 
     // keccak256(abi.encode(uint256(keccak256("avalanche-icm.storage.PoAManager")) - 1)) & ~bytes32(uint256(0xff));
     bytes32 public constant POA_MANAGER_STORAGE_LOCATION =
-        0xafe6c4731b852fc2be89a0896ae43d22d8b24989064d841b2a1586b4d39ab600;
+        0x8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf13200;
 
     // solhint-disable ordering
     /**
