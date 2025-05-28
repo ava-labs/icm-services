@@ -134,11 +134,15 @@ contract PoAManagerTest is ValidatorManagerTest {
     }
 
     // Implement required abstract functions
-    function _beforeSend(uint256, address) internal virtual override {}
+    // solhint-disable-next-line no-empty-blocks
+    function _beforeSend(uint256 amount, address spender) internal virtual override {}
+
     function _beforeRegisterValidator(
         bytes32 validationID,
         address rewardRecipient
-    ) internal virtual override {}
+    ) internal virtual override 
+    // solhint-disable-next-line no-empty-blocks
+    {}
 
     // Override helper functions to call PoAManager instead of ValidatorManager
     function _initiateValidatorRegistration(
