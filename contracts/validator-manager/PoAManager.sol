@@ -60,6 +60,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         $._manager = IValidatorManager(validatorManager);
     }
 
+    /**
+     * @notice See {IPoAManager-initiateValidatorRegistration}.
+     */
     function initiateValidatorRegistration(
         bytes memory nodeID,
         bytes memory blsPublicKey,
@@ -73,6 +76,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         );
     }
 
+    /**
+     * @notice See {IPoAManager-initiateValidatorRemoval}.
+     */
     function initiateValidatorRemoval(
         bytes32 validationID
     ) external onlyOwner {
@@ -80,6 +86,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         return $._manager.initiateValidatorRemoval(validationID);
     }
 
+    /**
+     * @notice See {IPoAManager-initiateValidatorWeightUpdate}.
+     */
     function initiateValidatorWeightUpdate(
         bytes32 validationID,
         uint64 newWeight
@@ -88,6 +97,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         return $._manager.initiateValidatorWeightUpdate(validationID, newWeight);
     }
 
+    /**
+     * @notice See {IPoAManager-completeValidatorRegistration}.
+     */
     function completeValidatorRegistration(
         uint32 messageIndex
     ) external returns (bytes32) {
@@ -95,6 +107,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         return $._manager.completeValidatorRegistration(messageIndex);
     }
 
+    /**
+     * @notice See {IPoAManager-completeValidatorRemoval}.
+     */
     function completeValidatorRemoval(
         uint32 messageIndex
     ) external returns (bytes32) {
@@ -102,6 +117,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         return $._manager.completeValidatorRemoval(messageIndex);
     }
 
+    /**
+     * @notice See {IPoAManager-completeValidatorWeightUpdate}.
+     */
     function completeValidatorWeightUpdate(
         uint32 messageIndex
     ) external returns (bytes32, uint64) {

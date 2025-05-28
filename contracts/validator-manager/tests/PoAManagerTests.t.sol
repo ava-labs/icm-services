@@ -5,8 +5,8 @@ import {ValidatorManagerTest} from "./ValidatorManagerTests.t.sol";
 import {PoAManager} from "../PoAManager.sol";
 import {ValidatorManager, ValidatorManagerSettings} from "../ValidatorManager.sol";
 import {IACP99Manager, PChainOwner, ConversionData} from "../interfaces/IACP99Manager.sol";
-import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 import {ValidatorMessages} from "../ValidatorMessages.sol";
+import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 import {OwnableUpgradeable} from
     "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
 
@@ -138,13 +138,9 @@ contract PoAManagerTest is ValidatorManagerTest {
     function _beforeRegisterValidator(
         bytes32 validationID,
         address rewardRecipient
-    ) internal virtual override {
-        // No specific actions needed for PoAManager
-        // This can be left empty or customized as needed
-    }
+    ) internal virtual override {}
 
     // Override helper functions to call PoAManager instead of ValidatorManager
-
     function _initiateValidatorRegistration(
         bytes memory nodeID,
         bytes memory blsPublicKey,
