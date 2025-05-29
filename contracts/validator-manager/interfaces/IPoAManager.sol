@@ -86,4 +86,11 @@ interface IPoAManager {
     function completeValidatorWeightUpdate(
         uint32 messageIndex
     ) external returns (bytes32, uint64);
+
+    /**
+     * @notice Transfers ownership of the underlying validator manager contract.
+     * @dev Only callable by the current owner of this contract.
+     * @param newOwner The address to transfer ownership to.
+     */
+    function transferUnderlyingValidatorManagerOwnership(address newOwner) external;
 }

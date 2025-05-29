@@ -77,6 +77,10 @@ interface IValidatorManager is IACP99Manager {
         uint64 newWeight
     ) external returns (uint64, bytes32);
 
+    function transferOwnership(
+        address newOwner
+    ) external;
+
     /**
      * @notice Returns a validation ID registered to the given nodeID
      * @param nodeID ID of the node associated with the validation ID
