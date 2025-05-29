@@ -785,7 +785,9 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
      * @notice Transfers ownership of the ValidatorManager contract to a new address.
      * @param newOwner The address to transfer ownership to.
      */
-    function transferOwnership(address newOwner) public override(IValidatorManager, OwnableUpgradeable) onlyOwner {
+    function transferOwnership(
+        address newOwner
+    ) public override(IValidatorManager, OwnableUpgradeable) onlyOwner {
         OwnableUpgradeable.transferOwnership(newOwner);
     }
 }

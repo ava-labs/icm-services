@@ -132,7 +132,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
      * @dev Only callable by the current owner of this contract.
      * @param newOwner The address to transfer ownership to.
      */
-    function transferUnderlyingValidatorManagerOwnership(address newOwner) external onlyOwner {
+    function transferUnderlyingValidatorManagerOwnership(
+        address newOwner
+    ) external onlyOwner {
         PoAManagerStorage storage $ = _getPoAManagerStorage();
         $._manager.transferOwnership(newOwner);
     }

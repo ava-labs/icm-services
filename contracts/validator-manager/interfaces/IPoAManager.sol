@@ -92,5 +92,7 @@ interface IPoAManager {
      * @dev Only callable by the current owner of this contract.
      * @param newOwner The address to transfer ownership to.
      */
-    function transferUnderlyingValidatorManagerOwnership(address newOwner) external;
+    function transferUnderlyingValidatorManagerOwnership(
+        address newOwner
+    ) external;
 }
