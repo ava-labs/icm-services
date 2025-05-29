@@ -247,6 +247,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 		address, tx, manager, err = poamanager.DeployPoAManager(
 			opts,
 			l1.RPCClient,
+			0, // ICMInitializable.Allowed
 		)
 		Expect(err).Should(BeNil())
 		WaitForTransactionSuccess(ctx, l1, tx.Hash())

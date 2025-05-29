@@ -61,7 +61,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		fundAmount,
 	)
 
-	// Deploy ValidatorManager as PoA
+	// Deploy PoAManager
 	nodes, initialValidationIDs := network.ConvertSubnet(
 		ctx,
 		l1AInfo,
@@ -168,7 +168,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 	// Transfer ownership from PoA -> the new staking manager
 	opts, err = bind.NewKeyedTransactorWithChainID(ownerKey, l1AInfo.EVMChainID)
 	Expect(err).Should(BeNil())
-	tx, err := poaManager.TransferUnderlyingValidatorManagerOwnership(opts, stakingManagerAddress)
+	tx, err := poaManager.TransferValidatorManagerOwnership(opts, stakingManagerAddress)
 	Expect(err).Should(BeNil())
 	utils.WaitForTransactionSuccess(context.Background(), l1AInfo, tx.Hash())
 

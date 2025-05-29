@@ -12,6 +12,7 @@ import {OwnableUpgradeable} from
     "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
 import {Initializable} from
     "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 
 /**
  * @dev Implementation of the {IPoAManager} interface.
@@ -29,6 +30,14 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
     bytes32 public constant POA_MANAGER_STORAGE_LOCATION =
         0x8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf13200;
 
+    constructor(
+        ICMInitializable init
+    ) {
+        if (init == ICMInitializable.Disallowed) {
+            _disableInitializers();
+        }
+    }
+
     // solhint-disable ordering
     /**
      * @dev This storage is visible to child contracts for convenience.
@@ -42,19 +51,19 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         }
     }
 
-    function initialize(address owner, address validatorManager) external initializer {
+    function initialize(address owner, IValidatorManager validatorManager) external initializer {
         __PoAManager_init(owner, validatorManager);
     }
 
     // solhint-disable-next-line func-name-mixedcase
-    function __PoAManager_init(address owner, address validatorManager) internal onlyInitializing {
+    function __PoAManager_init(address owner, IValidatorManager validatorManager) internal onlyInitializing {
         __Ownable_init(owner);
         __PoAManager_init_unchained(validatorManager);
     }
 
     // solhint-disable-next-line func-name-mixedcase
     function __PoAManager_init_unchained(
-        address validatorManager
+        IValidatorManager validatorManager
     ) internal onlyInitializing {
         PoAManagerStorage storage $ = _getPoAManagerStorage();
         $._manager = IValidatorManager(validatorManager);
@@ -128,11 +137,9 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
     }
 
     /**
-     * @notice Transfers ownership of the underlying validator manager contract.
-     * @dev Only callable by the current owner of this contract.
-     * @param newOwner The address to transfer ownership to.
+     * @notice See {IPoAManager-transferValidatorManagerOwnership}.
      */
-    function transferUnderlyingValidatorManagerOwnership(
+    function transferValidatorManagerOwnership(
         address newOwner
     ) external onlyOwner {
         PoAManagerStorage storage $ = _getPoAManagerStorage();

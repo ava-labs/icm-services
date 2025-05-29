@@ -30,6 +30,16 @@ class ValidatorManager {
     +initiateValidatorWeightUpdate() onlyOwner
 }
 
+class PoAManager {
+    +completeValidatorRegistration()
+    +completeValidatorRemoval()
+    +completeValidatorWeightUpdate()
+    +initiateValidatorRegistration() onlyOwner
+    +initiateValidatorRemoval() onlyOwner
+    +initiateValidatorWeightUpdate() onlyOwner
+    +transferValidatorManagerOwnership() onlyOwner
+}
+
 class StakingManager {
     +completeValidatorRegistration()
     +initiateValidatorRemoval()
