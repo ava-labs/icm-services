@@ -74,8 +74,8 @@ interface IPoAManager {
     /**
      * @notice Completes a validator weight update. Callable by anyone.
      * @param messageIndex The index of the weight update message.
-    * @return validationID The unique identifier for the validator whose weight was updated.
-    * @return nonce The validator nonce associated with the executed weight change.
+     * @return validationID The unique identifier for the validator whose weight was updated.
+     * @return nonce The validator nonce associated with the executed weight change.
      */
     function completeValidatorWeightUpdate(
         uint32 messageIndex

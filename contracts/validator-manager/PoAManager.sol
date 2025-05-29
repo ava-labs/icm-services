@@ -56,7 +56,10 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
     }
 
     // solhint-disable-next-line func-name-mixedcase
-    function __PoAManager_init(address owner, IValidatorManager validatorManager) internal onlyInitializing {
+    function __PoAManager_init(
+        address owner,
+        IValidatorManager validatorManager
+    ) internal onlyInitializing {
         __Ownable_init(owner);
         __PoAManager_init_unchained(validatorManager);
     }
