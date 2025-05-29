@@ -6,7 +6,7 @@ The Validator Manager contracts support migrating from a Proof-of-Authority secu
 
 Migrating from PoA to PoS consists of the following steps:
 
-### 1. Deploy `PoAManager` as PoA, setting the `admin` address in the constructor.
+### 1. Deploy `ValidatorManager` as PoA, setting the `admin` address in the constructor.
 
 `ValidatorManager` is `Ownable`, which restricts initiation of validator set changes to the current owner, or `admin`. For PoA L1s, the `admin` has the exclusive ability to manage the validator set.
 
