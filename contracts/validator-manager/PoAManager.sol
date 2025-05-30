@@ -7,6 +7,7 @@ pragma solidity 0.8.25;
 
 import {IPoAManager} from "./interfaces/IPoAManager.sol";
 import {IValidatorManager} from "./interfaces/IValidatorManager.sol";
+import {ValidatorManager} from "./ValidatorManager.sol";
 import {PChainOwner} from "./interfaces/IACP99Manager.sol";
 import {OwnableUpgradeable} from
     "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
@@ -146,6 +147,6 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         address newOwner
     ) external onlyOwner {
         PoAManagerStorage storage $ = _getPoAManagerStorage();
-        $._manager.transferOwnership(newOwner);
+        ValidatorManager(address($._manager)).transferOwnership(newOwner);
     }
 }

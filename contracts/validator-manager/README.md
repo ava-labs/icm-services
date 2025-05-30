@@ -61,7 +61,8 @@ class NativeTokenStakingManager {
 }
 
 ACP99Manager <|-- ValidatorManager
-ValidatorManager --o  StakingManager : owner
+ValidatorManager --o PoAManager : owner
+ValidatorManager --o StakingManager : owner
 StakingManager <|-- ERC20TokenStakingManager
 StakingManager <|-- NativeTokenStakingManager
 ```
