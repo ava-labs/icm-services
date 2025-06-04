@@ -50,11 +50,7 @@ echo "Copied ${BASEDIR}/subnet-evm/subnet-evm binary to ${BASEDIR}/avalanchego/p
 
 export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
 
-# Build ginkgo
-# to install the ginkgo binary (required for test build and run)
-go install -v github.com/onsi/ginkgo/v2/ginkgo@${GINKGO_VERSION}
-
-ginkgo build ./tests/
+go run github.com/onsi/ginkgo/v2/ginkgo build ./tests/
 go build -v -o tests/cmd/decider/decider ./tests/cmd/decider/
 
 # Run the tests

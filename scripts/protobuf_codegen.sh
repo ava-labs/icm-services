@@ -14,8 +14,6 @@ RELAYER_PATH=$(
 
 source $RELAYER_PATH/scripts/versions.sh
 
-go install -v github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}
-
 ## install "protoc-gen-go"
 PROTOC_GEN_GO_VERSION=$(getDepVersion google.golang.org/protobuf)
 go install -v google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}
@@ -43,16 +41,16 @@ fi
 cd "$TARGET"
 
 echo "Running protobuf fmt..."
-buf format -w
+go run github.com/bufbuild/buf/cmd/buf format -w
 
 echo "Running protobuf lint check..."
-if ! buf lint;  then
+if ! go run github.com/bufbuild/buf/cmd/buf lint;  then
     echo "ERROR: protobuf linter failed"
     exit 1
 fi
 
 echo "Re-generating protobuf..."
-if ! buf generate;  then
+if ! go run github.com/bufbuild/buf/cmd/buf generate;  then
     echo "ERROR: protobuf generation failed"
     exit 1
 fi
