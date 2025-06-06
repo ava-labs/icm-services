@@ -261,17 +261,18 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		mockNetwork.EXPECT().RegisterAppRequest(appRequest).AnyTimes()
 	}
 
-	mockNetwork.EXPECT().RegisterRequestID(
-		requestID,
-		len(appRequests),
-	).Return(
-		make(chan message.InboundMessage, len(appRequests)),
-	).AnyTimes()
-
 	var nodeIDs set.Set[ids.NodeID]
 	for _, appRequest := range appRequests {
 		nodeIDs.Add(appRequest.NodeID)
 	}
+
+	mockNetwork.EXPECT().RegisterRequestID(
+		requestID,
+		nodeIDs,
+	).Return(
+		make(chan message.InboundMessage, len(appRequests)),
+	).AnyTimes()
+
 	mockNetwork.EXPECT().Send(
 		gomock.Any(),
 		nodeIDs,
@@ -387,7 +388,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			}
 			mockNetwork.EXPECT().RegisterRequestID(
 				requestID,
-				len(appRequests),
+				nodeIDs,
 			).Return(responseChan).Times(1)
 
 			mockNetwork.EXPECT().Send(

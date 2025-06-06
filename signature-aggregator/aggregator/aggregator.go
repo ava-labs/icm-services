@@ -387,7 +387,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 				}
 			}
 		}
-		responseChan := s.network.RegisterRequestID(requestID, vdrSet.Len())
+		responseChan := s.network.RegisterRequestID(requestID, vdrSet)
 
 		sentTo := s.network.Send(outMsg, vdrSet, sourceSubnet, subnets.NoOpAllower)
 		s.metrics.AppRequestCount.Inc()

@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/snow/networking/router"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/utils/timer"
 	"github.com/ava-labs/avalanchego/version"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,6 +28,7 @@ var _ router.ExternalHandler = &RelayerExternalHandler{}
 type RelayerExternalHandler struct {
 	log            logging.Logger
 	lock           *sync.Mutex
+	requestedNodes map[uint32]*set.Set[ids.NodeID]
 	responseChans  map[uint32]chan message.InboundMessage
 	responsesCount map[uint32]expectedResponses
 	timeoutManager timer.AdaptiveTimeoutManager
@@ -67,6 +69,7 @@ func NewRelayerExternalHandler(
 	return &RelayerExternalHandler{
 		log:            logger,
 		lock:           &sync.Mutex{},
+		requestedNodes: make(map[uint32]*set.Set[ids.NodeID]),
 		responseChans:  make(map[uint32]chan message.InboundMessage),
 		responsesCount: make(map[uint32]expectedResponses),
 		timeoutManager: timeoutManager,
@@ -123,7 +126,7 @@ func (h *RelayerExternalHandler) Disconnected(nodeID ids.NodeID) {
 // be globally unique for the lifetime of the AppRequest. This is upper bounded by the timeout duration.
 func (h *RelayerExternalHandler) RegisterRequestID(
 	requestID uint32,
-	numExpectedResponses int,
+	requestedNodes set.Set[ids.NodeID],
 ) chan message.InboundMessage {
 	// Create a channel to receive the response
 	h.lock.Lock()
@@ -131,6 +134,17 @@ func (h *RelayerExternalHandler) RegisterRequestID(
 
 	h.log.Debug("Registering request ID", zap.Uint32("requestID", requestID))
 
+	if _, ok := h.requestedNodes[requestID]; !ok {
+		setWithNode := set.NewSet[ids.NodeID](requestedNodes.Len())
+		h.requestedNodes[requestID] = &setWithNode
+	}
+
+	// Add the requested nodes to the map
+	for nodeID := range requestedNodes {
+		h.requestedNodes[requestID].Add(nodeID)
+	}
+
+	numExpectedResponses := requestedNodes.Len()
 	responseChan := make(chan message.InboundMessage, numExpectedResponses)
 	h.responseChans[requestID] = responseChan
 	h.responsesCount[requestID] = expectedResponses{
@@ -185,6 +199,16 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 	}
 	h.timeoutManager.Remove(reqID)
 
+	// If the message is from an unexpected node, we ignore it
+	if !h.isRequestedNode(requestID, reqID.NodeID) {
+		h.log.Debug(
+			"Received response from unexpected node",
+			zap.Stringer("nodeID", reqID.NodeID),
+			zap.Uint32("requestID", requestID),
+		)
+		return
+	}
+
 	// Dispatch to the appropriate response channel
 	if responseChan, ok := h.responseChans[requestID]; ok {
 		responseChan <- inboundMessage
@@ -211,4 +235,14 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 			received: received,
 		}
 	}
+}
+
+func (h *RelayerExternalHandler) isRequestedNode(
+	requestID uint32,
+	nodeID ids.NodeID,
+) bool {
+	if requestedNodes, ok := h.requestedNodes[requestID]; ok {
+		return requestedNodes.Contains(nodeID)
+	}
+	return false
 }
