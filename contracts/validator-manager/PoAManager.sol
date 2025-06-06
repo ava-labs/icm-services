@@ -9,8 +9,7 @@ import {IPoAManager} from "./interfaces/IPoAManager.sol";
 import {IValidatorManager} from "./interfaces/IValidatorManager.sol";
 import {ValidatorManager} from "./ValidatorManager.sol";
 import {PChainOwner} from "./interfaces/IACP99Manager.sol";
-import {Ownable} from
-    "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
+import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
 
 /**
  * @dev Implementation of the {IPoAManager} interface.
@@ -28,10 +27,7 @@ contract PoAManager is IPoAManager, Ownable {
     bytes32 public constant POA_MANAGER_STORAGE_LOCATION =
         0x8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf13200;
 
-    constructor(
-        address owner,
-        IValidatorManager validatorManager
-    ) Ownable(owner){
+    constructor(address owner, IValidatorManager validatorManager) Ownable(owner) {
         PoAManagerStorage storage $ = _getPoAManagerStorage();
         $._manager = validatorManager;
     }
