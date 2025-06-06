@@ -63,8 +63,8 @@ type ValidatorMessagesValidationPeriod struct {
 
 // PoAManagerMetaData contains all meta data concerning the PoAManager contract.
 var PoAManagerMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"enumICMInitializable\",\"name\":\"init\",\"type\":\"uint8\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"InvalidInitialization\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"NotInitializing\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"version\",\"type\":\"uint64\"}],\"name\":\"Initialized\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"POA_MANAGER_STORAGE_LOCATION\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"messageIndex\",\"type\":\"uint32\"}],\"name\":\"completeValidatorRegistration\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"messageIndex\",\"type\":\"uint32\"}],\"name\":\"completeValidatorRemoval\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"messageIndex\",\"type\":\"uint32\"}],\"name\":\"completeValidatorWeightUpdate\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"\",\"type\":\"uint64\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"internalType\":\"contractIValidatorManager\",\"name\":\"validatorManager\",\"type\":\"address\"}],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"nodeID\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"blsPublicKey\",\"type\":\"bytes\"},{\"components\":[{\"internalType\":\"uint32\",\"name\":\"threshold\",\"type\":\"uint32\"},{\"internalType\":\"address[]\",\"name\":\"addresses\",\"type\":\"address[]\"}],\"internalType\":\"structPChainOwner\",\"name\":\"remainingBalanceOwner\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint32\",\"name\":\"threshold\",\"type\":\"uint32\"},{\"internalType\":\"address[]\",\"name\":\"addresses\",\"type\":\"address[]\"}],\"internalType\":\"structPChainOwner\",\"name\":\"disableOwner\",\"type\":\"tuple\"},{\"internalType\":\"uint64\",\"name\":\"weight\",\"type\":\"uint64\"}],\"name\":\"initiateValidatorRegistration\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"validationID\",\"type\":\"bytes32\"}],\"name\":\"initiateValidatorRemoval\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"validationID\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"newWeight\",\"type\":\"uint64\"}],\"name\":\"initiateValidatorWeightUpdate\",\"outputs\":[{\"internalType\":\"uint64\",\"name\":\"\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferValidatorManagerOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x608060405234801561000f575f80fd5b50604051610e97380380610e9783398101604081905261002e91610107565b60018160018111156100425761004261012c565b0361004f5761004f610055565b50610140565b7ff0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00805468010000000000000000900460ff16156100a55760405163f92ee8a960e01b815260040160405180910390fd5b80546001600160401b03908116146101045780546001600160401b0319166001600160401b0390811782556040519081527fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d29060200160405180910390a15b50565b5f60208284031215610117575f80fd5b815160028110610125575f80fd5b9392505050565b634e487b7160e01b5f52602160045260245ffd5b610d4a8061014d5f395ff3fe608060405234801561000f575f80fd5b50600436106100b1575f3560e01c80639681d9401161006e5780639681d940146101795780639cb7624e1461018c578063a3a65e481461019f578063b6e6a2ca146101b2578063ce161f14146101c5578063f2fde38b146101f6575f80fd5b80632fabc10a146100b5578063485cc955146100dc57806366109669146100f1578063715018a61461012457806389f9f85b1461012c5780638da5cb5b1461013f575b5f80fd5b6100c95f80516020610cf583398151915281565b6040519081526020015b60405180910390f35b6100ef6100ea36600461084c565b610209565b005b6101046100ff366004610898565b610319565b6040805167ffffffffffffffff90931683526020830191909152016100d3565b6100ef6103b9565b6100ef61013a3660046108bb565b6103cc565b7f9016d09d72d40fdae2fd8ceac6b6234c7706214fd39c1cd1e609a0528c199300546040516001600160a01b0390911681526020016100d3565b6100c96101873660046108ee565b610440565b6100c961019a366004610aab565b6104c7565b6100c96101ad3660046108ee565b610560565b6100ef6101c0366004610b65565b6105a4565b6101d86101d33660046108ee565b6105ed565b6040805192835267ffffffffffffffff9091166020830152016100d3565b6100ef6102043660046108bb565b610678565b7ff0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a008054600160401b810460ff16159067ffffffffffffffff165f8115801561024e5750825b90505f8267ffffffffffffffff16600114801561026a5750303b155b905081158015610278575080155b156102965760405163f92ee8a960e01b815260040160405180910390fd5b845467ffffffffffffffff1916600117855583156102c057845460ff60401b1916600160401b1785555b6102ca87876106b7565b831561031057845460ff60401b19168555604051600181527fc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d29060200160405180910390a15b50505050505050565b5f806103236106d5565b5f5f80516020610cf58339815191528054604051636610966960e01b81526004810188905267ffffffffffffffff871660248201529192506001600160a01b03169063661096699060440160408051808303815f875af1158015610389573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103ad9190610b7c565b92509250509250929050565b6103c16106d5565b6103ca5f610730565b565b6103d46106d5565b5f80516020610cf5833981519152805460405163f2fde38b60e01b81526001600160a01b0384811660048301529091169063f2fde38b906024015b5f604051808303815f87803b158015610426575f80fd5b505af1158015610438573d5f803e3d5ffd5b505050505050565b5f80516020610cf5833981519152805460405163025a076560e61b815263ffffffff841660048201525f92916001600160a01b031690639681d940906024015b6020604051808303815f875af115801561049c573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906104c09190610ba8565b9392505050565b5f6104d06106d5565b5f80516020610cf58339815191528054604051634e5bb12760e11b81526001600160a01b0390911690639cb7624e90610515908a908a908a908a908a90600401610c68565b6020604051808303815f875af1158015610531573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906105559190610ba8565b979650505050505050565b5f80516020610cf58339815191528054604051631474cbc960e31b815263ffffffff841660048201525f92916001600160a01b03169063a3a65e4890602401610480565b6105ac6106d5565b5f80516020610cf58339815191528054604051635b73516560e11b8152600481018490526001600160a01b039091169063b6e6a2ca9060240161040f565b50565b5f80805f80516020610cf5833981519152805460405163338587c560e21b815263ffffffff871660048201529192506001600160a01b03169063ce161f149060240160408051808303815f875af115801561064a573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061066e9190610cd1565b9250925050915091565b6106806106d5565b6001600160a01b0381166106ae57604051631e4fbdf760e01b81525f60048201526024015b60405180910390fd5b6105ea81610730565b6106bf6107a0565b6106c8826107e9565b6106d1816107fa565b5050565b336107077f9016d09d72d40fdae2fd8ceac6b6234c7706214fd39c1cd1e609a0528c199300546001600160a01b031690565b6001600160a01b0316146103ca5760405163118cdaa760e01b81523360048201526024016106a5565b7f9016d09d72d40fdae2fd8ceac6b6234c7706214fd39c1cd1e609a0528c19930080546001600160a01b031981166001600160a01b03848116918217845560405192169182907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0905f90a3505050565b7ff0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a0054600160401b900460ff166103ca57604051631afcd79f60e31b815260040160405180910390fd5b6107f16107a0565b6105ea81610830565b6108026107a0565b5f80516020610cf583398151915280546001600160a01b0319166001600160a01b0392909216919091179055565b6106806107a0565b6001600160a01b03811681146105ea575f80fd5b5f806040838503121561085d575f80fd5b823561086881610838565b9150602083013561087881610838565b809150509250929050565b67ffffffffffffffff811681146105ea575f80fd5b5f80604083850312156108a9575f80fd5b82359150602083013561087881610883565b5f602082840312156108cb575f80fd5b81356104c081610838565b803563ffffffff811681146108e9575f80fd5b919050565b5f602082840312156108fe575f80fd5b6104c0826108d6565b634e487b7160e01b5f52604160045260245ffd5b6040805190810167ffffffffffffffff8111828210171561093e5761093e610907565b60405290565b604051601f8201601f1916810167ffffffffffffffff8111828210171561096d5761096d610907565b604052919050565b5f82601f830112610984575f80fd5b813567ffffffffffffffff81111561099e5761099e610907565b6109b1601f8201601f1916602001610944565b8181528460208386010111156109c5575f80fd5b816020850160208301375f918101602001919091529392505050565b5f604082840312156109f1575f80fd5b6109f961091b565b9050610a04826108d6565b815260208083013567ffffffffffffffff80821115610a21575f80fd5b818501915085601f830112610a34575f80fd5b813581811115610a4657610a46610907565b8060051b9150610a57848301610944565b8181529183018401918481019088841115610a70575f80fd5b938501935b83851015610a9a5784359250610a8a83610838565b8282529385019390850190610a75565b808688015250505050505092915050565b5f805f805f60a08688031215610abf575f80fd5b853567ffffffffffffffff80821115610ad6575f80fd5b610ae289838a01610975565b96506020880135915080821115610af7575f80fd5b610b0389838a01610975565b95506040880135915080821115610b18575f80fd5b610b2489838a016109e1565b94506060880135915080821115610b39575f80fd5b50610b46888289016109e1565b9250506080860135610b5781610883565b809150509295509295909350565b5f60208284031215610b75575f80fd5b5035919050565b5f8060408385031215610b8d575f80fd5b8251610b9881610883565b6020939093015192949293505050565b5f60208284031215610bb8575f80fd5b5051919050565b5f81518084525f5b81811015610be357602081850181015186830182015201610bc7565b505f602082860101526020601f19601f83011685010191505092915050565b5f6040830163ffffffff8351168452602080840151604060208701528281518085526060880191506020830194505f92505b80831015610c5d5784516001600160a01b03168252938301936001929092019190830190610c34565b509695505050505050565b60a081525f610c7a60a0830188610bbf565b8281036020840152610c8c8188610bbf565b90508281036040840152610ca08187610c02565b90508281036060840152610cb48186610c02565b91505067ffffffffffffffff831660808301529695505050505050565b5f8060408385031215610ce2575f80fd5b8251915060208301516108788161088356fe8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf13200a264697066735822122052cd9c4267a03e1e70644e289ec908bf6abda79763e3de1e2cc1e5cd624fe1d464736f6c63430008190033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"internalType\":\"contractIValidatorManager\",\"name\":\"validatorManager\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"POA_MANAGER_STORAGE_LOCATION\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"messageIndex\",\"type\":\"uint32\"}],\"name\":\"completeValidatorRegistration\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"messageIndex\",\"type\":\"uint32\"}],\"name\":\"completeValidatorRemoval\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"messageIndex\",\"type\":\"uint32\"}],\"name\":\"completeValidatorWeightUpdate\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"\",\"type\":\"uint64\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"nodeID\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"blsPublicKey\",\"type\":\"bytes\"},{\"components\":[{\"internalType\":\"uint32\",\"name\":\"threshold\",\"type\":\"uint32\"},{\"internalType\":\"address[]\",\"name\":\"addresses\",\"type\":\"address[]\"}],\"internalType\":\"structPChainOwner\",\"name\":\"remainingBalanceOwner\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint32\",\"name\":\"threshold\",\"type\":\"uint32\"},{\"internalType\":\"address[]\",\"name\":\"addresses\",\"type\":\"address[]\"}],\"internalType\":\"structPChainOwner\",\"name\":\"disableOwner\",\"type\":\"tuple\"},{\"internalType\":\"uint64\",\"name\":\"weight\",\"type\":\"uint64\"}],\"name\":\"initiateValidatorRegistration\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"validationID\",\"type\":\"bytes32\"}],\"name\":\"initiateValidatorRemoval\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"validationID\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"newWeight\",\"type\":\"uint64\"}],\"name\":\"initiateValidatorWeightUpdate\",\"outputs\":[{\"internalType\":\"uint64\",\"name\":\"\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferValidatorManagerOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x608060405234801561000f575f80fd5b50604051610c1b380380610c1b83398101604081905261002e91610111565b816001600160a01b03811661005c57604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b610065816100ab565b507f8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf1320080546001600160a01b0319166001600160a01b039290921691909117905550610149565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b038116811461010e575f80fd5b50565b5f8060408385031215610122575f80fd5b825161012d816100fa565b602084015190925061013e816100fa565b809150509250929050565b610ac5806101565f395ff3fe608060405234801561000f575f80fd5b50600436106100a6575f3560e01c80639681d9401161006e5780639681d9401461013b5780639cb7624e1461014e578063a3a65e4814610161578063b6e6a2ca14610174578063ce161f1414610187578063f2fde38b146101b8575f80fd5b80632fabc10a146100aa57806366109669146100d1578063715018a61461010457806389f9f85b1461010e5780638da5cb5b14610121575b5f80fd5b6100be5f80516020610a7083398151915281565b6040519081526020015b60405180910390f35b6100e46100df3660046105f9565b6101cb565b6040805167ffffffffffffffff90931683526020830191909152016100c8565b61010c61026b565b005b61010c61011c366004610642565b61027e565b5f546040516001600160a01b0390911681526020016100c8565b6100be61014936600461066e565b6102f2565b6100be61015c366004610826565b610379565b6100be61016f36600461066e565b610412565b61010c6101823660046108e0565b610456565b61019a61019536600461066e565b61049f565b6040805192835267ffffffffffffffff9091166020830152016100c8565b61010c6101c6366004610642565b61052a565b5f806101d5610569565b5f5f80516020610a708339815191528054604051636610966960e01b81526004810188905267ffffffffffffffff871660248201529192506001600160a01b03169063661096699060440160408051808303815f875af115801561023b573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061025f91906108f7565b92509250509250929050565b610273610569565b61027c5f610595565b565b610286610569565b5f80516020610a70833981519152805460405163f2fde38b60e01b81526001600160a01b0384811660048301529091169063f2fde38b906024015b5f604051808303815f87803b1580156102d8575f80fd5b505af11580156102ea573d5f803e3d5ffd5b505050505050565b5f80516020610a70833981519152805460405163025a076560e61b815263ffffffff841660048201525f92916001600160a01b031690639681d940906024015b6020604051808303815f875af115801561034e573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103729190610923565b9392505050565b5f610382610569565b5f80516020610a708339815191528054604051634e5bb12760e11b81526001600160a01b0390911690639cb7624e906103c7908a908a908a908a908a906004016109e3565b6020604051808303815f875af11580156103e3573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906104079190610923565b979650505050505050565b5f80516020610a708339815191528054604051631474cbc960e31b815263ffffffff841660048201525f92916001600160a01b03169063a3a65e4890602401610332565b61045e610569565b5f80516020610a708339815191528054604051635b73516560e11b8152600481018490526001600160a01b039091169063b6e6a2ca906024016102c1565b50565b5f80805f80516020610a70833981519152805460405163338587c560e21b815263ffffffff871660048201529192506001600160a01b03169063ce161f149060240160408051808303815f875af11580156104fc573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906105209190610a4c565b9250925050915091565b610532610569565b6001600160a01b03811661056057604051631e4fbdf760e01b81525f60048201526024015b60405180910390fd5b61049c81610595565b5f546001600160a01b0316331461027c5760405163118cdaa760e01b8152336004820152602401610557565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b67ffffffffffffffff8116811461049c575f80fd5b5f806040838503121561060a575f80fd5b82359150602083013561061c816105e4565b809150509250929050565b80356001600160a01b038116811461063d575f80fd5b919050565b5f60208284031215610652575f80fd5b61037282610627565b803563ffffffff8116811461063d575f80fd5b5f6020828403121561067e575f80fd5b6103728261065b565b634e487b7160e01b5f52604160045260245ffd5b6040805190810167ffffffffffffffff811182821017156106be576106be610687565b60405290565b604051601f8201601f1916810167ffffffffffffffff811182821017156106ed576106ed610687565b604052919050565b5f82601f830112610704575f80fd5b813567ffffffffffffffff81111561071e5761071e610687565b610731601f8201601f19166020016106c4565b818152846020838601011115610745575f80fd5b816020850160208301375f918101602001919091529392505050565b5f60408284031215610771575f80fd5b61077961069b565b90506107848261065b565b815260208083013567ffffffffffffffff808211156107a1575f80fd5b818501915085601f8301126107b4575f80fd5b8135818111156107c6576107c6610687565b8060051b91506107d78483016106c4565b81815291830184019184810190888411156107f0575f80fd5b938501935b838510156108155761080685610627565b825293850193908501906107f5565b808688015250505050505092915050565b5f805f805f60a0868803121561083a575f80fd5b853567ffffffffffffffff80821115610851575f80fd5b61085d89838a016106f5565b96506020880135915080821115610872575f80fd5b61087e89838a016106f5565b95506040880135915080821115610893575f80fd5b61089f89838a01610761565b945060608801359150808211156108b4575f80fd5b506108c188828901610761565b92505060808601356108d2816105e4565b809150509295509295909350565b5f602082840312156108f0575f80fd5b5035919050565b5f8060408385031215610908575f80fd5b8251610913816105e4565b6020939093015192949293505050565b5f60208284031215610933575f80fd5b5051919050565b5f81518084525f5b8181101561095e57602081850181015186830182015201610942565b505f602082860101526020601f19601f83011685010191505092915050565b5f6040830163ffffffff8351168452602080840151604060208701528281518085526060880191506020830194505f92505b808310156109d85784516001600160a01b031682529383019360019290920191908301906109af565b509695505050505050565b60a081525f6109f560a083018861093a565b8281036020840152610a07818861093a565b90508281036040840152610a1b818761097d565b90508281036060840152610a2f818661097d565b91505067ffffffffffffffff831660808301529695505050505050565b5f8060408385031215610a5d575f80fd5b82519150602083015161061c816105e456fe8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf13200a264697066735822122010c832681ab766dd13af32074da5c209207f0339fddc9f60c65dbeb6a16733c664736f6c63430008190033",
 }
 
 // PoAManagerABI is the input ABI used to generate the binding from.
@@ -76,7 +76,7 @@ var PoAManagerABI = PoAManagerMetaData.ABI
 var PoAManagerBin = PoAManagerMetaData.Bin
 
 // DeployPoAManager deploys a new Ethereum contract, binding an instance of PoAManager to it.
-func DeployPoAManager(auth *bind.TransactOpts, backend bind.ContractBackend, init uint8) (common.Address, *types.Transaction, *PoAManager, error) {
+func DeployPoAManager(auth *bind.TransactOpts, backend bind.ContractBackend, owner common.Address, validatorManager common.Address) (common.Address, *types.Transaction, *PoAManager, error) {
 	parsed, err := PoAManagerMetaData.GetAbi()
 	if err != nil {
 		return common.Address{}, nil, nil, err
@@ -85,7 +85,7 @@ func DeployPoAManager(auth *bind.TransactOpts, backend bind.ContractBackend, ini
 		return common.Address{}, nil, nil, errors.New("GetABI returned nil")
 	}
 
-	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(PoAManagerBin), backend, init)
+	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(PoAManagerBin), backend, owner, validatorManager)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
@@ -359,27 +359,6 @@ func (_PoAManager *PoAManagerTransactorSession) CompleteValidatorWeightUpdate(me
 	return _PoAManager.Contract.CompleteValidatorWeightUpdate(&_PoAManager.TransactOpts, messageIndex)
 }
 
-// Initialize is a paid mutator transaction binding the contract method 0x485cc955.
-//
-// Solidity: function initialize(address owner, address validatorManager) returns()
-func (_PoAManager *PoAManagerTransactor) Initialize(opts *bind.TransactOpts, owner common.Address, validatorManager common.Address) (*types.Transaction, error) {
-	return _PoAManager.contract.Transact(opts, "initialize", owner, validatorManager)
-}
-
-// Initialize is a paid mutator transaction binding the contract method 0x485cc955.
-//
-// Solidity: function initialize(address owner, address validatorManager) returns()
-func (_PoAManager *PoAManagerSession) Initialize(owner common.Address, validatorManager common.Address) (*types.Transaction, error) {
-	return _PoAManager.Contract.Initialize(&_PoAManager.TransactOpts, owner, validatorManager)
-}
-
-// Initialize is a paid mutator transaction binding the contract method 0x485cc955.
-//
-// Solidity: function initialize(address owner, address validatorManager) returns()
-func (_PoAManager *PoAManagerTransactorSession) Initialize(owner common.Address, validatorManager common.Address) (*types.Transaction, error) {
-	return _PoAManager.Contract.Initialize(&_PoAManager.TransactOpts, owner, validatorManager)
-}
-
 // InitiateValidatorRegistration is a paid mutator transaction binding the contract method 0x9cb7624e.
 //
 // Solidity: function initiateValidatorRegistration(bytes nodeID, bytes blsPublicKey, (uint32,address[]) remainingBalanceOwner, (uint32,address[]) disableOwner, uint64 weight) returns(bytes32)
@@ -504,140 +483,6 @@ func (_PoAManager *PoAManagerSession) TransferValidatorManagerOwnership(newOwner
 // Solidity: function transferValidatorManagerOwnership(address newOwner) returns()
 func (_PoAManager *PoAManagerTransactorSession) TransferValidatorManagerOwnership(newOwner common.Address) (*types.Transaction, error) {
 	return _PoAManager.Contract.TransferValidatorManagerOwnership(&_PoAManager.TransactOpts, newOwner)
-}
-
-// PoAManagerInitializedIterator is returned from FilterInitialized and is used to iterate over the raw logs and unpacked data for Initialized events raised by the PoAManager contract.
-type PoAManagerInitializedIterator struct {
-	Event *PoAManagerInitialized // Event containing the contract specifics and raw log
-
-	contract *bind.BoundContract // Generic contract to use for unpacking event data
-	event    string              // Event name to use for unpacking event data
-
-	logs chan types.Log          // Log channel receiving the found contract events
-	sub  interfaces.Subscription // Subscription for errors, completion and termination
-	done bool                    // Whether the subscription completed delivering logs
-	fail error                   // Occurred error to stop iteration
-}
-
-// Next advances the iterator to the subsequent event, returning whether there
-// are any more events found. In case of a retrieval or parsing error, false is
-// returned and Error() can be queried for the exact failure.
-func (it *PoAManagerInitializedIterator) Next() bool {
-	// If the iterator failed, stop iterating
-	if it.fail != nil {
-		return false
-	}
-	// If the iterator completed, deliver directly whatever's available
-	if it.done {
-		select {
-		case log := <-it.logs:
-			it.Event = new(PoAManagerInitialized)
-			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-				it.fail = err
-				return false
-			}
-			it.Event.Raw = log
-			return true
-
-		default:
-			return false
-		}
-	}
-	// Iterator still in progress, wait for either a data or an error event
-	select {
-	case log := <-it.logs:
-		it.Event = new(PoAManagerInitialized)
-		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-			it.fail = err
-			return false
-		}
-		it.Event.Raw = log
-		return true
-
-	case err := <-it.sub.Err():
-		it.done = true
-		it.fail = err
-		return it.Next()
-	}
-}
-
-// Error returns any retrieval or parsing error occurred during filtering.
-func (it *PoAManagerInitializedIterator) Error() error {
-	return it.fail
-}
-
-// Close terminates the iteration process, releasing any pending underlying
-// resources.
-func (it *PoAManagerInitializedIterator) Close() error {
-	it.sub.Unsubscribe()
-	return nil
-}
-
-// PoAManagerInitialized represents a Initialized event raised by the PoAManager contract.
-type PoAManagerInitialized struct {
-	Version uint64
-	Raw     types.Log // Blockchain specific contextual infos
-}
-
-// FilterInitialized is a free log retrieval operation binding the contract event 0xc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2.
-//
-// Solidity: event Initialized(uint64 version)
-func (_PoAManager *PoAManagerFilterer) FilterInitialized(opts *bind.FilterOpts) (*PoAManagerInitializedIterator, error) {
-
-	logs, sub, err := _PoAManager.contract.FilterLogs(opts, "Initialized")
-	if err != nil {
-		return nil, err
-	}
-	return &PoAManagerInitializedIterator{contract: _PoAManager.contract, event: "Initialized", logs: logs, sub: sub}, nil
-}
-
-// WatchInitialized is a free log subscription operation binding the contract event 0xc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2.
-//
-// Solidity: event Initialized(uint64 version)
-func (_PoAManager *PoAManagerFilterer) WatchInitialized(opts *bind.WatchOpts, sink chan<- *PoAManagerInitialized) (event.Subscription, error) {
-
-	logs, sub, err := _PoAManager.contract.WatchLogs(opts, "Initialized")
-	if err != nil {
-		return nil, err
-	}
-	return event.NewSubscription(func(quit <-chan struct{}) error {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case log := <-logs:
-				// New log arrived, parse the event and forward to the user
-				event := new(PoAManagerInitialized)
-				if err := _PoAManager.contract.UnpackLog(event, "Initialized", log); err != nil {
-					return err
-				}
-				event.Raw = log
-
-				select {
-				case sink <- event:
-				case err := <-sub.Err():
-					return err
-				case <-quit:
-					return nil
-				}
-			case err := <-sub.Err():
-				return err
-			case <-quit:
-				return nil
-			}
-		}
-	}), nil
-}
-
-// ParseInitialized is a log parse operation binding the contract event 0xc7f505b2f371ae2175ee4913f4499e1f2633a7b5936321eed1cdaeb6115181d2.
-//
-// Solidity: event Initialized(uint64 version)
-func (_PoAManager *PoAManagerFilterer) ParseInitialized(log types.Log) (*PoAManagerInitialized, error) {
-	event := new(PoAManagerInitialized)
-	if err := _PoAManager.contract.UnpackLog(event, "Initialized", log); err != nil {
-		return nil, err
-	}
-	event.Raw = log
-	return event, nil
 }
 
 // PoAManagerOwnershipTransferredIterator is returned from FilterOwnershipTransferred and is used to iterate over the raw logs and unpacked data for OwnershipTransferred events raised by the PoAManager contract.

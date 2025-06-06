@@ -68,7 +68,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		utils.PoAValidatorManager,
 		[]uint64{units.Schmeckle, 1000 * units.Schmeckle}, // Choose weights to avoid validator churn limits
 		ownerKey,
-		true,
+		false,
 	)
 	validatorManagerProxy, poaManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
 	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1AInfo.RPCClient)

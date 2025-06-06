@@ -241,31 +241,13 @@ func DeployAndInitializeValidatorManagerSpecialization(
 		)
 		Expect(err).Should(BeNil())
 	case PoAValidatorManager:
+		Expect(proxy).Should(BeFalse(), "PoAValidatorManager is not upgradeable")
+
 		poamanager.PoAManagerBin = poamanager.PoAManagerMetaData.Bin
 
-		var manager *poamanager.PoAManager
-		address, tx, manager, err = poamanager.DeployPoAManager(
+		address, tx, _, err = poamanager.DeployPoAManager(
 			opts,
 			l1.RPCClient,
-			0, // ICMInitializable.Allowed
-		)
-		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
-
-		if proxy {
-			// Overwrite the manager address with the proxy address
-			address, proxyAdmin = DeployTransparentUpgradeableProxy(
-				ctx,
-				l1,
-				senderKey,
-				address,
-			)
-			manager, err = poamanager.NewPoAManager(address, l1.RPCClient)
-			Expect(err).Should(BeNil())
-		}
-
-		tx, err = manager.Initialize(
-			opts,
 			crypto.PubkeyToAddress(senderKey.PublicKey),
 			validatorManagerAddress,
 		)

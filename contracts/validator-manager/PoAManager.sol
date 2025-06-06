@@ -9,18 +9,15 @@ import {IPoAManager} from "./interfaces/IPoAManager.sol";
 import {IValidatorManager} from "./interfaces/IValidatorManager.sol";
 import {ValidatorManager} from "./ValidatorManager.sol";
 import {PChainOwner} from "./interfaces/IACP99Manager.sol";
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
-import {ICMInitializable} from "@utilities/ICMInitializable.sol";
+import {Ownable} from
+    "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
 
 /**
  * @dev Implementation of the {IPoAManager} interface.
  *
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
-contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
+contract PoAManager is IPoAManager, Ownable {
     // solhint-disable private-vars-leading-underscore
     /// @custom:storage-location erc7201:avalanche-icm.storage.PoAManager
     struct PoAManagerStorage {
@@ -32,11 +29,11 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         0x8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf13200;
 
     constructor(
-        ICMInitializable init
-    ) {
-        if (init == ICMInitializable.Disallowed) {
-            _disableInitializers();
-        }
+        address owner,
+        IValidatorManager validatorManager
+    ) Ownable(owner){
+        PoAManagerStorage storage $ = _getPoAManagerStorage();
+        $._manager = validatorManager;
     }
 
     // solhint-disable ordering
@@ -50,27 +47,6 @@ contract PoAManager is IPoAManager, Initializable, OwnableUpgradeable {
         assembly {
             $.slot := POA_MANAGER_STORAGE_LOCATION
         }
-    }
-
-    function initialize(address owner, IValidatorManager validatorManager) external initializer {
-        __PoAManager_init(owner, validatorManager);
-    }
-
-    // solhint-disable-next-line func-name-mixedcase
-    function __PoAManager_init(
-        address owner,
-        IValidatorManager validatorManager
-    ) internal onlyInitializing {
-        __Ownable_init(owner);
-        __PoAManager_init_unchained(validatorManager);
-    }
-
-    // solhint-disable-next-line func-name-mixedcase
-    function __PoAManager_init_unchained(
-        IValidatorManager validatorManager
-    ) internal onlyInitializing {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        $._manager = IValidatorManager(validatorManager);
     }
 
     /**
