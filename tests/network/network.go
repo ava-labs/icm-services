@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	goLog "log"
-	"os"
 	"sort"
 	"time"
 
@@ -34,9 +33,9 @@ import (
 	"github.com/ava-labs/subnet-evm/ethclient"
 	subnetEvmTestUtils "github.com/ava-labs/subnet-evm/tests/utils"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
 )
 
@@ -109,6 +108,11 @@ func NewLocalNetwork(
 		initialVdrNodes := subnetEvmTestUtils.NewTmpnetNodes(l1Spec.NodeCount)
 		extraNodes = append(extraNodes, initialVdrNodes...)
 
+		warpEnabledChainConfig := map[string]any{}
+		for k, v := range utils.WarpEnabledChainConfig {
+			warpEnabledChainConfig[k] = v
+		}
+
 		l1 := subnetEvmTestUtils.NewTmpnetSubnet(
 			l1Spec.Name,
 			utils.InstantiateGenesisTemplate(
@@ -119,7 +123,7 @@ func NewLocalNetwork(
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
 			),
-			utils.WarpEnabledChainConfig,
+			warpEnabledChainConfig,
 			initialL1Bootstrapper,
 		)
 		deployedL1Specs[l1Spec.Name] = l1Spec
@@ -133,9 +137,6 @@ func NewLocalNetwork(
 		l1s...,
 	)
 	Expect(network).ShouldNot(BeNil())
-
-	avalancheGoBuildPath, ok := os.LookupEnv("AVALANCHEGO_BUILD_PATH")
-	Expect(ok).Should(Equal(true))
 
 	// Specify only a subset of the nodes to be bootstrapped
 	keysToFund := []*secp256k1.PrivateKey{
@@ -157,8 +158,6 @@ func NewLocalNetwork(
 		logger,
 		network,
 		"",
-		avalancheGoBuildPath+"/avalanchego",
-		avalancheGoBuildPath+"/plugins",
 	)
 	Expect(err).Should(BeNil())
 	goLog.Println("Network bootstrapped")
@@ -317,9 +316,9 @@ func (n *LocalNetwork) ConvertSubnet(
 		Expect(err).Should(BeNil())
 		for _, node := range n.Network.Nodes {
 			if node.NodeID == vdr.NodeID {
-				node.RuntimeConfig.ReuseDynamicPorts = true
+				node.RuntimeConfig.Process.ReuseDynamicPorts = true
 				goLog.Println("Restarting bootstrap node", node.NodeID)
-				n.Network.RestartNode(ctx, n.logger, node)
+				node.Restart(ctx)
 			}
 		}
 	}
@@ -337,7 +336,7 @@ func (n *LocalNetwork) AddSubnetValidators(
 	// Modify the each node's config to track the l1
 	for _, node := range nodes {
 		goLog.Printf("Adding node %s @ %s to l1 %s", node.NodeID, node.URI, l1.SubnetID)
-		existingTrackedSubnets, err := node.Flags.GetStringVal(config.TrackSubnetsKey)
+		existingTrackedSubnets, err := node.Flags[config.TrackSubnetsKey]
 		Expect(err).Should(BeNil())
 		if existingTrackedSubnets == l1.SubnetID.String() {
 			goLog.Printf("Node %s @ %s already tracking l1 %s\n", node.NodeID, node.URI, l1.SubnetID)
@@ -346,7 +345,7 @@ func (n *LocalNetwork) AddSubnetValidators(
 		node.Flags[config.TrackSubnetsKey] = l1.SubnetID.String()
 
 		if partialSync {
-			node.Flags[config.PartialSyncPrimaryNetworkKey] = true
+			node.Flags[config.PartialSyncPrimaryNetworkKey] = "true"
 		}
 
 		// Add the node to the network
@@ -530,7 +529,11 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 					"chainConfig", chainConfig,
 				)
 			}
-			n.Network.ChainConfigs[utils.CChainPathSpecifier] = cfg
+			cfgMap := tmpnet.ConfigMap{}
+			for k, v := range cfg {
+				cfgMap[k] = v
+			}
+			n.Network.PrimaryChainConfigs[utils.CChainPathSpecifier] = cfgMap
 			continue
 		}
 
@@ -548,20 +551,20 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 	}
 
 	for _, l1 := range n.Network.Subnets {
-		err := l1.Write(n.Network.GetSubnetDir(), n.Network.GetChainConfigDir())
+		err := l1.Write(n.Network.GetSubnetDir())
 		if err != nil {
 			log.Error("failed to write L1s", "error", err)
 		}
 	}
 
 	for _, tmpnetNode := range n.Network.Nodes {
-		tmpnetNode.RuntimeConfig.ReuseDynamicPorts = true
+		tmpnetNode.RuntimeConfig.Process.ReuseDynamicPorts = true
 	}
 
 	// Restart the network to apply the new chain configs
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(60*len(n.Network.Nodes))*time.Second)
 	defer cancel()
-	err = n.Network.Restart(ctx, n.logger)
+	err = n.Network.Restart(ctx)
 	Expect(err).Should(BeNil())
 }
 

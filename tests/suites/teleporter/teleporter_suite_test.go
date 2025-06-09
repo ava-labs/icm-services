@@ -15,7 +15,7 @@ import (
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	deploymentUtils "github.com/ava-labs/icm-contracts/utils/deployment-utils"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/ava-labs/libevm/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

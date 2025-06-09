@@ -23,18 +23,18 @@ import (
 	nativeMinter "github.com/ava-labs/icm-contracts/abi-bindings/go/INativeMinter"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	gasUtils "github.com/ava-labs/icm-contracts/utils/gas-utils"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/common/hexutil"
+	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/eth/tracers"
+	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/core/types"
-	"github.com/ava-labs/subnet-evm/eth/tracers"
 	"github.com/ava-labs/subnet-evm/ethclient"
-	subnetEvmInterfaces "github.com/ava-labs/subnet-evm/interfaces"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/nativeminter"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	. "github.com/onsi/gomega"
 )
 
@@ -46,25 +46,9 @@ var NativeTransferGas uint64 = 21_000
 
 var WarpEnabledChainConfig = tmpnet.FlagsMap{
 	"log-level":         "debug",
-	"warp-api-enabled":  true,
-	"local-txs-enabled": true,
-	"eth-apis": []string{
-		"eth",
-		"eth-filter",
-		"net",
-		"admin",
-		"web3",
-		"internal-eth",
-		"internal-blockchain",
-		"internal-transaction",
-		"internal-debug",
-		"internal-account",
-		"internal-personal",
-		"debug",
-		"debug-tracer",
-		"debug-file-tracer",
-		"debug-handler",
-	},
+	"warp-api-enabled":  "true",
+	"local-txs-enabled": "true",
+	"eth-apis":          "eth,eth-filter,net,admin,web3,internal-eth,internal-blockchain,internal-transaction,internal-debug,internal-account,internal-personal,debug,debug-tracer,debug-file-tracer,debug-handler",
 }
 
 type Node struct {
@@ -241,7 +225,7 @@ func waitForTransactionReceipt(
 			return receipt, nil
 		}
 
-		if errors.Is(err, subnetEvmInterfaces.NotFound) {
+		if errors.Is(err, ethereum.NotFound) {
 			log.Debug("Transaction not yet mined")
 		} else {
 			log.Error("Receipt retrieval failed", "err", err)
@@ -462,7 +446,7 @@ func GetChainConfigWithOffChainMessages(offChainMessages []avalancheWarp.Unsigne
 	}
 
 	chainConfig := WarpEnabledChainConfig
-	chainConfig["warp-off-chain-messages"] = hexOffChainMessages
+	chainConfig["warp-off-chain-messages"] = strings.Join(hexOffChainMessages, ",")
 
 	// Marshal the map to JSON
 	offChainMessageJson, err := tmpnet.DefaultJSONMarshal(chainConfig)
@@ -585,7 +569,7 @@ func ExtractWarpMessageFromLog(
 	source interfaces.L1TestInfo,
 ) *avalancheWarp.UnsignedMessage {
 	log.Info("Fetching relevant warp logs from the newly produced block")
-	logs, err := source.RPCClient.FilterLogs(ctx, subnetEvmInterfaces.FilterQuery{
+	logs, err := source.RPCClient.FilterLogs(ctx, ethereum.FilterQuery{
 		BlockHash: &sourceReceipt.BlockHash,
 		Addresses: []common.Address{warp.Module.Address},
 	})
