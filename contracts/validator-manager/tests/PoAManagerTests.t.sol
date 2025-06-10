@@ -140,7 +140,9 @@ contract PoAManagerTest is ValidatorManagerTest {
 
     function _setUp() internal override returns (IACP99Manager) {
         validatorManager = new ValidatorManager(ICMInitializable.Allowed);
-        poaManager = new PoAManager(address(this), IValidatorManagerExternalOwnable(address(validatorManager)));
+        poaManager = new PoAManager(
+            address(this), IValidatorManagerExternalOwnable(address(validatorManager))
+        );
 
         // Construct ValidatorManagerSettings with the correct fields
         ValidatorManagerSettings memory settings = _defaultSettings(address(poaManager));

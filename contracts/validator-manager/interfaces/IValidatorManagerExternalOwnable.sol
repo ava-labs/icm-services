@@ -9,5 +9,7 @@ interface IValidatorManagerExternalOwnable is IValidatorManager {
      * @param newOwner The address of the new owner.
      * @dev This function can only be called by the current owner.
      */
-    function transferOwnership(address newOwner) external;
+    function transferOwnership(
+        address newOwner
+    ) external;
 }
