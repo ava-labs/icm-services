@@ -6,7 +6,6 @@
 pragma solidity 0.8.25;
 
 import {IPoAManager} from "./interfaces/IPoAManager.sol";
-import {IValidatorManager} from "./interfaces/IValidatorManager.sol";
 import {ValidatorManager} from "./ValidatorManager.sol";
 import {PChainOwner} from "./interfaces/IACP99Manager.sol";
 import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
@@ -17,9 +16,9 @@ import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
 contract PoAManager is IPoAManager, Ownable {
-    IValidatorManager private _manager;
+    ValidatorManager private _manager;
 
-    constructor(address owner, IValidatorManager validatorManager) Ownable(owner) {
+    constructor(address owner, ValidatorManager validatorManager) Ownable(owner) {
         _manager = validatorManager;
     }
 
@@ -90,6 +89,6 @@ contract PoAManager is IPoAManager, Ownable {
     function transferValidatorManagerOwnership(
         address newOwner
     ) external onlyOwner {
-        ValidatorManager(address(_manager)).transferOwnership(newOwner);
+        _manager.transferOwnership(newOwner);
     }
 }
