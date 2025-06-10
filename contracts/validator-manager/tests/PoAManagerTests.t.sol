@@ -117,6 +117,24 @@ contract PoAManagerTest is ValidatorManagerTest {
         poaManager.completeValidatorWeightUpdate(0);
     }
 
+     function testPoAMangerOnlyOwnerCanTransferOwnership() public {
+        address newOwner = vm.addr(1);
+        poaManager.transferValidatorManagerOwnership(newOwner);
+
+        assertEq(validatorManager.owner(), newOwner, "Ownership should be transferred");
+    }
+
+    function testPoAMangerFailedTransferOwnership() public {
+        address newOwner = vm.addr(1);
+        vm.prank(newOwner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, newOwner
+            )
+        );
+        poaManager.transferValidatorManagerOwnership(newOwner);
+    }
+
     function testPoAManagerIsOwnerOfValidatorManager() public view {
         assertEq(validatorManager.owner(), address(poaManager), "PoAManager should be owner");
     }

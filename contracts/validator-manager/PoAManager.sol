@@ -17,32 +17,10 @@ import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
 contract PoAManager is IPoAManager, Ownable {
-    // solhint-disable private-vars-leading-underscore
-    /// @custom:storage-location erc7201:avalanche-icm.storage.PoAManager
-    struct PoAManagerStorage {
-        IValidatorManager _manager;
-    }
-
-    // keccak256(abi.encode(uint256(keccak256("avalanche-icm.storage.PoAManager")) - 1)) & ~bytes32(uint256(0xff));
-    bytes32 public constant POA_MANAGER_STORAGE_LOCATION =
-        0x8e2427ab32c2585abb2a107c76f30b8d77c153bac188f081d4c40ff3fcf13200;
+    IValidatorManager _manager;
 
     constructor(address owner, IValidatorManager validatorManager) Ownable(owner) {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        $._manager = validatorManager;
-    }
-
-    // solhint-disable ordering
-    /**
-     * @dev This storage is visible to child contracts for convenience.
-     *      External getters would be better practice, but code size limitations are preventing this.
-     *      Child contracts should probably never write to this storage.
-     */
-    function _getPoAManagerStorage() internal pure returns (PoAManagerStorage storage $) {
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-            $.slot := POA_MANAGER_STORAGE_LOCATION
-        }
+        _manager = validatorManager;
     }
 
     /**
@@ -55,8 +33,7 @@ contract PoAManager is IPoAManager, Ownable {
         PChainOwner memory disableOwner,
         uint64 weight
     ) external onlyOwner returns (bytes32) {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        return $._manager.initiateValidatorRegistration(
+        return _manager.initiateValidatorRegistration(
             nodeID, blsPublicKey, remainingBalanceOwner, disableOwner, weight
         );
     }
@@ -67,8 +44,7 @@ contract PoAManager is IPoAManager, Ownable {
     function initiateValidatorRemoval(
         bytes32 validationID
     ) external onlyOwner {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        return $._manager.initiateValidatorRemoval(validationID);
+        return _manager.initiateValidatorRemoval(validationID);
     }
 
     /**
@@ -78,8 +54,7 @@ contract PoAManager is IPoAManager, Ownable {
         bytes32 validationID,
         uint64 newWeight
     ) external onlyOwner returns (uint64, bytes32) {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        return $._manager.initiateValidatorWeightUpdate(validationID, newWeight);
+        return _manager.initiateValidatorWeightUpdate(validationID, newWeight);
     }
 
     /**
@@ -88,8 +63,7 @@ contract PoAManager is IPoAManager, Ownable {
     function completeValidatorRegistration(
         uint32 messageIndex
     ) external returns (bytes32) {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        return $._manager.completeValidatorRegistration(messageIndex);
+        return _manager.completeValidatorRegistration(messageIndex);
     }
 
     /**
@@ -98,8 +72,7 @@ contract PoAManager is IPoAManager, Ownable {
     function completeValidatorRemoval(
         uint32 messageIndex
     ) external returns (bytes32) {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        return $._manager.completeValidatorRemoval(messageIndex);
+        return _manager.completeValidatorRemoval(messageIndex);
     }
 
     /**
@@ -108,8 +81,7 @@ contract PoAManager is IPoAManager, Ownable {
     function completeValidatorWeightUpdate(
         uint32 messageIndex
     ) external returns (bytes32, uint64) {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        return $._manager.completeValidatorWeightUpdate(messageIndex);
+        return _manager.completeValidatorWeightUpdate(messageIndex);
     }
 
     /**
@@ -118,7 +90,6 @@ contract PoAManager is IPoAManager, Ownable {
     function transferValidatorManagerOwnership(
         address newOwner
     ) external onlyOwner {
-        PoAManagerStorage storage $ = _getPoAManagerStorage();
-        ValidatorManager(address($._manager)).transferOwnership(newOwner);
+        ValidatorManager(address(_manager)).transferOwnership(newOwner);
     }
 }
