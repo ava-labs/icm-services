@@ -4,6 +4,7 @@ pragma solidity 0.8.25;
 import {ValidatorManagerTest} from "./ValidatorManagerTests.t.sol";
 import {PoAManager} from "../PoAManager.sol";
 import {ValidatorManager, ValidatorManagerSettings} from "../ValidatorManager.sol";
+import {IValidatorManagerExternalOwnable} from "../interfaces/IValidatorManagerExternalOwnable.sol";
 import {IACP99Manager, PChainOwner, ConversionData} from "../interfaces/IACP99Manager.sol";
 import {ValidatorMessages} from "../ValidatorMessages.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
@@ -139,7 +140,7 @@ contract PoAManagerTest is ValidatorManagerTest {
 
     function _setUp() internal override returns (IACP99Manager) {
         validatorManager = new ValidatorManager(ICMInitializable.Allowed);
-        poaManager = new PoAManager(address(this), validatorManager);
+        poaManager = new PoAManager(address(this), IValidatorManagerExternalOwnable(address(validatorManager)));
 
         // Construct ValidatorManagerSettings with the correct fields
         ValidatorManagerSettings memory settings = _defaultSettings(address(poaManager));
