@@ -16,7 +16,7 @@ import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
 contract PoAManager is IPoAManager, Ownable {
-    IValidatorManagerExternalOwnable private _manager;
+    IValidatorManagerExternalOwnable private immutable _manager;
 
     constructor(address owner, IValidatorManagerExternalOwnable validatorManager) Ownable(owner) {
         _manager = validatorManager;
