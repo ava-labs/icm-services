@@ -4,6 +4,7 @@ pragma solidity 0.8.25;
 import {ValidatorManagerTest} from "./ValidatorManagerTests.t.sol";
 import {PoAManager} from "../PoAManager.sol";
 import {ValidatorManager, ValidatorManagerSettings} from "../ValidatorManager.sol";
+import {IValidatorManagerExternalOwnable} from "../interfaces/IValidatorManagerExternalOwnable.sol";
 import {IACP99Manager, PChainOwner, ConversionData} from "../interfaces/IACP99Manager.sol";
 import {ValidatorMessages} from "../ValidatorMessages.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
@@ -117,19 +118,36 @@ contract PoAManagerTest is ValidatorManagerTest {
         poaManager.completeValidatorWeightUpdate(0);
     }
 
+    function testPoAMangerOnlyOwnerCanTransferOwnership() public {
+        address newOwner = vm.addr(1);
+        poaManager.transferValidatorManagerOwnership(newOwner);
+
+        assertEq(validatorManager.owner(), newOwner, "Ownership should be transferred");
+    }
+
+    function testPoAMangerFailedTransferOwnership() public {
+        address newOwner = vm.addr(1);
+        vm.prank(newOwner);
+        vm.expectRevert(
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, newOwner)
+        );
+        poaManager.transferValidatorManagerOwnership(newOwner);
+    }
+
     function testPoAManagerIsOwnerOfValidatorManager() public view {
         assertEq(validatorManager.owner(), address(poaManager), "PoAManager should be owner");
     }
 
     function _setUp() internal override returns (IACP99Manager) {
         validatorManager = new ValidatorManager(ICMInitializable.Allowed);
-        poaManager = new PoAManager(ICMInitializable.Allowed);
+        poaManager = new PoAManager(
+            address(this), IValidatorManagerExternalOwnable(address(validatorManager))
+        );
 
         // Construct ValidatorManagerSettings with the correct fields
         ValidatorManagerSettings memory settings = _defaultSettings(address(poaManager));
 
         validatorManager.initialize(settings);
-        poaManager.initialize(address(this), validatorManager);
         return validatorManager;
     }
 

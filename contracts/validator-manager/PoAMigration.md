@@ -30,7 +30,7 @@ The `StakingManager` constructor also takes as an argument the `weightToValueFac
 
 ### 3. Transfer ownership of `ValidatorManager` to the `StakingManager`'s address.
 
-Ownership of the underlying `ValidatorManager` of `PoAManager` can be transferred to the `StakingManager` by calling `transferValidatorManagerOwnership` on the `PoAManager` from the owner. Once this is done, the `StakingManager` may update the L1's validator set via the `ValidatorManager`.
+Ownership of the underlying `ValidatorManager` can be transferred from the `PoAManager` to the `StakingManager` by calling `transferValidatorManagerOwnership` on the `PoAManager` from the `PoAManager`'s owner. Once this is done, the `StakingManager` may update the L1's validator set via the `ValidatorManager`.
 
 ### 4. Remove PoA validators in stages.
 

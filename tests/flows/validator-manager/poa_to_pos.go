@@ -68,12 +68,12 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		utils.PoAValidatorManager,
 		[]uint64{units.Schmeckle, 1000 * units.Schmeckle}, // Choose weights to avoid validator churn limits
 		ownerKey,
-		true,
+		false,
 	)
-	validatorManagerProxy, poaManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
-	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1AInfo.RPCClient)
+	validatorManagerAddr, poaManagerAddr := network.GetValidatorManager(l1AInfo.SubnetID)
+	poaManager, err := poamanager.NewPoAManager(poaManagerAddr.Address, l1AInfo.RPCClient)
 	Expect(err).Should(BeNil())
-	validatorManager, err := validatormanager.NewValidatorManager(validatorManagerProxy.Address, l1AInfo.RPCClient)
+	validatorManager, err := validatormanager.NewValidatorManager(validatorManagerAddr.Address, l1AInfo.RPCClient)
 	Expect(err).Should(BeNil())
 
 	signatureAggregator := utils.NewSignatureAggregator(
@@ -94,8 +94,8 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		l1AInfo,
 		pChainInfo,
 		poaManager,
-		poaManagerProxy.Address,
-		validatorManagerProxy.Address,
+		poaManagerAddr.Address,
+		validatorManagerAddr.Address,
 		initialValidationIDs[0],
 		0,
 		nodes[0].Weight,
@@ -128,8 +128,8 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		l1AInfo,
 		pChainInfo,
 		poaManager,
-		poaManagerProxy.Address,
-		validatorManagerProxy.Address,
+		poaManagerAddr.Address,
+		validatorManagerAddr.Address,
 		expiry,
 		nodes[0],
 		network.GetPChainWallet(),
@@ -152,7 +152,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		ctx,
 		ownerKey,
 		l1AInfo,
-		validatorManagerProxy.Address,
+		validatorManagerAddr.Address,
 		utils.NativeTokenStakingManager,
 		false,
 	)
@@ -194,7 +194,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		pChainInfo,
 		posStakingManager,
 		stakingManagerAddress,
-		validatorManagerProxy.Address,
+		validatorManagerAddr.Address,
 		poaValidationID,
 		registrationInitiatedEvent.RegistrationExpiry,
 		nodes[0],
@@ -213,7 +213,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		pChainInfo,
 		nativeStakingManager,
 		stakingManagerAddress,
-		validatorManagerProxy.Address,
+		validatorManagerAddr.Address,
 		nodes[0],
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
@@ -230,7 +230,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 		pChainInfo,
 		posStakingManager,
 		stakingManagerAddress,
-		validatorManagerProxy.Address,
+		validatorManagerAddr.Address,
 		posValidationID,
 		posRegistrationInitiatedEvent.RegistrationExpiry,
 		nodes[0],
