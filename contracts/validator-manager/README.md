@@ -30,6 +30,16 @@ class ValidatorManager {
     +initiateValidatorWeightUpdate() onlyOwner
 }
 
+class PoAManager {
+    +completeValidatorRegistration()
+    +completeValidatorRemoval()
+    +completeValidatorWeightUpdate()
+    +initiateValidatorRegistration() onlyOwner
+    +initiateValidatorRemoval() onlyOwner
+    +initiateValidatorWeightUpdate() onlyOwner
+    +transferValidatorManagerOwnership() onlyOwner
+}
+
 class StakingManager {
     +completeValidatorRegistration()
     +initiateValidatorRemoval()
@@ -51,7 +61,8 @@ class NativeTokenStakingManager {
 }
 
 ACP99Manager <|-- ValidatorManager
-ValidatorManager --o  StakingManager : owner
+ValidatorManager --o PoAManager : owner
+ValidatorManager --o StakingManager : owner
 StakingManager <|-- ERC20TokenStakingManager
 StakingManager <|-- NativeTokenStakingManager
 ```
@@ -125,10 +136,6 @@ See the [migration guide](./PoAMigration.md) for details.
 #### ERC20TokenStakingManager
 
 `ERC20TokenStakingManager` allows permissionless addition and removal of validators that post the an ERC20 token as stake. The ERC20 is specified in the call to `initialize`, and must implement [`IERC20Mintable`](./interfaces/IERC20Mintable.sol). Care should be taken to enforce that only authorized users are able to `mint` the ERC20 staking token.
-
-### Convert PoA to PoS
-
-A standalone `ValidatorManager` providing PoA validator management can later be converted to PoS by deploying a `StakingManager` and setting it as the `ValidatorManager`'s owner. The `StakingManager` contract should be initialized by calling `initialize` as described above. Existing validators at the time of conversion will not be eligible to stake and earn staking rewards, nor support delegation.
 
 ## Usage
 
