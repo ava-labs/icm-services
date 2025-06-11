@@ -73,7 +73,7 @@ The contracts in this directory are only useful to L1s that have been converted 
 
 ## Deploying
 
-The validator manager system consists of a `ValidatorManager`, and one of `NativeTokenStakingManager`, `ERC20TokenStakingManager`, or `PoAManager`. `ValidatorManager` is `Ownable`, and its owner should be set to the other contract.
+The validator manager system consists of a `ValidatorManager`, and one of `NativeTokenStakingManager`, `ERC20TokenStakingManager`, or `PoAManager`. `ValidatorManager` is `Ownable`, and its owner should be set to the address of the other contract.
 
 All of these are implemented as [upgradeable](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/blob/main/contracts/proxy/utils/Initializable.sol#L56) contracts. There are numerous [guides](https://blog.chain.link/upgradable-smart-contracts/) for deploying upgradeable smart contracts, but the general steps are as follows:
 
