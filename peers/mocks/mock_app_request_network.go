@@ -102,17 +102,17 @@ func (mr *MockAppRequestNetworkMockRecorder) RegisterAppRequest(requestID any) *
 }
 
 // RegisterRequestID mocks base method.
-func (m *MockAppRequestNetwork) RegisterRequestID(requestID uint32, numExpectedResponse int) chan message.InboundMessage {
+func (m *MockAppRequestNetwork) RegisterRequestID(requestID uint32, requestedNodes set.Set[ids.NodeID]) chan message.InboundMessage {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterRequestID", requestID, numExpectedResponse)
+	ret := m.ctrl.Call(m, "RegisterRequestID", requestID, requestedNodes)
 	ret0, _ := ret[0].(chan message.InboundMessage)
 	return ret0
 }
 
 // RegisterRequestID indicates an expected call of RegisterRequestID.
-func (mr *MockAppRequestNetworkMockRecorder) RegisterRequestID(requestID, numExpectedResponse any) *gomock.Call {
+func (mr *MockAppRequestNetworkMockRecorder) RegisterRequestID(requestID, requestedNodes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterRequestID", reflect.TypeOf((*MockAppRequestNetwork)(nil).RegisterRequestID), requestID, numExpectedResponse)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterRequestID", reflect.TypeOf((*MockAppRequestNetwork)(nil).RegisterRequestID), requestID, requestedNodes)
 }
 
 // Send mocks base method.

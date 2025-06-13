@@ -261,7 +261,9 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	)
 
 	appRequests := makeAppRequests(chainID, requestID, connectedValidators)
+	var nodeIDs set.Set[ids.NodeID]
 	for _, appRequest := range appRequests {
+		nodeIDs.Add(appRequest.NodeID)
 		// Expect at most one call to RegisterAppRequest per node per retry for up to [maxAppRequestRetries] retries
 		for i := uint32(0); i < maxAppRequestRetries; i++ {
 			appRequestCopy := appRequest
@@ -273,16 +275,12 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	for i := uint32(0); i < maxAppRequestRetries; i++ {
 		mockNetwork.EXPECT().RegisterRequestID(
 			requestID+i,
-			len(appRequests),
+			nodeIDs,
 		).Return(
 			make(chan message.InboundMessage, len(appRequests)),
 		).MaxTimes(1)
 	}
 
-	var nodeIDs set.Set[ids.NodeID]
-	for _, appRequest := range appRequests {
-		nodeIDs.Add(appRequest.NodeID)
-	}
 	mockNetwork.EXPECT().Send(
 		gomock.Any(),
 		nodeIDs,
@@ -398,7 +396,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			}
 			mockNetwork.EXPECT().RegisterRequestID(
 				requestID,
-				len(appRequests),
+				nodeIDs,
 			).Return(responseChan).Times(1)
 
 			mockNetwork.EXPECT().Send(
