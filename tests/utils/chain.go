@@ -36,6 +36,7 @@ import (
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const (
@@ -44,11 +45,27 @@ const (
 
 var NativeTransferGas uint64 = 21_000
 
-var WarpEnabledChainConfig = tmpnet.FlagsMap{
+var WarpEnabledChainConfig = map[string]any{
 	"log-level":         "debug",
-	"warp-api-enabled":  "true",
-	"local-txs-enabled": "true",
-	"eth-apis":          "eth,eth-filter,net,admin,web3,internal-eth,internal-blockchain,internal-transaction,internal-debug,internal-account,internal-personal,debug,debug-tracer,debug-file-tracer,debug-handler",
+	"warp-api-enabled":  true,
+	"local-txs-enabled": true,
+	"eth-apis": []string{
+		"eth",
+		"eth-filter",
+		"net",
+		"admin",
+		"web3",
+		"internal-eth",
+		"internal-blockchain",
+		"internal-transaction",
+		"internal-debug",
+		"internal-account",
+		"internal-personal",
+		"debug",
+		"debug-tracer",
+		"debug-file-tracer",
+		"debug-handler",
+	},
 }
 
 type Node struct {
@@ -446,7 +463,7 @@ func GetChainConfigWithOffChainMessages(offChainMessages []avalancheWarp.Unsigne
 	}
 
 	chainConfig := WarpEnabledChainConfig
-	chainConfig["warp-off-chain-messages"] = strings.Join(hexOffChainMessages, ",")
+	chainConfig["warp-off-chain-messages"] = hexOffChainMessages
 
 	// Marshal the map to JSON
 	offChainMessageJson, err := tmpnet.DefaultJSONMarshal(chainConfig)
@@ -649,4 +666,58 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 
 	err = subnetEvmUtils.IssueTxsToActivateProposerVMFork(ctx, chainIDInt, fundedKey, client)
 	Expect(err).Should(BeNil())
+}
+
+func IssueTxsToAdvanceChain(ctx context.Context, chainID *big.Int, fundedKey *ecdsa.PrivateKey, client ethclient.Client, numTriggerTxs int) error {
+	addr := crypto.PubkeyToAddress(fundedKey.PublicKey)
+	nonce, err := client.NonceAt(ctx, addr, nil)
+	Expect(err).Should(BeNil())
+
+	newHeads := make(chan *types.Header, 1)
+	sub, err := client.SubscribeNewHead(ctx, newHeads)
+	if err != nil {
+		return err
+	}
+	defer sub.Unsubscribe()
+
+	gasTipCapCtx, gasTipCapCtxCancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer gasTipCapCtxCancel()
+	gasTipCap, err := client.SuggestGasTipCap(gasTipCapCtx)
+	if err != nil {
+		log.Error(
+			"Failed to get gas tip cap",
+			zap.Error(err),
+		)
+		return err
+	}
+
+	to := common.HexToAddress(string(common.Big1.Bytes()))
+	gasFeeCap := new(big.Int).Add(big.NewInt(0).SetUint64(225_000_000_000), gasTipCap)
+
+	txSigner := types.LatestSignerForChainID(chainID)
+	for i := 0; i < numTriggerTxs; i++ {
+		tx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &to,
+			Gas:       NativeTransferGas,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: gasTipCap,
+			Value:     common.Big1,
+		})
+		triggerTx, err := types.SignTx(tx, txSigner, fundedKey)
+		if err != nil {
+			return err
+		}
+		if err := client.SendTransaction(ctx, triggerTx); err != nil {
+			return err
+		}
+		<-newHeads // wait for block to be accepted
+		nonce++
+	}
+	log.Info(
+		"Built required number of blocks",
+		"txCount", numTriggerTxs,
+	)
+	return nil
 }

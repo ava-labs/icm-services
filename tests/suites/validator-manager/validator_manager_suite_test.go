@@ -20,6 +20,7 @@ const (
 
 var (
 	LocalNetworkInstance *localnetwork.LocalNetwork
+	counter              int
 )
 
 func TestValidatorManager(t *testing.T) {

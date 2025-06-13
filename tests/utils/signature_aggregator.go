@@ -120,6 +120,24 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	inputSigningSubnet ids.ID,
 	quorumPercentage uint64,
 ) (*avalancheWarp.Message, error) {
+	var err error
+	var signedMessage *avalancheWarp.Message
+	for i := 0; i < 3; i++ {
+		signedMessage, err = s.createSignedMessage(unsignedMessage, justification, inputSigningSubnet, quorumPercentage)
+		if err == nil {
+			return signedMessage, nil
+		}
+		time.Sleep(time.Second * 1)
+	}
+	return nil, err
+}
+
+func (s *SignatureAggregator) createSignedMessage(
+	unsignedMessage *avalancheWarp.UnsignedMessage,
+	justification []byte,
+	inputSigningSubnet ids.ID,
+	quorumPercentage uint64,
+) (*avalancheWarp.Message, error) {
 	client := &http.Client{
 		Timeout: 20 * time.Second,
 	}

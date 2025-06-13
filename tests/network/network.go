@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/genesis"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
@@ -46,7 +47,7 @@ type ProxyAddress struct {
 
 // Implements Network, pointing to the network setup in local_network_setup.go
 type LocalNetwork struct {
-	tmpnet.Network
+	*tmpnet.Network
 
 	extraNodes                      []*tmpnet.Node // to add as more L1 validators in the tests
 	primaryNetworkValidators        []*tmpnet.Node
@@ -108,11 +109,6 @@ func NewLocalNetwork(
 		initialVdrNodes := subnetEvmTestUtils.NewTmpnetNodes(l1Spec.NodeCount)
 		extraNodes = append(extraNodes, initialVdrNodes...)
 
-		warpEnabledChainConfig := map[string]any{}
-		for k, v := range utils.WarpEnabledChainConfig {
-			warpEnabledChainConfig[k] = v
-		}
-
 		l1 := subnetEvmTestUtils.NewTmpnetSubnet(
 			l1Spec.Name,
 			utils.InstantiateGenesisTemplate(
@@ -123,7 +119,7 @@ func NewLocalNetwork(
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
 			),
-			warpEnabledChainConfig,
+			utils.WarpEnabledChainConfig,
 			initialL1Bootstrapper,
 		)
 		deployedL1Specs[l1Spec.Name] = l1Spec
@@ -133,7 +129,7 @@ func NewLocalNetwork(
 	network := subnetEvmTestUtils.NewTmpnetNetwork(
 		name,
 		bootstrapNodes,
-		utils.WarpEnabledChainConfig,
+		tmpnet.FlagsMap{},
 		l1s...,
 	)
 	Expect(network).ShouldNot(BeNil())
@@ -148,18 +144,21 @@ func NewLocalNetwork(
 	genesis, err := tmpnet.NewTestGenesis(88888, bootstrapNodes, keysToFund)
 	Expect(err).Should(BeNil())
 	network.Genesis = genesis
+	network.PreFundedKeys = keysToFund
+
+	tc := e2e.NewTestContext()
+	flagVars := e2e.RegisterFlags()
+	runtimeCfg, err := flagVars.NodeRuntimeConfig()
+	Expect(err).Should(BeNil())
+	runtimeCfg.Process.ReuseDynamicPorts = true
+	network.DefaultRuntimeConfig = *runtimeCfg
+	env := e2e.NewTestEnvironment(tc, flagVars, network)
+	Expect(env).ShouldNot(BeNil())
 
 	ctx, cancelBootstrap := context.WithCancel(ctx)
 	defer cancelBootstrap()
 
 	logger := logging.NewLogger("tmpnet")
-	err = tmpnet.BootstrapNewNetwork(
-		ctx,
-		logger,
-		network,
-		"",
-	)
-	Expect(err).Should(BeNil())
 	goLog.Println("Network bootstrapped")
 
 	// Issue transactions to activate the proposerVM fork on the chains
@@ -172,7 +171,7 @@ func NewLocalNetwork(
 	primaryNetworkValidators = append(primaryNetworkValidators, network.Nodes...)
 
 	localNetwork := &LocalNetwork{
-		Network:                         *network,
+		Network:                         network,
 		extraNodes:                      extraNodes,
 		globalFundedKey:                 globalFundedKey,
 		primaryNetworkValidators:        primaryNetworkValidators,
@@ -316,14 +315,17 @@ func (n *LocalNetwork) ConvertSubnet(
 		Expect(err).Should(BeNil())
 		for _, node := range n.Network.Nodes {
 			if node.NodeID == vdr.NodeID {
-				node.RuntimeConfig.Process.ReuseDynamicPorts = true
+				Expect(n.Network.DefaultRuntimeConfig).ShouldNot(BeNil())
+				Expect(n.Network.DefaultRuntimeConfig.Process.ReuseDynamicPorts).Should(BeTrue())
+				node.RuntimeConfig = &n.Network.DefaultRuntimeConfig
 				goLog.Println("Restarting bootstrap node", node.NodeID)
-				node.Restart(ctx)
+				err = node.Restart(ctx)
+				Expect(err).Should(BeNil())
 			}
 		}
 	}
 	utils.PChainProposerVMWorkaround(pChainWallet)
-	utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
+	utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.RPCClient, 5)
 
 	return nodes, validationIDs
 }
@@ -336,8 +338,8 @@ func (n *LocalNetwork) AddSubnetValidators(
 	// Modify the each node's config to track the l1
 	for _, node := range nodes {
 		goLog.Printf("Adding node %s @ %s to l1 %s", node.NodeID, node.URI, l1.SubnetID)
-		existingTrackedSubnets, err := node.Flags[config.TrackSubnetsKey]
-		Expect(err).Should(BeNil())
+		existingTrackedSubnets, _ := node.Flags[config.TrackSubnetsKey]
+		// Expect(ok).Should(BeTrue())
 		if existingTrackedSubnets == l1.SubnetID.String() {
 			goLog.Printf("Node %s @ %s already tracking l1 %s\n", node.NodeID, node.URI, l1.SubnetID)
 			continue
@@ -519,27 +521,24 @@ func (n *LocalNetwork) TearDownNetwork() {
 
 func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 	for chainIDStr, chainConfig := range chainConfigs {
+		var cfg tmpnet.ConfigMap
+		err := json.Unmarshal([]byte(chainConfig), &cfg)
+		if err != nil {
+			log.Error(
+				"failed to unmarshal chain config",
+				"error", err,
+				"chainConfig", chainConfig,
+			)
+		}
 		if chainIDStr == utils.CChainPathSpecifier {
-			var cfg tmpnet.FlagsMap
-			err := json.Unmarshal([]byte(chainConfig), &cfg)
-			if err != nil {
-				log.Error(
-					"failed to unmarshal chain config",
-					"error", err,
-					"chainConfig", chainConfig,
-				)
-			}
-			cfgMap := tmpnet.ConfigMap{}
-			for k, v := range cfg {
-				cfgMap[k] = v
-			}
-			n.Network.PrimaryChainConfigs[utils.CChainPathSpecifier] = cfgMap
+			n.Network.PrimaryChainConfigs[utils.CChainPathSpecifier] = cfg
 			continue
 		}
 
 		for _, l1 := range n.Network.Subnets {
 			for _, chain := range l1.Chains {
 				if chain.ChainID.String() == chainIDStr {
+					n.Network.PrimarySubnetConfig = cfg
 					chain.Config = chainConfig
 				}
 			}
@@ -555,10 +554,6 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 		if err != nil {
 			log.Error("failed to write L1s", "error", err)
 		}
-	}
-
-	for _, tmpnetNode := range n.Network.Nodes {
-		tmpnetNode.RuntimeConfig.Process.ReuseDynamicPorts = true
 	}
 
 	// Restart the network to apply the new chain configs
