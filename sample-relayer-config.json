@@ -5,6 +5,7 @@
   "p-chain-api": {
     "base-url": "https://api.avax-test.network"
   },
+  "process-missed-blocks":true,
   "source-blockchains": [
     {
       "subnet-id": "11111111111111111111111111111111LpoYY",
@@ -16,11 +17,12 @@
       "ws-endpoint": {
         "base-url": "wss://api.avax-test.network/ext/bc/C/ws"
       },
+      "process-historical-blocks-from-height": 41665917,
       "message-contracts": {
         "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf": {
           "message-format": "teleporter",
           "settings": {
-            "reward-address": "0x5072..."
+            "reward-address": "0x12559337e972F8DcE9d739231347d03544fCE91C"
           }
         }
       }
@@ -34,7 +36,7 @@
       "rpc-endpoint": {
         "base-url": "https://subnets.avax.network/dispatch/testnet/rpc"
       },
-      "account-private-key": "0x7493..."
+      "account-private-key": "0x0523fee5412aa3a43468b851fbb970d5d5cc29b672bd1d1a467c8cfa07a5ed4e"
     }
   ]
 }

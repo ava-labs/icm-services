@@ -17,3 +17,6 @@ osxcross/
 
 # Local DB
 .icm-relayer-storage/
+
+
+*.DS_Store

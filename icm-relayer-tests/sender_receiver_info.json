@@ -1,0 +1,16 @@
+{
+    "chain-info": {
+        "c-chain": {
+            "blockchain_id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
+            "blockchain_id_hex": "0x31233cae135e3974afa396e90f465aa28027de5f97f729238c310d2ed2f71902",
+            "source_rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
+            "sender_contract": "0x503cDdfC00a171c9589C546C03336CbDF27f9484"
+        },
+        "dispatch": {
+            "destination_blockchain_id": "2D8RG4UpSXbPbvPCAWppNJyqTG2i2CAXSkTgmTBBvs7GKNZjsY",
+            "destination_rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
+            "blockchain_id_hex":"0x9f3be606497285d0ffbb5ac9ba24aa60346a9b1812479ed66cb329f394a4b1c7",
+            "receiver_contract": "0x530B7E1c84eE39f4B410FE58d945bB8cDD6E763A"
+        }
+    }
+}
