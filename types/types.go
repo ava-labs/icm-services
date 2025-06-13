@@ -59,7 +59,13 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 			})
 			return err
 		}
-		err = utils.WithRetriesTimeout(logger, operation, utils.DefaultRPCTimeout, "get warp logs from block")
+
+		// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
+		// where the block header is received via websocket subscription before the block's
+		// logs are available via RPC. This is a known behavior in EVM nodes due to
+		// asynchronous log/index processing after a block becomes canonical.
+		timeout := utils.DefaultRPCTimeout * 6
+		err = utils.WithRetriesTimeout(logger, operation, timeout, "get warp logs from block")
 		if err != nil {
 			return nil, err
 		}
