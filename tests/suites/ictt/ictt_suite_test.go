@@ -42,6 +42,7 @@ func TestValidatorManager(t *testing.T) {
 		t.Skip("Environment variable RUN_E2E not set; skipping E2E tests")
 	}
 
+	e2eFlags = e2e.RegisterFlags()
 	RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, "Teleporter e2e test")
 }

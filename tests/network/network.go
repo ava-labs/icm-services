@@ -148,7 +148,6 @@ func NewLocalNetwork(
 	network.PreFundedKeys = keysToFund
 
 	tc := e2e.NewTestContext()
-	// flagVars := e2e.RegisterFlags()
 	runtimeCfg, err := flagVars.NodeRuntimeConfig()
 	Expect(err).Should(BeNil())
 	runtimeCfg.Process.ReuseDynamicPorts = true
