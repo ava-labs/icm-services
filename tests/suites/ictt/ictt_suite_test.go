@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	icttFlows "github.com/ava-labs/icm-contracts/tests/flows/ictt"
 	localnetwork "github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
@@ -33,6 +34,7 @@ const (
 var (
 	LocalNetworkInstance *localnetwork.LocalNetwork
 	TeleporterInfo       utils.TeleporterTestInfo
+	e2eFlags             *e2e.FlagVars
 )
 
 func TestValidatorManager(t *testing.T) {
@@ -85,6 +87,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		},
 		2,
 		2,
+		e2eFlags,
 	)
 	TeleporterInfo = utils.NewTeleporterTestInfo(LocalNetworkInstance.GetAllL1Infos())
 	log.Info("Started local network")

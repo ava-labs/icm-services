@@ -82,6 +82,7 @@ func NewLocalNetwork(
 	l1Specs []L1Spec,
 	numPrimaryNetworkValidators int,
 	extraNodeCount int, // for use by tests, eg to add new L1 validators
+	flagVars *e2e.FlagVars,
 ) *LocalNetwork {
 	// There must be at least one primary network validator per L1
 	Expect(numPrimaryNetworkValidators).Should(BeNumerically(">=", len(l1Specs)))
@@ -147,7 +148,7 @@ func NewLocalNetwork(
 	network.PreFundedKeys = keysToFund
 
 	tc := e2e.NewTestContext()
-	flagVars := e2e.RegisterFlags()
+	// flagVars := e2e.RegisterFlags()
 	runtimeCfg, err := flagVars.NodeRuntimeConfig()
 	Expect(err).Should(BeNil())
 	runtimeCfg.Process.ReuseDynamicPorts = true
