@@ -21,7 +21,6 @@ const (
 
 var (
 	LocalNetworkInstance *localnetwork.LocalNetwork
-	counter              int
 	e2eFlags             *e2e.FlagVars
 )
 

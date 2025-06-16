@@ -668,7 +668,12 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	Expect(err).Should(BeNil())
 }
 
-func IssueTxsToAdvanceChain(ctx context.Context, chainID *big.Int, fundedKey *ecdsa.PrivateKey, client ethclient.Client, numTriggerTxs int) error {
+func IssueTxsToAdvanceChain(
+	ctx context.Context,
+	chainID *big.Int,
+	fundedKey *ecdsa.PrivateKey,
+	client ethclient.Client, numTriggerTxs int,
+) error {
 	addr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 	nonce, err := client.NonceAt(ctx, addr, nil)
 	Expect(err).Should(BeNil())

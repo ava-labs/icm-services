@@ -33,7 +33,7 @@ const (
 var (
 	LocalNetworkInstance *network.LocalNetwork
 	TeleporterInfo       utils.TeleporterTestInfo
-	e2eFlags              *e2e.FlagVars
+	e2eFlags             *e2e.FlagVars
 )
 
 func TestTeleporter(t *testing.T) {
