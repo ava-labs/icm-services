@@ -35,7 +35,6 @@ ICM_SERVICES_VERSION=${ICM_SERVICES_VERSION:-'e4905d8434ba7ca7500e9b2fbbbe59164d
 
 # Don't export them as they're used in the context of other calls
 AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/avalanchego)")}
-GINKGO_VERSION=${GINKGO_VERSION:-$(extract_commit "$(getDepVersion github.com/onsi/ginkgo/v2)")}
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/subnet-evm)")}
 
 
