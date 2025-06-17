@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math/big"
 	"strings"
+
 	"github.com/ava-labs/subnet-evm/accounts/abi"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	"github.com/ava-labs/subnet-evm/core/types"
@@ -30,8 +31,8 @@ var (
 
 // SenderMetaData contains all meta data concerning the Sender contract.
 var SenderMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[],\"name\":\"messenger\",\"outputs\":[{\"internalType\":\"contractITeleporterMessenger\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"string\",\"name\":\"message\",\"type\":\"string\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"allowedRelayer\",\"type\":\"address\"}],\"name\":\"sendMessage\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x60a060405273253b2784c75e510dd0ff1da844684a1ac0aa5fcf6080523480156026575f80fd5b5060805161043b6100445f395f81816052015260e6015261043b5ff3fe608060405234801561000f575f80fd5b5060043610610034575f3560e01c80632a638943146100385780633cb747bf1461004d575b5f80fd5b61004b61004636600461020a565b610090565b005b6100747f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200160405180910390f35b6040805160018082528183019092525f916020808301908036833701905050905081815f815181106100c4576100c46102a0565b60200260200101906001600160a01b031690816001600160a01b0316815250507f00000000000000000000000000000000000000000000000000000000000000006001600160a01b031663624488506040518060c00160405280868152602001896001600160a01b0316815260200160405180604001604052805f6001600160a01b031681526020015f8152508152602001620186a0815260200184815260200188886040516020016101789291906102b4565b6040516020818303038152906040528152506040518263ffffffff1660e01b81526004016101a69190610368565b6020604051808303815f875af11580156101c2573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906101e691906103ee565b50505050505050565b80356001600160a01b0381168114610205575f80fd5b919050565b5f805f805f6080868803121561021e575f80fd5b610227866101ef565b9450602086013567ffffffffffffffff80821115610243575f80fd5b818801915088601f830112610256575f80fd5b813581811115610264575f80fd5b896020828501011115610275575f80fd5b60208301965080955050505060408601359150610294606087016101ef565b90509295509295909350565b634e487b7160e01b5f52603260045260245ffd5b60208152816020820152818360408301375f818301604090810191909152601f909201601f19160101919050565b5f815180845260208085019450602084015f5b8381101561031a5781516001600160a01b0316875295820195908201906001016102f5565b509495945050505050565b5f81518084525f5b818110156103495760208185018101518683018201520161032d565b505f602082860101526020601f19601f83011685010191505092915050565b60208152815160208201525f602083015160018060a01b03808216604085015260408501519150808251166060850152506020810151608084015250606083015160a0830152608083015160e060c08401526103c86101008401826102e2565b905060a0840151601f198483030160e08501526103e58282610325565b95945050505050565b5f602082840312156103fe575f80fd5b505191905056fea2646970667358221220758ce67fd7e390c574a3d97f17c64b694dcc32c111256ac876589213d78aac4d64736f6c63430008190033",
+	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"LogData\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"messenger\",\"outputs\":[{\"internalType\":\"contractITeleporterMessenger\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"string\",\"name\":\"message\",\"type\":\"string\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"allowedRelayer\",\"type\":\"address\"}],\"name\":\"sendMessage\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x60a060405273253b2784c75e510dd0ff1da844684a1ac0aa5fcf6080523480156026575f80fd5b506080516104656100445f395f81816052015260e601526104655ff3fe608060405234801561000f575f80fd5b5060043610610034575f3560e01c80632a638943146100385780633cb747bf1461004d575b5f80fd5b61004b610046366004610234565b610090565b005b6100747f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200160405180910390f35b6040805160018082528183019092525f916020808301908036833701905050905081815f815181106100c4576100c46102ca565b60200260200101906001600160a01b031690816001600160a01b0316815250507f00000000000000000000000000000000000000000000000000000000000000006001600160a01b031663624488506040518060c00160405280868152602001896001600160a01b0316815260200160405180604001604052805f6001600160a01b031681526020015f8152508152602001620186a0815260200184815260200188886040516020016101789291906102de565b6040516020818303038152906040528152506040518263ffffffff1660e01b81526004016101a69190610392565b6020604051808303815f875af11580156101c2573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906101e69190610418565b5060405142907fabf2763c2d37d1584cb198a2d5412ad4d09b51eb849dba580b05877010596436905f90a2505050505050565b80356001600160a01b038116811461022f575f80fd5b919050565b5f805f805f60808688031215610248575f80fd5b61025186610219565b9450602086013567ffffffffffffffff8082111561026d575f80fd5b818801915088601f830112610280575f80fd5b81358181111561028e575f80fd5b89602082850101111561029f575f80fd5b602083019650809550505050604086013591506102be60608701610219565b90509295509295909350565b634e487b7160e01b5f52603260045260245ffd5b60208152816020820152818360408301375f818301604090810191909152601f909201601f19160101919050565b5f815180845260208085019450602084015f5b838110156103445781516001600160a01b03168752958201959082019060010161031f565b509495945050505050565b5f81518084525f5b8181101561037357602081850181015186830182015201610357565b505f602082860101526020601f19601f83011685010191505092915050565b60208152815160208201525f602083015160018060a01b03808216604085015260408501519150808251166060850152506020810151608084015250606083015160a0830152608083015160e060c08401526103f261010084018261030c565b905060a0840151601f198483030160e085015261040f828261034f565b95945050505050565b5f60208284031215610428575f80fd5b505191905056fea2646970667358221220adfa1a1ab67ce3c12f94761da164341e55a4e026e8af6ec492bb4fb53b0c1a5b64736f6c63430008190033",
 }
 
 // SenderABI is the input ABI used to generate the binding from.
@@ -251,4 +252,148 @@ func (_Sender *SenderSession) SendMessage(destinationAddress common.Address, mes
 // Solidity: function sendMessage(address destinationAddress, string message, bytes32 destinationBlockchainID, address allowedRelayer) returns()
 func (_Sender *SenderTransactorSession) SendMessage(destinationAddress common.Address, message string, destinationBlockchainID [32]byte, allowedRelayer common.Address) (*types.Transaction, error) {
 	return _Sender.Contract.SendMessage(&_Sender.TransactOpts, destinationAddress, message, destinationBlockchainID, allowedRelayer)
+}
+
+// SenderLogDataIterator is returned from FilterLogData and is used to iterate over the raw logs and unpacked data for LogData events raised by the Sender contract.
+type SenderLogDataIterator struct {
+	Event *SenderLogData // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log          // Log channel receiving the found contract events
+	sub  interfaces.Subscription // Subscription for errors, completion and termination
+	done bool                    // Whether the subscription completed delivering logs
+	fail error                   // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *SenderLogDataIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(SenderLogData)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(SenderLogData)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *SenderLogDataIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *SenderLogDataIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// SenderLogData represents a LogData event raised by the Sender contract.
+type SenderLogData struct {
+	Timestamp *big.Int
+	Raw       types.Log // Blockchain specific contextual infos
+}
+
+// FilterLogData is a free log retrieval operation binding the contract event 0xabf2763c2d37d1584cb198a2d5412ad4d09b51eb849dba580b05877010596436.
+//
+// Solidity: event LogData(uint256 indexed timestamp)
+func (_Sender *SenderFilterer) FilterLogData(opts *bind.FilterOpts, timestamp []*big.Int) (*SenderLogDataIterator, error) {
+
+	var timestampRule []interface{}
+	for _, timestampItem := range timestamp {
+		timestampRule = append(timestampRule, timestampItem)
+	}
+
+	logs, sub, err := _Sender.contract.FilterLogs(opts, "LogData", timestampRule)
+	if err != nil {
+		return nil, err
+	}
+	return &SenderLogDataIterator{contract: _Sender.contract, event: "LogData", logs: logs, sub: sub}, nil
+}
+
+// WatchLogData is a free log subscription operation binding the contract event 0xabf2763c2d37d1584cb198a2d5412ad4d09b51eb849dba580b05877010596436.
+//
+// Solidity: event LogData(uint256 indexed timestamp)
+func (_Sender *SenderFilterer) WatchLogData(opts *bind.WatchOpts, sink chan<- *SenderLogData, timestamp []*big.Int) (event.Subscription, error) {
+
+	var timestampRule []interface{}
+	for _, timestampItem := range timestamp {
+		timestampRule = append(timestampRule, timestampItem)
+	}
+
+	logs, sub, err := _Sender.contract.WatchLogs(opts, "LogData", timestampRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(SenderLogData)
+				if err := _Sender.contract.UnpackLog(event, "LogData", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseLogData is a log parse operation binding the contract event 0xabf2763c2d37d1584cb198a2d5412ad4d09b51eb849dba580b05877010596436.
+//
+// Solidity: event LogData(uint256 indexed timestamp)
+func (_Sender *SenderFilterer) ParseLogData(log types.Log) (*SenderLogData, error) {
+	event := new(SenderLogData)
+	if err := _Sender.contract.UnpackLog(event, "LogData", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
 }

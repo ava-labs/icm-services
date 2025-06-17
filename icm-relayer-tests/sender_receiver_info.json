@@ -10,7 +10,7 @@
             "destination_blockchain_id": "2D8RG4UpSXbPbvPCAWppNJyqTG2i2CAXSkTgmTBBvs7GKNZjsY",
             "destination_rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
             "blockchain_id_hex":"0x9f3be606497285d0ffbb5ac9ba24aa60346a9b1812479ed66cb329f394a4b1c7",
-            "receiver_contract": "0x530B7E1c84eE39f4B410FE58d945bB8cDD6E763A"
+            "receiver_contract": "0x2cD967A6ae82f98E89eA7BdD0F14539CB10c0906"
         }
     }
 }

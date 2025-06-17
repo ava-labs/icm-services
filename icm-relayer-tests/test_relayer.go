@@ -5,75 +5,127 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"os"
-	"runtime"
+	"strconv"
+	"sync"
+	"time"
 
-	receiver "github.com/ava-labs/icm-services/icm-relayer-tests/Receiver"
 	sender "github.com/ava-labs/icm-services/icm-relayer-tests/Sender"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/subnet-evm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func buildAndRunRelayer() {
-	BuildAllExecutables(context.TODO())
-	RunRelayer(context.TODO(), "/Users/anvii.mishra/Desktop/icm-services/sample-relayer-config.json")
+type SendingConfiguration struct {
+	rpcClient               ethclient.Client
+	destinationContractAddr common.Address
+	auth                    *bind.TransactOpts
+	destinationBlockchainID [32]byte
+	allowedRelayer          common.Address
+	senderContract          *sender.Sender
 }
 
-func messageExchange(sender_addr string, receiver_addr string) {
-	rpcClient, err := ethclient.Dial("https://api.avax-test.network/ext/bc/C/rpc")
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer rpcClient.Close()
+func configureSenderAndSendMessage(sender_addr string, receiver_addr string, ch chan string, tps int, load int, sender_rpc string) {
+	sendConfig := new(SendingConfiguration)
+	sendConfig.rpcClient, _ = ethclient.Dial(sender_rpc)
+	defer sendConfig.rpcClient.Close()
 	contractAddress := common.HexToAddress(sender_addr)
-	senderContract, error := sender.NewSender(contractAddress, rpcClient)
+	sendConfig.senderContract, _ = sender.NewSender(contractAddress, sendConfig.rpcClient)
 	privateKey, err := crypto.HexToECDSA("0523fee5412aa3a43468b851fbb970d5d5cc29b672bd1d1a467c8cfa07a5ed4e")
 	if err != nil {
 		fmt.Println(err)
 	}
-	chainID := big.NewInt(43113)
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	if err != nil {
-		fmt.Println(err)
-	}
-	destinationAddress := common.HexToAddress(receiver_addr)
-	message := "123444"
-	var destinationBlockchainID [32]byte
-	copy(destinationBlockchainID[:], common.Hex2Bytes("9f3be606497285d0ffbb5ac9ba24aa60346a9b1812479ed66cb329f394a4b1c7"))
-	allowedRelayer := common.HexToAddress("12559337e972F8DcE9d739231347d03544fCE91C")
-	fmt.Printf("destination address: %s\n", destinationAddress.String())
-	tx, err := senderContract.SendMessage(auth, destinationAddress, message, destinationBlockchainID, allowedRelayer)
-	if err != nil {
-		fmt.Println(error)
-	}
-	log.Println("Transaction sent:", tx.Hash().Hex())
-	log.Println("Transaction id:", tx.Hash().Hex())
-	receiveMessage(receiver_addr)
+	sendConfig.auth, _ = bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(43113))
+	sendConfig.destinationContractAddr = common.HexToAddress(receiver_addr)
+	copy(sendConfig.destinationBlockchainID[:], common.Hex2Bytes("9f3be606497285d0ffbb5ac9ba24aa60346a9b1812479ed66cb329f394a4b1c7"))
+	sendConfig.allowedRelayer = common.HexToAddress("12559337e972F8DcE9d739231347d03544fCE91C")
+	sendMessagedAtLoadAndTPS(load, tps, ch, sendConfig)
 }
 
-func receiveMessage(receiver_addr string) {
-	client, err := ethclient.Dial("https://subnets.avax.network/dispatch/testnet/rpc")
-	if err != nil {
-		fmt.Println(err)
+func sendMessagedAtLoadAndTPS(load int, tps int, ch chan string, sendConfig *SendingConfiguration) {
+	duration := time.Second / time.Duration(tps)
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+	count := 0
+	maxCount := load
+	for {
+		select {
+		case <-ticker.C:
+			tx, err := sendConfig.senderContract.SendMessage(
+				sendConfig.auth,
+				sendConfig.destinationContractAddr,
+				"Hello",
+				sendConfig.destinationBlockchainID,
+				sendConfig.allowedRelayer,
+			)
+			if err != nil {
+				continue
+			}
+			success, receipt := waitForTransactionSuccess(context.TODO(), sendConfig.rpcClient, tx.Hash())
+			if !success {
+				logSendMessageError(receipt)
+				continue
+			}
+			ch <- tx.Hash().Hex()
+			count++
+			if count >= maxCount {
+				close(ch)
+				return
+			}
+		}
 	}
-	contractAddress := common.HexToAddress("0x530B7E1c84eE39f4B410FE58d945bB8cDD6E763A")
-	receiverCaller, err := receiver.NewReceiverCaller(contractAddress, client)
-	if err != nil {
-		panic(err)
-	}
-	msg, err := receiverCaller.LastMessage(&bind.CallOpts{})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Last received message:", msg)
 }
 
-func crossChainRelaying(sender string, relayer string) {
-	fmt.Println("Extracting chains...")
+func logSendMessageError(receipt *types.Receipt) {
+	file, err := os.OpenFile("errors.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("Error opening/creating file:", err)
+		return
+	}
+	defer file.Close()
+	if _, err := file.WriteString("Errors:\n"); err != nil {
+		fmt.Println("Error writing to file:", err)
+		return
+	}
+}
+
+func waitForTransactionSuccess(
+	ctx context.Context,
+	client ethclient.Client,
+	txHash common.Hash,
+) (bool, *types.Receipt) {
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	receipt, err := WaitMined(cctx, client, txHash)
+	if err != nil {
+		return false, receipt
+	}
+	if receipt.Status == types.ReceiptStatusFailed {
+		return false, receipt
+	}
+	return true, receipt
+}
+
+func WaitMined(ctx context.Context, client ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
+	queryTicker := time.NewTicker(time.Second)
+	defer queryTicker.Stop()
+	for {
+		receipt, err := client.TransactionReceipt(ctx, txHash)
+		if err == nil {
+			return receipt, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-queryTicker.C:
+		}
+	}
+}
+
+func readConfigAndSendMessage(sender string, relayer string, ch chan string, tps int, load int) {
 	jsonFile, err := os.Open("icm-relayer-tests/sender_receiver_info.json")
 	if err != nil {
 		fmt.Println(err)
@@ -84,34 +136,87 @@ func crossChainRelaying(sender string, relayer string) {
 	json.Unmarshal([]byte(byteValue), &result)
 	sender_address := result["chain-info"]["c-chain"]["sender_contract"]
 	receiver_address := result["chain-info"]["dispatch"]["receiver_contract"]
-	fmt.Println("Extracted chains.")
-	fmt.Println("Calling ABI send...")
-	fmt.Println(receiver_address)
-	messageExchange(sender_address, receiver_address)
-	fmt.Println("Sent.")
+	sender_rpc := "https://api.avax-test.network/ext/bc/C/rpc"
+	configureSenderAndSendMessage(sender_address, receiver_address, ch, tps, load, sender_rpc)
 }
 
-func sendMessage(sender string, receiver string) {
-	fmt.Println("Building relayer...")
-	buildAndRunRelayer()
-	fmt.Println("Built relayer.")
-	fmt.Println("Sending message...")
-	crossChainRelaying(sender, receiver)
+func listenToAndCollectLogs(loadToLoggerCh chan string, loggerToRelayer chan string) {
+	file, err := os.OpenFile("received.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("Error opening/creating file:", err)
+		return
+	}
+	defer file.Close()
+	if _, err := file.WriteString("Begining Receiving:\n"); err != nil {
+		fmt.Println("Error writing to file:", err)
+		return
+	}
+	directLogsToFile(loadToLoggerCh, file)
+}
+
+func buildRelayerWithConfig(file string, loggerToRelayerCh chan string) {
+	BuildAllExecutables(context.TODO())
+	RunRelayer(context.TODO(), file)
+}
+
+func directLogsToFile(loadToLoggerCh chan string, file *os.File) {
+	for {
+		select {
+		case msg, ok := <-loadToLoggerCh:
+			if !ok {
+				fmt.Println("Channel closed. Done receiving.")
+				return
+			}
+			if _, err := file.WriteString(msg + "+\n"); err != nil {
+				fmt.Println("Error writing to file:", err)
+				return
+			}
+		case <-time.After(15 * time.Second):
+			fmt.Println("Operation timed out")
+			return
+		}
+	}
 }
 
 func main() {
 	args := os.Args
-	if len(args) > 2 {
+	if len(args) > 2 && len(args) < 5 {
 		fmt.Println("Sender chain:", args[1])
 		fmt.Println("Receiver chain:", args[2])
+	} else if len(args) == 5 {
+		fmt.Println("Load:", args[3])
+		fmt.Println("TPS:", args[4])
 	} else {
-		fmt.Println("Please pass in a sender and receiver chain.")
+		fmt.Println("Please pass in a sender, receiver chain.")
 		return
 	}
+	loadToLoggerCh := make(chan string)
+	loggerToRelayerCh := make(chan string)
 	sender_chain := args[1]
 	receiver_chain := args[2]
-	fmt.Println("Beginning process...")
-	sendMessage(sender_chain, receiver_chain)
-	fmt.Println("Concluded.")
-	runtime.Goexit()
+	load, err := strconv.ParseInt(args[3], 10, 64)
+	if err != nil {
+		fmt.Println("Please pass in a load.")
+		return
+	}
+	tps, err := strconv.ParseInt(args[4], 10, 64)
+	if err != nil {
+		fmt.Println("Please pass in a tps.")
+		return
+	}
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		readConfigAndSendMessage(sender_chain, receiver_chain, loadToLoggerCh, int(tps), int(load))
+	}()
+	go func() {
+		buildRelayerWithConfig("/Users/anvii.mishra/Desktop/icm-services/sample-relayer-config.json", loggerToRelayerCh)
+		defer wg.Done()
+	}()
+	go func() {
+		defer wg.Done()
+		listenToAndCollectLogs(loadToLoggerCh, loggerToRelayerCh)
+	}()
+	wg.Wait()
 }

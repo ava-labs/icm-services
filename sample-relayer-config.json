@@ -17,7 +17,7 @@
       "ws-endpoint": {
         "base-url": "wss://api.avax-test.network/ext/bc/C/ws"
       },
-      "process-historical-blocks-from-height": 41665917,
+      "process-historical-blocks-from-height": 41900000,
       "message-contracts": {
         "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf": {
           "message-format": "teleporter",
