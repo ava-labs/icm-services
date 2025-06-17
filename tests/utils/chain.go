@@ -36,7 +36,6 @@ import (
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	. "github.com/onsi/gomega"
-	"go.uber.org/zap"
 )
 
 const (
@@ -668,11 +667,15 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	Expect(err).Should(BeNil())
 }
 
+// Adapted from [subnetEvmUtils.IssueTxsToActivateProposerVMFork]
+// Since those transactions with hardcoded low caps don't get included successfully
+// post Fortuna
 func IssueTxsToAdvanceChain(
 	ctx context.Context,
 	chainID *big.Int,
 	fundedKey *ecdsa.PrivateKey,
-	client ethclient.Client, numTriggerTxs int,
+	client ethclient.Client,
+	numTriggerTxs int,
 ) error {
 	addr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 	nonce, err := client.NonceAt(ctx, addr, nil)
@@ -685,19 +688,8 @@ func IssueTxsToAdvanceChain(
 	}
 	defer sub.Unsubscribe()
 
-	gasTipCapCtx, gasTipCapCtxCancel := context.WithTimeout(context.Background(), time.Second*2)
-	defer gasTipCapCtxCancel()
-	gasTipCap, err := client.SuggestGasTipCap(gasTipCapCtx)
-	if err != nil {
-		log.Error(
-			"Failed to get gas tip cap",
-			zap.Error(err),
-		)
-		return err
-	}
-
 	to := common.HexToAddress(string(common.Big1.Bytes()))
-	gasFeeCap := new(big.Int).Add(big.NewInt(0).SetUint64(225_000_000_000), gasTipCap)
+	gasFeeCap := big.NewInt(0).SetUint64(225_000_000_000)
 
 	txSigner := types.LatestSignerForChainID(chainID)
 	for i := 0; i < numTriggerTxs; i++ {
@@ -707,7 +699,7 @@ func IssueTxsToAdvanceChain(
 			To:        &to,
 			Gas:       NativeTransferGas,
 			GasFeeCap: gasFeeCap,
-			GasTipCap: gasTipCap,
+			GasTipCap: common.Big0,
 			Value:     common.Big1,
 		})
 		triggerTx, err := types.SignTx(tx, txSigner, fundedKey)

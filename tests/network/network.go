@@ -337,7 +337,6 @@ func (n *LocalNetwork) AddSubnetValidators(
 	for _, node := range nodes {
 		goLog.Printf("Adding node %s @ %s to l1 %s", node.NodeID, node.URI, l1.SubnetID)
 		existingTrackedSubnets := node.Flags[config.TrackSubnetsKey]
-		// Expect(ok).Should(BeTrue())
 		if existingTrackedSubnets == l1.SubnetID.String() {
 			goLog.Printf("Node %s @ %s already tracking l1 %s\n", node.NodeID, node.URI, l1.SubnetID)
 			continue
