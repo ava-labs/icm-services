@@ -62,6 +62,7 @@ func sendMessagedAtLoadAndTPS(load int, tps int, ch chan string, sendConfig *Sen
 				sendConfig.allowedRelayer,
 			)
 			if err != nil {
+				fmt.Println("oh no")
 				continue
 			}
 			success, receipt := waitForTransactionSuccess(context.TODO(), sendConfig.rpcClient, tx.Hash())
