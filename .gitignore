@@ -4,7 +4,7 @@ tests/cmd/decider/decider
 
 .vscode*
 
-relayer-config.json
+sample-relayer-config.json
 
 # Ginkgo test outputs
 main.log
@@ -18,5 +18,7 @@ osxcross/
 # Local DB
 .icm-relayer-storage/
 
+#Senstive Wallet Info
+wallet-info.json
 
 *.DS_Store
