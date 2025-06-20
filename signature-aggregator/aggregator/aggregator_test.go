@@ -480,3 +480,95 @@ func TestUnmarshalResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateQuorumPercentages(t *testing.T) {
+	tests := []struct {
+		name     string
+		required uint64
+		buffer   uint64
+		wantErr  bool
+	}{
+		{
+			name:     "valid",
+			required: 80,
+			buffer:   5,
+			wantErr:  false,
+		},
+		{
+			name:     "zero required",
+			required: 0,
+			buffer:   5,
+			wantErr:  true},
+		{
+			name:     "sum over 100",
+			required: 98, buffer: 5,
+			wantErr: true,
+		},
+		{
+			name:     "exactly 100",
+			required: 100,
+			buffer:   0,
+			wantErr:  false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateQuorumPercentages(tc.required, tc.buffer)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestSelectSigningSubnet(t *testing.T) {
+	aggregator, _, _ := instantiateAggregator(t)
+	ctx := context.Background()
+	log := logging.NoLog{}
+	chainID := ids.GenerateTestID()
+	msg, err := warp.NewUnsignedMessage(0, chainID, []byte{})
+	require.NoError(t, err)
+
+	// Mock getSubnetID to return a specific subnet
+	wantSubnet := ids.GenerateTestID()
+	aggregator.subnetIDsByBlockchainID[chainID] = wantSubnet
+
+	// Case: inputSigningSubnet is Empty
+	signingSubnet, sourceSubnet, err := aggregator.selectSigningSubnet(ctx, log, msg, ids.Empty)
+	require.NoError(t, err)
+	require.Equal(t, wantSubnet, signingSubnet)
+	require.Equal(t, wantSubnet, sourceSubnet)
+
+	// Case: inputSigningSubnet is set
+	otherSubnet := ids.GenerateTestID()
+	signingSubnet, sourceSubnet, err = aggregator.selectSigningSubnet(ctx, log, msg, otherSubnet)
+	require.NoError(t, err)
+	require.Equal(t, otherSubnet, signingSubnet)
+	require.Equal(t, wantSubnet, sourceSubnet)
+}
+
+func TestPopulateSignatureMapFromCache(t *testing.T) {
+	aggregator, _, _ := instantiateAggregator(t)
+	connectedValidators, signers := makeConnectedValidators(2)
+	msg, err := warp.NewUnsignedMessage(0, ids.GenerateTestID(), []byte("test"))
+	require.NoError(t, err)
+
+	// Simulate a cached signature for the first validator
+	sig, err := signers[0].Sign(msg.Bytes())
+	require.NoError(t, err)
+	pubKeyBytes := bls.PublicKeyToUncompressedBytes(signers[0].PublicKey())
+
+	// Add the signature to the aggregator's cache
+	aggregator.signatureCache.Add(
+		msg.ID(),
+		PublicKeyBytes(pubKeyBytes),
+		SignatureBytes(bls.SignatureToBytes(sig)),
+	)
+
+	excluded := set.NewSet[int](0)
+	sigMap, accWeight := aggregator.populateSignatureMapFromCache(msg, connectedValidators, excluded)
+	require.Len(t, sigMap, 1)
+	// The expected weight is the weight of the first validator
+	require.Equal(t, connectedValidators.ValidatorSet.Validators[0].Weight, accWeight.Uint64())
+}
