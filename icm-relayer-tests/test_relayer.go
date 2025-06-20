@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,13 +23,13 @@ import (
 type SendingConfiguration struct {
 	rpcClient               ethclient.Client
 	destinationContractAddr common.Address
-	auth                    *bind.TransactOpts
+	opts                    *bind.TransactOpts
 	destinationBlockchainID [32]byte
 	allowedRelayer          common.Address
 	senderContract          *sender.Sender
 }
 
-func configureSenderAndSendMessage(sender_addr string, receiver_addr string, ch chan string, tps int, load int, sender_rpc string) {
+func configureWallets(sender_addr string, receiver_addr string, sender_rpc string, priv_key *ecdsa.PrivateKey, relayer_allowed common.Address) *SendingConfiguration {
 	sendConfig := new(SendingConfiguration)
 	sendConfig.rpcClient, _ = ethclient.Dial(sender_rpc)
 	defer sendConfig.rpcClient.Close()
@@ -38,41 +39,72 @@ func configureSenderAndSendMessage(sender_addr string, receiver_addr string, ch 
 	if err != nil {
 		fmt.Println(err)
 	}
-	sendConfig.auth, _ = bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(43113))
+
+	sendConfig.opts, _ = bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(43113))
+
 	sendConfig.destinationContractAddr = common.HexToAddress(receiver_addr)
 	copy(sendConfig.destinationBlockchainID[:], common.Hex2Bytes("9f3be606497285d0ffbb5ac9ba24aa60346a9b1812479ed66cb329f394a4b1c7"))
 	sendConfig.allowedRelayer = common.HexToAddress("12559337e972F8DcE9d739231347d03544fCE91C")
+	return sendConfig
+}
+func configureSenderAndSendMessage(sender_addr string, receiver_addr string, ch chan string, tps int, load int, sender_rpc string) {
+	sendCofig := configureWallets(sender_addr, receiver_addr, sender_rpc, pr)
 	sendMessagedAtLoadAndTPS(load, tps, ch, sendConfig)
 }
 
+func sendIndividualMessage(sendConfig *SendingConfiguration, ch chan string) bool {
+	tx, err := sendConfig.senderContract.SendMessage(
+		sendConfig.opts,
+		sendConfig.destinationContractAddr,
+		"Hello",
+		sendConfig.destinationBlockchainID,
+		sendConfig.allowedRelayer,
+	)
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return false
+	}
+	success, receipt, error := waitForTransactionSuccess(context.TODO(), sendConfig.rpcClient, tx.Hash())
+	if !success {
+		if receipt != nil {
+			ch <- fmt.Sprintf("Receipt for tx %s : %s", tx.Hash(), receipt.TxHash.String())
+		}
+		if error != nil {
+			ch <- fmt.Sprintf("Error for tx %s : %s", tx.Hash(), error.Error())
+		} else {
+			ch <- "Failure"
+		}
+		return false
+	} else {
+		fmt.Println("Sent at" + time.Now().String() + " for " + tx.Hash().Hex() + "\n")
+	}
+	ch <- tx.Hash().Hex()
+	return true
+}
+
 func sendMessagedAtLoadAndTPS(load int, tps int, ch chan string, sendConfig *SendingConfiguration) {
+	var wg sync.WaitGroup
 	duration := time.Second / time.Duration(tps)
 	ticker := time.NewTicker(duration)
+	fmt.Println("Ticker duration:", duration)
 	defer ticker.Stop()
+
 	count := 0
 	maxCount := load
+
 	for {
 		select {
-		case <-ticker.C:
-			tx, err := sendConfig.senderContract.SendMessage(
-				sendConfig.auth,
-				sendConfig.destinationContractAddr,
-				"Hello",
-				sendConfig.destinationBlockchainID,
-				sendConfig.allowedRelayer,
-			)
-			if err != nil {
-				fmt.Println("oh no")
-				continue
-			}
-			success, receipt := waitForTransactionSuccess(context.TODO(), sendConfig.rpcClient, tx.Hash())
-			if !success {
-				logSendMessageError(receipt)
-				continue
-			}
-			ch <- tx.Hash().Hex()
+		case t := <-ticker.C:
+			fmt.Println("Tick at", t, "for count", strconv.Itoa(count))
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sendIndividualMessage(sendConfig, ch)
+			}()
 			count++
 			if count >= maxCount {
+				wg.Wait()
 				close(ch)
 				return
 			}
@@ -80,34 +112,41 @@ func sendMessagedAtLoadAndTPS(load int, tps int, ch chan string, sendConfig *Sen
 	}
 }
 
-func logSendMessageError(receipt *types.Receipt) {
-	file, err := os.OpenFile("errors.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println("Error opening/creating file:", err)
-		return
-	}
-	defer file.Close()
-	if _, err := file.WriteString("Errors:\n"); err != nil {
-		fmt.Println("Error writing to file:", err)
-		return
-	}
-}
+// func logSendMessageError(receipt *types.Receipt, issue error) {
+// 	file, err := os.OpenFile("errors.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// 	if err != nil {
+// 		fmt.Println("Error opening/creating file:", err)
+// 		return
+// 	}
+// 	defer file.Close()
+// 	if _, err := file.WriteString("Errors:\n"); err != nil {
+// 		fmt.Println("Error writing to file:", err)
+// 		return
+// 	}
+// 	if receipt == nil {
+// 		file.WriteString(issue.Error())
+// 	} else if issue == nil {
+// 		file.WriteString(receipt.TxHash.String())
+
+// 	}
+// 	file.WriteString(receipt.TxHash.String() + ":" + issue.Error())
+// }
 
 func waitForTransactionSuccess(
 	ctx context.Context,
 	client ethclient.Client,
 	txHash common.Hash,
-) (bool, *types.Receipt) {
-	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+) (bool, *types.Receipt, error) {
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	receipt, err := WaitMined(cctx, client, txHash)
 	if err != nil {
-		return false, receipt
+		return false, receipt, err
 	}
 	if receipt.Status == types.ReceiptStatusFailed {
-		return false, receipt
+		return false, receipt, err
 	}
-	return true, receipt
+	return true, receipt, err
 }
 
 func WaitMined(ctx context.Context, client ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
@@ -126,7 +165,7 @@ func WaitMined(ctx context.Context, client ethclient.Client, txHash common.Hash)
 	}
 }
 
-func readConfigAndSendMessage(sender string, relayer string, ch chan string, tps int, load int) {
+func readConfigAndSendMessage(sender string, relayer string, ch chan string, tps int, load int, walletInfo string) {
 	jsonFile, err := os.Open("icm-relayer-tests/sender_receiver_info.json")
 	if err != nil {
 		fmt.Println(err)
@@ -155,10 +194,10 @@ func listenToAndCollectLogs(loadToLoggerCh chan string, loggerToRelayer chan str
 	directLogsToFile(loadToLoggerCh, file)
 }
 
-func buildRelayerWithConfig(file string, loggerToRelayerCh chan string) {
-	BuildAllExecutables(context.TODO())
-	RunRelayer(context.TODO(), file)
-}
+// func buildRelayerWithConfig(file string, loggerToRelayerCh chan string) {
+// 	BuildAllExecutables(context.TODO())
+// 	RunRelayer(context.TODO(), file)
+// }
 
 func directLogsToFile(loadToLoggerCh chan string, file *os.File) {
 	for {
@@ -168,11 +207,12 @@ func directLogsToFile(loadToLoggerCh chan string, file *os.File) {
 				fmt.Println("Channel closed. Done receiving.")
 				return
 			}
+			fmt.Println("Receive at: ", time.Now().String(), " for ", msg+"\n")
 			if _, err := file.WriteString(msg + "+\n"); err != nil {
 				fmt.Println("Error writing to file:", err)
 				return
 			}
-		case <-time.After(15 * time.Second):
+		case <-time.After(10000 * time.Second):
 			fmt.Println("Operation timed out")
 			return
 		}
@@ -181,21 +221,12 @@ func directLogsToFile(loadToLoggerCh chan string, file *os.File) {
 
 func main() {
 	args := os.Args
-	if len(args) > 2 && len(args) < 5 {
-		fmt.Println("Sender chain:", args[1])
-		fmt.Println("Receiver chain:", args[2])
-	} else if len(args) == 5 {
-		fmt.Println("Load:", args[3])
-		fmt.Println("TPS:", args[4])
-	} else {
-		fmt.Println("Please pass in a sender, receiver chain.")
-		return
-	}
 	loadToLoggerCh := make(chan string)
 	loggerToRelayerCh := make(chan string)
-	sender_chain := args[1]
-	receiver_chain := args[2]
+	senderChain := args[1]
+	receiverChain := args[2]
 	load, err := strconv.ParseInt(args[3], 10, 64)
+	load = load / 5
 	if err != nil {
 		fmt.Println("Please pass in a load.")
 		return
@@ -205,14 +236,17 @@ func main() {
 		fmt.Println("Please pass in a tps.")
 		return
 	}
+	walletInfo := args[5]
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		readConfigAndSendMessage(sender_chain, receiver_chain, loadToLoggerCh, int(tps), int(load))
+		readConfigAndSendMessage(senderChain, receiverChain, loadToLoggerCh, int(tps), int(load), walletInfo)
 	}()
 	go func() {
-		buildRelayerWithConfig("/Users/anvii.mishra/Desktop/icm-services/sample-relayer-config.json", loggerToRelayerCh)
+		sum := 9 + 6
+		fmt.Println(sum)
+		// buildRelayerWithConfig("/Users/anvii.mishra/Desktop/icm-services/sample-relayer-config.json", loggerToRelayerCh)
 		defer wg.Done()
 	}()
 	go func() {

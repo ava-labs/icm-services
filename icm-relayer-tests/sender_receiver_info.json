@@ -4,7 +4,7 @@
             "blockchain_id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
             "blockchain_id_hex": "0x31233cae135e3974afa396e90f465aa28027de5f97f729238c310d2ed2f71902",
             "source_rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
-            "sender_contract": "0x503cDdfC00a171c9589C546C03336CbDF27f9484"
+            "sender_contract": "0xFfB33E15E28cb70F5840F27A4c340BaFaA8141C1"
         },
         "dispatch": {
             "destination_blockchain_id": "2D8RG4UpSXbPbvPCAWppNJyqTG2i2CAXSkTgmTBBvs7GKNZjsY",
