@@ -35,7 +35,7 @@ func configureWallets(sender_addr string, receiver_addr string, sender_rpc strin
 	defer sendConfig.rpcClient.Close()
 	contractAddress := common.HexToAddress(sender_addr)
 	sendConfig.senderContract, _ = sender.NewSender(contractAddress, sendConfig.rpcClient)
-	privateKey, err := crypto.HexToECDSA("0523fee5412aa3a43468b851fbb970d5d5cc29b672bd1d1a467c8cfa07a5ed4e")
+	privateKey, err := crypto.HexToECDSA("priv_key")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -44,7 +44,7 @@ func configureWallets(sender_addr string, receiver_addr string, sender_rpc strin
 
 	sendConfig.destinationContractAddr = common.HexToAddress(receiver_addr)
 	copy(sendConfig.destinationBlockchainID[:], common.Hex2Bytes("9f3be606497285d0ffbb5ac9ba24aa60346a9b1812479ed66cb329f394a4b1c7"))
-	sendConfig.allowedRelayer = common.HexToAddress("12559337e972F8DcE9d739231347d03544fCE91C")
+	sendConfig.allowedRelayer = common.HexToAddress("wallet_addr")
 	return sendConfig
 }
 func configureSenderAndSendMessage(sender_addr string, receiver_addr string, ch chan string, tps int, load int, sender_rpc string) {
