@@ -9,7 +9,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer"
 	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ava-labs/libevm/common"
 	"go.uber.org/zap"
 )
 

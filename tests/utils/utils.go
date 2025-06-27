@@ -29,11 +29,11 @@ import (
 	signatureaggregatorcfg "github.com/ava-labs/icm-services/signature-aggregator/config"
 	batchcrosschainmessenger "github.com/ava-labs/icm-services/tests/abi-bindings/go/BatchCrossChainMessenger"
 	relayerUtils "github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/core/types"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	. "github.com/onsi/gomega"
 )
 

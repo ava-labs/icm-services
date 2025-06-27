@@ -14,12 +14,11 @@ import (
 	big "math/big"
 	reflect "reflect"
 
-	ids "github.com/ava-labs/avalanchego/ids"
-	types "github.com/ava-labs/subnet-evm/core/types"
-	interfaces "github.com/ava-labs/subnet-evm/interfaces"
+	ethereum "github.com/ava-labs/libevm"
+	common "github.com/ava-labs/libevm/common"
+	types "github.com/ava-labs/libevm/core/types"
 	params "github.com/ava-labs/subnet-evm/params"
 	rpc "github.com/ava-labs/subnet-evm/rpc"
-	common "github.com/ethereum/go-ethereum/common"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -48,7 +47,7 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 }
 
 // AcceptedCallContract mocks base method.
-func (m *MockClient) AcceptedCallContract(arg0 context.Context, arg1 interfaces.CallMsg) ([]byte, error) {
+func (m *MockClient) AcceptedCallContract(arg0 context.Context, arg1 ethereum.CallMsg) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcceptedCallContract", arg0, arg1)
 	ret0, _ := ret[0].([]byte)
@@ -90,21 +89,6 @@ func (m *MockClient) AcceptedNonceAt(arg0 context.Context, arg1 common.Address) 
 func (mr *MockClientMockRecorder) AcceptedNonceAt(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptedNonceAt", reflect.TypeOf((*MockClient)(nil).AcceptedNonceAt), arg0, arg1)
-}
-
-// AssetBalanceAt mocks base method.
-func (m *MockClient) AssetBalanceAt(arg0 context.Context, arg1 common.Address, arg2 ids.ID, arg3 *big.Int) (*big.Int, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssetBalanceAt", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(*big.Int)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AssetBalanceAt indicates an expected call of AssetBalanceAt.
-func (mr *MockClientMockRecorder) AssetBalanceAt(arg0, arg1, arg2, arg3 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssetBalanceAt", reflect.TypeOf((*MockClient)(nil).AssetBalanceAt), arg0, arg1, arg2, arg3)
 }
 
 // BalanceAt mocks base method.
@@ -198,7 +182,7 @@ func (mr *MockClientMockRecorder) BlockReceipts(arg0, arg1 any) *gomock.Call {
 }
 
 // CallContract mocks base method.
-func (m *MockClient) CallContract(arg0 context.Context, arg1 interfaces.CallMsg, arg2 *big.Int) ([]byte, error) {
+func (m *MockClient) CallContract(arg0 context.Context, arg1 ethereum.CallMsg, arg2 *big.Int) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CallContract", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]byte)
@@ -213,7 +197,7 @@ func (mr *MockClientMockRecorder) CallContract(arg0, arg1, arg2 any) *gomock.Cal
 }
 
 // CallContractAtHash mocks base method.
-func (m *MockClient) CallContractAtHash(ctx context.Context, msg interfaces.CallMsg, blockHash common.Hash) ([]byte, error) {
+func (m *MockClient) CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CallContractAtHash", ctx, msg, blockHash)
 	ret0, _ := ret[0].([]byte)
@@ -329,7 +313,7 @@ func (mr *MockClientMockRecorder) EstimateBaseFee(arg0 any) *gomock.Call {
 }
 
 // EstimateGas mocks base method.
-func (m *MockClient) EstimateGas(arg0 context.Context, arg1 interfaces.CallMsg) (uint64, error) {
+func (m *MockClient) EstimateGas(arg0 context.Context, arg1 ethereum.CallMsg) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EstimateGas", arg0, arg1)
 	ret0, _ := ret[0].(uint64)
@@ -344,10 +328,10 @@ func (mr *MockClientMockRecorder) EstimateGas(arg0, arg1 any) *gomock.Call {
 }
 
 // FeeHistory mocks base method.
-func (m *MockClient) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*interfaces.FeeHistory, error) {
+func (m *MockClient) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FeeHistory", ctx, blockCount, lastBlock, rewardPercentiles)
-	ret0, _ := ret[0].(*interfaces.FeeHistory)
+	ret0, _ := ret[0].(*ethereum.FeeHistory)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -359,7 +343,7 @@ func (mr *MockClientMockRecorder) FeeHistory(ctx, blockCount, lastBlock, rewardP
 }
 
 // FilterLogs mocks base method.
-func (m *MockClient) FilterLogs(arg0 context.Context, arg1 interfaces.FilterQuery) ([]types.Log, error) {
+func (m *MockClient) FilterLogs(arg0 context.Context, arg1 ethereum.FilterQuery) ([]types.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FilterLogs", arg0, arg1)
 	ret0, _ := ret[0].([]types.Log)
@@ -493,10 +477,10 @@ func (mr *MockClientMockRecorder) StorageAtHash(ctx, account, key, blockHash any
 }
 
 // SubscribeFilterLogs mocks base method.
-func (m *MockClient) SubscribeFilterLogs(arg0 context.Context, arg1 interfaces.FilterQuery, arg2 chan<- types.Log) (interfaces.Subscription, error) {
+func (m *MockClient) SubscribeFilterLogs(arg0 context.Context, arg1 ethereum.FilterQuery, arg2 chan<- types.Log) (ethereum.Subscription, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeFilterLogs", arg0, arg1, arg2)
-	ret0, _ := ret[0].(interfaces.Subscription)
+	ret0, _ := ret[0].(ethereum.Subscription)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -508,10 +492,10 @@ func (mr *MockClientMockRecorder) SubscribeFilterLogs(arg0, arg1, arg2 any) *gom
 }
 
 // SubscribeNewAcceptedTransactions mocks base method.
-func (m *MockClient) SubscribeNewAcceptedTransactions(arg0 context.Context, arg1 chan<- *common.Hash) (interfaces.Subscription, error) {
+func (m *MockClient) SubscribeNewAcceptedTransactions(arg0 context.Context, arg1 chan<- *common.Hash) (ethereum.Subscription, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeNewAcceptedTransactions", arg0, arg1)
-	ret0, _ := ret[0].(interfaces.Subscription)
+	ret0, _ := ret[0].(ethereum.Subscription)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -523,10 +507,10 @@ func (mr *MockClientMockRecorder) SubscribeNewAcceptedTransactions(arg0, arg1 an
 }
 
 // SubscribeNewHead mocks base method.
-func (m *MockClient) SubscribeNewHead(arg0 context.Context, arg1 chan<- *types.Header) (interfaces.Subscription, error) {
+func (m *MockClient) SubscribeNewHead(arg0 context.Context, arg1 chan<- *types.Header) (ethereum.Subscription, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeNewHead", arg0, arg1)
-	ret0, _ := ret[0].(interfaces.Subscription)
+	ret0, _ := ret[0].(ethereum.Subscription)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -538,10 +522,10 @@ func (mr *MockClientMockRecorder) SubscribeNewHead(arg0, arg1 any) *gomock.Call 
 }
 
 // SubscribeNewPendingTransactions mocks base method.
-func (m *MockClient) SubscribeNewPendingTransactions(arg0 context.Context, arg1 chan<- *common.Hash) (interfaces.Subscription, error) {
+func (m *MockClient) SubscribeNewPendingTransactions(arg0 context.Context, arg1 chan<- *common.Hash) (ethereum.Subscription, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeNewPendingTransactions", arg0, arg1)
-	ret0, _ := ret[0].(interfaces.Subscription)
+	ret0, _ := ret[0].(ethereum.Subscription)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

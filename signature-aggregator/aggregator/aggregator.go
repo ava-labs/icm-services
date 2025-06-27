@@ -28,6 +28,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+	platformvmapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/cache"
 	"github.com/ava-labs/icm-services/peers"
@@ -43,7 +44,7 @@ type blsSignatureBuf [bls.SignatureLen]byte
 const (
 	// Maximum amount of time to spend waiting (in addition to network round trip time per attempt)
 	// during relayer signature query routine
-	signatureRequestTimeout = 5 * time.Second
+	signatureRequestTimeout = 2 * utils.DefaultAppRequestTimeout
 	// Maximum amount of time to spend waiting for a connection to a quorum of validators for
 	// a given subnetID
 	connectToValidatorsTimeout = 5 * time.Second
@@ -71,7 +72,7 @@ type SignatureAggregator struct {
 	signatureCache           *SignatureCache
 	pChainClient             platformvm.Client
 	pChainClientOptions      []rpc.Option
-	currentL1ValidatorsCache *cache.TTLCache[ids.ID, []platformvm.APIL1Validator]
+	currentL1ValidatorsCache *cache.TTLCache[ids.ID, []platformvmapi.APIL1Validator]
 
 	subnetMapsLock sync.Mutex
 
@@ -105,7 +106,7 @@ func NewSignatureAggregator(
 		messageCreator:           messageCreator,
 		pChainClient:             pChainClient,
 		pChainClientOptions:      pChainClientOptions,
-		currentL1ValidatorsCache: cache.NewTTLCache[ids.ID, []platformvm.APIL1Validator](l1ValidatorBalanceTTL),
+		currentL1ValidatorsCache: cache.NewTTLCache[ids.ID, []platformvmapi.APIL1Validator](l1ValidatorBalanceTTL),
 	}
 	sa.currentRequestID.Store(rand.Uint32())
 	return &sa, nil
@@ -250,7 +251,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	// if ALL of the node IDs for a validator have Balance < minimumL1ValidatorBalance
 	if isL1 {
 		log.Debug("Checking L1 validators for zero balance nodes")
-		fetchL1Validators := func(subnetID ids.ID) ([]platformvm.APIL1Validator, error) {
+		fetchL1Validators := func(subnetID ids.ID) ([]platformvmapi.APIL1Validator, error) {
 			return s.pChainClient.GetCurrentL1Validators(ctx, subnetID, nil, s.pChainClientOptions...)
 		}
 		l1Validators, err := s.currentL1ValidatorsCache.Get(signingSubnet, fetchL1Validators, skipCache)
@@ -266,12 +267,21 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		// Set of underfunded L1 validator nodes
 		underfundedNodes := set.NewSet[ids.NodeID](0)
 		for _, validator := range l1Validators {
-			if uint64(validator.Balance) < minimumL1ValidatorBalance {
+			if validator.Balance == nil {
+				log.Warn(
+					"Skipping L1 validator with nil balance",
+					zap.String("nodeID", validator.NodeID.String()),
+				)
+				// underfundedNodes.Add(validator.NodeID)
+				continue
+			}
+
+			if uint64(*validator.Balance) < minimumL1ValidatorBalance {
 				underfundedNodes.Add(validator.NodeID)
 				log.Debug(
 					"Node has insufficient balance",
 					zap.String("nodeID", validator.NodeID.String()),
-					zap.Uint64("balance", uint64(validator.Balance)),
+					zap.Uint64("balance", uint64(*validator.Balance)),
 				)
 			}
 		}

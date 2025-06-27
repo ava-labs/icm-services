@@ -11,12 +11,12 @@ import (
 	"log"
 	"math/big"
 
-	"github.com/ava-labs/subnet-evm/core/types"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Some of the code in this file is adapted from https://github.com/welthee/go-ethereum-aws-kms-tx-signer

@@ -13,11 +13,11 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/subnet-evm/core/types"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/interfaces"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	"github.com/ethereum/go-ethereum/common"
 	"go.uber.org/zap"
 )
 
@@ -34,7 +34,7 @@ type subscriber struct {
 	blockchainID ids.ID
 	headers      chan *types.Header
 	icmBlocks    chan *relayerTypes.WarpBlockInfo
-	sub          interfaces.Subscription
+	sub          ethereum.Subscription
 
 	errChan chan error
 
@@ -165,7 +165,7 @@ func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
-		logs, err = s.rpcClient.FilterLogs(cctx, interfaces.FilterQuery{
+		logs, err = s.rpcClient.FilterLogs(cctx, ethereum.FilterQuery{
 			Topics:    [][]common.Hash{{relayerTypes.WarpPrecompileLogFilter}},
 			Addresses: []common.Address{warp.ContractAddress},
 			FromBlock: fromBlock,
@@ -202,7 +202,7 @@ func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
 
 // subscribe until it succeeds or reached timeout.
 func (s *subscriber) subscribe(retryTimeout time.Duration) error {
-	var sub interfaces.Subscription
+	var sub ethereum.Subscription
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()

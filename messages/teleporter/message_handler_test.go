@@ -16,10 +16,10 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/core/types"
-	"github.com/ava-labs/subnet-evm/interfaces"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -240,7 +240,7 @@ func TestShouldSendMessage(t *testing.T) {
 				Times(test.senderAddressesTimes)
 			mockClient.EXPECT().BlockGasLimit().Return(uint64(blockGasLimit)).AnyTimes()
 			if test.messageReceivedCall != nil {
-				messageReceivedInput := interfaces.CallMsg{
+				messageReceivedInput := ethereum.CallMsg{
 					From: bind.CallOpts{}.From,
 					To:   &messageProtocolAddress,
 					Data: test.messageReceivedCall.input,
@@ -292,7 +292,7 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	messageReceivedCallData, err := teleportermessenger.PackMessageReceived(messageID)
 	require.NoError(t, err)
 
-	messageReceivedInput := interfaces.CallMsg{
+	messageReceivedInput := ethereum.CallMsg{
 		From: bind.CallOpts{}.From,
 		To:   &messageProtocolAddress,
 		Data: messageReceivedCallData,

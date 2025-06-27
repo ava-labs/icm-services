@@ -16,7 +16,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ava-labs/libevm/common"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

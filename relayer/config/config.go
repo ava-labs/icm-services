@@ -18,6 +18,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 
 	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/subnet-evm/params"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 
 	// Force-load precompiles to trigger registration
@@ -218,8 +219,10 @@ func getWarpConfig(client ethclient.Client) (*warp.Config, error) {
 	if warpConfig != nil {
 		return warpConfig, nil
 	}
+
+	extra := params.GetExtra(&chainConfig.ChainConfig)
 	// If we didn't find the Warp config in the upgrade precompile list, check the genesis config
-	warpConfig, ok := chainConfig.GenesisPrecompiles[warpConfigKey].(*warp.Config)
+	warpConfig, ok := extra.GenesisPrecompiles[warpConfigKey].(*warp.Config)
 	if !ok {
 		return nil, fmt.Errorf("no Warp config found in chain config")
 	}

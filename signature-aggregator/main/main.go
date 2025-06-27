@@ -74,7 +74,6 @@ func main() {
 	// Initialize message creator passed down to relayers for creating app requests.
 	// We do not collect metrics for the message creator.
 	messageCreator, err := message.NewCreator(
-		logger,
 		prometheus.NewRegistry(), // isolate this from the rest of the metrics
 		constants.DefaultNetworkCompressionType,
 		constants.DefaultNetworkMaximumInboundTimeout,

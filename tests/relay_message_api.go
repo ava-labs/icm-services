@@ -20,12 +20,12 @@ import (
 	teleporterTestUtils "github.com/ava-labs/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/relayer/api"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
-	"github.com/ava-labs/subnet-evm/core/types"
-	subnetEvmInterfaces "github.com/ava-labs/subnet-evm/interfaces"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	. "github.com/onsi/gomega"
 )
 
@@ -160,7 +160,7 @@ func getWarpMessageFromLog(
 	source interfaces.L1TestInfo,
 ) *avalancheWarp.UnsignedMessage {
 	log.Info("Fetching relevant warp logs from the newly produced block")
-	logs, err := source.RPCClient.FilterLogs(ctx, subnetEvmInterfaces.FilterQuery{
+	logs, err := source.RPCClient.FilterLogs(ctx, ethereum.FilterQuery{
 		BlockHash: &receipt.BlockHash,
 		Addresses: []common.Address{warp.Module.Address},
 	})

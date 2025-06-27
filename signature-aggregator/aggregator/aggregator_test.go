@@ -35,7 +35,7 @@ var (
 )
 
 const (
-	maxAppRequestRetries uint32 = 6 // Used to calculate expected RequestID values
+	maxAppRequestRetries uint32 = 8 // Used to calculate expected RequestID values
 )
 
 func instantiateAggregator(t *testing.T) (
@@ -51,7 +51,6 @@ func instantiateAggregator(t *testing.T) (
 	if messageCreator == nil {
 		var err error
 		messageCreator, err = message.NewCreator(
-			logging.NoLog{},
 			prometheus.DefaultRegisterer,
 			constants.DefaultNetworkCompressionType,
 			constants.DefaultNetworkMaximumInboundTimeout,

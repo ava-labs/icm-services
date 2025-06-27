@@ -15,9 +15,9 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ethereum/go-ethereum/common"
 	"go.uber.org/zap"
 )
 

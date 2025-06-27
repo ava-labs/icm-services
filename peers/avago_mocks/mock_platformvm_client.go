@@ -173,14 +173,14 @@ func (mr *MockClientMockRecorder) GetBlockchains(ctx any, options ...any) *gomoc
 }
 
 // GetCurrentL1Validators mocks base method.
-func (m *MockClient) GetCurrentL1Validators(ctx context.Context, subnetID ids.ID, nodeIDs []ids.NodeID, options ...rpc.Option) ([]platformvm.APIL1Validator, error) {
+func (m *MockClient) GetCurrentL1Validators(ctx context.Context, subnetID ids.ID, nodeIDs []ids.NodeID, options ...rpc.Option) ([]api0.APIL1Validator, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, subnetID, nodeIDs}
 	for _, a := range options {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "GetCurrentL1Validators", varargs...)
-	ret0, _ := ret[0].([]platformvm.APIL1Validator)
+	ret0, _ := ret[0].([]api0.APIL1Validator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

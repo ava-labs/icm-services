@@ -3,7 +3,7 @@ package signer
 import (
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ava-labs/libevm/common"
 	"github.com/stretchr/testify/assert"
 )
 

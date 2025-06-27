@@ -8,8 +8,8 @@ import (
 	"github.com/ava-labs/icm-services/database"
 	mock_database "github.com/ava-labs/icm-services/database/mocks"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/crypto"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

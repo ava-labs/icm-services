@@ -34,8 +34,8 @@ import (
 	sigAggMetrics "github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -146,7 +146,6 @@ func main() {
 	// Initialize message creator passed down to relayers for creating app requests.
 	// We do not collect metrics for the message creator.
 	messageCreator, err := message.NewCreator(
-		logger,
 		prometheus.NewRegistry(), // isolate this from the rest of the metrics
 		constants.DefaultNetworkCompressionType,
 		constants.DefaultNetworkMaximumInboundTimeout,

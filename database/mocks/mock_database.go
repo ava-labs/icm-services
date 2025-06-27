@@ -13,7 +13,7 @@ import (
 	reflect "reflect"
 
 	database "github.com/ava-labs/icm-services/database"
-	common "github.com/ethereum/go-ethereum/common"
+	common "github.com/ava-labs/libevm/common"
 	gomock "go.uber.org/mock/gomock"
 )
 

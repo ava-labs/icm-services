@@ -17,6 +17,7 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
 	"github.com/ava-labs/subnet-evm/params"
+	"github.com/ava-labs/subnet-evm/params/extras"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -370,13 +371,16 @@ func TestGetWarpConfig(t *testing.T) {
 			subnetID:            subnetID,
 			getChainConfigCalls: 1,
 			chainConfig: params.ChainConfigWithUpgradesJSON{
-				ChainConfig: params.ChainConfig{
-					GenesisPrecompiles: params.Precompiles{
-						warpConfigKey: &warp.Config{
-							QuorumNumerator: 0,
+				ChainConfig: *params.WithExtra(
+					&params.ChainConfig{},
+					&extras.ChainConfig{
+						GenesisPrecompiles: extras.Precompiles{
+							warpConfigKey: &warp.Config{
+								QuorumNumerator: 0,
+							},
 						},
 					},
-				},
+				),
 			},
 			expectedError: nil,
 			expectedWarpConfig: WarpConfig{
@@ -390,13 +394,16 @@ func TestGetWarpConfig(t *testing.T) {
 			subnetID:            subnetID,
 			getChainConfigCalls: 1,
 			chainConfig: params.ChainConfigWithUpgradesJSON{
-				ChainConfig: params.ChainConfig{
-					GenesisPrecompiles: params.Precompiles{
-						warpConfigKey: &warp.Config{
-							QuorumNumerator: 50,
+				ChainConfig: *params.WithExtra(
+					&params.ChainConfig{},
+					&extras.ChainConfig{
+						GenesisPrecompiles: extras.Precompiles{
+							warpConfigKey: &warp.Config{
+								QuorumNumerator: 50,
+							},
 						},
 					},
-				},
+				),
 			},
 			expectedError: nil,
 			expectedWarpConfig: WarpConfig{
@@ -410,8 +417,8 @@ func TestGetWarpConfig(t *testing.T) {
 			subnetID:            subnetID,
 			getChainConfigCalls: 1,
 			chainConfig: params.ChainConfigWithUpgradesJSON{
-				UpgradeConfig: params.UpgradeConfig{
-					PrecompileUpgrades: []params.PrecompileUpgrade{
+				UpgradeConfig: extras.UpgradeConfig{
+					PrecompileUpgrades: []extras.PrecompileUpgrade{
 						{
 							Config: &warp.Config{
 								QuorumNumerator: 0,
@@ -432,8 +439,8 @@ func TestGetWarpConfig(t *testing.T) {
 			subnetID:            subnetID,
 			getChainConfigCalls: 1,
 			chainConfig: params.ChainConfigWithUpgradesJSON{
-				UpgradeConfig: params.UpgradeConfig{
-					PrecompileUpgrades: []params.PrecompileUpgrade{
+				UpgradeConfig: extras.UpgradeConfig{
+					PrecompileUpgrades: []extras.PrecompileUpgrade{
 						{
 							Config: &warp.Config{
 								QuorumNumerator: 50,
@@ -454,14 +461,17 @@ func TestGetWarpConfig(t *testing.T) {
 			subnetID:            subnetID,
 			getChainConfigCalls: 1,
 			chainConfig: params.ChainConfigWithUpgradesJSON{
-				ChainConfig: params.ChainConfig{
-					GenesisPrecompiles: params.Precompiles{
-						warpConfigKey: &warp.Config{
-							QuorumNumerator:              0,
-							RequirePrimaryNetworkSigners: true,
+				ChainConfig: *params.WithExtra(
+					&params.ChainConfig{},
+					&extras.ChainConfig{
+						GenesisPrecompiles: extras.Precompiles{
+							warpConfigKey: &warp.Config{
+								QuorumNumerator:              0,
+								RequirePrimaryNetworkSigners: true,
+							},
 						},
 					},
-				},
+				),
 			},
 			expectedError: nil,
 			expectedWarpConfig: WarpConfig{
@@ -475,14 +485,17 @@ func TestGetWarpConfig(t *testing.T) {
 			subnetID:            subnetID,
 			getChainConfigCalls: 1,
 			chainConfig: params.ChainConfigWithUpgradesJSON{
-				ChainConfig: params.ChainConfig{
-					GenesisPrecompiles: params.Precompiles{
-						warpConfigKey: &warp.Config{
-							QuorumNumerator:              0,
-							RequirePrimaryNetworkSigners: false,
+				ChainConfig: *params.WithExtra(
+					&params.ChainConfig{},
+					&extras.ChainConfig{
+						GenesisPrecompiles: extras.Precompiles{
+							warpConfigKey: &warp.Config{
+								QuorumNumerator:              0,
+								RequirePrimaryNetworkSigners: false,
+							},
 						},
 					},
-				},
+				),
 			},
 			expectedError: nil,
 			expectedWarpConfig: WarpConfig{

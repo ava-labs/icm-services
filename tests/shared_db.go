@@ -8,8 +8,8 @@ import (
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
 )
 

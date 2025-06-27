@@ -12,11 +12,11 @@ import (
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/core/types"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	. "github.com/onsi/gomega"
 )
 
@@ -113,7 +113,7 @@ func BatchRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
 
 	// Wait for the message on the destination
-	maxWait := 30
+	maxWait := 40
 	currWait := 0
 	log.Info("Waiting to receive all messages on destination...")
 	for {

@@ -16,7 +16,7 @@ import (
 	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	messages "github.com/ava-labs/icm-services/messages"
 	vms "github.com/ava-labs/icm-services/vms"
-	common "github.com/ethereum/go-ethereum/common"
+	common "github.com/ava-labs/libevm/common"
 	gomock "go.uber.org/mock/gomock"
 )
 

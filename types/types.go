@@ -10,11 +10,11 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/subnet-evm/core/types"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/interfaces"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -51,7 +51,7 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
 		operation := func() (err error) {
-			logs, err = ethClient.FilterLogs(cctx, interfaces.FilterQuery{
+			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
 				Topics:    [][]common.Hash{{WarpPrecompileLogFilter}},
 				Addresses: []common.Address{warp.ContractAddress},
 				FromBlock: header.Number,

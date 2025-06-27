@@ -6,7 +6,7 @@ package teleporter
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ava-labs/libevm/common"
 )
 
 type Config struct {

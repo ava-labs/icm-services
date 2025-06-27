@@ -17,7 +17,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/staking"
-	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
@@ -120,7 +119,7 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 			subnet.Config = make(map[string]interface{})
 			subnet.Config["validatorOnly"] = true
 			subnet.Config["allowedNodes"] = relayerNodeIDSet
-			err := subnet.Write(network.GetSubnetDir(), network.GetChainConfigDir())
+			err := subnet.Write(network.GetSubnetDir())
 			Expect(err).Should(BeNil())
 			l1BNodes.Add(subnet.ValidatorIDs...)
 		}
@@ -128,11 +127,13 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 	// Restart l1B nodes
 	for _, tmpnetNode := range network.Nodes {
 		if l1BNodes.Contains(tmpnetNode.NodeID) {
-			tmpnetNode.RuntimeConfig.ReuseDynamicPorts = true
+			Expect(network.DefaultRuntimeConfig).ShouldNot(BeNil())
+			Expect(network.DefaultRuntimeConfig.Process.ReuseDynamicPorts).Should(BeTrue())
+			tmpnetNode.RuntimeConfig = &network.DefaultRuntimeConfig
 			// Restart the network to apply the new chain configs
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
-			err := network.RestartNode(ctx, logging.NoLog{}, tmpnetNode)
+			err := tmpnetNode.Restart(ctx)
 			Expect(err).Should(BeNil())
 		}
 	}
@@ -145,7 +146,7 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 		Message: "0x" + hex.EncodeToString(warpMessage.Bytes()),
 	}
 	client := http.Client{
-		Timeout: 20 * time.Second,
+		Timeout: 30 * time.Second,
 	}
 
 	var sendRequestToAPI = func(success bool) {

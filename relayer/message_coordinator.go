@@ -15,10 +15,10 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/interfaces"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	"github.com/ethereum/go-ethereum/common"
 	"go.uber.org/zap"
 )
 
@@ -290,7 +290,7 @@ func FetchWarpMessage(
 ) (*relayerTypes.WarpMessageInfo, error) {
 	fetchLogsCtx, fetchLogsCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer fetchLogsCtxCancel()
-	logs, err := ethClient.FilterLogs(fetchLogsCtx, interfaces.FilterQuery{
+	logs, err := ethClient.FilterLogs(fetchLogsCtx, ethereum.FilterQuery{
 		Topics:    [][]common.Hash{{relayerTypes.WarpPrecompileLogFilter}, nil, {common.Hash(warpID)}},
 		Addresses: []common.Address{warp.ContractAddress},
 		FromBlock: blockNum,

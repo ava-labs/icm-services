@@ -7,7 +7,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ava-labs/libevm/common"
 )
 
 // Source blockchain configuration.

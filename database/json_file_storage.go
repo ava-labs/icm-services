@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ava-labs/libevm/common"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )

@@ -49,6 +49,8 @@ cp ${BASEDIR}/subnet-evm/subnet-evm ${BASEDIR}/avalanchego/plugins/srEXiWaHuhNyG
 echo "Copied ${BASEDIR}/subnet-evm/subnet-evm binary to ${BASEDIR}/avalanchego/plugins/"
 
 export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
+export AVALANCHEGO_PATH=$BASEDIR/avalanchego/avalanchego
+export AVAGO_PLUGIN_DIR=$BASEDIR/avalanchego/plugins
 
 go run github.com/onsi/ginkgo/v2/ginkgo build ./tests/
 go build -v -o tests/cmd/decider/decider ./tests/cmd/decider/
