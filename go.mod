@@ -4,9 +4,9 @@ go 1.23.10
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.13.1-0.20250328202636-14dea8025061 // branch icm-services-patch-v1.13.0
+	github.com/ava-labs/avalanchego v1.13.2 // branch icm-services-patch-v1.13.0
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250307173936-f6a36b902f4f
-	github.com/ava-labs/subnet-evm v0.7.3
+	github.com/ava-labs/subnet-evm v0.7.5
 	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/aws/aws-sdk-go-v2/service/kms v1.41.1
@@ -64,7 +64,6 @@ require (
 	github.com/GaijinEntertainment/go-exhaustruct/v3 v3.3.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/OpenPeeDeeP/depguard/v2 v2.2.1 // indirect
 	github.com/StephenButtolph/canoto v0.15.0 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
@@ -76,7 +75,8 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
-	github.com/ava-labs/coreth v0.15.0-rc.0 // indirect
+	github.com/ava-labs/coreth v0.15.2-rc.0.0.20250620163936-0058a7ec6d9d // indirect
+	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.1 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.70 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.32 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.36 // indirect
@@ -206,8 +206,10 @@ require (
 	github.com/holiman/billy v0.0.0-20240216141850-2abb0c79d3c4 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
 	github.com/holiman/uint256 v1.2.4 // indirect
+	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jdx/go-netrc v1.0.0 // indirect
 	github.com/jgautheron/goconst v1.7.1 // indirect
 	github.com/jingyugao/rowserrcheck v1.1.1 // indirect
