@@ -3,13 +3,13 @@ module github.com/ava-labs/icm-contracts
 go 1.23.10
 
 require (
-	github.com/ava-labs/avalanchego v1.13.1
+	github.com/ava-labs/avalanchego v1.13.2
 	github.com/supranational/blst v0.3.14 // indirect
 )
 
 require (
-	github.com/ava-labs/libevm v1.13.14-0.2.0.release
-	github.com/ava-labs/subnet-evm v0.7.4
+	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.1
+	github.com/ava-labs/subnet-evm v0.7.5
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
 	github.com/pkg/errors v0.9.1
@@ -23,10 +23,9 @@ require (
 require (
 	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
-	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/StephenButtolph/canoto v0.15.0 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
-	github.com/ava-labs/coreth v0.15.1-rc.0.0.20250530184801-28421010abae // indirect
+	github.com/ava-labs/coreth v0.15.2-rc.0.0.20250620163936-0058a7ec6d9d // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.10.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
