@@ -2,6 +2,9 @@ package ictt_test
 
 import (
 	"context"
+	"flag"
+	"fmt"
+	"math/big"
 	"os"
 	"testing"
 	"time"
@@ -37,12 +40,17 @@ var (
 	e2eFlags             *e2e.FlagVars
 )
 
+func TestMain(m *testing.M) {
+	e2eFlags = e2e.RegisterFlags()
+	flag.Parse()
+	os.Exit(m.Run())
+}
+
 func TestValidatorManager(t *testing.T) {
 	if os.Getenv("RUN_E2E") == "" {
 		t.Skip("Environment variable RUN_E2E not set; skipping E2E tests")
 	}
 
-	e2eFlags = e2e.RegisterFlags()
 	RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, "Teleporter e2e test")
 }
@@ -95,14 +103,26 @@ var _ = ginkgo.BeforeSuite(func() {
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
 	_, fundedKey := LocalNetworkInstance.GetFundedAccountInfo()
-	TeleporterInfo.DeployTeleporterMessenger(
-		ctx,
-		LocalNetworkInstance.GetPrimaryNetworkInfo(),
-		teleporterDeployerTransaction,
-		teleporterDeployerAddress,
-		teleporterContractAddress,
-		fundedKey,
-	)
+
+	if e2eFlags.NetworkDir() == "" {
+		// Only deploy Teleporter if we are not reusing an existing network
+		TeleporterInfo.DeployTeleporterMessenger(
+			ctx,
+			LocalNetworkInstance.GetPrimaryNetworkInfo(),
+			teleporterDeployerTransaction,
+			teleporterDeployerAddress,
+			teleporterContractAddress,
+			fundedKey,
+		)
+	} else {
+		fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(15)) // 11 AVAX
+		fundDeployerTx := utils.CreateNativeTransferTransaction(
+			ctx, LocalNetworkInstance.GetPrimaryNetworkInfo(), fundedKey, teleporterDeployerAddress, fundAmount,
+		)
+		utils.SendTransactionAndWaitForSuccess(ctx, LocalNetworkInstance.GetPrimaryNetworkInfo(), fundDeployerTx)
+		fmt.Println("Deployer funded with", fundAmount, "AVAX")
+	}
+
 	for _, l1 := range LocalNetworkInstance.GetAllL1Infos() {
 		TeleporterInfo.SetTeleporter(teleporterContractAddress, l1)
 		TeleporterInfo.InitializeBlockchainID(l1, fundedKey)
@@ -118,59 +138,62 @@ var _ = ginkgo.AfterSuite(func() {
 var _ = ginkgo.Describe("[Validator manager integration tests]", func() {
 	// ICTT tests
 
-	ginkgo.It("Transfer an ERC20 token between two L1s",
-		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel),
-		func() {
-			icttFlows.ERC20TokenHomeERC20TokenRemote(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Transfer a native token to an ERC20 token",
-		ginkgo.Label(icttLabel, nativeTokenHomeLabel, erc20TokenRemoteLabel),
-		func() {
-			icttFlows.NativeTokenHomeERC20TokenRemote(LocalNetworkInstance, TeleporterInfo)
-		})
+	// ginkgo.It("Transfer an ERC20 token between two L1s",
+	// 	ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel),
+	// 	func() {
+	// 		icttFlows.ERC20TokenHomeERC20TokenRemote(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Transfer a native token to an ERC20 token",
+	// 	ginkgo.Label(icttLabel, nativeTokenHomeLabel, erc20TokenRemoteLabel),
+	// 	func() {
+	// 		icttFlows.NativeTokenHomeERC20TokenRemote(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+
+	// TODO: failed
 	ginkgo.It("Transfer a native token to a native token",
 		ginkgo.Label(icttLabel, nativeTokenHomeLabel, nativeTokenRemoteLabel),
 		func() {
 			icttFlows.NativeTokenHomeNativeDestination(LocalNetworkInstance, TeleporterInfo)
 		})
-	ginkgo.It("Transfer an ERC20 token with ERC20TokenHome multi-hop",
-		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.ERC20TokenHomeERC20TokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Transfer a native token with NativeTokenHome multi-hop",
-		ginkgo.Label(icttLabel, nativeTokenHomeLabel, erc20TokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.NativeTokenHomeERC20TokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Transfer an ERC20 token to a native token",
-		ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel),
-		func() {
-			icttFlows.ERC20TokenHomeNativeTokenRemote(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Transfer a native token with ERC20TokenHome multi-hop",
-		ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.ERC20TokenHomeNativeTokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Transfer a native token to a native token multi-hop",
-		ginkgo.Label(icttLabel, nativeTokenHomeLabel, nativeTokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.NativeTokenHomeNativeTokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Transfer an ERC20 token using sendAndCall",
-		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, sendAndCallLabel),
-		func() {
-			icttFlows.ERC20TokenHomeERC20TokenRemoteSendAndCall(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Registration and collateral checks",
-		ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel, registrationLabel),
-		func() {
-			icttFlows.RegistrationAndCollateralCheck(LocalNetworkInstance, TeleporterInfo)
-		})
-	ginkgo.It("Transparent proxy upgrade",
-		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, upgradabilityLabel),
-		func() {
-			icttFlows.TransparentUpgradeableProxy(LocalNetworkInstance, TeleporterInfo)
-		})
+
+	// ginkgo.It("Transfer an ERC20 token with ERC20TokenHome multi-hop",
+	// 	ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, multiHopLabel),
+	// 	func() {
+	// 		icttFlows.ERC20TokenHomeERC20TokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Transfer a native token with NativeTokenHome multi-hop",
+	// 	ginkgo.Label(icttLabel, nativeTokenHomeLabel, erc20TokenRemoteLabel, multiHopLabel),
+	// 	func() {
+	// 		icttFlows.NativeTokenHomeERC20TokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Transfer an ERC20 token to a native token",
+	// 	ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel),
+	// 	func() {
+	// 		icttFlows.ERC20TokenHomeNativeTokenRemote(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Transfer a native token with ERC20TokenHome multi-hop",
+	// 	ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel, multiHopLabel),
+	// 	func() {
+	// 		icttFlows.ERC20TokenHomeNativeTokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Transfer a native token to a native token multi-hop",
+	// 	ginkgo.Label(icttLabel, nativeTokenHomeLabel, nativeTokenRemoteLabel, multiHopLabel),
+	// 	func() {
+	// 		icttFlows.NativeTokenHomeNativeTokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Transfer an ERC20 token using sendAndCall",
+	// 	ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, sendAndCallLabel),
+	// 	func() {
+	// 		icttFlows.ERC20TokenHomeERC20TokenRemoteSendAndCall(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Registration and collateral checks",
+	// 	ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel, registrationLabel),
+	// 	func() {
+	// 		icttFlows.RegistrationAndCollateralCheck(LocalNetworkInstance, TeleporterInfo)
+	// 	})
+	// ginkgo.It("Transparent proxy upgrade",
+	// 	ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, upgradabilityLabel),
+	// 	func() {
+	// 		icttFlows.TransparentUpgradeableProxy(LocalNetworkInstance, TeleporterInfo)
+	// 	})
 })

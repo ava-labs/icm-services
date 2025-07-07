@@ -75,31 +75,17 @@ type L1Spec struct {
 	RequirePrimaryNetworkSigners bool
 }
 
-func NewLocalNetwork(
-	ctx context.Context,
+func newTmpnetNetwork(
 	name string,
+	extraNodes []*tmpnet.Node,
+	globalFundedKey *secp256k1.PrivateKey,
 	warpGenesisTemplateFile string,
-	l1Specs []L1Spec,
 	numPrimaryNetworkValidators int,
-	extraNodeCount int, // for use by tests, eg to add new L1 validators
+	l1Specs []L1Spec,
 	flagVars *e2e.FlagVars,
-) *LocalNetwork {
-	// There must be at least one primary network validator per L1
-	Expect(numPrimaryNetworkValidators).Should(BeNumerically(">=", len(l1Specs)))
-
-	// Create extra nodes to be used to add more validators later
-	extraNodes := subnetEvmTestUtils.NewTmpnetNodes(extraNodeCount)
-
-	fundedKey, err := hex.DecodeString(fundedKeyStr)
-	Expect(err).Should(BeNil())
-	globalFundedKey, err := secp256k1.ToPrivateKey(fundedKey)
-	Expect(err).Should(BeNil())
-
-	globalFundedECDSAKey := globalFundedKey.ToECDSA()
-	Expect(err).Should(BeNil())
-
+) *tmpnet.Network {
 	var l1s []*tmpnet.Subnet
-	deployedL1Specs := make(map[string]L1Spec)
+
 	bootstrapNodes := subnetEvmTestUtils.NewTmpnetNodes(numPrimaryNetworkValidators)
 	for i, l1Spec := range l1Specs {
 		// Create a single bootstrap node. This will be removed from the L1 validator set after it is converted,
@@ -123,16 +109,18 @@ func NewLocalNetwork(
 			utils.WarpEnabledChainConfig,
 			initialL1Bootstrapper,
 		)
-		deployedL1Specs[l1Spec.Name] = l1Spec
 		l1.OwningKey = globalFundedKey
 		l1s = append(l1s, l1)
 	}
+
+	// Create new network
 	network := subnetEvmTestUtils.NewTmpnetNetwork(
 		name,
 		bootstrapNodes,
 		tmpnet.FlagsMap{},
 		l1s...,
 	)
+
 	Expect(network).ShouldNot(BeNil())
 
 	// Specify only a subset of the nodes to be bootstrapped
@@ -147,11 +135,71 @@ func NewLocalNetwork(
 	network.Genesis = genesis
 	network.PreFundedKeys = keysToFund
 
-	tc := e2e.NewTestContext()
 	runtimeCfg, err := flagVars.NodeRuntimeConfig()
 	Expect(err).Should(BeNil())
 	runtimeCfg.Process.ReuseDynamicPorts = true
 	network.DefaultRuntimeConfig = *runtimeCfg
+
+	return network
+}
+
+func NewLocalNetwork(
+	ctx context.Context,
+	name string,
+	warpGenesisTemplateFile string,
+	l1Specs []L1Spec,
+	numPrimaryNetworkValidators int,
+	extraNodeCount int, // for use by tests, eg to add new L1 validators
+	flagVars *e2e.FlagVars,
+) *LocalNetwork {
+	// There must be at least one primary network validator per L1
+	Expect(numPrimaryNetworkValidators).Should(BeNumerically(">=", len(l1Specs)))
+
+	// Create extra nodes to be used to add more validators later
+	extraNodes := subnetEvmTestUtils.NewTmpnetNodes(extraNodeCount)
+
+	fundedKey, err := hex.DecodeString(fundedKeyStr)
+	Expect(err).Should(BeNil())
+	globalFundedKey, err := secp256k1.ToPrivateKey(fundedKey)
+	Expect(err).Should(BeNil())
+
+	globalFundedECDSAKey := globalFundedKey.ToECDSA()
+	Expect(err).Should(BeNil())
+
+	deployedL1Specs := make(map[string]L1Spec)
+	for _, l1Spec := range l1Specs {
+		deployedL1Specs[l1Spec.Name] = l1Spec
+	}
+
+	isReuseNetwork := flagVars != nil && flagVars.NetworkDir() != ""
+
+	var network *tmpnet.Network
+	if isReuseNetwork {
+		// Load existing network and restart nodes
+		network, err = tmpnet.ReadNetwork(context.Background(), logging.NoLog{}, flagVars.NetworkDir())
+		Expect(err).Should(BeNil())
+		Expect(network).ShouldNot(BeNil())
+
+		for _, node := range network.Nodes {
+			err := node.Restart(ctx)
+			Expect(err).Should(BeNil(), "Failed to restart node %s: %v", node.NodeID, err)
+		}
+
+		err := tmpnet.WaitForHealthyNodes(ctx, logging.NoLog{}, network.Nodes)
+		Expect(err).Should(BeNil())
+	} else {
+		network = newTmpnetNetwork(
+			name,
+			extraNodes,
+			globalFundedKey,
+			warpGenesisTemplateFile,
+			numPrimaryNetworkValidators,
+			l1Specs,
+			flagVars,
+		)
+	}
+
+	tc := e2e.NewTestContext()
 	env := e2e.NewTestEnvironment(tc, flagVars, network)
 	Expect(env).ShouldNot(BeNil())
 
@@ -162,8 +210,10 @@ func NewLocalNetwork(
 	goLog.Println("Network bootstrapped")
 
 	// Issue transactions to activate the proposerVM fork on the chains
-	for _, l1 := range network.Subnets {
-		utils.SetupProposerVM(ctx, globalFundedECDSAKey, network, l1.SubnetID)
+	if !isReuseNetwork {
+		for _, l1 := range network.Subnets {
+			utils.SetupProposerVM(ctx, globalFundedECDSAKey, network, l1.SubnetID)
+		}
 	}
 
 	// All nodes are specified as bootstrap validators
