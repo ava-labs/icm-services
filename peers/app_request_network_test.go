@@ -132,7 +132,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			mockNetwork := avago_mocks.NewMockNetwork(ctrl)
+			mockNetwork := avago_mocks.NewMockAppRequestNetwork(ctrl)
 			mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
 			vdrsCache := cache.NewTTLCache[ids.ID, avalancheWarp.CanonicalValidatorSet](canonicalValidatorSetCacheTTL)
 			arNetwork := appRequestNetwork{
@@ -171,7 +171,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 
 func TestTrackSubnets(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	mockNetwork := avago_mocks.NewMockNetwork(ctrl)
+	mockNetwork := avago_mocks.NewMockAppRequestNetwork(ctrl)
 	mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
 	arNetwork := appRequestNetwork{
 		network:            mockNetwork,
@@ -187,7 +187,7 @@ func TestTrackSubnets(t *testing.T) {
 	require.Zero(t, arNetwork.lruSubnets.Len())
 	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	for range maxNumSubnets {
-		arNetwork.TrackSubnet(ids.GenerateTestID())
+		arNetwork.AddSubnet(ids.GenerateTestID())
 	}
 	require.Equal(t, arNetwork.trackedSubnets.Len(), arNetwork.lruSubnets.Len())
 	require.Equal(t, arNetwork.trackedSubnets.Len(), maxNumSubnets)
@@ -196,7 +196,7 @@ func TestTrackSubnets(t *testing.T) {
 	newSubnetID := ids.GenerateTestID()
 	oldestSubnetID, _, ok := arNetwork.lruSubnets.Oldest()
 	require.True(t, ok)
-	arNetwork.TrackSubnet(newSubnetID)
+	arNetwork.AddSubnet(newSubnetID)
 	require.Equal(t, maxNumSubnets, arNetwork.trackedSubnets.Len())
 	require.Equal(t, maxNumSubnets, arNetwork.lruSubnets.Len())
 	require.False(t, arNetwork.trackedSubnets.Contains(oldestSubnetID))

@@ -31,7 +31,7 @@ func InitializeConnectionsAndCheckStake(
 	cfg *config.Config,
 ) error {
 	for _, subnet := range cfg.GetTrackedSubnets().List() {
-		network.TrackSubnet(subnet)
+		network.AddSubnet(subnet)
 	}
 	ctx, cancel := context.WithTimeout(
 		context.Background(),

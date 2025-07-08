@@ -122,7 +122,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 	quorumPercentage uint64,
 	skipCache bool,
 ) (*peers.ConnectedCanonicalValidators, error) {
-	s.network.TrackSubnet(signingSubnet)
+	s.network.AddSubnet(signingSubnet)
 
 	var connectedValidators *peers.ConnectedCanonicalValidators
 	var err error

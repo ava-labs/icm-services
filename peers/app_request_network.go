@@ -2,7 +2,7 @@
 // See the file LICENSE for licensing terms.
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=./mocks/mock_app_request_network.go -package=mocks
-//go:generate go run go.uber.org/mock/mockgen -destination=./avago_mocks/mock_network.go -package=avago_mocks github.com/ava-labs/avalanchego/network Network
+//go:generate go run go.uber.org/mock/mockgen -destination=./avago_mocks/mock_network.go -package=avago_mocks github.com/ava-labs/avalanchego/network AppRequestNetwork
 
 package peers
 
@@ -27,7 +27,6 @@ import (
 	vdrs "github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
-	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/linked"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -82,11 +81,11 @@ type AppRequestNetwork interface {
 		allower subnets.Allower,
 	) set.Set[ids.NodeID]
 	Shutdown()
-	TrackSubnet(subnetID ids.ID)
+	AddSubnet(subnetID ids.ID)
 }
 
 type appRequestNetwork struct {
-	network          network.Network
+	network          network.AppRequestNetwork
 	handler          *RelayerExternalHandler
 	infoAPI          *InfoAPI
 	logger           logging.Logger
@@ -162,7 +161,6 @@ func NewNetwork(
 		networkID,
 		manager,
 		trackedSubnets,
-		trackedSubnetsLock,
 	)
 	if err != nil {
 		logger.Error(
@@ -187,15 +185,11 @@ func NewNetwork(
 	nodeID := ids.NodeIDFromCert(parsedCert)
 	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeID))
 
-	// Set the activation time for the latest network upgrade
-	upgradeTime := upgrade.GetConfig(networkID).FortunaTime
-
 	testNetwork, err := network.NewTestNetwork(
 		logger,
 		peerNetworkRegistry,
 		testNetworkConfig,
 		handler,
-		upgradeTime,
 	)
 	if err != nil {
 		logger.Error(
@@ -204,6 +198,7 @@ func NewNetwork(
 		)
 		return nil, err
 	}
+	appRequestClientNetwork := network.NewAppRequestNetwork(testNetwork)
 
 	for _, peer := range manuallyTrackedPeers {
 		logger.Info(
@@ -211,7 +206,7 @@ func NewNetwork(
 			zap.Stringer("ID", peer.ID),
 			zap.Stringer("IP", peer.PublicIP),
 		)
-		testNetwork.ManuallyTrack(peer.ID, peer.PublicIP)
+		appRequestClientNetwork.ManuallyTrack(peer.ID, peer.PublicIP)
 	}
 
 	// Connect to a sample of the primary network validators, with connection
@@ -263,13 +258,13 @@ func NewNetwork(
 				zap.Stringer("ID", peer.ID),
 				zap.Stringer("IP", peer.PublicIP),
 			)
-			testNetwork.ManuallyTrack(peer.ID, peer.PublicIP)
+			appRequestClientNetwork.ManuallyTrack(peer.ID, peer.PublicIP)
 			numConnected++
 		}
 	}
 
 	go logger.RecoverAndPanic(func() {
-		testNetwork.Dispatch()
+		appRequestClientNetwork.Dispatch()
 	})
 	lruSubnets := linked.NewHashmapWithSize[ids.ID, interface{}](maxNumSubnets)
 	for _, subnetID := range trackedSubnets.List() {
@@ -278,7 +273,7 @@ func NewNetwork(
 	vdrsCache := cache.NewTTLCache[ids.ID, avalancheWarp.CanonicalValidatorSet](canonicalValidatorSetCacheTTL)
 
 	arNetwork := &appRequestNetwork{
-		network:                    testNetwork,
+		network:                    appRequestClientNetwork,
 		handler:                    handler,
 		infoAPI:                    infoAPI,
 		logger:                     logger,
@@ -320,11 +315,10 @@ func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) {
 	n.trackedSubnets.Add(subnetID)
 }
 
-// TrackSubnet adds the subnet to the list of tracked subnets
+// AddSubnet adds the subnet to the list of tracked subnets
 // and initiates the connections to the subnet's validators asynchronously
-func (n *appRequestNetwork) TrackSubnet(subnetID ids.ID) {
-	n.trackSubnet(subnetID)
-	n.updateValidatorSet(context.Background(), subnetID)
+func (n *appRequestNetwork) AddSubnet(subnetID ids.ID) {
+	n.network.AddSubnet(subnetID)
 }
 
 func (n *appRequestNetwork) startUpdateValidators() {

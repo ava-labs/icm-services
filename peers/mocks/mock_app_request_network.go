@@ -45,6 +45,18 @@ func (m *MockAppRequestNetwork) EXPECT() *MockAppRequestNetworkMockRecorder {
 	return m.recorder
 }
 
+// AddSubnet mocks base method.
+func (m *MockAppRequestNetwork) AddSubnet(subnetID ids.ID) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "AddSubnet", subnetID)
+}
+
+// AddSubnet indicates an expected call of AddSubnet.
+func (mr *MockAppRequestNetworkMockRecorder) AddSubnet(subnetID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSubnet", reflect.TypeOf((*MockAppRequestNetwork)(nil).AddSubnet), subnetID)
+}
+
 // GetConnectedCanonicalValidators mocks base method.
 func (m *MockAppRequestNetwork) GetConnectedCanonicalValidators(subnetID ids.ID, skipCache bool) (*peers.ConnectedCanonicalValidators, error) {
 	m.ctrl.T.Helper()
@@ -125,16 +137,4 @@ func (m *MockAppRequestNetwork) Shutdown() {
 func (mr *MockAppRequestNetworkMockRecorder) Shutdown() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shutdown", reflect.TypeOf((*MockAppRequestNetwork)(nil).Shutdown))
-}
-
-// TrackSubnet mocks base method.
-func (m *MockAppRequestNetwork) TrackSubnet(subnetID ids.ID) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "TrackSubnet", subnetID)
-}
-
-// TrackSubnet indicates an expected call of TrackSubnet.
-func (mr *MockAppRequestNetworkMockRecorder) TrackSubnet(subnetID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrackSubnet", reflect.TypeOf((*MockAppRequestNetwork)(nil).TrackSubnet), subnetID)
 }
