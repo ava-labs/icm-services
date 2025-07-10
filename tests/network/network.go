@@ -5,7 +5,9 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"io/fs"
 	goLog "log"
+	"os"
 	"sort"
 	"time"
 
@@ -77,7 +79,6 @@ type L1Spec struct {
 
 func newTmpnetNetwork(
 	name string,
-	extraNodes []*tmpnet.Node,
 	globalFundedKey *secp256k1.PrivateKey,
 	warpGenesisTemplateFile string,
 	numPrimaryNetworkValidators int,
@@ -91,10 +92,6 @@ func newTmpnetNetwork(
 		// Create a single bootstrap node. This will be removed from the L1 validator set after it is converted,
 		// but will remain a primary network validator
 		initialL1Bootstrapper := bootstrapNodes[i] // One bootstrap node per L1
-
-		// Create validators to specify as the initial vdr set in the L1 conversion, and store them as extra nodes
-		initialVdrNodes := subnetEvmTestUtils.NewTmpnetNodes(l1Spec.NodeCount)
-		extraNodes = append(extraNodes, initialVdrNodes...)
 
 		l1 := subnetEvmTestUtils.NewTmpnetSubnet(
 			l1Spec.Name,
@@ -158,6 +155,11 @@ func NewLocalNetwork(
 	// Create extra nodes to be used to add more validators later
 	extraNodes := subnetEvmTestUtils.NewTmpnetNodes(extraNodeCount)
 
+	for _, l1Spec := range l1Specs {
+		initialVdrNodes := subnetEvmTestUtils.NewTmpnetNodes(l1Spec.NodeCount)
+		extraNodes = append(extraNodes, initialVdrNodes...)
+	}
+
 	fundedKey, err := hex.DecodeString(fundedKeyStr)
 	Expect(err).Should(BeNil())
 	globalFundedKey, err := secp256k1.ToPrivateKey(fundedKey)
@@ -174,15 +176,24 @@ func NewLocalNetwork(
 	isReuseNetwork := flagVars != nil && flagVars.NetworkDir() != ""
 
 	var network *tmpnet.Network
+	// All nodes are specified as bootstrap validators
+	var primaryNetworkValidators []*tmpnet.Node
 	if isReuseNetwork {
 		// Load existing network and restart nodes
 		network, err = tmpnet.ReadNetwork(context.Background(), logging.NoLog{}, flagVars.NetworkDir())
 		Expect(err).Should(BeNil())
 		Expect(network).ShouldNot(BeNil())
 
+		extraNodes = make([]*tmpnet.Node, 0)
 		for _, node := range network.Nodes {
 			err := node.Restart(ctx)
 			Expect(err).Should(BeNil(), "Failed to restart node %s: %v", node.NodeID, err)
+
+			if node.Flags[config.PartialSyncPrimaryNetworkKey] == "true" {
+				extraNodes = append(extraNodes, node)
+			} else {
+				primaryNetworkValidators = append(primaryNetworkValidators, node)
+			}
 		}
 
 		err := tmpnet.WaitForHealthyNodes(ctx, logging.NoLog{}, network.Nodes)
@@ -190,13 +201,14 @@ func NewLocalNetwork(
 	} else {
 		network = newTmpnetNetwork(
 			name,
-			extraNodes,
 			globalFundedKey,
 			warpGenesisTemplateFile,
 			numPrimaryNetworkValidators,
 			l1Specs,
 			flagVars,
 		)
+
+		primaryNetworkValidators = append(primaryNetworkValidators, network.Nodes...)
 	}
 
 	tc := e2e.NewTestContext()
@@ -215,10 +227,6 @@ func NewLocalNetwork(
 			utils.SetupProposerVM(ctx, globalFundedECDSAKey, network, l1.SubnetID)
 		}
 	}
-
-	// All nodes are specified as bootstrap validators
-	var primaryNetworkValidators []*tmpnet.Node
-	primaryNetworkValidators = append(primaryNetworkValidators, network.Nodes...)
 
 	localNetwork := &LocalNetwork{
 		Network:                         network,
@@ -645,4 +653,42 @@ func (n *LocalNetwork) GetTwoL1s() (
 	l1s := n.GetL1Infos()
 	Expect(len(l1s)).Should(BeNumerically(">=", 2))
 	return l1s[0], l1s[1]
+}
+
+func (n *LocalNetwork) SaveValidatorAddress(
+	fileName string,
+) {
+	validatorAddresses := make(map[string]map[string]string)
+	for _, subnet := range n.GetL1Infos() {
+		validator, validatorSpec := n.GetValidatorManager(subnet.SubnetID)
+		validatorAddresses[subnet.BlockchainID.Hex()] = make(map[string]string)
+		validatorAddresses[subnet.BlockchainID.Hex()]["validator"] = validator.Address.Hex()
+		validatorAddresses[subnet.BlockchainID.Hex()]["spec"] = validatorSpec.Address.Hex()
+	}
+
+	jsonData, err := json.Marshal(validatorAddresses)
+	Expect(err).Should(BeNil())
+	err = os.WriteFile(fileName, jsonData, fs.ModePerm)
+	Expect(err).Should(BeNil())
+}
+
+func (n *LocalNetwork) SetValidatorAddressFromFile(fileName string) {
+	validatorAddresses := make(map[string]map[string]string)
+	data, err := os.ReadFile(fileName)
+	Expect(err).Should(BeNil())
+	err = json.Unmarshal(data, &validatorAddresses)
+	Expect(err).Should(BeNil())
+
+	// Set the validator manager for each L1
+	for _, subnet := range n.GetL1Infos() {
+		validatorAddress := common.HexToAddress(validatorAddresses[subnet.BlockchainID.Hex()]["validator"])
+		validatorSpecAddress := common.HexToAddress(validatorAddresses[subnet.BlockchainID.Hex()]["spec"])
+
+		n.validatorManagers[subnet.SubnetID] = ProxyAddress{
+			Address: validatorAddress,
+		}
+		n.validatorManagerSpecializations[subnet.SubnetID] = ProxyAddress{
+			Address: validatorSpecAddress,
+		}
+	}
 }
