@@ -5,7 +5,7 @@ go 1.23.10
 require (
 	github.com/alexliesenfeld/health v0.8.1
 	github.com/ava-labs/avalanchego v1.13.3-0.20250701190537-839ace23368a // branch icm-services-patch-v1.13.2
-	github.com/ava-labs/icm-contracts v1.0.9-0.20250701204604-b34a75d8c753
+	github.com/ava-labs/icm-contracts v1.0.9-0.20250714034644-297cc0e5e5ed
 	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.1
 	github.com/ava-labs/subnet-evm v0.7.5
 	github.com/aws/aws-sdk-go-v2 v1.36.5
@@ -301,7 +301,7 @@ require (
 	github.com/sashamelentyev/usestdlibvars v1.28.0 // indirect
 	github.com/securego/gosec/v2 v2.22.2 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
-	github.com/segmentio/encoding v0.4.1 // indirect
+	github.com/segmentio/encoding v0.5.1 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/sivchari/containedctx v1.0.3 // indirect

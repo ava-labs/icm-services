@@ -17,3 +17,6 @@ osxcross/
 
 # Local DB
 .icm-relayer-storage/
+
+TeleporterRegistryAddress.json
+ValidatorAddresses.json
