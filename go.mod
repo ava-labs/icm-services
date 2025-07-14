@@ -1,6 +1,6 @@
 module github.com/ava-labs/icm-services
 
-go 1.23.10
+go 1.23.11
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
@@ -28,7 +28,7 @@ require (
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/mock v0.5.2
 	go.uber.org/zap v1.27.0
-	golang.org/x/sync v0.15.0
+	golang.org/x/sync v0.16.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 )
