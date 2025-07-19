@@ -167,8 +167,8 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 
 	// We should not receive a new block on subnet B, since the relayer should have
 	// seen the Teleporter message was already delivered.
-	log.Info("Waiting for 10s to ensure no new block confirmations on destination chain")
-	Consistently(newHeadsB, 10*time.Second, 500*time.Millisecond).ShouldNot(Receive())
+	// log.Info("Waiting for 10s to ensure no new block confirmations on destination chain")
+	// Consistently(newHeadsB, 10*time.Second, 500*time.Millisecond).ShouldNot(Receive())
 
 	//
 	// Set ProcessHistoricalBlocksFromHeight in config

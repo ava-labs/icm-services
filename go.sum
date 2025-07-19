@@ -106,8 +106,8 @@ github.com/ava-labs/avalanchego v1.13.3-0.20250701190537-839ace23368a h1:mLzIwC2
 github.com/ava-labs/avalanchego v1.13.3-0.20250701190537-839ace23368a/go.mod h1:s7W/kim5L6hiD2PB1v/Ozy1ZZyoLQ4H6mxVO0aMnxng=
 github.com/ava-labs/coreth v0.15.2-rc.0.0.20250620163936-0058a7ec6d9d h1:nZA7nEhlf2uWM1doZz4WFiMkZVZ0iH+c3IebokIO1sk=
 github.com/ava-labs/coreth v0.15.2-rc.0.0.20250620163936-0058a7ec6d9d/go.mod h1:Mk5g2ZI9lEbxA67qikOtUrq71Yr389B34S+Ddsa51K4=
-github.com/ava-labs/icm-contracts v1.0.9-0.20250701204604-b34a75d8c753 h1:b1DFRWJhzx6FTwnF2zweXZRguIpga7HKwWTzRztoQcI=
-github.com/ava-labs/icm-contracts v1.0.9-0.20250701204604-b34a75d8c753/go.mod h1:/Mjw7t0yxFhOZVI9hMivAJMGPJ1/XLkw+cgxJ4aBN9o=
+github.com/ava-labs/icm-contracts v1.0.9-0.20250714034644-297cc0e5e5ed h1:4DRHlXtKfoba88B7dsxDR7YT5L4ikn0F+nX7SBN6pU0=
+github.com/ava-labs/icm-contracts v1.0.9-0.20250714034644-297cc0e5e5ed/go.mod h1:dk5HPv3ZBN0kUX3CwNRBjBopVj7APGgIhGj/37yHN5k=
 github.com/ava-labs/libevm v1.13.14-0.3.0.rc.1 h1:vBMYo+Iazw0rGTr+cwjkBdh5eadLPlv4ywI4lKye3CA=
 github.com/ava-labs/libevm v1.13.14-0.3.0.rc.1/go.mod h1:+Iol+sVQ1KyoBsHf3veyrBmHCXr3xXRWq6ZXkgVfNLU=
 github.com/ava-labs/subnet-evm v0.7.5 h1:2lEGhTLR4nirTD5031dIJUJVC1FfCSF6ihz22TbJDug=
@@ -858,8 +858,8 @@ github.com/securego/gosec/v2 v2.22.2 h1:IXbuI7cJninj0nRpZSLCUlotsj8jGusohfONMrHo
 github.com/securego/gosec/v2 v2.22.2/go.mod h1:UEBGA+dSKb+VqM6TdehR7lnQtIIMorYJ4/9CW1KVQBE=
 github.com/segmentio/asm v1.2.0 h1:9BQrFxC+YOHJlTlHGkTrFWf59nbL3XnCoFLTwDCI7ys=
 github.com/segmentio/asm v1.2.0/go.mod h1:BqMnlJP91P8d+4ibuonYZw9mfnzI9HfxselHZr5aAcs=
-github.com/segmentio/encoding v0.4.1 h1:KLGaLSW0jrmhB58Nn4+98spfvPvmo4Ci1P/WIQ9wn7w=
-github.com/segmentio/encoding v0.4.1/go.mod h1:/d03Cd8PoaDeceuhUUUQWjU0KhWjrmYrWPgtJHYZSnI=
+github.com/segmentio/encoding v0.5.1 h1:LhmgXA5/alniiqfc4cYYrxF6DbUQ3m8MVz4/LQIU1mg=
+github.com/segmentio/encoding v0.5.1/go.mod h1:HS1ZKa3kSN32ZHVZ7ZLPLXWvOVIiZtyJnO1gPH1sKt0=
 github.com/sergi/go-diff v1.0.0/go.mod h1:0CfEIISq7TuYL3j771MWULgwwjU+GofnZX9QAmXWZgo=
 github.com/shirou/gopsutil v3.21.11+incompatible h1:+1+c1VGhc88SSonWP6foOcLhvnKlUeu/erjjvaPEYiI=
 github.com/shirou/gopsutil v3.21.11+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMTu2PcXUg8+E1lC7eC3UO/RA=

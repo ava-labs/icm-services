@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,6 +30,9 @@ import (
 
 const (
 	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
+
+	teleporterRegistryAddressFile = "TeleporterRegistryAddress.json"
+	validatorAddressesFile        = "ValidatorAddresses.json"
 )
 
 var (
@@ -37,7 +41,15 @@ var (
 
 	decider  *exec.Cmd
 	cancelFn context.CancelFunc
+
+	e2eFlags *e2e.FlagVars
 )
+
+func TestMain(m *testing.M) {
+	e2eFlags = e2e.RegisterFlags()
+	flag.Parse()
+	os.Exit(m.Run())
+}
 
 func TestE2E(t *testing.T) {
 	// Handle SIGINT and SIGTERM signals.
@@ -111,37 +123,52 @@ var _ = ginkgo.BeforeSuite(func() {
 		},
 		4,
 		0,
-		e2e.RegisterFlags(),
+		e2eFlags,
 	)
 	teleporterInfo = teleporterTestUtils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the subnet chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
-	teleporterInfo.DeployTeleporterMessenger(
-		networkStartCtx,
-		localNetworkInstance.GetPrimaryNetworkInfo(),
-		teleporterDeployerTransaction,
-		teleporterDeployerAddress,
-		teleporterContractAddress,
-		fundedKey,
-	)
-
-	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
-	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
-		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
-		teleporterInfo.InitializeBlockchainID(subnet, fundedKey)
-		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
-	}
-
-	// Convert the subnets to sovereign L1s
-	for _, subnet := range localNetworkInstance.GetL1Infos() {
-		localNetworkInstance.ConvertSubnet(
+	if e2eFlags.NetworkDir() == "" {
+		teleporterInfo.DeployTeleporterMessenger(
 			networkStartCtx,
-			subnet,
-			teleporterTestUtils.PoAValidatorManager,
-			[]uint64{units.Schmeckle, units.Schmeckle},
+			localNetworkInstance.GetPrimaryNetworkInfo(),
+			teleporterDeployerTransaction,
+			teleporterDeployerAddress,
+			teleporterContractAddress,
 			fundedKey,
-			false)
+		)
+
+		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+			teleporterInfo.InitializeBlockchainID(l1, fundedKey)
+			teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
+		}
+
+		for _, subnet := range localNetworkInstance.GetL1Infos() {
+			// Choose weights such that we can test validator churn
+			localNetworkInstance.ConvertSubnet(
+				networkStartCtx,
+				subnet,
+				teleporterTestUtils.PoAValidatorManager,
+				[]uint64{units.Schmeckle, units.Schmeckle},
+				fundedKey,
+				false)
+		}
+
+		teleporterTestUtils.SaveRegistyAddress(teleporterInfo, teleporterRegistryAddressFile)
+
+		localNetworkInstance.SaveValidatorAddress(validatorAddressesFile)
+
+	} else {
+		teleporterTestUtils.SetTeleporterInfoFromFile(
+			teleporterRegistryAddressFile,
+			teleporterContractAddress,
+			teleporterInfo,
+			localNetworkInstance.GetAllL1Infos(),
+		)
+
+		localNetworkInstance.SetValidatorAddressFromFile(validatorAddressesFile)
 	}
 
 	// Restart the network to attempt to refresh TLS connections
