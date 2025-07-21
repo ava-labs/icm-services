@@ -8,7 +8,7 @@ require (
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250701204604-b34a75d8c753
 	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.1
 	github.com/ava-labs/subnet-evm v0.7.5
-	github.com/aws/aws-sdk-go-v2 v1.36.5
+	github.com/aws/aws-sdk-go-v2 v1.36.6
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/aws/aws-sdk-go-v2/service/kms v1.41.2
 	github.com/bufbuild/buf v1.54.0
