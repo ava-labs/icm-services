@@ -284,10 +284,10 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		}
 
 		// Only exclude a canonical validator if all of its nodes are unfunded L1 validators.
+		// Filter out L1 validators that do not have minimumL1ValidatorBalance
 		for i, validator := range connectedValidators.ValidatorSet.Validators {
 			exclude := true
 			for _, nodeID := range validator.NodeIDs {
-				// Filter out L1 validators that do not have minimumL1ValidatorBalance
 				if !underfundedNodes.Contains(nodeID) {
 					exclude = false
 					break

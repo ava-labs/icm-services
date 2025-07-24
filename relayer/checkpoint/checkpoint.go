@@ -53,7 +53,7 @@ func NewCheckpointManager(
 			zap.Error(err),
 			zap.String("relayerID", relayerID.ID.String()),
 		)
-		return nil, fmt.Errorf("failed to get the latest processed block height: %v", err)
+		return nil, fmt.Errorf("failed to get the latest processed block height: %w", err)
 	}
 
 	committedHeight := max(storedHeight, startingHeight)

@@ -24,11 +24,12 @@ import (
 
 var _ CanonicalValidatorState = &CanonicalValidatorClient{}
 
-// CanonicalValidatorState is an interface that wraps [validators.State] and adds additional
+// CanonicalValidatorState is an interface that wraps [avalancheWarp.ValidatorState] and adds additional
 // convenience methods for fetching current and proposed validator sets.
 type CanonicalValidatorState interface {
-	validators.State
+	avalancheWarp.ValidatorState
 
+	GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error)
 	GetCurrentCanonicalValidatorSet(ctx context.Context, subnetID ids.ID) (avalancheWarp.CanonicalValidatorSet, error)
 	GetProposedValidators(ctx context.Context, subnetID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
 }
@@ -75,24 +76,8 @@ func (v *CanonicalValidatorClient) GetCurrentCanonicalValidatorSet(
 	return canonicalSubnetValidators, nil
 }
 
-func (v *CanonicalValidatorClient) GetMinimumHeight(ctx context.Context) (uint64, error) {
-	return v.client.GetHeight(ctx, v.options...)
-}
-
-func (v *CanonicalValidatorClient) GetCurrentHeight(ctx context.Context) (uint64, error) {
-	return v.client.GetHeight(ctx, v.options...)
-}
-
 func (v *CanonicalValidatorClient) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
 	return v.client.ValidatedBy(ctx, blockchainID, v.options...)
-}
-
-// Not called directly just defined for interface implementation
-func (v *CanonicalValidatorClient) GetCurrentValidatorSet(
-	_ context.Context,
-	_ ids.ID,
-) (map[ids.ID]*validators.GetCurrentValidatorOutput, uint64, error) {
-	return nil, 0, nil
 }
 
 func (v *CanonicalValidatorClient) GetProposedValidators(

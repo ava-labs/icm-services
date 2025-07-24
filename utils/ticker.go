@@ -35,15 +35,17 @@ func (t *Ticker) Subscribe() chan struct{} {
 }
 
 func (t *Ticker) Run(ctx context.Context) {
+	ticker := time.NewTicker(t.interval)
 	for {
 		select {
-		case <-time.Tick(t.interval):
+		case <-ticker.C:
 			t.lock.Lock()
 			for _, sub := range t.subscriptions {
 				sub <- struct{}{}
 			}
 			t.lock.Unlock()
 		case <-ctx.Done():
+			ticker.Stop()
 			return
 		}
 	}
