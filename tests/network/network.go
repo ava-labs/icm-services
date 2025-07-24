@@ -192,7 +192,7 @@ func (n *LocalNetwork) ConvertSubnet(
 	senderKey *ecdsa.PrivateKey,
 	proxy bool,
 ) ([]utils.Node, []ids.ID) {
-	Expect(len(weights)).Should(BeNumerically("==", len(balances)))
+	Expect(len(weights)).Should(Equal(len(balances)))
 	goLog.Println("Converting l1", l1.SubnetID)
 	cChainInfo := n.GetPrimaryNetworkInfo()
 	pClient := platformvm.NewClient(cChainInfo.NodeURIs[0])
