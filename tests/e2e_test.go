@@ -110,7 +110,7 @@ var _ = ginkgo.BeforeSuite(func() {
 			},
 		},
 		4,
-		0,
+		4,
 		e2e.RegisterFlags(),
 	)
 	teleporterInfo = teleporterTestUtils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
@@ -133,15 +133,22 @@ var _ = ginkgo.BeforeSuite(func() {
 		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
 	}
 
+	// Default balance for funded accounts
+	fundedBalance := units.Avax * 100
+	// Underfunded balance for validators
+	underfundedBalance := 2048*units.NanoAvax - 1
+
 	// Convert the subnets to sovereign L1s
 	for _, subnet := range localNetworkInstance.GetL1Infos() {
 		localNetworkInstance.ConvertSubnet(
 			networkStartCtx,
 			subnet,
 			teleporterTestUtils.PoAValidatorManager,
-			[]uint64{units.Schmeckle, units.Schmeckle},
+			[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
+			[]uint64{fundedBalance, fundedBalance, fundedBalance, underfundedBalance},
 			fundedKey,
-			false)
+			false,
+		)
 	}
 
 	// Restart the network to attempt to refresh TLS connections

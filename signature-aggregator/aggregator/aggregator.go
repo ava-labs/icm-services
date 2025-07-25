@@ -23,6 +23,7 @@ import (
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/utils/json"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/utils/set"
@@ -178,6 +179,124 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 	return connectedValidators, nil
 }
 
+func (s *SignatureAggregator) getL1Validators(
+	ctx context.Context,
+	log logging.Logger,
+	signingSubnet ids.ID,
+	skipCache bool,
+) ([]platformvmapi.APIL1Validator, error) {
+	fetchL1Validators := func(subnetID ids.ID) ([]platformvmapi.APIL1Validator, error) {
+		validators, err := s.pChainClient.GetCurrentValidators(ctx, subnetID, nil, s.pChainClientOptions...)
+		if err != nil {
+			log.Error(
+				"Failed to fetch current L1 validators",
+				zap.String("subnetID", subnetID.String()),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("failed to fetch current L1 validators: %w", err)
+		}
+
+		l1Validators := make([]platformvmapi.APIL1Validator, 0, len(validators))
+		for _, v := range validators {
+			if v.ClientL1Validator.ValidationID == nil {
+				log.Info(
+					"Skipping non-L1 validator",
+					zap.String("nodeID", v.NodeID.String()),
+				)
+				continue
+			}
+
+			apiL1Validator := platformvmapi.APIL1Validator{
+				NodeID:    v.NodeID,
+				Weight:    json.Uint64(v.Weight),
+				StartTime: json.Uint64(v.StartTime),
+				BaseL1Validator: platformvmapi.BaseL1Validator{
+					ValidationID: v.ClientL1Validator.ValidationID,
+					MinNonce:     (*json.Uint64)(v.ClientL1Validator.MinNonce),
+					Balance:      (*json.Uint64)(v.ClientL1Validator.Balance),
+				},
+			}
+			l1Validators = append(l1Validators, apiL1Validator)
+		}
+
+		return l1Validators, nil
+	}
+
+	l1Validators, err := s.currentL1ValidatorsCache.Get(signingSubnet, fetchL1Validators, skipCache)
+	if err != nil {
+		log.Error(
+			"Failed to get L1 validators",
+			zap.String("signingSubnetID", signingSubnet.String()),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	return l1Validators, nil
+}
+
+func (s *SignatureAggregator) getExcludedValidators(
+	ctx context.Context,
+	log logging.Logger,
+	signingSubnet ids.ID,
+	connectedValidators *peers.ConnectedCanonicalValidators,
+	skipCache bool,
+) (set.Set[int], error) {
+	l1Validators, err := s.getL1Validators(ctx, log, signingSubnet, skipCache)
+	if err != nil {
+		log.Error(
+			"Failed to fetch L1 validators",
+			zap.String("signingSubnetID", signingSubnet.String()),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("failed to fetch L1 validators: %w", err)
+	}
+
+	// Set of underfunded L1 validator nodes
+	underfundedNodes := set.NewSet[ids.NodeID](0)
+	for _, validator := range l1Validators {
+		if validator.Balance == nil {
+			underfundedNodes.Add(validator.NodeID)
+			log.Warn(
+				"Skipping L1 validator with nil balance",
+				zap.String("nodeID", validator.NodeID.String()),
+			)
+			continue
+		}
+
+		if uint64(*validator.Balance) < minimumL1ValidatorBalance {
+			underfundedNodes.Add(validator.NodeID)
+			log.Debug(
+				"Node has insufficient balance",
+				zap.String("nodeID", validator.NodeID.String()),
+				zap.Uint64("balance", uint64(*validator.Balance)),
+			)
+		}
+	}
+
+	excludedValidators := set.NewSet[int](0)
+	// Only exclude a canonical validator if all of its nodes are unfunded L1 validators.
+	for i, validator := range connectedValidators.ValidatorSet.Validators {
+		exclude := true
+		for _, nodeID := range validator.NodeIDs {
+			// Filter out L1 validators that do not have minimumL1ValidatorBalance
+			if !underfundedNodes.Contains(nodeID) {
+				exclude = false
+				break
+			}
+		}
+		if exclude {
+			log.Debug(
+				"Excluding validator",
+				zap.Any("nodeIDs", validator.NodeIDs),
+			)
+			excludedValidators.Add(i)
+		}
+	}
+
+	return excludedValidators, nil
+}
+
 func (s *SignatureAggregator) CreateSignedMessage(
 	ctx context.Context,
 	log logging.Logger,
@@ -248,58 +367,14 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	// if ALL of the node IDs for a validator have Balance < minimumL1ValidatorBalance
 	if isL1 {
 		log.Debug("Checking L1 validators for zero balance nodes")
-		fetchL1Validators := func(subnetID ids.ID) ([]platformvmapi.APIL1Validator, error) {
-			return s.pChainClient.GetCurrentL1Validators(ctx, subnetID, nil, s.pChainClientOptions...)
-		}
-		l1Validators, err := s.currentL1ValidatorsCache.Get(signingSubnet, fetchL1Validators, skipCache)
+		excludedValidators, err = s.getExcludedValidators(ctx, log, signingSubnet, connectedValidators, skipCache)
 		if err != nil {
 			log.Error(
-				"Failed to get L1 validators",
+				"Failed to get excluded validators",
 				zap.String("signingSubnetID", signingSubnet.String()),
 				zap.Error(err),
 			)
-			return nil, err
-		}
-
-		// Set of underfunded L1 validator nodes
-		underfundedNodes := set.NewSet[ids.NodeID](0)
-		for _, validator := range l1Validators {
-			if validator.Balance == nil {
-				underfundedNodes.Add(validator.NodeID)
-				log.Warn(
-					"Skipping L1 validator with nil balance",
-					zap.String("nodeID", validator.NodeID.String()),
-				)
-				continue
-			}
-
-			if uint64(*validator.Balance) < minimumL1ValidatorBalance {
-				underfundedNodes.Add(validator.NodeID)
-				log.Debug(
-					"Node has insufficient balance",
-					zap.String("nodeID", validator.NodeID.String()),
-					zap.Uint64("balance", uint64(*validator.Balance)),
-				)
-			}
-		}
-
-		// Only exclude a canonical validator if all of its nodes are unfunded L1 validators.
-		// Filter out L1 validators that do not have minimumL1ValidatorBalance
-		for i, validator := range connectedValidators.ValidatorSet.Validators {
-			exclude := true
-			for _, nodeID := range validator.NodeIDs {
-				if !underfundedNodes.Contains(nodeID) {
-					exclude = false
-					break
-				}
-			}
-			if exclude {
-				log.Debug(
-					"Excluding validator",
-					zap.Any("nodeIDs", validator.NodeIDs),
-				)
-				excludedValidators.Add(i)
-			}
+			return nil, fmt.Errorf("failed to get excluded validators: %w", err)
 		}
 	}
 
