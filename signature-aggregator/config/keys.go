@@ -9,10 +9,11 @@ const (
 	VersionKey    = "version"
 	HelpKey       = "help"
 
+	// Environment variable keys
+	ConfigFileEnvKey = "CONFIG_FILE"
+
 	// Top-level configuration keys
 	LogLevelKey           = "log-level"
-	PChainAPIKey          = "p-chain-api"
-	InfoAPIKey            = "info-api"
 	APIPortKey            = "api-port"
 	MetricsPortKey        = "metrics-port"
 	SignatureCacheSizeKey = "signature-cache-size"

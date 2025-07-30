@@ -72,6 +72,10 @@ func (r *RedisDatabase) Put(relayerID common.Hash, key DataKey, value []byte) er
 	return nil
 }
 
+func (r *RedisDatabase) Close() error {
+	return r.client.Close()
+}
+
 func constructCompositeKey(relayerID common.Hash, key DataKey) string {
 	const keyDelimiter = "-"
 	return strings.Join([]string{relayerID.Hex(), key.String()}, keyDelimiter)

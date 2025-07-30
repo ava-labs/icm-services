@@ -4,6 +4,7 @@
 package peers
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -25,7 +26,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-var metrics, _ = newAppRequestNetworkMetrics(prometheus.DefaultRegisterer)
+var metrics = newAppRequestNetworkMetrics(prometheus.DefaultRegisterer)
 
 func TestCalculateConnectedWeight(t *testing.T) {
 	vdr1 := makeValidator(t, 10, 1)
@@ -145,7 +146,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			for _, vdr := range testCase.validators {
 				totalWeight += vdr.Weight
 			}
-			mockValidatorClient.EXPECT().GetCurrentCanonicalValidatorSet(subnetID).Return(
+			mockValidatorClient.EXPECT().GetCurrentCanonicalValidatorSet(gomock.Any(), subnetID).Return(
 				avalancheWarp.CanonicalValidatorSet{
 					Validators:  testCase.validators,
 					TotalWeight: testCase.expectedTotalWeight,
@@ -161,7 +162,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			}
 			mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfo).Times(1)
 
-			ret, err := arNetwork.GetConnectedCanonicalValidators(subnetID, false)
+			ret, err := arNetwork.GetConnectedCanonicalValidators(context.Background(), subnetID, false)
 			require.Equal(t, testCase.expectedConnectedWeight, ret.ConnectedWeight)
 			require.Equal(t, testCase.expectedTotalWeight, ret.ValidatorSet.TotalWeight)
 			require.NoError(t, err)

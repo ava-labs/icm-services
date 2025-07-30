@@ -38,6 +38,7 @@ func (k DataKey) String() string {
 type RelayerDatabase interface {
 	Get(relayerID common.Hash, key DataKey) ([]byte, error)
 	Put(relayerID common.Hash, key DataKey, value []byte) error
+	Close() error
 }
 
 func NewDatabase(logger logging.Logger, cfg *config.Config) (RelayerDatabase, error) {

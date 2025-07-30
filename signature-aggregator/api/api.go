@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -115,7 +114,7 @@ func signatureAggregationAPIHandler(
 		}
 		var decodedMessage []byte
 		decodedMessage, err = hex.DecodeString(
-			strings.TrimPrefix(req.Message, "0x"),
+			utils.SanitizeHexString(req.Message),
 		)
 		if err != nil {
 			msg := "Could not decode message"
@@ -196,7 +195,7 @@ func signatureAggregationAPIHandler(
 			}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
+		ctx, cancel := context.WithTimeout(r.Context(), utils.DefaultCreateSignedMessageTimeout)
 		defer cancel()
 
 		signedMessage, err := aggregator.CreateSignedMessage(

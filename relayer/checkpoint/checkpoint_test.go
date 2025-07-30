@@ -2,6 +2,7 @@ package checkpoint
 
 import (
 	"container/heap"
+	"strconv"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -59,11 +60,13 @@ func TestCommitHeight(t *testing.T) {
 		},
 	}
 	db := mock_database.NewMockRelayerDatabase(gomock.NewController(t))
+	db.EXPECT().Get(gomock.Any(), gomock.Any()).Return([]byte(strconv.FormatUint(0, 10)), nil).AnyTimes()
 	for _, test := range testCases {
 		id := database.RelayerID{
 			ID: common.BytesToHash(crypto.Keccak256([]byte(test.name))),
 		}
-		cm := NewCheckpointManager(logging.NoLog{}, db, nil, id, test.currentMaxHeight)
+		cm, err := NewCheckpointManager(logging.NoLog{}, db, nil, id, test.currentMaxHeight)
+		require.NoError(t, err)
 		heap.Init(test.pendingHeights)
 		cm.pendingCommits = test.pendingHeights
 		cm.committedHeight = test.currentMaxHeight

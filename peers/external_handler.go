@@ -45,6 +45,7 @@ type expectedResponses struct {
 func NewRelayerExternalHandler(
 	logger logging.Logger,
 	metrics *AppRequestNetworkMetrics,
+	timeoutManagerRegistry prometheus.Registerer,
 ) (*RelayerExternalHandler, error) {
 	// TODO: Leaving this static for now, but we may want to have this as a config option
 	cfg := timer.AdaptiveTimeoutConfig{
@@ -55,7 +56,7 @@ func NewRelayerExternalHandler(
 		TimeoutHalflife:    constants.DefaultNetworkTimeoutHalflife,
 	}
 
-	timeoutManager, err := timer.NewAdaptiveTimeoutManager(&cfg, prometheus.NewRegistry())
+	timeoutManager, err := timer.NewAdaptiveTimeoutManager(&cfg, timeoutManagerRegistry)
 	if err != nil {
 		logger.Error(
 			"Failed to create timeout manager",

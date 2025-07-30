@@ -45,7 +45,6 @@ type Config struct {
 
 	// convenience fields
 	trackedSubnets set.Set[ids.ID]
-	myNodeID       ids.NodeID
 	tlsCert        *tls.Certificate
 }
 
@@ -58,22 +57,22 @@ func DisplayUsageText() {
 // but does initialize private fields available through getters.
 func (c *Config) Validate() error {
 	if err := c.PChainAPI.Validate(); err != nil {
-		return err
+		return fmt.Errorf("failed to validate p-chain API config: %w", err)
 	}
 	if err := c.InfoAPI.Validate(); err != nil {
-		return err
+		return fmt.Errorf("failed to validate info API config: %w", err)
 	}
 	c.trackedSubnets = set.NewSet[ids.ID](len(c.TrackedSubnetIDs))
 	for _, trackedL1 := range c.TrackedSubnetIDs {
 		trackedL1ID, err := ids.FromString(trackedL1)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to parse tracked subnet ID %s: %w", trackedL1, err)
 		}
 		c.trackedSubnets.Add(trackedL1ID)
 	}
 	for _, p := range c.ManuallyTrackedPeers {
 		if err := p.Validate(); err != nil {
-			return err
+			return fmt.Errorf("failed to validate manually tracked peer %s: %w", p.ID, err)
 		}
 	}
 
@@ -96,10 +95,6 @@ func (c *Config) GetAllowPrivateIPs() bool {
 
 func (c *Config) GetTrackedSubnets() set.Set[ids.ID] {
 	return c.trackedSubnets
-}
-
-func (c *Config) GetNodeID() ids.NodeID {
-	return c.myNodeID
 }
 
 func (c *Config) GetTLSCert() *tls.Certificate {

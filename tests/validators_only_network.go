@@ -65,6 +65,7 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 	certPath := dir + "/cert.pem"
 
 	signatureAggregatorConfig := baseConfig
+	signatureAggregatorConfig.TrackedSubnetIDs = []string{l1BInfo.SubnetID.String()}
 	signatureAggregatorConfig.TLSCertPath = certPath
 	signatureAggregatorConfig.TLSKeyPath = keyPath
 

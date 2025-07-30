@@ -38,6 +38,7 @@ type Listener struct {
 	healthStatus       *atomic.Bool
 	ethClient          ethclient.Client
 	messageCoordinator *MessageCoordinator
+	maxConcurrentMsg   uint64
 }
 
 // RunListener creates a Listener instance and the ApplicationRelayers for a subnet.
@@ -50,6 +51,7 @@ func RunListener(
 	relayerHealth *atomic.Bool,
 	startingHeight uint64,
 	messageCoordinator *MessageCoordinator,
+	maxConcurrentMsg uint64,
 ) error {
 	// Create the Listener
 	listener, err := newListener(
@@ -60,6 +62,7 @@ func RunListener(
 		relayerHealth,
 		startingHeight,
 		messageCoordinator,
+		maxConcurrentMsg,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create listener instance: %w", err)
@@ -83,6 +86,7 @@ func newListener(
 	relayerHealth *atomic.Bool,
 	startingHeight uint64,
 	messageCoordinator *MessageCoordinator,
+	maxConcurrentMsg uint64,
 ) (*Listener, error) {
 	blockchainID, err := ids.FromString(sourceBlockchain.BlockchainID)
 	if err != nil {
@@ -134,6 +138,7 @@ func newListener(
 		healthStatus:       relayerHealth,
 		ethClient:          ethRPCClient,
 		messageCoordinator: messageCoordinator,
+		maxConcurrentMsg:   maxConcurrentMsg,
 	}
 
 	// Open the subscription. We must do this before processing any missed messages, otherwise we may
@@ -160,7 +165,7 @@ func newListener(
 // Exits if context is cancelled by another goroutine.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
 	// Error channel for application relayer errors
-	errChan := make(chan error)
+	errChan := make(chan error, lstnr.maxConcurrentMsg)
 	for {
 		select {
 		case err := <-errChan:

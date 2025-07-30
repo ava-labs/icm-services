@@ -172,7 +172,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	require.NoError(t, err)
 	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
-	mockNetwork.EXPECT().GetConnectedCanonicalValidators(ids.Empty, false).Return(
+	mockNetwork.EXPECT().GetConnectedCanonicalValidators(gomock.Any(), ids.Empty, false).Return(
 		&peers.ConnectedCanonicalValidators{
 			ConnectedWeight: 0,
 			ValidatorSet: warp.CanonicalValidatorSet{
@@ -192,7 +192,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	require.NoError(t, err)
 	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
-	mockNetwork.EXPECT().GetConnectedCanonicalValidators(ids.Empty, false).Return(
+	mockNetwork.EXPECT().GetConnectedCanonicalValidators(gomock.Any(), ids.Empty, false).Return(
 		&peers.ConnectedCanonicalValidators{
 			ConnectedWeight: 0,
 			ValidatorSet: warp.CanonicalValidatorSet{
@@ -239,7 +239,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 
 	var (
 		connectedValidators, _ = makeConnectedValidators(2)
-		requestID              = aggregator.currentRequestID.Load() + 1
+		requestID              = aggregator.currentRequestID.Load() + 2
 	)
 
 	chainID := ids.GenerateTestID()
@@ -254,7 +254,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	)
 
 	mockNetwork.EXPECT().TrackSubnet(subnetID)
-	mockNetwork.EXPECT().GetConnectedCanonicalValidators(subnetID, false).Return(
+	mockNetwork.EXPECT().GetConnectedCanonicalValidators(gomock.Any(), subnetID, false).Return(
 		connectedValidators,
 		nil,
 	)
@@ -266,14 +266,14 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		// Expect at most one call to RegisterAppRequest per node per retry for up to [maxAppRequestRetries] retries
 		for i := uint32(0); i < maxAppRequestRetries; i++ {
 			appRequestCopy := appRequest
-			appRequestCopy.RequestID = appRequest.RequestID + i
+			appRequestCopy.RequestID = appRequest.RequestID + i*2
 			mockNetwork.EXPECT().RegisterAppRequest(appRequestCopy).MaxTimes(1)
 		}
 	}
 
 	for i := uint32(0); i < maxAppRequestRetries; i++ {
 		mockNetwork.EXPECT().RegisterRequestID(
-			requestID+i,
+			requestID+i*2,
 			nodeIDs,
 		).Return(
 			make(chan message.InboundMessage, len(appRequests)),
@@ -345,7 +345,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			)
 
 			mockNetwork.EXPECT().TrackSubnet(subnetID)
-			mockNetwork.EXPECT().GetConnectedCanonicalValidators(subnetID, false).Return(
+			mockNetwork.EXPECT().GetConnectedCanonicalValidators(gomock.Any(), subnetID, false).Return(
 				connectedValidators,
 				nil,
 			)
@@ -357,7 +357,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 
 			// prime the signers' responses:
 
-			requestID := aggregator.currentRequestID.Load() + 1
+			requestID := aggregator.currentRequestID.Load() + 2
 
 			appRequests := makeAppRequests(chainID, requestID, connectedValidators)
 			for _, appRequest := range appRequests {

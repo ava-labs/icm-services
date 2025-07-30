@@ -65,7 +65,7 @@ var (
 )
 
 type AppRequestNetwork interface {
-	GetConnectedCanonicalValidators(subnetID ids.ID, skipCache bool) (
+	GetConnectedCanonicalValidators(ctx context.Context, subnetID ids.ID, skipCache bool) (
 		*ConnectedCanonicalValidators,
 		error,
 	)
@@ -108,21 +108,19 @@ type appRequestNetwork struct {
 
 // NewNetwork creates a P2P network client for interacting with validators
 func NewNetwork(
+	ctx context.Context,
 	logger logging.Logger,
 	relayerRegistry prometheus.Registerer,
 	peerNetworkRegistry prometheus.Registerer,
+	timeoutManagerRegistry prometheus.Registerer,
 	trackedSubnets set.Set[ids.ID],
 	manuallyTrackedPeers []info.Peer,
 	cfg Config,
 ) (AppRequestNetwork, error) {
-	metrics, err := newAppRequestNetworkMetrics(relayerRegistry)
-	if err != nil {
-		logger.Error("Failed to create app request network metrics", zap.Error(err))
-		return nil, err
-	}
+	metrics := newAppRequestNetworkMetrics(relayerRegistry)
 
 	// Create the handler for handling inbound app responses
-	handler, err := NewRelayerExternalHandler(logger, metrics)
+	handler, err := NewRelayerExternalHandler(logger, metrics, timeoutManagerRegistry)
 	if err != nil {
 		logger.Error(
 			"Failed to create p2p network handler",
@@ -292,7 +290,7 @@ func NewNetwork(
 		canonicalValidatorSetCache: vdrsCache,
 	}
 
-	arNetwork.startUpdateValidators()
+	go arNetwork.startUpdateValidators(ctx)
 
 	return arNetwork, nil
 }
@@ -327,11 +325,12 @@ func (n *appRequestNetwork) TrackSubnet(subnetID ids.ID) {
 	n.updateValidatorSet(context.Background(), subnetID)
 }
 
-func (n *appRequestNetwork) startUpdateValidators() {
-	go func() {
-		// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
-		ticker := time.NewTicker(ValidatorRefreshPeriod)
-		for ; true; <-ticker.C {
+func (n *appRequestNetwork) startUpdateValidators(ctx context.Context) {
+	// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
+	ticker := time.NewTicker(ValidatorRefreshPeriod)
+	for {
+		select {
+		case <-ticker.C:
 			n.trackedSubnetsLock.RLock()
 			subnets := n.trackedSubnets.List()
 			n.trackedSubnetsLock.RUnlock()
@@ -341,12 +340,16 @@ func (n *appRequestNetwork) startUpdateValidators() {
 				zap.Any("subnetIDs", append([]ids.ID{constants.PrimaryNetworkID}, subnets...)),
 			)
 
-			n.updateValidatorSet(context.Background(), constants.PrimaryNetworkID)
+			n.updateValidatorSet(ctx, constants.PrimaryNetworkID)
 			for _, subnet := range subnets {
-				n.updateValidatorSet(context.Background(), subnet)
+				n.updateValidatorSet(ctx, subnet)
 			}
+
+		case <-ctx.Done():
+			n.logger.Info("Stopping updating validator process...")
+			return
 		}
-	}()
+	}
 }
 
 func (n *appRequestNetwork) updateValidatorSet(
@@ -421,13 +424,14 @@ func (c *ConnectedCanonicalValidators) GetValidator(nodeID ids.NodeID) (*warp.Va
 // GetConnectedCanonicalValidators returns the validator information in canonical ordering for the given subnet
 // at the time of the call, as well as the total weight of the validators that this network is connected to
 func (n *appRequestNetwork) GetConnectedCanonicalValidators(
+	ctx context.Context,
 	subnetID ids.ID,
 	skipCache bool,
 ) (*ConnectedCanonicalValidators, error) {
 	// Get the subnet's current canonical validator set
 	fetchVdrsFunc := func(subnetID ids.ID) (avalancheWarp.CanonicalValidatorSet, error) {
 		startPChainAPICall := time.Now()
-		validatorSet, err := n.validatorClient.GetCurrentCanonicalValidatorSet(subnetID)
+		validatorSet, err := n.validatorClient.GetCurrentCanonicalValidatorSet(ctx, subnetID)
 		n.setPChainAPICallLatencyMS(float64(time.Since(startPChainAPICall).Milliseconds()))
 		return validatorSet, err
 	}
@@ -500,9 +504,9 @@ func (n *appRequestNetwork) setPChainAPICallLatencyMS(latency float64) {
 // Non-receiver util functions
 
 func GetNetworkHealthFunc(network AppRequestNetwork, subnetIDs []ids.ID) func(context.Context) error {
-	return func(context.Context) error {
+	return func(ctx context.Context) error {
 		for _, subnetID := range subnetIDs {
-			connectedValidators, err := network.GetConnectedCanonicalValidators(subnetID, false)
+			connectedValidators, err := network.GetConnectedCanonicalValidators(ctx, subnetID, false)
 			if err != nil {
 				return fmt.Errorf(
 					"failed to get connected validators: %s, %w", subnetID, err)

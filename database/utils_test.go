@@ -95,3 +95,7 @@ func (m *mockDB) Get(relayerID common.Hash, key DataKey) ([]byte, error) {
 func (m *mockDB) Put(relayerID common.Hash, key DataKey, value []byte) error {
 	return nil
 }
+
+func (m *mockDB) Close() error {
+	return nil
+}

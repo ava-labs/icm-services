@@ -9,20 +9,17 @@ const (
 	VersionKey    = "version"
 	HelpKey       = "help"
 
+	// Environment variable keys
+	ConfigFileEnvKey = "CONFIG_FILE"
+
 	// Top-level configuration keys
 	LogLevelKey                        = "log-level"
-	PChainAPIKey                       = "p-chain-api"
-	InfoAPIKey                         = "info-api"
 	APIPortKey                         = "api-port"
 	MetricsPortKey                     = "metrics-port"
-	SourceBlockchainsKey               = "source-blockchains"
-	DestinationBlockchainsKey          = "destination-blockchains"
 	AccountPrivateKeyKey               = "account-private-key"
 	AccountPrivateKeysKey              = "account-private-keys-list"
 	StorageLocationKey                 = "storage-location"
-	RedisURLKey                        = "redis-url"
 	ProcessMissedBlocksKey             = "process-missed-blocks"
-	ManualWarpMessagesKey              = "manual-warp-messages"
 	DBWriteIntervalSecondsKey          = "db-write-interval-seconds"
 	SignatureCacheSizeKey              = "signature-cache-size"
 	InitialConnectionTimeoutSecondsKey = "initial-connection-timeout-seconds"

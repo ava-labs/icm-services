@@ -5,6 +5,7 @@ package checkpoint
 
 import (
 	"container/heap"
+	"fmt"
 	"strconv"
 	"sync"
 
@@ -26,15 +27,17 @@ type CheckpointManager struct {
 	committedHeight uint64
 	lock            *sync.RWMutex
 	pendingCommits  *utils.UInt64Heap
+	// Update the dirty flag when committedHeight is updated
+	dirty bool
 }
 
 func NewCheckpointManager(
 	logger logging.Logger,
-	database database.RelayerDatabase,
+	db database.RelayerDatabase,
 	writeSignal chan struct{},
 	relayerID database.RelayerID,
 	startingHeight uint64,
-) *CheckpointManager {
+) (*CheckpointManager, error) {
 	h := &utils.UInt64Heap{}
 	heap.Init(h)
 	logger.Info(
@@ -42,15 +45,29 @@ func NewCheckpointManager(
 		zap.String("relayerID", relayerID.ID.String()),
 		zap.Uint64("startingHeight", startingHeight),
 	)
+
+	storedHeight, err := database.GetLatestProcessedBlockHeight(db, relayerID)
+	if err != nil && !database.IsKeyNotFoundError(err) {
+		logger.Error(
+			"Failed to get latest processed block height",
+			zap.Error(err),
+			zap.String("relayerID", relayerID.ID.String()),
+		)
+		return nil, fmt.Errorf("failed to get the latest processed block height: %w", err)
+	}
+
+	committedHeight := max(storedHeight, startingHeight)
+
 	return &CheckpointManager{
 		logger:          logger,
-		database:        database,
+		database:        db,
 		writeSignal:     writeSignal,
 		relayerID:       relayerID,
-		committedHeight: startingHeight,
+		committedHeight: committedHeight,
 		lock:            &sync.RWMutex{},
 		pendingCommits:  h,
-	}
+		dirty:           true,
+	}, nil
 }
 
 func (cm *CheckpointManager) Run() {
@@ -58,30 +75,20 @@ func (cm *CheckpointManager) Run() {
 }
 
 func (cm *CheckpointManager) writeToDatabase() {
-	cm.lock.RLock()
-	defer cm.lock.RUnlock()
+	cm.lock.Lock()
+	defer cm.lock.Unlock()
 	// Defensively ensure we're not writing the default value
-	if cm.committedHeight == 0 {
+	// If committedHeight is not changed, we can skip the write
+	if cm.committedHeight == 0 || !cm.dirty {
 		return
 	}
-	storedHeight, err := database.GetLatestProcessedBlockHeight(cm.database, cm.relayerID)
-	if err != nil && !database.IsKeyNotFoundError(err) {
-		cm.logger.Error(
-			"Failed to get latest processed block height",
-			zap.Error(err),
-			zap.String("relayerID", cm.relayerID.ID.String()),
-		)
-		return
-	}
-	if storedHeight >= cm.committedHeight {
-		return
-	}
+
 	cm.logger.Verbo(
 		"Writing height",
 		zap.Uint64("height", cm.committedHeight),
 		zap.String("relayerID", cm.relayerID.ID.String()),
 	)
-	err = cm.database.Put(
+	err := cm.database.Put(
 		cm.relayerID.ID,
 		database.LatestProcessedBlockKey,
 		[]byte(strconv.FormatUint(cm.committedHeight, 10)),
@@ -94,6 +101,9 @@ func (cm *CheckpointManager) writeToDatabase() {
 		)
 		return
 	}
+
+	// Reset the dirty flag after successfully write to db
+	cm.dirty = false
 }
 
 func (cm *CheckpointManager) listenForWriteSignal() {
@@ -138,6 +148,7 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 			zap.String("relayerID", cm.relayerID.ID.String()),
 		)
 		cm.committedHeight = h
+		cm.dirty = true
 		if cm.pendingCommits.Len() == 0 {
 			break
 		}

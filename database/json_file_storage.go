@@ -208,3 +208,7 @@ func (s *JSONFileStorage) read(relayerID common.Hash, v interface{}) (bool, erro
 	// Return true to indicate that the file exists and we read from it successfully
 	return true, nil
 }
+
+func (s *JSONFileStorage) Close() error {
+	return nil
+}

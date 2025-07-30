@@ -108,15 +108,13 @@ func NewSignatureAggregator(
 		pChainClientOptions:      pChainClientOptions,
 		currentL1ValidatorsCache: cache.NewTTLCache[ids.ID, []platformvmapi.APIL1Validator](l1ValidatorBalanceTTL),
 	}
-	sa.currentRequestID.Store(rand.Uint32())
+	// invariant: requestIDs for AppRequests must be odd numbered
+	sa.currentRequestID.Store(rand.Uint32() | 1)
 	return &sa, nil
 }
 
-func (s *SignatureAggregator) Shutdown() {
-	s.network.Shutdown()
-}
-
 func (s *SignatureAggregator) connectToQuorumValidators(
+	ctx context.Context,
 	log logging.Logger,
 	signingSubnet ids.ID,
 	quorumPercentage uint64,
@@ -127,7 +125,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 	var connectedValidators *peers.ConnectedCanonicalValidators
 	var err error
 	connectOp := func() error {
-		connectedValidators, err = s.network.GetConnectedCanonicalValidators(signingSubnet, skipCache)
+		connectedValidators, err = s.network.GetConnectedCanonicalValidators(ctx, signingSubnet, skipCache)
 		if err != nil {
 			msg := "Failed to fetch connected canonical validators"
 			log.Error(
@@ -221,7 +219,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
-	connectedValidators, err := s.connectToQuorumValidators(log, signingSubnet, requiredQuorumPercentage, skipCache)
+	connectedValidators, err := s.connectToQuorumValidators(ctx, log, signingSubnet, requiredQuorumPercentage, skipCache)
 	if err != nil {
 		log.Error(
 			"Failed to fetch quorum of connected canonical validators",
@@ -287,12 +285,10 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		}
 
 		// Only exclude a canonical validator if all of its nodes are unfunded L1 validators.
+		// Filter out L1 validators that do not have minimumL1ValidatorBalance
 		for i, validator := range connectedValidators.ValidatorSet.Validators {
 			exclude := true
 			for _, nodeID := range validator.NodeIDs {
-				// This check will pass if either
-				// 1) the node is an L1 validator with insufficient balance or
-				// 2) the node is a non-L1 (legacy) validator
 				if !underfundedNodes.Contains(nodeID) {
 					exclude = false
 					break
@@ -359,7 +355,8 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	// Query the validators with retries. On each retry, query one node per unique BLS pubkey
 	operation := func() error {
 		// Construct the AppRequest
-		requestID := s.currentRequestID.Add(1)
+		// Increments by two to keep the requestID odd
+		requestID := s.currentRequestID.Add(2)
 		outMsg, err := s.messageCreator.AppRequest(
 			unsignedMessage.SourceChainID,
 			requestID,
@@ -532,7 +529,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 			"Failed to collect a threshold of signatures",
 			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
 			zap.String("sourceBlockchainID", unsignedMessage.SourceChainID.String()),
-			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
 			zap.Uint64("totalValidatorWeight", connectedValidators.ValidatorSet.TotalWeight),
 			zap.Error(err),
 		)
