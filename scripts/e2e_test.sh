@@ -21,7 +21,10 @@ Arguments:
     --components component1,component2            Comma separated list of test suites to run. Valid components are:
                                                   $(echo $valid_components | tr ' ' '\n' | sort | tr '\n' ' ')
                                                   (default: all)
-    --network-dir path                             Path to the network directory to reuse. If not provided, a new network will be created.
+    --network-dir path                            Path to the network directory. 
+                                                  If the directory does not exist or is empty, it will be used as the root network directory for a new network.
+                                                  If the directory exists and is non-empty, the network will be reused.
+                                                  If not set, a new network will be created at the default root network directory.
 Options:
     --help                                        Print this help message
 EOF
@@ -29,6 +32,8 @@ EOF
 
 valid_components=$(ls -d $ICM_CONTRACTS_PATH/tests/suites/*/ | xargs -n 1 basename)
 components=
+reuse_network_dir=
+root_dir=
 network_dir=
 reuse_network=false
 
@@ -43,7 +48,7 @@ while [ $# -gt 0 ]; do
             shift;;
         --network-dir)
             if [[ $2 != --* ]]; then
-                network_dir=$2
+                reuse_network_dir=$2
             else 
                 echo "Invalid network directory $2" && printHelp && exit 1
             fi 
@@ -68,10 +73,16 @@ for component in $(echo $components | tr ',' ' '); do
     fi
 done
 
-# If network_dir is set, set reuse-network flag
-if [ -n "$network_dir" ]; then
-    reuse_network=true
-    echo "Using network directory: $network_dir"
+if [ -n "$reuse_network_dir" ]; then
+    if [ -d "$reuse_network_dir" ] && [ "$(ls -A "$reuse_network_dir")" ]; then
+        network_dir=$reuse_network_dir
+        reuse_network=true
+        echo "Reuse network directory: $network_dir"
+    else
+        echo "Network directory $reuse_network_dir does not exist or is empty. Creating a new network at root $reuse_network_dir."
+        mkdir -p "$reuse_network_dir"
+        root_dir=$reuse_network_dir
+    fi
 fi
 
 source "$ICM_CONTRACTS_PATH"/scripts/constants.sh
@@ -116,6 +127,7 @@ for component in $(echo $components | tr ',' ' '); do
     echo "Running e2e tests for $component"
 
     RUN_E2E=true SIG_AGG_PATH=$ICM_SERVICES_BUILD_PATH/signature-aggregator ./tests/suites/$component/$component.test \
+    --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
     --network-dir=${network_dir} \
     --ginkgo.vv \
