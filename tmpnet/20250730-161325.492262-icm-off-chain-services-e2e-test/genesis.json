@@ -1,0 +1,92 @@
+{
+  "networkID": 88888,
+  "allocations": [
+    {
+      "ethAddr": "0x0000000000000000000000000000000000000000",
+      "avaxAddr": "X-custom1x0h0l3j8sh8emq88wvwe7v0k00grch8sauk005",
+      "initialAmount": 0,
+      "unlockSchedule": [
+        {
+          "amount": 4000000000000000,
+          "locktime": 1754511204
+        }
+      ]
+    },
+    {
+      "ethAddr": "0x0000000000000000000000000000000000000000",
+      "avaxAddr": "X-custom18jma8ppw3nhx5r4ap8clazz0dps7rv5u9xde7p",
+      "initialAmount": 30000000000000000,
+      "unlockSchedule": [
+        {
+          "amount": 20000000000000000,
+          "locktime": 0
+        },
+        {
+          "amount": 4000000000000000,
+          "locktime": 1754511204
+        }
+      ]
+    },
+    {
+      "ethAddr": "0x0000000000000000000000000000000000000000",
+      "avaxAddr": "X-custom1g65uqn6t77p656w64023nh8nd9updzmxwd59gh",
+      "initialAmount": 30000000000000000,
+      "unlockSchedule": [
+        {
+          "amount": 20000000000000000,
+          "locktime": 0
+        },
+        {
+          "amount": 4000000000000000,
+          "locktime": 1754511204
+        }
+      ]
+    }
+  ],
+  "startTime": 1753906404,
+  "initialStakeDuration": 31536000,
+  "initialStakeDurationOffset": 5400,
+  "initialStakedFunds": [
+    "X-custom1x0h0l3j8sh8emq88wvwe7v0k00grch8sauk005"
+  ],
+  "initialStakers": [
+    {
+      "nodeID": "NodeID-9qRViYMR6SYfmBMwSU5S27TcMsM7gmRNK",
+      "rewardAddress": "X-custom17vyx67luxklpc6xmve96nnnp5grqzf4sh3jctv",
+      "delegationFee": 10000,
+      "signer": {
+        "publicKey": "0x8e5a82e2c064b757458ad842a74fc56c5e30bab4d7beceffe1ea67962c3b2e2ee29b956568e2050e7854a0fe2dc8e7e5",
+        "proofOfPossession": "0x8fddf7b0ed710cac3a493336b50fe9d39b6f36d8243744404058ba4cef1b82fdb1d276bffb98c9e338582a774c6819e2015d1a34a601007d42caff0e1b8d092719554a9294cd7cf733f5729b8ae5fe96fa3c083883b346d52bb14d5b86ac2510"
+      }
+    },
+    {
+      "nodeID": "NodeID-MtEvjbGbmLstAgHpKk2voyDSgs4vwqRXs",
+      "rewardAddress": "X-custom17vyx67luxklpc6xmve96nnnp5grqzf4sh3jctv",
+      "delegationFee": 10000,
+      "signer": {
+        "publicKey": "0x8449e20da7e1f53b8d7b03bf2abe4ffa42a50d459de3acaf21409cfa5c6b19a7ee66fc8a66b3174aa9d7b72f29a7833f",
+        "proofOfPossession": "0xa15b6be597ea2b0077374fa5ca487ede6a000dc551d983fae1f56333cc33a174b0c3f2052f75a040029bf2db580d5a5e1659286d5d95baa4b3933fbd0e8cb8122b96105c15ab50bbe0c18dcd2fbb4b6928900dc8f1e887260fc369816a22eeb2"
+      }
+    },
+    {
+      "nodeID": "NodeID-9z5c7Ugbyb9tkTbT9txFT61T6CmYjVdQV",
+      "rewardAddress": "X-custom17vyx67luxklpc6xmve96nnnp5grqzf4sh3jctv",
+      "delegationFee": 10000,
+      "signer": {
+        "publicKey": "0xb0155675afd33becd13e27677f73b2546e2166c4a7bf2f75a0c748da54de6e634fca8da578957844b9d61733ffe1922d",
+        "proofOfPossession": "0xab30209700943956b0e33b6ac1205fce8a61a4078c2426b742cafe5243cab6c3900470adf3cc95aed1af960b3cd8f5bc1750b996b19d05117ff6061500a54d4641d3f4ddce30c6f0ef5d242be5e690d7737b54f4d44f3f21ce00ac5b2e79ceb8"
+      }
+    },
+    {
+      "nodeID": "NodeID-8E5QfW1MJ5NkrGj8uqEe9sMq6TNtB4zZt",
+      "rewardAddress": "X-custom17vyx67luxklpc6xmve96nnnp5grqzf4sh3jctv",
+      "delegationFee": 10000,
+      "signer": {
+        "publicKey": "0x8a7fbd125dcc25ccbc13eb1e9edb78b08eb04271b0b8957dda2c74a90914bc1329e8f3ae9f5d7dd09a6e45cb4c6b85f5",
+        "proofOfPossession": "0xa89b0400260ff9b19295c082f4016b9826221beed73b7b3508386a8eb7352b645868d6de8680f3eb7baee4978f0c2b030897f12e4c397f3b36406cbbc3806d51d379b7e9beb5c5fb7080345c4d28f92e4cea5af6f75277241a23f79029aeab91"
+      }
+    }
+  ],
+  "cChainGenesis": "{\"config\":{\"chainId\":88888},\"nonce\":\"0x0\",\"timestamp\":\"0x5fcb13d0\",\"extraData\":\"0x\",\"gasLimit\":\"0x5f5e100\",\"difficulty\":\"0x0\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"coinbase\":\"0x0000000000000000000000000000000000000000\",\"alloc\":{\"1f0e5c64afdf53175f78846f7125776e76fa8f34\":{\"balance\":\"0xc9f2c9cd04674edea40000000\"},\"8db97c7cece249c2b98bdc0226cc4c2a57bf52fc\":{\"balance\":\"0xc9f2c9cd04674edea40000000\"}},\"number\":\"0x0\",\"gasUsed\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"baseFeePerGas\":null,\"excessBlobGas\":null,\"blobGasUsed\":null}",
+  "message": "hello avalanche!"
+}

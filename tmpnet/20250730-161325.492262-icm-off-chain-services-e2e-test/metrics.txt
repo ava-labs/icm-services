@@ -1,0 +1,1 @@
+https://grafana-poc.avax-dev.network/d/kBQpRdWnk/avalanche-main-dashboard?&var-filter=network_uuid%7C%3D%7C1395a1d3-d97c-4442-bfa6-73a074879dab&var-filter=is_ephemeral_node%7C%3D%7Cfalse&from=1753906531285&to=now

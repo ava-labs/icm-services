@@ -1,0 +1,16 @@
+{
+  "flags": {
+    "http-port": "58049",
+    "staking-signer-key-file-content": "BFs0a/SgX4BScqQjHQeeG+AGFyflOTFeJ9tBLupFwlk=",
+    "staking-tls-cert-file-content": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJFRENCdDZBREFnRUNBZ0VBTUFvR0NDcUdTTTQ5QkFNQ01BQXdJQmNOT1RreE1qTXhNREF3TURBd1doZ1AKTWpFeU5UQTNNekF5TURFek1qUmFNQUF3V1RBVEJnY3Foa2pPUFFJQkJnZ3Foa2pPUFFNQkJ3TkNBQVJZcVkrNAppU0dRL1QwZHpGQXU5RmZSdXp3RDYzQkpJRXRZbjhVVUp4TURwdmpXelNXUGZqQVJ5bU5iUDYvN2V0ZFRlRGpjCjg0VGovblRDbUEvQU5UY3NveUF3SGpBT0JnTlZIUThCQWY4RUJBTUNCNEF3REFZRFZSMFRBUUgvQkFJd0FEQUsKQmdncWhrak9QUVFEQWdOSUFEQkZBaUJidjVoNzdweUw4WTR3K2tBQmdQSWdqNXFzSlc3VVRXSWpKc2xkLzJKawo4d0loQVBLMFVtcjMvRHVKT3JUYnZhL0s0ZlUvbjFJcXR4c0NIL0pvZHNRNVV0TXkKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=",
+    "staking-tls-key-file-content": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ250VG93TGgwZXBuT0F3R0YKQkNTVG1qcHB4L2RqYVMwZGlQUkltTklxK2FtaFJBTkNBQVJZcVkrNGlTR1EvVDBkekZBdTlGZlJ1endENjNCSgpJRXRZbjhVVUp4TURwdmpXelNXUGZqQVJ5bU5iUDYvN2V0ZFRlRGpjODRUai9uVENtQS9BTlRjcwotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==",
+    "track-subnets": "2ZnZbKNnM7ZTDdg3vfnKCBkMbUYtE7HzCePkCuxHPA7KDHFc9w"
+  },
+  "runtimeConfig": {
+    "process": {
+      "avalancheGoPath": "/Users/linguan.yang/.teleporter-deps/avalanchego/avalanchego",
+      "pluginDir": "/Users/linguan.yang/.teleporter-deps/avalanchego/plugins",
+      "reuseDynamicPorts": true
+    }
+  }
+}

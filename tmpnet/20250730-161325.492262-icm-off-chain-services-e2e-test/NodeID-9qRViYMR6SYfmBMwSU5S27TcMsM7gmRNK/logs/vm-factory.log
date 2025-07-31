@@ -1,0 +1,21 @@
+[07-30|16:13:26.480] INFO subprocess/runtime.go:143 plugin handshake succeeded {"addr": "127.0.0.1:58053"}
+[07-30|16:13:26.487] INFO subprocess/runtime.go:124 stderr collector shutdown
+[07-30|16:13:26.487] INFO subprocess/runtime.go:111 stdout collector shutdown
+[07-30|16:13:33.651] INFO subprocess/runtime.go:143 plugin handshake succeeded {"addr": "127.0.0.1:58091"}
+[07-30|16:13:33.659] INFO subprocess/runtime.go:111 stdout collector shutdown
+[07-30|16:13:33.659] INFO subprocess/runtime.go:124 stderr collector shutdown
+[07-30|16:14:53.342] INFO subprocess/runtime.go:143 plugin handshake succeeded {"addr": "127.0.0.1:58315"}
+[07-30|16:14:53.353] INFO subprocess/runtime.go:124 stderr collector shutdown
+[07-30|16:14:53.353] INFO subprocess/runtime.go:111 stdout collector shutdown
+[07-30|16:16:59.618] INFO subprocess/runtime.go:143 plugin handshake succeeded {"addr": "127.0.0.1:58537"}
+[07-30|16:16:59.625] INFO subprocess/runtime.go:124 stderr collector shutdown
+[07-30|16:16:59.625] INFO subprocess/runtime.go:111 stdout collector shutdown
+[07-30|16:18:04.694] INFO subprocess/runtime.go:143 plugin handshake succeeded {"addr": "127.0.0.1:59050"}
+[07-30|16:18:04.702] INFO subprocess/runtime.go:124 stderr collector shutdown
+[07-30|16:18:04.702] INFO subprocess/runtime.go:111 stdout collector shutdown
+[07-30|16:19:09.360] INFO subprocess/runtime.go:143 plugin handshake succeeded {"addr": "127.0.0.1:59279"}
+[07-30|16:19:09.366] INFO subprocess/runtime.go:111 stdout collector shutdown
+[07-30|16:19:09.366] INFO subprocess/runtime.go:124 stderr collector shutdown
+[07-30|16:20:53.898] INFO subprocess/runtime.go:143 plugin handshake succeeded {"addr": "127.0.0.1:59607"}
+[07-30|16:20:53.907] INFO subprocess/runtime.go:111 stdout collector shutdown
+[07-30|16:20:53.907] INFO subprocess/runtime.go:124 stderr collector shutdown

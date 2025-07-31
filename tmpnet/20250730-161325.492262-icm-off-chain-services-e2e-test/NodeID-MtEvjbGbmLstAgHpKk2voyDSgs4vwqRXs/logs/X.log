@@ -1,0 +1,113 @@
+[07-30|16:13:34.274] INFO <X Chain> avm/vm.go:154 VM config initialized {"config": {"network":{"max-validator-set-staleness":60000000000,"target-gossip-size":20480,"push-gossip-percent-stake":0.9,"push-gossip-num-validators":100,"push-gossip-num-peers":0,"push-regossip-num-validators":10,"push-regossip-num-peers":0,"push-gossip-discarded-cache-size":16384,"push-gossip-max-regossip-frequency":30000000000,"push-gossip-frequency":500000000,"pull-gossip-poll-size":1,"pull-gossip-frequency":1500000000,"pull-gossip-throttling-period":10000000000,"pull-gossip-throttling-limit":2,"expected-bloom-filter-elements":8192,"expected-bloom-filter-false-positive-probability":0.01,"max-bloom-filter-false-positive-probability":0.05},"checksums-enabled":false}}
+[07-30|16:13:34.274] INFO <X Chain> avm/vm.go:541 initializing genesis asset {"txID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:13:34.274] INFO <X Chain> avm/vm.go:524 fee asset is established {"alias": "AVAX", "assetID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:13:34.275] INFO <X Chain> snowman/engine.go:97 initializing consensus engine
+[07-30|16:13:34.275] INFO <X Chain> bootstrap/bootstrapper.go:320 starting bootstrap
+[07-30|16:13:34.275] INFO <X Chain> bootstrap/bootstrapper.go:383 generated stop vertex {"vtxID": "Xsa65ZVvZ51Wa5Hk9A3akPmCRNddbGsNaPaW3bdhjFY7yo1Za"}
+[07-30|16:13:34.275] INFO <X Chain> bootstrap/bootstrapper.go:600 executing transactions
+[07-30|16:13:34.275] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:13:34.275] INFO <X Chain> bootstrap/bootstrapper.go:612 executing vertices
+[07-30|16:13:34.275] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:13:34.275] INFO <X Chain> proposervm/vm.go:206 initialized proposervm {"state": "before fork"}
+[07-30|16:13:34.275] INFO <X Chain> bootstrap/bootstrapper.go:182 starting bootstrapper {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:13:36.859] INFO <X Chain> bootstrap/bootstrapper.go:387 starting to fetch blocks {"numKnownBlocks": 0, "numAcceptedBlocks": 1, "numMissingBlocks": 1}
+[07-30|16:13:36.859] INFO <X Chain> bootstrap/storage.go:194 executing blocks {"numToExecute": 0}
+[07-30|16:13:36.859] INFO <X Chain> bootstrap/storage.go:186 executed blocks {"numExecuted": 0, "numToExecute": 0, "halted": false, "duration": "22.791µs"}
+[07-30|16:13:36.859] INFO <X Chain> bootstrap/bootstrapper.go:714 waiting for the remaining chains in this subnet to finish syncing
+[07-30|16:13:36.860] INFO <X Chain> snowman/engine.go:510 starting consensus {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:16:28.379] INFO <X Chain> snowman/engine.go:434 shutting down consensus engine
+[07-30|16:16:28.380] INFO <X Chain> router/chain_router.go:398 chain shutdown {"shutdownDuration": "162.25µs"}
+[07-30|16:16:33.978] INFO <X Chain> avm/vm.go:154 VM config initialized {"config": {"network":{"max-validator-set-staleness":60000000000,"target-gossip-size":20480,"push-gossip-percent-stake":0.9,"push-gossip-num-validators":100,"push-gossip-num-peers":0,"push-regossip-num-validators":10,"push-regossip-num-peers":0,"push-gossip-discarded-cache-size":16384,"push-gossip-max-regossip-frequency":30000000000,"push-gossip-frequency":500000000,"pull-gossip-poll-size":1,"pull-gossip-frequency":1500000000,"pull-gossip-throttling-period":10000000000,"pull-gossip-throttling-limit":2,"expected-bloom-filter-elements":8192,"expected-bloom-filter-false-positive-probability":0.01,"max-bloom-filter-false-positive-probability":0.05},"checksums-enabled":false}}
+[07-30|16:16:33.979] INFO <X Chain> avm/vm.go:524 fee asset is established {"alias": "AVAX", "assetID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:16:33.979] INFO <X Chain> snowman/engine.go:97 initializing consensus engine
+[07-30|16:16:33.979] INFO <X Chain> bootstrap/bootstrapper.go:320 starting bootstrap
+[07-30|16:16:33.979] INFO <X Chain> bootstrap/bootstrapper.go:600 executing transactions
+[07-30|16:16:33.979] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:16:33.979] INFO <X Chain> bootstrap/bootstrapper.go:612 executing vertices
+[07-30|16:16:33.979] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:16:33.979] INFO <X Chain> proposervm/vm.go:206 initialized proposervm {"state": "before fork"}
+[07-30|16:16:33.979] INFO <X Chain> bootstrap/bootstrapper.go:182 starting bootstrapper {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:16:33.980] INFO <X Chain> bootstrap/bootstrapper.go:387 starting to fetch blocks {"numKnownBlocks": 0, "numAcceptedBlocks": 1, "numMissingBlocks": 1}
+[07-30|16:16:33.980] INFO <X Chain> bootstrap/storage.go:194 executing blocks {"numToExecute": 0}
+[07-30|16:16:33.980] INFO <X Chain> bootstrap/storage.go:186 executed blocks {"numExecuted": 0, "numToExecute": 0, "halted": false, "duration": "21.125µs"}
+[07-30|16:16:33.981] INFO <X Chain> snowman/engine.go:510 starting consensus {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:16:59.736] INFO <X Chain> snowman/engine.go:434 shutting down consensus engine
+[07-30|16:16:59.741] INFO <X Chain> router/chain_router.go:398 chain shutdown {"shutdownDuration": "267.875µs"}
+[07-30|16:17:05.301] INFO <X Chain> avm/vm.go:154 VM config initialized {"config": {"network":{"max-validator-set-staleness":60000000000,"target-gossip-size":20480,"push-gossip-percent-stake":0.9,"push-gossip-num-validators":100,"push-gossip-num-peers":0,"push-regossip-num-validators":10,"push-regossip-num-peers":0,"push-gossip-discarded-cache-size":16384,"push-gossip-max-regossip-frequency":30000000000,"push-gossip-frequency":500000000,"pull-gossip-poll-size":1,"pull-gossip-frequency":1500000000,"pull-gossip-throttling-period":10000000000,"pull-gossip-throttling-limit":2,"expected-bloom-filter-elements":8192,"expected-bloom-filter-false-positive-probability":0.01,"max-bloom-filter-false-positive-probability":0.05},"checksums-enabled":false}}
+[07-30|16:17:05.301] INFO <X Chain> avm/vm.go:524 fee asset is established {"alias": "AVAX", "assetID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:17:05.301] INFO <X Chain> snowman/engine.go:97 initializing consensus engine
+[07-30|16:17:05.301] INFO <X Chain> bootstrap/bootstrapper.go:320 starting bootstrap
+[07-30|16:17:05.301] INFO <X Chain> bootstrap/bootstrapper.go:600 executing transactions
+[07-30|16:17:05.301] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:17:05.301] INFO <X Chain> bootstrap/bootstrapper.go:612 executing vertices
+[07-30|16:17:05.301] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:17:05.301] INFO <X Chain> proposervm/vm.go:206 initialized proposervm {"state": "before fork"}
+[07-30|16:17:05.301] INFO <X Chain> bootstrap/bootstrapper.go:182 starting bootstrapper {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:17:07.302] INFO <X Chain> bootstrap/bootstrapper.go:387 starting to fetch blocks {"numKnownBlocks": 0, "numAcceptedBlocks": 1, "numMissingBlocks": 1}
+[07-30|16:17:07.302] INFO <X Chain> bootstrap/storage.go:194 executing blocks {"numToExecute": 0}
+[07-30|16:17:07.302] INFO <X Chain> bootstrap/storage.go:186 executed blocks {"numExecuted": 0, "numToExecute": 0, "halted": false, "duration": "22.167µs"}
+[07-30|16:17:07.302] INFO <X Chain> snowman/engine.go:510 starting consensus {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:17:18.865] INFO <X Chain> snowman/engine.go:434 shutting down consensus engine
+[07-30|16:17:18.866] INFO <X Chain> router/chain_router.go:398 chain shutdown {"shutdownDuration": "297.834µs"}
+[07-30|16:17:19.431] INFO <X Chain> avm/vm.go:154 VM config initialized {"config": {"network":{"max-validator-set-staleness":60000000000,"target-gossip-size":20480,"push-gossip-percent-stake":0.9,"push-gossip-num-validators":100,"push-gossip-num-peers":0,"push-regossip-num-validators":10,"push-regossip-num-peers":0,"push-gossip-discarded-cache-size":16384,"push-gossip-max-regossip-frequency":30000000000,"push-gossip-frequency":500000000,"pull-gossip-poll-size":1,"pull-gossip-frequency":1500000000,"pull-gossip-throttling-period":10000000000,"pull-gossip-throttling-limit":2,"expected-bloom-filter-elements":8192,"expected-bloom-filter-false-positive-probability":0.01,"max-bloom-filter-false-positive-probability":0.05},"checksums-enabled":false}}
+[07-30|16:17:19.432] INFO <X Chain> avm/vm.go:524 fee asset is established {"alias": "AVAX", "assetID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:17:19.432] INFO <X Chain> snowman/engine.go:97 initializing consensus engine
+[07-30|16:17:19.432] INFO <X Chain> bootstrap/bootstrapper.go:320 starting bootstrap
+[07-30|16:17:19.432] INFO <X Chain> bootstrap/bootstrapper.go:600 executing transactions
+[07-30|16:17:19.432] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:17:19.432] INFO <X Chain> bootstrap/bootstrapper.go:612 executing vertices
+[07-30|16:17:19.432] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:17:19.432] INFO <X Chain> proposervm/vm.go:206 initialized proposervm {"state": "before fork"}
+[07-30|16:17:19.432] INFO <X Chain> bootstrap/bootstrapper.go:182 starting bootstrapper {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:17:19.433] INFO <X Chain> bootstrap/bootstrapper.go:387 starting to fetch blocks {"numKnownBlocks": 0, "numAcceptedBlocks": 1, "numMissingBlocks": 1}
+[07-30|16:17:19.433] INFO <X Chain> bootstrap/storage.go:194 executing blocks {"numToExecute": 0}
+[07-30|16:17:19.433] INFO <X Chain> bootstrap/storage.go:186 executed blocks {"numExecuted": 0, "numToExecute": 0, "halted": false, "duration": "50.917µs"}
+[07-30|16:17:19.433] INFO <X Chain> snowman/engine.go:510 starting consensus {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:17:33.397] INFO <X Chain> snowman/engine.go:434 shutting down consensus engine
+[07-30|16:17:33.403] INFO <X Chain> router/chain_router.go:398 chain shutdown {"shutdownDuration": "50.417µs"}
+[07-30|16:18:12.107] INFO <X Chain> avm/vm.go:154 VM config initialized {"config": {"network":{"max-validator-set-staleness":60000000000,"target-gossip-size":20480,"push-gossip-percent-stake":0.9,"push-gossip-num-validators":100,"push-gossip-num-peers":0,"push-regossip-num-validators":10,"push-regossip-num-peers":0,"push-gossip-discarded-cache-size":16384,"push-gossip-max-regossip-frequency":30000000000,"push-gossip-frequency":500000000,"pull-gossip-poll-size":1,"pull-gossip-frequency":1500000000,"pull-gossip-throttling-period":10000000000,"pull-gossip-throttling-limit":2,"expected-bloom-filter-elements":8192,"expected-bloom-filter-false-positive-probability":0.01,"max-bloom-filter-false-positive-probability":0.05},"checksums-enabled":false}}
+[07-30|16:18:12.108] INFO <X Chain> avm/vm.go:524 fee asset is established {"alias": "AVAX", "assetID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:18:12.108] INFO <X Chain> snowman/engine.go:97 initializing consensus engine
+[07-30|16:18:12.108] INFO <X Chain> bootstrap/bootstrapper.go:320 starting bootstrap
+[07-30|16:18:12.108] INFO <X Chain> bootstrap/bootstrapper.go:600 executing transactions
+[07-30|16:18:12.108] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:18:12.108] INFO <X Chain> bootstrap/bootstrapper.go:612 executing vertices
+[07-30|16:18:12.108] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:18:12.109] INFO <X Chain> proposervm/vm.go:206 initialized proposervm {"state": "before fork"}
+[07-30|16:18:12.109] INFO <X Chain> bootstrap/bootstrapper.go:182 starting bootstrapper {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:18:12.110] INFO <X Chain> bootstrap/bootstrapper.go:387 starting to fetch blocks {"numKnownBlocks": 0, "numAcceptedBlocks": 1, "numMissingBlocks": 1}
+[07-30|16:18:12.111] INFO <X Chain> bootstrap/storage.go:194 executing blocks {"numToExecute": 0}
+[07-30|16:18:12.111] INFO <X Chain> bootstrap/storage.go:186 executed blocks {"numExecuted": 0, "numToExecute": 0, "halted": false, "duration": "51.25µs"}
+[07-30|16:18:12.111] INFO <X Chain> snowman/engine.go:510 starting consensus {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:19:11.442] INFO <X Chain> snowman/engine.go:434 shutting down consensus engine
+[07-30|16:19:11.442] INFO <X Chain> router/chain_router.go:398 chain shutdown {"shutdownDuration": "522.792µs"}
+[07-30|16:19:17.016] INFO <X Chain> avm/vm.go:154 VM config initialized {"config": {"network":{"max-validator-set-staleness":60000000000,"target-gossip-size":20480,"push-gossip-percent-stake":0.9,"push-gossip-num-validators":100,"push-gossip-num-peers":0,"push-regossip-num-validators":10,"push-regossip-num-peers":0,"push-gossip-discarded-cache-size":16384,"push-gossip-max-regossip-frequency":30000000000,"push-gossip-frequency":500000000,"pull-gossip-poll-size":1,"pull-gossip-frequency":1500000000,"pull-gossip-throttling-period":10000000000,"pull-gossip-throttling-limit":2,"expected-bloom-filter-elements":8192,"expected-bloom-filter-false-positive-probability":0.01,"max-bloom-filter-false-positive-probability":0.05},"checksums-enabled":false}}
+[07-30|16:19:17.017] INFO <X Chain> avm/vm.go:524 fee asset is established {"alias": "AVAX", "assetID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:19:17.017] INFO <X Chain> snowman/engine.go:97 initializing consensus engine
+[07-30|16:19:17.017] INFO <X Chain> bootstrap/bootstrapper.go:320 starting bootstrap
+[07-30|16:19:17.017] INFO <X Chain> bootstrap/bootstrapper.go:600 executing transactions
+[07-30|16:19:17.017] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:19:17.017] INFO <X Chain> bootstrap/bootstrapper.go:612 executing vertices
+[07-30|16:19:17.017] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:19:17.017] INFO <X Chain> proposervm/vm.go:206 initialized proposervm {"state": "before fork"}
+[07-30|16:19:17.017] INFO <X Chain> bootstrap/bootstrapper.go:182 starting bootstrapper {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:19:17.018] INFO <X Chain> bootstrap/bootstrapper.go:387 starting to fetch blocks {"numKnownBlocks": 0, "numAcceptedBlocks": 1, "numMissingBlocks": 1}
+[07-30|16:19:17.018] INFO <X Chain> bootstrap/storage.go:194 executing blocks {"numToExecute": 0}
+[07-30|16:19:17.018] INFO <X Chain> bootstrap/storage.go:186 executed blocks {"numExecuted": 0, "numToExecute": 0, "halted": false, "duration": "31.667µs"}
+[07-30|16:19:17.018] INFO <X Chain> snowman/engine.go:510 starting consensus {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:20:56.367] INFO <X Chain> snowman/engine.go:434 shutting down consensus engine
+[07-30|16:20:56.368] INFO <X Chain> router/chain_router.go:398 chain shutdown {"shutdownDuration": "1.168833ms"}
+[07-30|16:20:57.063] INFO <X Chain> avm/vm.go:154 VM config initialized {"config": {"network":{"max-validator-set-staleness":60000000000,"target-gossip-size":20480,"push-gossip-percent-stake":0.9,"push-gossip-num-validators":100,"push-gossip-num-peers":0,"push-regossip-num-validators":10,"push-regossip-num-peers":0,"push-gossip-discarded-cache-size":16384,"push-gossip-max-regossip-frequency":30000000000,"push-gossip-frequency":500000000,"pull-gossip-poll-size":1,"pull-gossip-frequency":1500000000,"pull-gossip-throttling-period":10000000000,"pull-gossip-throttling-limit":2,"expected-bloom-filter-elements":8192,"expected-bloom-filter-false-positive-probability":0.01,"max-bloom-filter-false-positive-probability":0.05},"checksums-enabled":false}}
+[07-30|16:20:57.063] INFO <X Chain> avm/vm.go:524 fee asset is established {"alias": "AVAX", "assetID": "2tTUKaXychsYLvFsctAW9ACx8U7oGL5R8qpGAhtgi9P9Ycgri8"}
+[07-30|16:20:57.063] INFO <X Chain> snowman/engine.go:97 initializing consensus engine
+[07-30|16:20:57.064] INFO <X Chain> bootstrap/bootstrapper.go:320 starting bootstrap
+[07-30|16:20:57.064] INFO <X Chain> bootstrap/bootstrapper.go:600 executing transactions
+[07-30|16:20:57.064] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:20:57.064] INFO <X Chain> bootstrap/bootstrapper.go:612 executing vertices
+[07-30|16:20:57.064] INFO <X Chain> queue/jobs.go:223 executed operations {"numExecuted": 0}
+[07-30|16:20:57.064] INFO <X Chain> proposervm/vm.go:206 initialized proposervm {"state": "before fork"}
+[07-30|16:20:57.064] INFO <X Chain> bootstrap/bootstrapper.go:182 starting bootstrapper {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
+[07-30|16:20:59.064] INFO <X Chain> bootstrap/bootstrapper.go:387 starting to fetch blocks {"numKnownBlocks": 0, "numAcceptedBlocks": 1, "numMissingBlocks": 1}
+[07-30|16:20:59.064] INFO <X Chain> bootstrap/storage.go:194 executing blocks {"numToExecute": 0}
+[07-30|16:20:59.064] INFO <X Chain> bootstrap/storage.go:186 executed blocks {"numExecuted": 0, "numToExecute": 0, "halted": false, "duration": "22.75µs"}
+[07-30|16:20:59.064] INFO <X Chain> snowman/engine.go:510 starting consensus {"lastAcceptedID": "2WfchcqF9t5rc2N1tgf9hyizGRxxUtGpRu9XDdPUqBCCfQL3zh", "lastAcceptedHeight": 0}
