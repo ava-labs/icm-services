@@ -30,7 +30,9 @@ if [ "$HELP" = true ]; then
     echo "Run E2E tests for ICM Services."
     echo ""
     echo "Options:"
-    echo "  --network-dir                     Path to the network directory to reuse. If not provided, a new network will be created."å
+    echo "  --network-dir                     Path to the network directory to reuse. If not provided, a new network will be created."
+    echo "                                    If the directory exists and is not empty, it will be reused."
+    echo "                                    If the directory does not exist or is empty, a new network will be created at the specified path."
     echo "  -v, --verbose                     Enable debug logs"
     echo "  -h, --help                        Print this help message"
     exit 0
@@ -47,7 +49,7 @@ source "$BASE_PATH"/scripts/versions.sh
 BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 
 if [ -n "$reuse_network_dir" ]; then
-    if [ -d "$reuse_network_dir" ] && [ "$(ls -A "$reuse_network_dir")" ]; then
+    if [ -d "$reuse_network_dir" ] && [ "$(ls -a "$reuse_network_dir")" ]; then
         network_dir=$reuse_network_dir
         reuse_network=true
         echo "Reuse network directory: $network_dir"
