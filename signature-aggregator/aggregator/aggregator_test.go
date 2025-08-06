@@ -3,6 +3,7 @@ package aggregator
 import (
 	"bytes"
 	"context"
+	"slices"
 	"testing"
 
 	"crypto/rand"
@@ -476,6 +477,235 @@ func TestUnmarshalResponse(t *testing.T) {
 			signature, err := aggregator.unmarshalResponse(tc.appResponseBytes)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedSignature, signature)
+		})
+	}
+}
+
+func TestGetExcludedValidators(t *testing.T) {
+	underFunded := minimumL1ValidatorBalance - 1
+	funded := minimumL1ValidatorBalance
+
+	nodeID1 := ids.GenerateTestNodeID()
+	validationID1 := ids.GenerateTestID()
+	nodeID2 := ids.GenerateTestNodeID()
+	validationID2 := ids.GenerateTestID()
+	nodeID3 := ids.GenerateTestNodeID()
+	validationID3 := ids.GenerateTestID()
+
+	testCases := []struct {
+		name         string
+		l1Validators []platformvm.ClientPermissionlessValidator
+		connected    *peers.ConnectedCanonicalValidators
+		excludedIdx  []int // Indices of validators that should be excluded
+	}{
+		{
+			name: "all underfunded",
+			l1Validators: []platformvm.ClientPermissionlessValidator{
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID1},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID1,
+						Balance:      &underFunded,
+					},
+				},
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID2},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID2,
+						Balance:      &underFunded,
+					},
+				},
+			},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{
+						{NodeIDs: []ids.NodeID{nodeID1}},
+						{NodeIDs: []ids.NodeID{nodeID2}},
+					},
+				},
+			},
+			excludedIdx: []int{0, 1},
+		},
+		{
+			name: "all funded",
+			l1Validators: []platformvm.ClientPermissionlessValidator{
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID1},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID1,
+						Balance:      &funded,
+					},
+				},
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID2},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID2,
+						Balance:      &funded,
+					},
+				},
+			},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{
+						{NodeIDs: []ids.NodeID{nodeID1}},
+						{NodeIDs: []ids.NodeID{nodeID2}},
+					},
+				},
+			},
+			excludedIdx: []int{},
+		},
+		{
+			name: "one underfunded, one funded",
+			l1Validators: []platformvm.ClientPermissionlessValidator{
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID1},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID1,
+						Balance:      &funded,
+					},
+				},
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID2},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID2,
+						Balance:      &funded,
+					},
+				},
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID3},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID3,
+						Balance:      &underFunded,
+					},
+				},
+			},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{
+						{NodeIDs: []ids.NodeID{nodeID1}},
+						{NodeIDs: []ids.NodeID{nodeID2, nodeID3}},
+					},
+				},
+			},
+			excludedIdx: []int{},
+		},
+		{
+			name: "mixed L1/non-L1",
+			l1Validators: []platformvm.ClientPermissionlessValidator{
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID1},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID1,
+						Balance:      &funded,
+					},
+				},
+				{
+					// non-L1
+					ClientStaker: platformvm.ClientStaker{
+						NodeID: nodeID2,
+					},
+				},
+			},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{
+						{NodeIDs: []ids.NodeID{nodeID1}},
+						{NodeIDs: []ids.NodeID{nodeID2}},
+					},
+				},
+			},
+			excludedIdx: []int{},
+		},
+		{
+			name: "nil balance",
+			l1Validators: []platformvm.ClientPermissionlessValidator{
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID1},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID1,
+						Balance:      nil,
+					},
+				},
+			},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{
+						{NodeIDs: []ids.NodeID{nodeID1}},
+					},
+				},
+			},
+			excludedIdx: []int{0},
+		},
+		{
+			name: "multiple nodeIDs per validator",
+			l1Validators: []platformvm.ClientPermissionlessValidator{
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID1},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID1,
+						Balance:      &funded},
+				},
+				{
+					ClientStaker: platformvm.ClientStaker{NodeID: nodeID2},
+					ClientL1Validator: platformvm.ClientL1Validator{
+						ValidationID: &validationID2,
+						Balance:      &funded},
+				},
+			},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{
+						{NodeIDs: []ids.NodeID{nodeID1, nodeID2}},
+					},
+				},
+			},
+			excludedIdx: []int{},
+		},
+		{
+			name:         "no L1 validators",
+			l1Validators: []platformvm.ClientPermissionlessValidator{},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{
+						{NodeIDs: []ids.NodeID{nodeID3}},
+					},
+				},
+			},
+			excludedIdx: []int{},
+		},
+		{
+			name:         "empty validator set",
+			l1Validators: []platformvm.ClientPermissionlessValidator{},
+			connected: &peers.ConnectedCanonicalValidators{
+				ValidatorSet: warp.CanonicalValidatorSet{
+					Validators: []*warp.Validator{},
+				},
+			},
+			excludedIdx: []int{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			aggregator, _, mockPClient := instantiateAggregator(t)
+			ctx := context.Background()
+			log := logging.NoLog{}
+			signingSubnet := ids.GenerateTestID()
+
+			mockPClient.EXPECT().
+				GetCurrentValidators(gomock.Any(), signingSubnet, gomock.Nil(), gomock.Any()).
+				Return(tc.l1Validators, nil)
+
+			excluded, err := aggregator.getExcludedValidators(ctx, log, signingSubnet, tc.connected, true)
+			require.NoError(t, err)
+			for idx := range tc.connected.ValidatorSet.Validators {
+				shouldBeExcluded := slices.Contains(tc.excludedIdx, idx)
+				if shouldBeExcluded {
+					require.True(t, excluded.Contains(idx), "validator %d should be excluded", idx)
+				} else {
+					require.False(t, excluded.Contains(idx), "validator %d should NOT be excluded", idx)
+				}
+			}
 		})
 	}
 }

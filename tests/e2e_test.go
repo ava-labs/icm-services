@@ -28,7 +28,9 @@ import (
 )
 
 const (
-	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
+	warpGenesisTemplateFile   = "./tests/utils/warp-genesis-template.json"
+	minimumL1ValidatorBalance = 2048 * units.NanoAvax
+	defaultBalance            = 100 * units.Avax
 )
 
 var (
@@ -110,7 +112,7 @@ var _ = ginkgo.BeforeSuite(func() {
 			},
 		},
 		4,
-		0,
+		4,
 		e2e.RegisterFlags(),
 	)
 	teleporterInfo = teleporterTestUtils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
@@ -139,9 +141,11 @@ var _ = ginkgo.BeforeSuite(func() {
 			networkStartCtx,
 			subnet,
 			teleporterTestUtils.PoAValidatorManager,
-			[]uint64{units.Schmeckle, units.Schmeckle},
+			[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
+			[]uint64{defaultBalance, defaultBalance, defaultBalance, minimumL1ValidatorBalance - 1},
 			fundedKey,
-			false)
+			false,
+		)
 	}
 
 	// Restart the network to attempt to refresh TLS connections
