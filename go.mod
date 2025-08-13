@@ -4,10 +4,10 @@ go 1.24.6
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.13.3-0.20250701190514-843a2b9bb3d8 // branch icm-services-patch-v1.13.2
+	github.com/ava-labs/avalanchego v1.13.4 // branch icm-services-patch-v1.13.2
 	github.com/ava-labs/icm-contracts v1.0.9-0.20250724140319-b80e2f17893e
-	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.1
-	github.com/ava-labs/subnet-evm v0.7.5
+	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.6
+	github.com/ava-labs/subnet-evm v0.7.8
 	github.com/aws/aws-sdk-go-v2 v1.38.0
 	github.com/aws/aws-sdk-go-v2/config v1.30.3
 	github.com/aws/aws-sdk-go-v2/service/kms v1.44.0
@@ -57,7 +57,7 @@ require (
 	github.com/Antonboom/nilnil v1.0.1 // indirect
 	github.com/Antonboom/testifylint v1.5.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
-	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/Crocmagnon/fatcontext v0.7.1 // indirect
 	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/Djarvur/go-err113 v0.0.0-20210108212216-aea10b59be24 // indirect
@@ -75,7 +75,8 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
-	github.com/ava-labs/coreth v0.15.2-rc.0.0.20250620163936-0058a7ec6d9d // indirect
+	github.com/ava-labs/coreth v0.15.3-rc.5 // indirect
+	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.9 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.3 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.2 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.3 // indirect
@@ -117,7 +118,7 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20231025140028-3c0104f4b233 // indirect
-	github.com/crate-crypto/go-kzg-4844 v0.7.0 // indirect
+	github.com/crate-crypto/go-kzg-4844 v1.0.0 // indirect
 	github.com/curioswitch/go-reassign v0.3.0 // indirect
 	github.com/daixiang0/gci v0.13.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -135,7 +136,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dop251/goja v0.0.0-20230806174421-c933cf95e127 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
-	github.com/ethereum/c-kzg-4844 v0.4.0 // indirect
+	github.com/ethereum/c-kzg-4844 v1.0.0 // indirect
 	github.com/ettle/strcase v0.2.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
