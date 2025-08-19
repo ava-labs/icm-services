@@ -10,7 +10,7 @@ require (
 require (
 	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.6
 	github.com/ava-labs/subnet-evm v0.7.8
-	github.com/onsi/ginkgo/v2 v2.23.4
+	github.com/onsi/ginkgo/v2 v2.24.0
 	github.com/onsi/gomega v1.38.0
 	github.com/pkg/errors v0.9.1
 	github.com/segmentio/encoding v0.5.3
@@ -23,6 +23,7 @@ require (
 
 require (
 	github.com/DataDog/zstd v1.5.2 // indirect
+	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/StephenButtolph/canoto v0.17.1 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
@@ -56,7 +57,7 @@ require (
 	github.com/gballet/go-verkle v0.1.1-0.20231031103413-a67434b50f46 // indirect
 	github.com/getsentry/sentry-go v0.18.0 // indirect
 	github.com/go-cmd/cmd v1.4.3 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
