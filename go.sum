@@ -112,8 +112,8 @@ github.com/ava-labs/libevm v1.13.14-0.3.0.rc.6 h1:tyM659nDOknwTeU4A0fUVsGNIU7k0v
 github.com/ava-labs/libevm v1.13.14-0.3.0.rc.6/go.mod h1:zP/DOcABRWargBmUWv1jXplyWNcfmBy9cxr0lw3LW3g=
 github.com/ava-labs/subnet-evm v0.7.8 h1:MREWNuL7bghg3RlFF12tF3AWnTK/Z8Vi4t2uH8gVM2U=
 github.com/ava-labs/subnet-evm v0.7.8/go.mod h1:wgtwtlK6T5feuk+pgDe4inSw+AKDPATQTA13LOFhOR8=
-github.com/aws/aws-sdk-go-v2 v1.38.2 h1:QUkLO1aTW0yqW95pVzZS0LGFanL71hJ0a49w4TJLMyM=
-github.com/aws/aws-sdk-go-v2 v1.38.2/go.mod h1:sDioUELIUO9Znk23YVmIk86/9DOpkbyyVb1i/gUNFXY=
+github.com/aws/aws-sdk-go-v2 v1.38.3 h1:B6cV4oxnMs45fql4yRH+/Po/YU+597zgWqvDpYMturk=
+github.com/aws/aws-sdk-go-v2 v1.38.3/go.mod h1:sDioUELIUO9Znk23YVmIk86/9DOpkbyyVb1i/gUNFXY=
 github.com/aws/aws-sdk-go-v2/config v1.31.5 h1:wsZr2kq1XeKU/D2QDcW5xEB1zHPdHAuQqnR0yaygAQQ=
 github.com/aws/aws-sdk-go-v2/config v1.31.5/go.mod h1:IpXejRuSIyOSCyT4BomfIJ5gWRcDoX/NJaAHh9Cp8jE=
 github.com/aws/aws-sdk-go-v2/credentials v1.18.9 h1:zKrnPtmO7j2FpMqudayjCzNxyO8KtPQGCIzqEosKQbg=
