@@ -536,14 +536,14 @@ func CallWarpReceiver(
 	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1, PrivateKeyToAddress(senderKey))
 
 	registrationTx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:    l1.EVMChainID,
-		Nonce:      nonce,
-		To:         &contract,
-		Gas:        2_000_000,
-		GasFeeCap:  gasFeeCap,
-		GasTipCap:  gasTipCap,
-		Value:      common.Big0,
-		Data:       callData,
+		ChainID:   l1.EVMChainID,
+		Nonce:     nonce,
+		To:        &contract,
+		Gas:       2_000_000,
+		GasFeeCap: gasFeeCap,
+		GasTipCap: gasTipCap,
+		Value:     common.Big0,
+		Data:      callData,
 		AccessList: types.AccessList{
 			{
 				Address:     warp.ContractAddress,
