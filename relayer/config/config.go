@@ -198,8 +198,13 @@ func getWarpConfig(client ethclient.Client) (*warp.Config, error) {
 		return nil, fmt.Errorf("failed to fetch chain config")
 	}
 
+	latestBlock, err := client.BlockByNumber(context.Background(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch latest block")
+	}
+
 	// First, check the list of precompile upgrades to get the most up to date Warp config
-	// We only need to consider the most recent Warp config, since the QuorumNumerator is used
+	// We only need to consider the most recent activated Warp config, since the QuorumNumerator is used
 	// at signature verification time on the receiving chain, regardless of the Warp config at the
 	// time of the message's creation
 	var warpConfig *warp.Config
@@ -212,7 +217,9 @@ func getWarpConfig(client ethclient.Client) (*warp.Config, error) {
 			warpConfig = cfg
 			continue
 		}
-		if *cfg.Timestamp() > *warpConfig.Timestamp() {
+		// Grab the latest already activated Warp config, if a new upgrade activates during the lifetime of the relayer
+		// it will become unhealthy and restart and pick up the new config on next startup.
+		if *cfg.Timestamp() > *warpConfig.Timestamp() && *cfg.Timestamp() >= latestBlock.Time() {
 			warpConfig = cfg
 		}
 	}

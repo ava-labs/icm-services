@@ -10,15 +10,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/set"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/utils"
 	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/params"
 	"github.com/ava-labs/subnet-evm/params/extras"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
+	"github.com/ava-labs/subnet-evm/precompile/precompileconfig"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -356,6 +359,14 @@ func TestGetWarpConfig(t *testing.T) {
 	subnetID, err := ids.FromString("2PsShLjrFFwR51DMcAh8pyuwzLn1Ym3zRhuXLTmLCR1STk2mL6")
 	require.NoError(t, err)
 
+	// beforeCurrentBlockTime := uint64(time.Date(2025, 9, 1, 0, 0, 0, 0, time.UTC).Unix())
+	afterCurrentBlockTime := uint64(time.Date(2025, 9, 1, 0, 0, 0, 0, time.UTC).Unix())
+
+	currentBlockTime := uint64(time.Date(2025, 9, 15, 0, 0, 0, 0, time.UTC).Unix())
+	currentBlock := types.NewBlock(&types.Header{
+		Time: currentBlockTime,
+	}, nil, nil, nil, nil)
+
 	testCases := []struct {
 		name                string
 		blockchainID        ids.ID
@@ -503,6 +514,43 @@ func TestGetWarpConfig(t *testing.T) {
 				RequirePrimaryNetworkSigners: false,
 			},
 		},
+		{
+			name:                "require primary network signers true in future",
+			blockchainID:        blockchainID,
+			subnetID:            subnetID,
+			getChainConfigCalls: 1,
+			chainConfig: params.ChainConfigWithUpgradesJSON{
+				ChainConfig: *params.WithExtra(
+					&params.ChainConfig{},
+					&extras.ChainConfig{
+						GenesisPrecompiles: extras.Precompiles{
+							warpConfigKey: &warp.Config{
+								QuorumNumerator:              0,
+								RequirePrimaryNetworkSigners: false,
+							},
+						},
+						UpgradeConfig: extras.UpgradeConfig{
+							PrecompileUpgrades: []extras.PrecompileUpgrade{
+								{
+									Config: &warp.Config{
+										Upgrade: precompileconfig.Upgrade{
+											BlockTimestamp: &afterCurrentBlockTime,
+										},
+										QuorumNumerator:              67,
+										RequirePrimaryNetworkSigners: true,
+									},
+								},
+							},
+						},
+					},
+				),
+			},
+			expectedError: nil,
+			expectedWarpConfig: WarpConfig{
+				QuorumNumerator:              warp.WarpDefaultQuorumNumerator,
+				RequirePrimaryNetworkSigners: false,
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -511,6 +559,10 @@ func TestGetWarpConfig(t *testing.T) {
 			gomock.InOrder(
 				client.EXPECT().ChainConfig(gomock.Any()).Return(
 					&testCase.chainConfig,
+					nil,
+				).Times(testCase.getChainConfigCalls),
+				client.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(
+					currentBlock,
 					nil,
 				).Times(testCase.getChainConfigCalls),
 			)
