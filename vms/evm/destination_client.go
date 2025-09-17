@@ -324,7 +324,7 @@ func (c *destinationClient) SendTx(
 
 	if result.err != nil {
 		c.logger.Error(
-			"Failed to get transaction receipt",
+			"Failed to get transaction receipt.",
 			zap.Error(result.err),
 		)
 		return nil, result.err

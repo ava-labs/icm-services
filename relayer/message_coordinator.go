@@ -76,6 +76,12 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 		return nil, nil, err
 	}
 
+	appRelayer := mc.getApplicationRelayer(
+		routeInfo.SourceChainID,
+		routeInfo.SenderAddress,
+		routeInfo.DestinationChainID,
+		routeInfo.DestinationAddress,
+	)
 	mc.logger.Info(
 		"Unpacked warp message",
 		zap.Stringer("sourceBlockchainID", routeInfo.SourceChainID),
@@ -83,17 +89,12 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 		zap.Stringer("destinationBlockchainID", routeInfo.DestinationChainID),
 		zap.Stringer("destinationAddress", routeInfo.DestinationAddress),
 		zap.Stringer("warpMessageID", warpMessageInfo.UnsignedMessage.ID()),
-	)
-
-	appRelayer := mc.getApplicationRelayer(
-		routeInfo.SourceChainID,
-		routeInfo.SenderAddress,
-		routeInfo.DestinationChainID,
-		routeInfo.DestinationAddress,
+		zap.Bool("foundAppRelayer", appRelayer != nil),
 	)
 	if appRelayer == nil {
 		return nil, nil, nil
 	}
+
 	messageHandler, err := messageHandlerFactory.NewMessageHandler(
 		warpMessageInfo.UnsignedMessage,
 		appRelayer.destinationClient,
