@@ -52,6 +52,7 @@ type destinationClient struct {
 	blockGasLimit           uint64
 	maxBaseFee              *big.Int
 	maxPriorityFeePerGas    *big.Int
+	maxFeePerGas            *big.Int
 	logger                  logging.Logger
 	txInclusionTimeout      time.Duration
 }
@@ -212,6 +213,7 @@ func NewDestinationClient(
 		blockGasLimit:             destinationBlockchain.BlockGasLimit,
 		maxBaseFee:                new(big.Int).SetUint64(destinationBlockchain.MaxBaseFee),
 		maxPriorityFeePerGas:      new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
+		maxFeePerGas:              new(big.Int).SetUint64(destinationBlockchain.MaxFeePerGas),
 		txInclusionTimeout:        time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
 	}
 
@@ -223,7 +225,8 @@ func NewDestinationClient(
 // maximum base is calculated as the current base fee multiplied by the default base fee factor.
 // The maximum priority fee per gas is set the minimum of the suggested gas tip cap and the configured
 // maximum priority fee per gas. The max fee per gas is set to the sum of the max base fee and the
-// max priority fee per gas.
+// max priority fee per gas. If maxFeePerGas is configured, the total gas fee cap will be capped
+// at that value, with priority fee adjusted accordingly to fit within the limit.
 func (c *destinationClient) SendTx(
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
@@ -269,6 +272,27 @@ func (c *destinationClient) SendTx(
 
 	to := common.HexToAddress(toAddress)
 	gasFeeCap := new(big.Int).Add(maxBaseFee, gasTipCap)
+
+	// If maxFeePerGas is configured and is greater than 0, cap the total gas fee per gas unit
+	if c.maxFeePerGas != nil && c.maxFeePerGas.Cmp(big.NewInt(0)) > 0 && gasFeeCap.Cmp(c.maxFeePerGas) > 0 {
+		c.logger.Warn(
+			"Calculated gas fee cap exceeds configured maximum fee per gas, capping to max",
+			zap.String("calculatedGasFeeCap", gasFeeCap.String()),
+			zap.String("maxFeePerGas", c.maxFeePerGas.String()),
+		)
+		gasFeeCap = new(big.Int).Set(c.maxFeePerGas)
+
+		// Ensure gasTipCap doesn't exceed the capped gasFeeCap
+		// gasFeeCap = maxBaseFee + gasTipCap, so gasTipCap = gasFeeCap - maxBaseFee
+		adjustedTipCap := new(big.Int).Sub(gasFeeCap, maxBaseFee)
+		if adjustedTipCap.Cmp(big.NewInt(0)) < 0 {
+			// If maxBaseFee is higher than maxFeePerGas, set gasTipCap to 0
+			gasTipCap = big.NewInt(0)
+		} else if adjustedTipCap.Cmp(gasTipCap) < 0 {
+			// Adjust gasTipCap to fit within the capped gasFeeCap
+			gasTipCap = adjustedTipCap
+		}
+	}
 
 	resultChan := make(chan txResult)
 
