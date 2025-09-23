@@ -9,9 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"reflect"
+	"strings"
 
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/peers"
+	"go.uber.org/zap"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -46,6 +49,12 @@ const (
 
 var defaultLogLevel = logging.Info.String()
 
+var sensitiveKeys = []string{
+	"authorization", "auth", "token", "api-key", "apikey",
+	"api_key", "secret", "password", "pass", "pwd",
+	"x-api-key", "bearer",
+}
+
 const usageText = `
 Usage:
 icm-relayer --config-file path-to-config                Specifies the relayer config file and begin relaying messages.
@@ -57,7 +66,7 @@ icm-relayer --help                                      Display icm-relayer usag
 type Config struct {
 	LogLevel                        string                   `mapstructure:"log-level" json:"log-level"`
 	StorageLocation                 string                   `mapstructure:"storage-location" json:"storage-location"`
-	RedisURL                        string                   `mapstructure:"redis-url" json:"redis-url"`
+	RedisURL                        string                   `mapstructure:"redis-url" json:"redis-url" sensitive:"true"`
 	APIPort                         uint16                   `mapstructure:"api-port" json:"api-port"`
 	MetricsPort                     uint16                   `mapstructure:"metrics-port" json:"metrics-port"`
 	DBWriteIntervalSeconds          uint64                   `mapstructure:"db-write-interval-seconds" json:"db-write-interval-seconds"` //nolint:lll
@@ -198,8 +207,13 @@ func getWarpConfig(client ethclient.Client) (*warp.Config, error) {
 		return nil, fmt.Errorf("failed to fetch chain config")
 	}
 
+	latestBlock, err := client.BlockByNumber(context.Background(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch latest block")
+	}
+
 	// First, check the list of precompile upgrades to get the most up to date Warp config
-	// We only need to consider the most recent Warp config, since the QuorumNumerator is used
+	// We only need to consider the most recent activated Warp config, since the QuorumNumerator is used
 	// at signature verification time on the receiving chain, regardless of the Warp config at the
 	// time of the message's creation
 	var warpConfig *warp.Config
@@ -212,7 +226,9 @@ func getWarpConfig(client ethclient.Client) (*warp.Config, error) {
 			warpConfig = cfg
 			continue
 		}
-		if *cfg.Timestamp() > *warpConfig.Timestamp() {
+		// Grab the latest already activated Warp config, if a new upgrade activates during the lifetime of the relayer
+		// it will become unhealthy and restart and pick up the new config on next startup.
+		if *cfg.Timestamp() > *warpConfig.Timestamp() && *cfg.Timestamp() >= latestBlock.Time() {
 			warpConfig = cfg
 		}
 	}
@@ -300,4 +316,139 @@ func (c *Config) GetTrackedSubnets() set.Set[ids.ID] {
 
 func (c *Config) GetTLSCert() *tls.Certificate {
 	return c.tlsCert
+}
+
+func (c *Config) LogSafeField() zap.Field {
+	return zap.Any("config", c.sanitizeForLogging())
+}
+
+func (c *Config) sanitizeForLogging() map[string]any {
+	return sanitizeValue(reflect.ValueOf(c), reflect.TypeOf(c)).(map[string]any)
+}
+
+// sanitizeValue recursively sanitizes any value based on struct tags
+func sanitizeValue(v reflect.Value, t reflect.Type) any {
+	// Handle nil pointers
+	if v.Kind() == reflect.Ptr && v.IsNil() {
+		return nil
+	}
+
+	// Dereference pointers
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+		t = t.Elem()
+	}
+
+	switch v.Kind() {
+	case reflect.Struct:
+		return sanitizeStruct(v, t)
+	case reflect.Slice:
+		return sanitizeSlice(v, t)
+	case reflect.Map:
+		return sanitizeMap(v, t)
+	default:
+		// For primitive types, return as-is
+		if v.CanInterface() {
+			return v.Interface()
+		}
+		return nil
+	}
+}
+
+// sanitizeStruct handles struct types recursively
+func sanitizeStruct(v reflect.Value, t reflect.Type) map[string]any {
+	result := make(map[string]any)
+
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		fieldValue := v.Field(i)
+
+		// Skip unexported fields
+		if !fieldValue.CanInterface() {
+			continue
+		}
+
+		jsonTag := getJSONTag(field)
+		if jsonTag == "-" {
+			continue
+		}
+
+		// Check if field has sensitive tag
+		if field.Tag.Get("sensitive") == "true" {
+			result[jsonTag] = "[REDACTED]"
+		} else {
+			// Recursively sanitize the field value
+			result[jsonTag] = sanitizeValue(fieldValue, field.Type)
+		}
+	}
+
+	return result
+}
+
+// sanitizeSlice handles slice types recursively
+func sanitizeSlice(v reflect.Value, t reflect.Type) []any {
+	result := make([]any, v.Len())
+	elemType := t.Elem()
+
+	for i := 0; i < v.Len(); i++ {
+		elem := v.Index(i)
+		result[i] = sanitizeValue(elem, elemType)
+	}
+
+	return result
+}
+
+// sanitizeMap handles map types
+func sanitizeMap(v reflect.Value, t reflect.Type) any {
+	// Check if this is a string map that might contain sensitive data
+	if t.Key().Kind() == reflect.String && t.Elem().Kind() == reflect.String {
+		mapResult := make(map[string]any)
+		for _, key := range v.MapKeys() {
+			keyStr := key.String()
+			if isSensitiveMapKey(keyStr) {
+				mapResult[keyStr] = "[REDACTED]"
+			} else {
+				mapResult[keyStr] = v.MapIndex(key).Interface()
+			}
+		}
+		return mapResult
+	}
+
+	// For other map types, convert to string-keyed map for JSON compatibility
+	mapResult := make(map[string]any)
+	for _, key := range v.MapKeys() {
+		// Convert key to string for JSON compatibility
+		var keyStr string
+		if key.CanInterface() {
+			keyStr = fmt.Sprintf("%v", key.Interface())
+		} else {
+			keyStr = key.String()
+		}
+
+		elemVal := sanitizeValue(v.MapIndex(key), t.Elem())
+		mapResult[keyStr] = elemVal
+	}
+
+	return mapResult
+}
+
+// isSensitiveMapKey checks if a map key might contain sensitive data
+func isSensitiveMapKey(key string) bool {
+	keyLower := strings.ToLower(key)
+	for _, sensitiveKey := range sensitiveKeys {
+		if strings.Contains(keyLower, sensitiveKey) {
+			return true
+		}
+	}
+	return false
+}
+
+func getJSONTag(field reflect.StructField) string {
+	jsonTag := field.Tag.Get("json")
+	if jsonTag == "" {
+		return field.Name
+	}
+	// Handle json tag with options like "field-name,omitempty"
+	parts := strings.Split(jsonTag, ",")
+	return parts[0]
 }

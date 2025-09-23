@@ -101,6 +101,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	logger.Info("Config", cfg.LogSafeField())
+
 	// Initialize all destination clients
 	logger.Info("Initializing destination clients")
 	destinationClients, err := vms.CreateDestinationClients(logger, cfg)
