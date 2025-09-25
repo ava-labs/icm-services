@@ -743,6 +743,95 @@ func TestInitializeTrackedSubnets(t *testing.T) {
 	require.True(t, expectedSubnets.Equals(cfg.GetTrackedSubnets()))
 }
 
+// TestMaxFeePerGasValidation tests the MaxFeePerGas validation logic
+func TestMaxFeePerGasValidation(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		maxFeePerGas         uint64
+		maxBaseFee           uint64
+		maxPriorityFeePerGas uint64
+		expectError          bool
+		errorContains        string
+	}{
+		{
+			name:                 "MaxFeePerGas not set - should pass",
+			maxFeePerGas:         0,
+			maxBaseFee:           50000000000,
+			maxPriorityFeePerGas: 2500000000,
+			expectError:          false,
+		},
+		{
+			name:                 "Valid MaxFeePerGas - should pass",
+			maxFeePerGas:         60000000000,
+			maxBaseFee:           50000000000,
+			maxPriorityFeePerGas: 2500000000,
+			expectError:          false,
+		},
+		{
+			name:                 "MaxFeePerGas equals sum - should pass",
+			maxFeePerGas:         52500000000,
+			maxBaseFee:           50000000000,
+			maxPriorityFeePerGas: 2500000000,
+			expectError:          false,
+		},
+		{
+			name:                 "MaxFeePerGas less than sum - should fail",
+			maxFeePerGas:         50000000000,
+			maxBaseFee:           50000000000,
+			maxPriorityFeePerGas: 2500000000,
+			expectError:          true,
+			errorContains:        "max-fee-per-gas (50000000000) must be at least max-base-fee (50000000000) + max-priority-fee-per-gas (2500000000) = 52500000000",
+		},
+		{
+			name:                 "MaxFeePerGas less than priority fee - should fail",
+			maxFeePerGas:         1000000000,
+			maxBaseFee:           0, // Not set
+			maxPriorityFeePerGas: 2500000000,
+			expectError:          true,
+			errorContains:        "max-fee-per-gas (1000000000) must be at least max-priority-fee-per-gas (2500000000)",
+		},
+		{
+			name:                 "MaxFeePerGas with only priority fee set - should pass",
+			maxFeePerGas:         5000000000,
+			maxBaseFee:           0, // Not set
+			maxPriorityFeePerGas: 2500000000,
+			expectError:          false,
+		},
+		{
+			name:                 "Edge case: MaxFeePerGas equals priority fee - should pass",
+			maxFeePerGas:         2500000000,
+			maxBaseFee:           0, // Not set
+			maxPriorityFeePerGas: 2500000000,
+			expectError:          false,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			destBlockchain := &DestinationBlockchain{
+				SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+				BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+				VM:           "evm",
+				RPCEndpoint: basecfg.APIConfig{
+					BaseURL: "https://subnets.avax.network/mysubnet/rpc",
+				},
+				AccountPrivateKeys:   []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+				MaxFeePerGas:         tt.maxFeePerGas,
+				MaxBaseFee:           tt.maxBaseFee,
+				MaxPriorityFeePerGas: tt.maxPriorityFeePerGas,
+			}
+
+			err := destBlockchain.Validate()
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfigSanitization(t *testing.T) {
 	testCases := []struct {
 		name           string

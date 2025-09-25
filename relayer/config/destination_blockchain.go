@@ -42,6 +42,7 @@ type DestinationBlockchain struct {
 	BlockGasLimit        uint64            `mapstructure:"block-gas-limit" json:"block-gas-limit"`
 	MaxBaseFee           uint64            `mapstructure:"max-base-fee" json:"max-base-fee"`
 	MaxPriorityFeePerGas uint64            `mapstructure:"max-priority-fee-per-gas" json:"max-priority-fee-per-gas"`
+	MaxFeePerGas         uint64            `mapstructure:"max-fee-per-gas" json:"max-fee-per-gas"`
 
 	TxInclusionTimeoutSeconds uint64 `mapstructure:"tx-inclusion-timeout-seconds" json:"tx-inclusion-timeout-seconds"`
 
@@ -138,6 +139,21 @@ func (s *DestinationBlockchain) Validate() error {
 
 	if s.TxInclusionTimeoutSeconds == 0 {
 		s.TxInclusionTimeoutSeconds = defaultTxInclusionTimeoutSeconds
+	}
+
+	// Validate MaxFeePerGas if configured
+	if s.MaxFeePerGas > 0 {
+		// Ensure MaxFeePerGas is at least as large as MaxBaseFee + MaxPriorityFeePerGas
+		// This prevents configuration that would make transactions impossible to send
+		if s.MaxBaseFee > 0 && s.MaxFeePerGas < (s.MaxBaseFee+s.MaxPriorityFeePerGas) {
+			return fmt.Errorf("max-fee-per-gas (%d) must be at least max-base-fee (%d) + max-priority-fee-per-gas (%d) = %d",
+				s.MaxFeePerGas, s.MaxBaseFee, s.MaxPriorityFeePerGas, s.MaxBaseFee+s.MaxPriorityFeePerGas)
+		}
+		// Even if MaxBaseFee is not set, ensure MaxFeePerGas is at least the priority fee
+		if s.MaxFeePerGas < s.MaxPriorityFeePerGas {
+			return fmt.Errorf("max-fee-per-gas (%d) must be at least max-priority-fee-per-gas (%d)",
+				s.MaxFeePerGas, s.MaxPriorityFeePerGas)
+		}
 	}
 
 	return nil
