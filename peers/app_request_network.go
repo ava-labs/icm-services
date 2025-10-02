@@ -27,7 +27,6 @@ import (
 	vdrs "github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
-	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/linked"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -160,7 +159,6 @@ func NewNetwork(
 		networkID,
 		manager,
 		trackedSubnets,
-		trackedSubnetsLock,
 	)
 	if err != nil {
 		logger.Error(
@@ -185,15 +183,11 @@ func NewNetwork(
 	nodeID := ids.NodeIDFromCert(parsedCert)
 	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeID))
 
-	// Set the activation time for the latest network upgrade
-	upgradeTime := upgrade.GetConfig(networkID).FortunaTime
-
 	testNetwork, err := network.NewTestNetwork(
 		logger,
 		peerNetworkRegistry,
 		testNetworkConfig,
 		handler,
-		upgradeTime,
 	)
 	if err != nil {
 		logger.Error(
