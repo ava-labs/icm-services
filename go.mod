@@ -4,10 +4,10 @@ go 1.24.7
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.13.6-0.20250929194245-362f154e9cee // branch icm-services-patch-v1.13.4
+	github.com/ava-labs/avalanchego v1.13.6-0.20250925183853-36baa0509d61 // branch icm-services-patch-v1.13.4
 	github.com/ava-labs/icm-contracts v1.0.9
-	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.6
-	github.com/ava-labs/subnet-evm v0.7.9
+	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.7
+	github.com/ava-labs/subnet-evm v0.7.10-0.20251001140350-28c4c0d4a30b
 	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
 	github.com/aws/aws-sdk-go-v2/service/kms v1.45.6
@@ -50,7 +50,6 @@ require (
 	buf.build/go/standard v0.1.0 // indirect
 	cel.dev/expr v0.24.0 // indirect
 	connectrpc.com/connect v1.18.1 // indirect
-	connectrpc.com/grpcreflect v1.3.0 // indirect
 	connectrpc.com/otelconnect v0.8.0 // indirect
 	github.com/4meepo/tagalign v1.4.2 // indirect
 	github.com/Abirdcfly/dupword v0.1.3 // indirect
