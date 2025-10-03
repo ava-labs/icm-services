@@ -19,6 +19,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/peers/mocks"
@@ -159,6 +160,7 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 				tc.requiredQuorumPercentage,
 				tc.quorumPercentageBuffer,
 				false,
+				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
 			)
 			require.Nil(t, signedMsg)
 			require.ErrorIs(t, err, errInvalidQuorumPercentage)
@@ -172,7 +174,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	require.NoError(t, err)
 	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
-	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false).Return(
+	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false, uint64(pchainapi.ProposedHeight)).Return(
 		&peers.CanonicalValidators{
 			ConnectedWeight: 0,
 			ValidatorSet: warp.CanonicalValidatorSet{
@@ -182,7 +184,8 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 		},
 		nil,
 	)
-	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false)
+	_, err = aggregator.CreateSignedMessage(
+		context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorContains(t, err, "no signatures")
 }
 
@@ -192,7 +195,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	require.NoError(t, err)
 	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
 	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
-	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false).Return(
+	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false, uint64(pchainapi.ProposedHeight)).Return(
 		&peers.CanonicalValidators{
 			ConnectedWeight: 0,
 			ValidatorSet: warp.CanonicalValidatorSet{
@@ -202,7 +205,8 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 		},
 		nil,
 	).AnyTimes()
-	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false)
+	_, err = aggregator.CreateSignedMessage(
+		context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorContains(
 		t,
 		err,
@@ -254,7 +258,9 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	)
 
 	mockNetwork.EXPECT().TrackSubnet(subnetID)
-	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), subnetID, false).Return(
+	mockNetwork.EXPECT().GetCanonicalValidators(
+		gomock.Any(), subnetID, false, uint64(pchainapi.ProposedHeight),
+	).Return(
 		connectedValidators,
 		nil,
 	)
@@ -292,7 +298,8 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		nil,
 	).Times(1)
 
-	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, subnetID, 80, 0, false)
+	_, err = aggregator.CreateSignedMessage(
+		context.Background(), logging.NoLog{}, msg, nil, subnetID, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorIs(
 		t,
 		err,
@@ -345,7 +352,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			)
 
 			mockNetwork.EXPECT().TrackSubnet(subnetID)
-			mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), subnetID, false).Return(
+			mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), subnetID, false, uint64(pchainapi.ProposedHeight)).Return(
 				connectedValidators,
 				nil,
 			)
@@ -417,6 +424,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				tc.requiredQuorumPercentage,
 				tc.quorumPercentageBuffer,
 				false,
+				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
 			)
 			require.NoError(t, err)
 
