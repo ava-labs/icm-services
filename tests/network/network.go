@@ -3,8 +3,10 @@ package network
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	goLog "log"
 	"os"
@@ -17,6 +19,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
+	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -209,6 +212,28 @@ func NewLocalNetwork(
 
 		primaryNetworkValidators = append(primaryNetworkValidators, network.Nodes...)
 	}
+
+	fmt.Println("flagVars.ActivateGranite()", flagVars.ActivateGranite())
+	upgrades := upgrade.Default
+	if flagVars.ActivateGranite() {
+		upgrades.GraniteTime = upgrade.InitiallyActiveTime
+		upgrades.GraniteEpochDuration = 4 * time.Second
+	} else {
+		upgrades.GraniteTime = upgrade.UnscheduledActivationTime
+	}
+
+	upgradeJSON, err := json.Marshal(upgrades)
+	Expect(err).Should(BeNil())
+
+	upgradeBase64 := base64.StdEncoding.EncodeToString(upgradeJSON)
+
+	defaultFlags := tmpnet.FlagsMap{
+		config.UpgradeFileContentKey: upgradeBase64,
+		// Ensure a min stake duration compatible with testing staking logic
+		// config.MinStakeDurationKey: "1s",
+	}
+	defaultFlags.SetDefaults(tmpnet.DefaultE2EFlags())
+	network.DefaultFlags = defaultFlags
 
 	tc := e2e.NewTestContext()
 	env := e2e.NewTestEnvironment(tc, flagVars, network)
