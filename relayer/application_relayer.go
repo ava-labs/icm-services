@@ -396,7 +396,7 @@ func (r *ApplicationRelayer) getPChainHeightForValidatorSet(ctx context.Context)
 		zap.Int64("epochStartTime", epoch.StartTime),
 	)
 
-	// TODO: check the grinate activation
+	// TODO: check the granite activation
 	if epoch.Number == 0 {
 		r.logger.Info("Epoch number is 0, using current validators (ProposedHeight)")
 		return pchainapi.ProposedHeight, nil

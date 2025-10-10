@@ -1,13 +1,13 @@
 module github.com/ava-labs/icm-services
 
-go 1.24.7
+go 1.24.8
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.13.6-0.20251002170113-a3e5bd20d2c3 // branch icm-services-patch-v1.13.4
+	github.com/ava-labs/avalanchego v1.13.6-0.20251007213349-63cc1a166a56 // branch icm-services-patch-v1.13.4
 	github.com/ava-labs/icm-contracts v1.0.10-0.20251003162606-579805747390
-	github.com/ava-labs/libevm v1.13.14-0.3.0.rc.6
-	github.com/ava-labs/subnet-evm v0.7.9
+	github.com/ava-labs/libevm v1.13.15-0.20251002164226-35926db4d661
+	github.com/ava-labs/subnet-evm v0.7.10-0.20251008162954-9af16ac28b2b
 	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
 	github.com/aws/aws-sdk-go-v2/service/kms v1.45.6
@@ -33,6 +33,8 @@ require (
 	google.golang.org/protobuf v1.36.9
 )
 
+require connectrpc.com/connect v1.18.1
+
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
 	4d63.com/gochecknoglobals v0.2.2 // indirect
@@ -49,7 +51,6 @@ require (
 	buf.build/go/spdx v0.2.0 // indirect
 	buf.build/go/standard v0.1.0 // indirect
 	cel.dev/expr v0.24.0 // indirect
-	connectrpc.com/connect v1.18.1 // indirect
 	connectrpc.com/grpcreflect v1.3.0 // indirect
 	connectrpc.com/otelconnect v0.8.0 // indirect
 	github.com/4meepo/tagalign v1.4.2 // indirect
@@ -76,7 +77,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
-	github.com/ava-labs/coreth v0.15.4-rc.3 // indirect
+	github.com/ava-labs/coreth v0.15.4-rc.3.0.20251002221438-a857a64c28ea // indirect
 	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.12 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.16 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.9 // indirect
