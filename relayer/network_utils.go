@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -86,7 +87,7 @@ func checkSufficientConnectedStake(
 	}
 
 	checkConns := func() error {
-		vdrs, err := network.GetCanonicalValidators(ctx, subnetID, false)
+		vdrs, err := network.GetCanonicalValidators(ctx, subnetID, false, uint64(pchainapi.ProposedHeight))
 		if err != nil {
 			logger.Error(
 				"Failed to retrieve currently connected validators",

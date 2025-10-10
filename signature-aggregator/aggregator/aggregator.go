@@ -118,13 +118,14 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 	signingSubnet ids.ID,
 	quorumPercentage uint64,
 	skipCache bool,
+	pchainHeight uint64,
 ) (*peers.CanonicalValidators, error) {
 	s.network.TrackSubnet(signingSubnet)
 
 	var vdrs *peers.CanonicalValidators
 	var err error
 	connectOp := func() error {
-		vdrs, err = s.network.GetCanonicalValidators(ctx, signingSubnet, skipCache)
+		vdrs, err = s.network.GetCanonicalValidators(ctx, signingSubnet, skipCache, pchainHeight)
 		if err != nil {
 			msg := "Failed to fetch connected canonical validators"
 			log.Error(
@@ -550,8 +551,13 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	requiredQuorumPercentage uint64,
 	quorumPercentageBuffer uint64,
 	skipCache bool,
+	pchainHeight uint64,
 ) (*avalancheWarp.Message, error) {
-	// Validate quorum percentages
+	log.Info("Creating signed message",
+		zap.Uint64("requiredQuorumPercentage", requiredQuorumPercentage),
+		zap.Uint64("quorumPercentageBuffer", quorumPercentageBuffer),
+		zap.Uint64("pchainHeight", pchainHeight),
+	)
 	if err := validateQuorumPercentages(requiredQuorumPercentage, quorumPercentageBuffer); err != nil {
 		log.Error(
 			"Invalid quorum percentages",
@@ -572,7 +578,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
-	vdrs, err := s.connectToQuorumValidators(ctx, log, signingSubnet, requiredQuorumPercentage, skipCache)
+	vdrs, err := s.connectToQuorumValidators(ctx, log, signingSubnet, requiredQuorumPercentage, skipCache, pchainHeight)
 	if err != nil {
 		log.Error(
 			"Failed to fetch quorum of connected canonical validators",

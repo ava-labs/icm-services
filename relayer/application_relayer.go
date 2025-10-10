@@ -6,12 +6,20 @@ package relayer
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"time"
 
+	"connectrpc.com/connect"
+	"github.com/ava-labs/avalanchego/api/connectclient"
+	pbproposervm "github.com/ava-labs/avalanchego/connectproto/pb/proposervm"
+	pb "github.com/ava-labs/avalanchego/connectproto/pb/proposervm/proposervmconnect"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/avalanchego/vms/proposervm"
 
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
@@ -64,7 +72,8 @@ type ApplicationRelayer struct {
 	relayerID                 database.RelayerID
 	warpConfig                config.WarpConfig
 	checkpointManager         CheckpointManager
-	sourceWarpSignatureClient *rpc.Client // nil if configured to fetch signatures via AppRequest for the source blockchain
+	sourceWarpSignatureClient *rpc.Client         // nil if configured to fetch signatures via AppRequest for the source blockchain
+	proposerClient            pb.ProposerVMClient // ProposerVM client for epoch information when Granite is activated
 	signatureAggregator       *aggregator.SignatureAggregator
 	processMessageSemaphore   chan struct{}
 }
@@ -127,6 +136,40 @@ func NewApplicationRelayer(
 		}
 	}
 
+	rpcEndpoint := destinationClient.GetRPCEndpointURL()
+	blockchainID := relayerID.DestinationBlockchainID.String()
+
+	endpoint, err := url.Parse(rpcEndpoint)
+	if err != nil {
+		logger.Error(
+			"Failed to parse rpc endpoint",
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
+
+	logger.Info("Creating ProposerVM client for destination chain",
+		zap.String("originalRpcEndpoint", rpcEndpoint),
+		zap.String("baseURL", baseURL),
+		zap.String("destinationBlockchainID", blockchainID),
+		zap.String("route", proposervm.HTTPHeaderRoute),
+	)
+
+	proposerClient := pb.NewProposerVMClient(
+		connectclient.New(),
+		baseURL,
+		connect.WithInterceptors(
+			connectclient.SetRouteHeaderInterceptor{
+				Route: []string{
+					blockchainID,
+					proposervm.HTTPHeaderRoute,
+				},
+			},
+		),
+	)
+
 	ar := ApplicationRelayer{
 		logger:                    logger,
 		metrics:                   metrics,
@@ -138,6 +181,7 @@ func NewApplicationRelayer(
 		warpConfig:                warpConfig,
 		checkpointManager:         checkpointManager,
 		sourceWarpSignatureClient: warpClient,
+		proposerClient:            proposerClient,
 		signatureAggregator:       signatureAggregator,
 		processMessageSemaphore:   processMessageSemaphore,
 	}
@@ -229,6 +273,17 @@ func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, ski
 			r.warpConfig.QuorumNumerator,
 			defaultQuorumPercentageBuffer,
 		)
+		// Determine the appropriate P-Chain height for validator set selection
+		pchainHeight, err := r.getPChainHeightForValidatorSet(ctx)
+		if err != nil {
+			r.logger.Error(
+				"Failed to determine P-Chain height for validator set",
+				zap.Error(err),
+			)
+			r.incFailedRelayMessageCount("failed to determine P-Chain height")
+			return common.Hash{}, err
+		}
+
 		signedMessage, err = r.signatureAggregator.CreateSignedMessage(
 			ctx,
 			handler.LoggerWithContext(r.logger),
@@ -238,6 +293,7 @@ func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, ski
 			r.warpConfig.QuorumNumerator,
 			quorumPercentageBuffer,
 			skipCache,
+			pchainHeight,
 		)
 		r.incFetchSignatureAppRequestCount()
 		if err != nil {
@@ -315,6 +371,38 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 
 func (r *ApplicationRelayer) RelayerID() database.RelayerID {
 	return r.relayerID
+}
+
+// getPChainHeightForValidatorSet determines the appropriate P-Chain height for validator set selection
+// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated
+func (r *ApplicationRelayer) getPChainHeightForValidatorSet(ctx context.Context) (uint64, error) {
+	response, err := r.proposerClient.GetCurrentEpoch(ctx, &connect.Request[pbproposervm.GetCurrentEpochRequest]{})
+	if err != nil {
+		r.logger.Warn("Failed to get current epoch from destination chain ProposerVM",
+			zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
+			zap.Error(err),
+		)
+		// Fallback to current validators if ProposerVM API fails
+		r.logger.Info("Falling back to current validators (ProposedHeight) due to ProposerVM API error")
+		return pchainapi.ProposedHeight, nil
+	}
+
+	epoch := response.Msg
+
+	r.logger.Info("Successfully retrieved epoch from ProposerVM",
+		zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
+		zap.Uint64("epochNumber", epoch.Number),
+		zap.Uint64("epochPChainHeight", epoch.PChainHeight),
+		zap.Int64("epochStartTime", epoch.StartTime),
+	)
+
+	// TODO: check the grinate activation
+	if epoch.Number == 0 {
+		r.logger.Info("Epoch number is 0, using current validators (ProposedHeight)")
+		return pchainapi.ProposedHeight, nil
+	}
+
+	return epoch.PChainHeight, nil
 }
 
 // createSignedMessage fetches the signed Warp message from the source chain via RPC.

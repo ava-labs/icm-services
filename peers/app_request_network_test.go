@@ -16,6 +16,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/linked"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/cache"
@@ -140,13 +141,17 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 				network:                    mockNetwork,
 				validatorClient:            mockValidatorClient,
 				metrics:                    metrics,
+				logger:                     logging.NoLog{},
 				canonicalValidatorSetCache: vdrsCache,
+				epochedValidatorSetCache:   make(map[ids.ID]*cache.LRUCache[uint64, avalancheWarp.CanonicalValidatorSet]),
+				epochedCacheLock:           sync.RWMutex{},
 			}
 			var totalWeight uint64
 			for _, vdr := range testCase.validators {
 				totalWeight += vdr.Weight
 			}
-			mockValidatorClient.EXPECT().GetCurrentCanonicalValidatorSet(gomock.Any(), subnetID).Return(
+			mockValidatorClient.EXPECT().GetCurrentCanonicalValidatorSet(
+				gomock.Any(), subnetID, uint64(pchainapi.ProposedHeight)).Return(
 				avalancheWarp.CanonicalValidatorSet{
 					Validators:  testCase.validators,
 					TotalWeight: testCase.expectedTotalWeight,
@@ -162,7 +167,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			}
 			mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfo).Times(1)
 
-			ret, err := arNetwork.GetCanonicalValidators(context.Background(), subnetID, false)
+			ret, err := arNetwork.GetCanonicalValidators(context.Background(), subnetID, false, uint64(pchainapi.ProposedHeight))
 			require.Equal(t, testCase.expectedConnectedWeight, ret.ConnectedWeight)
 			require.Equal(t, testCase.expectedTotalWeight, ret.ValidatorSet.TotalWeight)
 			require.NoError(t, err)

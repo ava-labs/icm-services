@@ -30,7 +30,8 @@ type CanonicalValidatorState interface {
 	avalancheWarp.ValidatorState
 
 	GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error)
-	GetCurrentCanonicalValidatorSet(ctx context.Context, subnetID ids.ID) (avalancheWarp.CanonicalValidatorSet, error)
+	GetCurrentCanonicalValidatorSet(
+		ctx context.Context, subnetID ids.ID, pchainHeight uint64) (avalancheWarp.CanonicalValidatorSet, error)
 	GetProposedValidators(ctx context.Context, subnetID ids.ID) (map[ids.NodeID]*validators.GetValidatorOutput, error)
 }
 
@@ -54,20 +55,22 @@ func NewCanonicalValidatorClient(logger logging.Logger, apiConfig *config.APICon
 func (v *CanonicalValidatorClient) GetCurrentCanonicalValidatorSet(
 	ctx context.Context,
 	subnetID ids.ID,
+	pchainHeight uint64,
 ) (avalancheWarp.CanonicalValidatorSet, error) {
-	// Get the current canonical validator set of the source subnet.
+	// Get the canonical validator set at the specified P-Chain height
 	ctx, cancel := context.WithTimeout(ctx, sharedUtils.DefaultRPCTimeout)
 	defer cancel()
 	canonicalSubnetValidators, err := avalancheWarp.GetCanonicalValidatorSetFromSubnetID(
 		ctx,
 		v,
-		pchainapi.ProposedHeight,
+		pchainHeight,
 		subnetID,
 	)
 	if err != nil {
 		v.logger.Error(
 			"Failed to get the canonical subnet validator set",
 			zap.String("subnetID", subnetID.String()),
+			zap.Uint64("pchainHeight", pchainHeight),
 			zap.Error(err),
 		)
 		return avalancheWarp.CanonicalValidatorSet{}, err
