@@ -162,7 +162,7 @@ func (s *JSONFileStorage) write(relayerID common.Hash, v interface{}) error {
 	}
 
 	// Write marshaled data to the temp file.
-	// If  the write fails, the original file is not affected.
+	// If the write fails, the original file is not affected.
 	// Set file permissions to 0644 so only the owner can read and write.
 	// Everyone else can only read. No one can execute the file.
 	if err := os.WriteFile(tmpPath, b, 0644); err != nil {
