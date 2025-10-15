@@ -17,4 +17,4 @@ bash < /tmp/foundry-install-script
 
 export PATH=$PATH:$HOME/.foundry/bin:$HOME/.foundry:$HOME/.cargo/bin
 
-foundryup
+foundryup --install ${FOUNDRY_VERSION}
