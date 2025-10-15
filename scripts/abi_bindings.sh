@@ -67,8 +67,10 @@ if ! [[ "$extracted_version" == "$SOLIDITY_VERSION" ]]; then
 fi
 
 # Install abigen
+# Temporarily hadrdcode the version to v0.7.8 since cmd/abigen is removed in the following versions.
+# TODO: Remove the hardcoded version and switch to using libevm abigen once the rest of the code is updated to use it. 
 echo "Building subnet-evm abigen"
-go install github.com/ava-labs/subnet-evm/cmd/abigen@${SUBNET_EVM_VERSION}
+go install github.com/ava-labs/subnet-evm/cmd/abigen@v0.7.8
 
 # Solc does not recursively expand remappings, so we must construct them manually
 remappings=$(cat $ICM_CONTRACTS_PATH/remappings.txt)
