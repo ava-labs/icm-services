@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	goLog "log"
 	"os"
@@ -60,6 +59,8 @@ type LocalNetwork struct {
 	validatorManagerSpecializations map[ids.ID]ProxyAddress
 	logger                          logging.Logger
 	deployedL1Specs                 map[string]L1Spec
+	graniteEpochDuration            time.Duration
+	graniteActivated                bool
 }
 
 const (
@@ -213,11 +214,20 @@ func NewLocalNetwork(
 		primaryNetworkValidators = append(primaryNetworkValidators, network.Nodes...)
 	}
 
-	fmt.Println("flagVars.ActivateGranite()", flagVars.ActivateGranite())
+	goLog.Println("flagVars.ActivateGranite()", flagVars.ActivateGranite())
 	upgrades := upgrade.Default
 	if flagVars.ActivateGranite() {
 		upgrades.GraniteTime = upgrade.InitiallyActiveTime
-		upgrades.GraniteEpochDuration = 4 * time.Second
+		graniteEpochDuration := 4 * time.Second
+		if envDuration := os.Getenv("GRANITE_EPOCH_DURATION"); envDuration != "" {
+			if parsed, err := time.ParseDuration(envDuration); err == nil {
+				graniteEpochDuration = parsed
+				goLog.Printf("Using Granite epoch duration from environment: %v", graniteEpochDuration)
+			} else {
+				goLog.Printf("Invalid GRANITE_EPOCH_DURATION '%s', using default: %v", envDuration, graniteEpochDuration)
+			}
+		}
+		upgrades.GraniteEpochDuration = graniteEpochDuration
 	} else {
 		upgrades.GraniteTime = upgrade.UnscheduledActivationTime
 	}
@@ -229,8 +239,6 @@ func NewLocalNetwork(
 
 	defaultFlags := tmpnet.FlagsMap{
 		config.UpgradeFileContentKey: upgradeBase64,
-		// Ensure a min stake duration compatible with testing staking logic
-		// config.MinStakeDurationKey: "1s",
 	}
 	defaultFlags.SetDefaults(tmpnet.DefaultE2EFlags())
 	network.DefaultFlags = defaultFlags
@@ -261,6 +269,8 @@ func NewLocalNetwork(
 		validatorManagerSpecializations: make(map[ids.ID]ProxyAddress),
 		logger:                          logger,
 		deployedL1Specs:                 deployedL1Specs,
+		graniteEpochDuration:            upgrades.GraniteEpochDuration,
+		graniteActivated:                flagVars.ActivateGranite(),
 	}
 
 	return localNetwork
@@ -375,8 +385,20 @@ func (n *LocalNetwork) ConvertSubnet(
 
 	l1 = n.AddSubnetValidators(tmpnetNodes, l1, true)
 
-	utils.PChainProposerVMWorkaround(pChainWallet)
-	utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
+	if n.graniteActivated {
+		graniteEpochDuration := n.graniteEpochDuration
+		epochSeconds := int(graniteEpochDuration.Seconds())
+
+		pchainWaitTime := time.Duration(epochSeconds) * time.Second
+		if pchainWaitTime < 20*time.Second {
+			pchainWaitTime = 20 * time.Second
+		}
+
+		// Wait for P-Chain to finalize and propagate transactions
+		time.Sleep(pchainWaitTime)
+
+		utils.AdvanceProposerVM(ctx, l1, senderKey, 50)
+	}
 
 	aggregator := n.GetSignatureAggregator()
 	defer aggregator.Shutdown()
