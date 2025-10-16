@@ -1,11 +1,11 @@
 module github.com/ava-labs/icm-contracts
 
-go 1.24.7
+go 1.24.8
 
 require (
-	github.com/ava-labs/avalanchego v1.13.6-0.20251007141655-7b75fa5367ba
+	github.com/ava-labs/avalanchego v1.13.6-rc.1
 	github.com/ava-labs/libevm v1.13.15-0.20251002164226-35926db4d661
-	github.com/ava-labs/subnet-evm v0.7.10-0.20251008162954-9af16ac28b2b
+	github.com/ava-labs/subnet-evm v0.7.10-0.20251013155523-47a1ce400863
 	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.2
 	github.com/pkg/errors v0.9.1
@@ -25,7 +25,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/StephenButtolph/canoto v0.17.2 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
-	github.com/ava-labs/coreth v0.15.4-rc.3.0.20251002221438-a857a64c28ea // indirect
+	github.com/ava-labs/coreth v0.15.4-rc.4 // indirect
 	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.12 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.10.0 // indirect
@@ -51,9 +51,7 @@ require (
 	github.com/dop251/goja v0.0.0-20230806174421-c933cf95e127 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/ethereum/c-kzg-4844 v1.0.0 // indirect
-	github.com/fjl/gencodec v0.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/garslo/gogen v0.0.0-20230926014519-f497ca02dd4c // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08 // indirect
 	github.com/gballet/go-verkle v0.1.1-0.20231031103413-a67434b50f46 // indirect
 	github.com/getsentry/sentry-go v0.35.0 // indirect
