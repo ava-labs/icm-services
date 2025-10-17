@@ -9,7 +9,7 @@ require (
 	github.com/ava-labs/icm-contracts v1.0.10-0.20251016202108-cabdb44d0e67
 	github.com/ava-labs/libevm v1.13.15-0.20251003195629-910e897c54c3
 	github.com/ava-labs/subnet-evm v0.7.10-0.20251013155523-47a1ce400863
-	github.com/aws/aws-sdk-go-v2 v1.39.2
+	github.com/aws/aws-sdk-go-v2 v1.39.3
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
 	github.com/aws/aws-sdk-go-v2/service/kms v1.45.6
 	github.com/bufbuild/buf v1.58.0
@@ -88,7 +88,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.29.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.6 // indirect
-	github.com/aws/smithy-go v1.23.0 // indirect
+	github.com/aws/smithy-go v1.23.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.10.0 // indirect
 	github.com/bkielbasa/cyclop v1.2.3 // indirect
