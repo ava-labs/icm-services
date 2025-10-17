@@ -11,6 +11,8 @@ import (
 	"os"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/upgrade"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
@@ -698,7 +700,9 @@ func CreateReceiveCrossChainMessageTransaction(
 	Expect(err).Should(BeNil())
 
 	teleporterMessage := ParseTeleporterMessage(signedMessage.UnsignedMessage)
+	upgradeRules := upgrade.GetConfig(constants.LocalID)
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
+		&gasUtils.UpgradeRules{UpgradeConfig: upgradeRules},
 		numSigners,
 		requiredGasLimit,
 		len(predicate.New(signedMessage.Bytes())),
