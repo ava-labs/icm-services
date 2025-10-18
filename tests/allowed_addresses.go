@@ -31,10 +31,10 @@ const numKeys = 4
 // Tests allowed source and destination address functionality.
 // First, relays messages using distinct relayer instances that all write to the same database.
 // The instances are configured to:
-// -  Deliver from any source address to any destination address
-// -  Deliver from a specific source address to any destination address
-// -  Deliver from any source address to a specific destination address
-// -  Deliver from a specific source address to a specific destination address
+// - Deliver from any source address to any destination address
+// - Deliver from a specific source address to any destination address
+// - Deliver from any source address to a specific destination address
+// - Deliver from a specific source address to a specific destination address
 // Then, checks that each relayer instance is able to properly catch up on missed messages that
 // match its particular configuration.
 func AllowedAddresses(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
