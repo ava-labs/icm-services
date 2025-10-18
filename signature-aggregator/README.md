@@ -13,6 +13,7 @@ To run the binary you must supply a config file via `./signature-aggregator --co
 Currently required configurations are a small subset of the [`icm-relayer` configuration](https://github.com/ava-labs/icm-services/tree/main/relayer#configuration).
 
 Namely:
+
 - `LogLevel`: string
 - `PChainAPI`: APIConfig
 - `InfoAPI` : APIConfig
@@ -31,6 +32,7 @@ Sample config that can be used for local testing is `signature-aggregator/sample
 ## Interface
 
 The only exposed endpoint is `/aggregate-signatures`  expecting `application/json` encoded request with the following body. Note that all the fields are optional but at least one of `message` or `justification` must be non-empty:
+
 ```json
 {
     "message": "",                // (string) hex-encoded unsigned message bytes to be signed
@@ -58,6 +60,7 @@ Unsuccessful responses will include an explanatory `application/json` encoded `e
 ```
 
 ## Sample workflow
+
 If you want to manually test a locally running service pointed to the Fuji testnet you can do so with the following steps.
 
 Note that this might fail for older messages if there has been enough validator churn, and less then the threshold weight of stake of validators have seen the message when it originated. In this case try picking a more recent message.
@@ -67,25 +70,28 @@ The basic request consists of sending just the `data` field containing the hex-e
 1. Find a valid on-chain `Receive Cross Chain Message` Transaction
    This can be done by looking at the `Teleporter` [contract tracker](https://subnets-test.avax.network/c-chain/address/0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf) on the Fuji-C
 2. Get the transaction receipt and logs for this transaction. This can be done through the explorer or via a curl to the API:
-```bash
-curl --location 'https://api.avax-test.network/ext/bc/C/rpc' \
---header 'Content-Type: application/json' \
---data '{
-    "jsonrpc": "2.0",
-    "method": "eth_getTransactionReceipt",
-    "params": [
-        "<hex_encoded_transaction>"
-    ],
-    "id": 1
-}'
-```
+
+    ```bash
+    curl --location 'https://api.avax-test.network/ext/bc/C/rpc' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "jsonrpc": "2.0",
+        "method": "eth_getTransactionReceipt",
+        "params": [
+            "<hex_encoded_transaction>"
+        ],
+        "id": 1
+    }'
+    ```
+
 3. Search these logs for the `SendWarpMessage` Log event emitted from the Warp precompile address (`0x0200000000000000000000000000000000000005`)
    The topic of the message will be `0x56600c567728a800c0aa927500f831cb451df66a7af570eb4df4dfbf4674887d` which is the output of`cast keccak "SendWarpMessage(address,bytes32,bytes)"`
 4. Use the data field of the log message found in step 2 and send it to the locally running service via curl.
-```bash
-curl --location 'http://localhost:8080/aggregate-signatures' \
---header 'Content-Type: application/json' \
---data '{
-    "message": "<hex encoded unsigned message bytes retrieved from the logs>"
-}'
-```
+
+    ```bash
+    curl --location 'http://localhost:8080/aggregate-signatures' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "message": "<hex encoded unsigned message bytes retrieved from the logs>"
+    }'
+    ```

@@ -82,7 +82,7 @@ The Fuji and Mainnet [public API nodes](https://docs.avax.network/tooling/rpc-pr
 
 ### Private Key Management
 
-- Each configured destination blockchain requires a private key to sign transactions. This key can be provided as a hex-encoded string in the configuration (see `account-private-key` in [Configuration](#configuration)) or environment variable, or stored in KMS and used to sign transactions remotely (see `kms-key-id` and `kms-aws-region` in [Configuration](#configuration)). 
+- Each configured destination blockchain requires a private key to sign transactions. This key can be provided as a hex-encoded string in the configuration (see `account-private-key` in [Configuration](#configuration)) or environment variable, or stored in KMS and used to sign transactions remotely (see `kms-key-id` and `kms-aws-region` in [Configuration](#configuration)).
 - **Each private key used by the relayer should not be used to sign transactions outside of the relayer**, as this may cause the relayer to fail to sign transactions due to nonce mismatches.
 
 ## Usage
@@ -193,7 +193,7 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
 `"tls-cert-path": string`
 
-- The path to a TLS cert file. Should only be set if a static NodeID is required for connecting to private networks. 
+- The path to a TLS cert file. Should only be set if a static NodeID is required for connecting to private networks.
 
 `"tls-key-path": string`
 
@@ -295,7 +295,9 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   - List of addresses on this source blockchain to relay Warp messages from. The sending address is defined by the message protocol. For example, it could be defined as the EOA that initiates the transaction, or the address that calls the message protocol contract. If empty, then all addresses are allowed.
 
-  `"warp-api-endpoint": APIConfig` An `APIConfig` has the following fields:
+  `"warp-api-endpoint": APIConfig`
+
+  - The RPC endpoint configuration for the Warp API, which is used to fetch Warp aggregate signatures. If omitted, then signatures are fetched via AppRequest instead.  An `APIConfig` has the following fields:
 
     `"base-url": string`
 
@@ -308,8 +310,6 @@ The relayer is configured via a JSON file, the path to which is passed in via th
     `"http-headers": map[string]string`
 
     - A map of HTTP headers to include in the requests to this API
-
-  - The RPC endpoint configuration for the Warp API, which is used to fetch Warp aggregate signatures. If omitted, then signatures are fetched via AppRequest instead.
 
 `"destination-blockchains": []DestinationBlockchains`
 
@@ -327,7 +327,9 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   - The VM type of the source blockchain.
 
-  `"rpc-endpoint": APIConfig` An `APIConfig` has the following fields:
+  `"rpc-endpoint": APIConfig`
+
+  - The RPC endpoint configuration of the destination blockchains's API node. An `APIConfig` has the following fields:
 
     `"base-url": string`
 
@@ -340,8 +342,6 @@ The relayer is configured via a JSON file, the path to which is passed in via th
     `"http-headers": map[string]string`
 
     - A map of HTTP headers to include in the requests to this API
-
-  - The RPC endpoint configuration of the destination blockchains's API node.
 
   `"account-private-key": string`
 
@@ -364,7 +364,7 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   `"kms-keys": []KMSKey`
 
-  A list of KMS Keys that may be used for signing transactions on the destination blockchain. A `KMSKey` has the following fields:
+  - A list of KMS Keys that may be used for signing transactions on the destination blockchain. A `KMSKey` has the following fields:
 
     `"key-id": string`
 
@@ -447,6 +447,7 @@ _Note:_ Given these semantics for computing the starting block height, it's poss
 
 #### `/relay`
 - Used to manually relay a Warp message. The body of the request must contain the following JSON:
+
 ```json
 {
  "blockchain-id": "<cb58-encoded or '0x' prefixed hex-encoded of blockchain ID>",
@@ -454,7 +455,9 @@ _Note:_ Given these semantics for computing the starting block height, it's poss
  "block-num": "<Block number that the message was sent in>"
 }
 ```
+
 - If successful, the endpoint will return the following JSON:
+
 ```json
 {
  "transaction-hash": "<Transaction hash that includes the delivered warp message>"
@@ -462,14 +465,18 @@ _Note:_ Given these semantics for computing the starting block height, it's poss
 ```
 
 #### `/relay/message`
+
 - Used to manually relay a warp message. The body of the request must contain the following JSON:
+
 ```json
 {
  "unsigned-message-bytes": "<Hex encoded byte array containing the unsigned warp message>",
  "source-address": "<Hex encoding of address that sent the warp message>"
 }
 ```
+
 - If successful, the endpoint will return the following JSON:
+
 ```json
 {
  "transaction-hash": "<Transaction hash that includes the delivered Warp message>",
@@ -477,7 +484,9 @@ _Note:_ Given these semantics for computing the starting block height, it's poss
 ```
 
 #### `/health`
+
 - Takes no arguments. Returns a `200` status code if all Application Relayers are healthy. Returns a `503` status if any of the Application Relayers have experienced an unrecoverable error. Here is an example return body:
+
 ```json
 {
   "status": "down",
