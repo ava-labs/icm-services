@@ -108,10 +108,10 @@ export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
 
 ICM_SERVICES_BUILD_PATH=$BASEDIR/icm-services
 
-# cd $ICM_CONTRACTS_PATH
-# # Install signature-aggregator binary
-# BASEDIR=$BASEDIR ICM_SERVICES_BUILD_PATH=$ICM_SERVICES_BUILD_PATH "${ICM_CONTRACTS_PATH}/scripts/install_sig_agg_release.sh"
-# echo "Installed signature-aggregator from icm-services release ${ICM_SERVICES_VERSION}"
+cd $ICM_CONTRACTS_PATH
+# Install signature-aggregator binary
+BASEDIR=$BASEDIR ICM_SERVICES_BUILD_PATH=$ICM_SERVICES_BUILD_PATH "${ICM_CONTRACTS_PATH}/scripts/install_sig_agg_release.sh"
+echo "Installed signature-aggregator from icm-services release ${ICM_SERVICES_VERSION}"
 
 cd $ICM_CONTRACTS_PATH
 if command -v forge &> /dev/null; then

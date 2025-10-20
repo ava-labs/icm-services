@@ -119,11 +119,6 @@ func newTmpnetNetwork(
 		l1s...,
 	)
 
-	network.PrimarySubnetConfig = utils.WarpEnabledChainConfig
-	network.PrimaryChainConfigs = map[string]tmpnet.ConfigMap{
-		utils.CChainPathSpecifier: utils.WarpEnabledChainConfig,
-	}
-
 	Expect(network).ShouldNot(BeNil())
 
 	// Specify only a subset of the nodes to be bootstrapped
