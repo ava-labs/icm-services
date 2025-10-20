@@ -119,6 +119,11 @@ func newTmpnetNetwork(
 		l1s...,
 	)
 
+	network.PrimarySubnetConfig = utils.WarpEnabledChainConfig
+	network.PrimaryChainConfigs = map[string]tmpnet.ConfigMap{
+		utils.CChainPathSpecifier: utils.WarpEnabledChainConfig,
+	}
+
 	Expect(network).ShouldNot(BeNil())
 
 	// Specify only a subset of the nodes to be bootstrapped
@@ -603,6 +608,7 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 			)
 		}
 		if chainIDStr == utils.CChainPathSpecifier {
+			n.Network.PrimarySubnetConfig = cfg
 			n.Network.PrimaryChainConfigs[utils.CChainPathSpecifier] = cfg
 			continue
 		}
@@ -610,7 +616,6 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 		for _, l1 := range n.Network.Subnets {
 			for _, chain := range l1.Chains {
 				if chain.ChainID.String() == chainIDStr {
-					n.Network.PrimarySubnetConfig = cfg
 					chain.Config = chainConfig
 				}
 			}

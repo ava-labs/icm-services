@@ -46,7 +46,7 @@ func CalculateReceiveMessageGasLimit(
 	numSigners int,
 	executionRequiredGasLimit *big.Int,
 	numPredicateChunks int,
-	teleporterMessageSize int,
+	numTeleporterMessageChunks int,
 	teleporterReceiptsCount int,
 ) (uint64, error) {
 	if !executionRequiredGasLimit.IsUint64() {
@@ -62,7 +62,7 @@ func CalculateReceiveMessageGasLimit(
 		uint64(numPredicateChunks) * gasConfig.PerWarpMessageChunk * 2,
 		// Take into the variable gas cost for decoding the Teleporter message
 		// and marking the receipts as received.
-		uint64(teleporterMessageSize) * DecodeMessageGasCostPerByte,
+		uint64(numTeleporterMessageChunks) * gasConfig.PerWarpMessageChunk,
 		uint64(teleporterReceiptsCount) * MarkMessageReceiptGasCost,
 		uint64(numSigners) * gasConfig.PerWarpSigner,
 		gasConfig.VerifyPredicateBase,
