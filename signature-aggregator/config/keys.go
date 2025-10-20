@@ -17,4 +17,5 @@ const (
 	APIPortKey            = "api-port"
 	MetricsPortKey        = "metrics-port"
 	SignatureCacheSizeKey = "signature-cache-size"
+	MaxPChainLookbackKey  = "max-p-chain-lookback"
 )

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -26,27 +27,28 @@ const retryPeriodSeconds = 5
 // Sufficient stake is determined by the Warp quora of the configured supported destinations,
 // or if the subnet supports all destinations, by the quora of all configured destinations.
 func InitializeConnectionsAndCheckStake(
+	ctx context.Context,
 	logger logging.Logger,
 	network peers.AppRequestNetwork,
 	cfg *config.Config,
 ) error {
 	for _, subnet := range cfg.GetTrackedSubnets().List() {
-		network.TrackSubnet(subnet)
+		network.TrackSubnet(ctx, subnet)
 	}
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
+	cctx, cancel := context.WithTimeout(
+		ctx,
 		time.Duration(cfg.InitialConnectionTimeoutSeconds)*time.Second,
 	)
 	defer cancel()
 
-	eg, ctx := errgroup.WithContext(ctx)
+	eg, ectx := errgroup.WithContext(cctx)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		eg.Go(func() error {
 			logger.Info("Checking sufficient stake for source blockchain",
 				zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
 				zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
 			)
-			return checkSufficientConnectedStake(ctx, logger, network, cfg, sourceBlockchain)
+			return checkSufficientConnectedStake(ectx, logger, network, cfg, sourceBlockchain)
 		})
 	}
 	return eg.Wait()
@@ -86,7 +88,7 @@ func checkSufficientConnectedStake(
 	}
 
 	checkConns := func() error {
-		vdrs, err := network.GetCanonicalValidators(ctx, subnetID, false)
+		vdrs, err := network.GetCanonicalValidators(ctx, subnetID, false, uint64(pchainapi.ProposedHeight))
 		if err != nil {
 			logger.Error(
 				"Failed to retrieve currently connected validators",

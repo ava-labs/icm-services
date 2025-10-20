@@ -16,8 +16,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/linked"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/cache"
 	"github.com/ava-labs/icm-services/peers/avago_mocks"
 	validator_mocks "github.com/ava-labs/icm-services/peers/validators/mocks"
@@ -32,7 +31,7 @@ func TestCalculateConnectedWeight(t *testing.T) {
 	vdr1 := makeValidator(t, 10, 1)
 	vdr2 := makeValidator(t, 20, 1)
 	vdr3 := makeValidator(t, 30, 2)
-	vdrs := []*warp.Validator{&vdr1, &vdr2, &vdr3}
+	vdrs := []*snowVdrs.Warp{&vdr1, &vdr2, &vdr3}
 	nodeValidatorIndexMap := map[ids.NodeID]int{
 		vdr1.NodeIDs[0]: 0,
 		vdr2.NodeIDs[0]: 1,
@@ -73,21 +72,21 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 
 	testCases := []struct {
 		name                    string
-		validators              []*warp.Validator
+		validators              []*snowVdrs.Warp
 		connectedNodes          []ids.NodeID
 		expectedConnectedWeight uint64
 		expectedTotalWeight     uint64
 	}{
 		{
 			name:                    "no connected nodes, one validator",
-			validators:              []*warp.Validator{&validator1_1},
+			validators:              []*snowVdrs.Warp{&validator1_1},
 			connectedNodes:          []ids.NodeID{},
 			expectedConnectedWeight: 0,
 			expectedTotalWeight:     1,
 		},
 		{
 			name:       "all validators, missing one nodeID",
-			validators: []*warp.Validator{&validator1_1, &validator2_1, &validator3_2},
+			validators: []*snowVdrs.Warp{&validator1_1, &validator2_1, &validator3_2},
 			connectedNodes: []ids.NodeID{
 				validator1_1.NodeIDs[0],
 				validator2_1.NodeIDs[0],
@@ -99,7 +98,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 		},
 		{
 			name:       "fully connected",
-			validators: []*warp.Validator{&validator1_1, &validator2_1, &validator3_2},
+			validators: []*snowVdrs.Warp{&validator1_1, &validator2_1, &validator3_2},
 			connectedNodes: []ids.NodeID{
 				validator1_1.NodeIDs[0],
 				validator2_1.NodeIDs[0],
@@ -111,7 +110,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 		},
 		{
 			name:       "missing conn to double node validator",
-			validators: []*warp.Validator{&validator1_1, &validator2_1, &validator3_2},
+			validators: []*snowVdrs.Warp{&validator1_1, &validator2_1, &validator3_2},
 			connectedNodes: []ids.NodeID{
 				validator1_1.NodeIDs[0],
 				validator2_1.NodeIDs[0],
@@ -121,7 +120,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 		},
 		{
 			name:       "irrelevant nodes",
-			validators: []*warp.Validator{&validator1_1, &validator2_1},
+			validators: []*snowVdrs.Warp{&validator1_1, &validator2_1},
 			connectedNodes: []ids.NodeID{
 				validator1_1.NodeIDs[0],
 				validator2_1.NodeIDs[0],
@@ -135,19 +134,22 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			mockNetwork := avago_mocks.NewMockNetwork(ctrl)
 			mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
-			vdrsCache := cache.NewTTLCache[ids.ID, avalancheWarp.CanonicalValidatorSet](canonicalValidatorSetCacheTTL)
+			vdrsCache := cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL)
 			arNetwork := appRequestNetwork{
 				network:                    mockNetwork,
 				validatorClient:            mockValidatorClient,
 				metrics:                    metrics,
+				logger:                     logging.NoLog{},
 				canonicalValidatorSetCache: vdrsCache,
+				epochedValidatorSetCache:   cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
 			}
 			var totalWeight uint64
 			for _, vdr := range testCase.validators {
 				totalWeight += vdr.Weight
 			}
-			mockValidatorClient.EXPECT().GetCurrentCanonicalValidatorSet(gomock.Any(), subnetID).Return(
-				avalancheWarp.CanonicalValidatorSet{
+			mockValidatorClient.EXPECT().GetProposedValidators(
+				gomock.Any(), subnetID).Return(
+				snowVdrs.WarpSet{
 					Validators:  testCase.validators,
 					TotalWeight: testCase.expectedTotalWeight,
 				},
@@ -162,7 +164,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			}
 			mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfo).Times(1)
 
-			ret, err := arNetwork.GetCanonicalValidators(context.Background(), subnetID, false)
+			ret, err := arNetwork.GetCanonicalValidators(context.Background(), subnetID, false, uint64(pchainapi.ProposedHeight))
 			require.Equal(t, testCase.expectedConnectedWeight, ret.ConnectedWeight)
 			require.Equal(t, testCase.expectedTotalWeight, ret.ValidatorSet.TotalWeight)
 			require.NoError(t, err)
@@ -186,9 +188,11 @@ func TestTrackSubnets(t *testing.T) {
 	}
 	require.Zero(t, arNetwork.trackedSubnets.Len())
 	require.Zero(t, arNetwork.lruSubnets.Len())
-	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	mockValidatorClient.EXPECT().GetProposedValidators(
+		gomock.Any(), gomock.Any(),
+	).Return(snowVdrs.WarpSet{}, nil).AnyTimes()
 	for range maxNumSubnets {
-		arNetwork.TrackSubnet(ids.GenerateTestID())
+		arNetwork.TrackSubnet(t.Context(), ids.GenerateTestID())
 	}
 	require.Equal(t, arNetwork.trackedSubnets.Len(), arNetwork.lruSubnets.Len())
 	require.Equal(t, arNetwork.trackedSubnets.Len(), maxNumSubnets)
@@ -197,7 +201,8 @@ func TestTrackSubnets(t *testing.T) {
 	newSubnetID := ids.GenerateTestID()
 	oldestSubnetID, _, ok := arNetwork.lruSubnets.Oldest()
 	require.True(t, ok)
-	arNetwork.TrackSubnet(newSubnetID)
+
+	arNetwork.TrackSubnet(t.Context(), newSubnetID)
 	require.Equal(t, maxNumSubnets, arNetwork.trackedSubnets.Len())
 	require.Equal(t, maxNumSubnets, arNetwork.lruSubnets.Len())
 	require.False(t, arNetwork.trackedSubnets.Contains(oldestSubnetID))
@@ -216,7 +221,7 @@ func TestTrackSubnets(t *testing.T) {
 	require.False(t, it.Next())
 }
 
-func makeValidator(t *testing.T, weight uint64, numNodeIDs int) warp.Validator {
+func makeValidator(t *testing.T, weight uint64, numNodeIDs int) snowVdrs.Warp {
 	localSigner, err := localsigner.New()
 	require.NoError(t, err)
 	pk := localSigner.PublicKey()
@@ -225,7 +230,7 @@ func makeValidator(t *testing.T, weight uint64, numNodeIDs int) warp.Validator {
 	for i := 0; i < numNodeIDs; i++ {
 		nodeIDs[i] = ids.GenerateTestNodeID()
 	}
-	return warp.Validator{
+	return snowVdrs.Warp{
 		PublicKey:      pk,
 		PublicKeyBytes: bls.PublicKeyToUncompressedBytes(pk),
 		Weight:         weight,

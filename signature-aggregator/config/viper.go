@@ -58,6 +58,10 @@ func SetDefaultConfigValues(v *viper.Viper) {
 		SignatureCacheSizeKey,
 		DefaultSignatureCacheSize,
 	)
+	v.SetDefault(
+		MaxPChainLookbackKey,
+		DefaultMaxPChainLookback,
+	)
 }
 
 // BuildConfig constructs the signature aggregator config using Viper.

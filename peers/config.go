@@ -18,4 +18,5 @@ type Config interface {
 	GetAllowPrivateIPs() bool
 	GetTrackedSubnets() set.Set[ids.ID]
 	GetTLSCert() *tls.Certificate
+	GetMaxPChainLookback() int64
 }

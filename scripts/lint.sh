@@ -13,6 +13,6 @@ RELAYER_PATH=$(
 
 source $RELAYER_PATH/scripts/versions.sh
 
-go run github.com/golangci/golangci-lint/cmd/golangci-lint run --config=$RELAYER_PATH/.golangci.yml --build-tags=testing ./... --timeout 5m
+go run github.com/golangci/golangci-lint/cmd/golangci-lint run --config=$RELAYER_PATH/.golangci.yml --build-tags=test ./... --timeout 5m
 
 (cd proto && go run github.com/bufbuild/buf/cmd/buf lint)

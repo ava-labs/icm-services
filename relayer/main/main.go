@@ -36,6 +36,7 @@ import (
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -53,9 +54,15 @@ const (
 	peerNetworkMetricsPrefix    = "peers"
 	msgCreatorMetricsPrefix     = "msgcreator"
 	timeoutManagerMetricsPrefix = "timeoutmanager"
+
+	// The size of the FIFO cache for epoched validator sets
+	// The Cache will store validator sets for the most recent N P-Chain heights.
+	validatorSetCacheSize = 100
 )
 
 func main() {
+	// Register all libevm extras in order to be able to get pre-compile information from the genesis block
+	evm.RegisterAllLibEVMExtras()
 	cfg := buildConfig()
 
 	// Create parent context with cancel function
@@ -188,6 +195,7 @@ func main() {
 		cfg.GetTrackedSubnets(),
 		manuallyTrackedPeers,
 		&cfg,
+		validatorSetCacheSize,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create app request network", zap.Error(err))
@@ -195,7 +203,7 @@ func main() {
 	}
 	defer network.Shutdown()
 
-	err = relayer.InitializeConnectionsAndCheckStake(logger, network, &cfg)
+	err = relayer.InitializeConnectionsAndCheckStake(ctx, logger, network, &cfg)
 	if err != nil {
 		logger.Fatal("Failed to initialize connections and check stake", zap.Error(err))
 		os.Exit(1)

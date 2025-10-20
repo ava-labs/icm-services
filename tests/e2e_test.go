@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,7 +40,15 @@ var (
 
 	decider  *exec.Cmd
 	cancelFn context.CancelFunc
+
+	e2eFlags *e2e.FlagVars
 )
+
+func TestMain(m *testing.M) {
+	e2eFlags = e2e.RegisterFlags()
+	flag.Parse()
+	os.Exit(m.Run())
+}
 
 func TestE2E(t *testing.T) {
 	// Handle SIGINT and SIGTERM signals.
@@ -87,6 +96,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	Expect(err).Should(BeNil())
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
+	fmt.Println("granite activated", e2eFlags.ActivateGranite())
 	localNetworkInstance = network.NewLocalNetwork(
 		networkStartCtx,
 		"icm-off-chain-services-e2e-test",
@@ -113,7 +123,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		},
 		4,
 		4,
-		e2e.RegisterFlags(),
+		e2eFlags,
 	)
 	teleporterInfo = teleporterTestUtils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 
@@ -213,6 +223,9 @@ var _ = ginkgo.Describe("[ICM Relayer Integration Tests", func() {
 	})
 	ginkgo.It("Signature Aggregator", func() {
 		SignatureAggregatorAPI(localNetworkInstance, teleporterInfo)
+	})
+	ginkgo.It("Signature Aggregator Epoch Validators", func() {
+		SignatureAggregatorEpochAPI(localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Validators Only Network", func() {
 		ValidatorsOnlyNetwork(localNetworkInstance, teleporterInfo)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/types"
@@ -43,6 +44,9 @@ type AggregateSignatureRequest struct {
 	// a large percentage of the Subnet weight are less prone to become invalid due to validator weight changes.
 	// Defaults to 0 if omitted.
 	QuorumPercentageBuffer uint64 `json:"quorum-percentage-buffer"`
+	// Optional P-Chain height for validator set selection. If 0 (default), validators at proposed height will be used.
+	// If non-zero, validators at the specified P-Chain height will be used for signature aggregation.
+	PChainHeight uint64 `json:"pchain-height"`
 }
 
 type AggregateSignatureResponse struct {
@@ -195,6 +199,19 @@ func signatureAggregationAPIHandler(
 			}
 		}
 
+		// Determine P-Chain height: use ProposedHeight (latest) if not specified
+		pchainHeight := req.PChainHeight
+		if pchainHeight == 0 {
+			pchainHeight = pchainapi.ProposedHeight
+			logger.Debug("Using ProposedHeight for current validators",
+				zap.Uint64("pchainHeight", pchainHeight),
+			)
+		} else {
+			logger.Debug("Using specified P-Chain height",
+				zap.Uint64("pchainHeight", pchainHeight),
+			)
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), utils.DefaultCreateSignedMessageTimeout)
 		defer cancel()
 
@@ -207,6 +224,7 @@ func signatureAggregationAPIHandler(
 			quorumPercentage,
 			req.QuorumPercentageBuffer,
 			false,
+			pchainHeight, // ACP-181: Use determined P-Chain height for validator set selection
 		)
 		if err != nil {
 			logger.Warn("Failed to aggregate signatures", zap.Error(err))

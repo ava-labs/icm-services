@@ -18,6 +18,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
 	peerUtils "github.com/ava-labs/icm-services/peers/utils"
@@ -26,6 +27,7 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/healthcheck"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
+	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -37,9 +39,15 @@ const (
 	sigAggMetricsPrefix         = "signature-aggregator"
 	msgCreatorPrefix            = "msgcreator"
 	timeoutManagerMetricsPrefix = "timeoutmanager"
+
+	// The size of the FIFO cache for epoched validator sets
+	// The Cache will store validator sets for the most recent N P-Chain heights.
+	validatorSetCacheSize = 750
 )
 
 func main() {
+	// Register all libevm extras in order to be able to get pre-compile information from the genesis block
+	evm.RegisterAllLibEVMExtras()
 	cfg := buildConfig()
 
 	logLevel, err := logging.ToLevel(cfg.LogLevel)
@@ -119,6 +127,14 @@ func main() {
 	// Create errgroup with parent context
 	errGroup, ctx := errgroup.WithContext(parentCtx)
 
+	// Clamp the validator set cache size based on the max lookback if set. This will prevent thrashing the cache.
+	var vdrCacheSize uint64
+	if cfg.MaxPChainLookback > 0 && uint64(cfg.MaxPChainLookback) < validatorSetCacheSize {
+		vdrCacheSize = uint64(cfg.MaxPChainLookback)
+	} else {
+		vdrCacheSize = validatorSetCacheSize
+	}
+
 	network, err := peers.NewNetwork(
 		ctx,
 		networkLogger,
@@ -128,12 +144,15 @@ func main() {
 		cfg.GetTrackedSubnets(),
 		manuallyTrackedPeers,
 		&cfg,
+		vdrCacheSize,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create app request network", zap.Error(err))
 		os.Exit(1)
 	}
 	defer network.Shutdown()
+
+	go network.StartCacheValidatorSets(ctx)
 
 	metricsInstance := metrics.NewSignatureAggregatorMetrics(registries[sigAggMetricsPrefix])
 

@@ -15,6 +15,7 @@ import (
 
 	ids "github.com/ava-labs/avalanchego/ids"
 	message "github.com/ava-labs/avalanchego/message"
+	validators "github.com/ava-labs/avalanchego/snow/validators"
 	subnets "github.com/ava-labs/avalanchego/subnets"
 	set "github.com/ava-labs/avalanchego/utils/set"
 	peers "github.com/ava-labs/icm-services/peers"
@@ -45,19 +46,48 @@ func (m *MockAppRequestNetwork) EXPECT() *MockAppRequestNetworkMockRecorder {
 	return m.recorder
 }
 
-// GetCanonicalValidators mocks base method.
-func (m *MockAppRequestNetwork) GetCanonicalValidators(ctx context.Context, subnetID ids.ID, skipCache bool) (*peers.CanonicalValidators, error) {
+// BuildCanonicalValidators mocks base method.
+func (m *MockAppRequestNetwork) BuildCanonicalValidators(validatorSet validators.WarpSet) *peers.CanonicalValidators {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCanonicalValidators", ctx, subnetID, skipCache)
+	ret := m.ctrl.Call(m, "BuildCanonicalValidators", validatorSet)
+	ret0, _ := ret[0].(*peers.CanonicalValidators)
+	return ret0
+}
+
+// BuildCanonicalValidators indicates an expected call of BuildCanonicalValidators.
+func (mr *MockAppRequestNetworkMockRecorder) BuildCanonicalValidators(validatorSet any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildCanonicalValidators", reflect.TypeOf((*MockAppRequestNetwork)(nil).BuildCanonicalValidators), validatorSet)
+}
+
+// GetAllValidatorSets mocks base method.
+func (m *MockAppRequestNetwork) GetAllValidatorSets(ctx context.Context, pchainHeight uint64) (map[ids.ID]validators.WarpSet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllValidatorSets", ctx, pchainHeight)
+	ret0, _ := ret[0].(map[ids.ID]validators.WarpSet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllValidatorSets indicates an expected call of GetAllValidatorSets.
+func (mr *MockAppRequestNetworkMockRecorder) GetAllValidatorSets(ctx, pchainHeight any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllValidatorSets", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetAllValidatorSets), ctx, pchainHeight)
+}
+
+// GetCanonicalValidators mocks base method.
+func (m *MockAppRequestNetwork) GetCanonicalValidators(ctx context.Context, subnetID ids.ID, skipCache bool, pchainHeight uint64) (*peers.CanonicalValidators, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCanonicalValidators", ctx, subnetID, skipCache, pchainHeight)
 	ret0, _ := ret[0].(*peers.CanonicalValidators)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetCanonicalValidators indicates an expected call of GetCanonicalValidators.
-func (mr *MockAppRequestNetworkMockRecorder) GetCanonicalValidators(ctx, subnetID, skipCache any) *gomock.Call {
+func (mr *MockAppRequestNetworkMockRecorder) GetCanonicalValidators(ctx, subnetID, skipCache, pchainHeight any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCanonicalValidators", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetCanonicalValidators), ctx, subnetID, skipCache)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCanonicalValidators", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetCanonicalValidators), ctx, subnetID, skipCache, pchainHeight)
 }
 
 // GetSubnetID mocks base method.
@@ -73,6 +103,20 @@ func (m *MockAppRequestNetwork) GetSubnetID(ctx context.Context, blockchainID id
 func (mr *MockAppRequestNetworkMockRecorder) GetSubnetID(ctx, blockchainID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnetID", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetSubnetID), ctx, blockchainID)
+}
+
+// IsGraniteActivated mocks base method.
+func (m *MockAppRequestNetwork) IsGraniteActivated() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsGraniteActivated")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsGraniteActivated indicates an expected call of IsGraniteActivated.
+func (mr *MockAppRequestNetworkMockRecorder) IsGraniteActivated() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsGraniteActivated", reflect.TypeOf((*MockAppRequestNetwork)(nil).IsGraniteActivated))
 }
 
 // RegisterAppRequest mocks base method.
@@ -127,14 +171,26 @@ func (mr *MockAppRequestNetworkMockRecorder) Shutdown() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shutdown", reflect.TypeOf((*MockAppRequestNetwork)(nil).Shutdown))
 }
 
-// TrackSubnet mocks base method.
-func (m *MockAppRequestNetwork) TrackSubnet(subnetID ids.ID) {
+// StartCacheValidatorSets mocks base method.
+func (m *MockAppRequestNetwork) StartCacheValidatorSets(ctx context.Context) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "TrackSubnet", subnetID)
+	m.ctrl.Call(m, "StartCacheValidatorSets", ctx)
+}
+
+// StartCacheValidatorSets indicates an expected call of StartCacheValidatorSets.
+func (mr *MockAppRequestNetworkMockRecorder) StartCacheValidatorSets(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartCacheValidatorSets", reflect.TypeOf((*MockAppRequestNetwork)(nil).StartCacheValidatorSets), ctx)
+}
+
+// TrackSubnet mocks base method.
+func (m *MockAppRequestNetwork) TrackSubnet(ctx context.Context, subnetID ids.ID) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "TrackSubnet", ctx, subnetID)
 }
 
 // TrackSubnet indicates an expected call of TrackSubnet.
-func (mr *MockAppRequestNetworkMockRecorder) TrackSubnet(subnetID any) *gomock.Call {
+func (mr *MockAppRequestNetworkMockRecorder) TrackSubnet(ctx, subnetID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrackSubnet", reflect.TypeOf((*MockAppRequestNetwork)(nil).TrackSubnet), subnetID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrackSubnet", reflect.TypeOf((*MockAppRequestNetwork)(nil).TrackSubnet), ctx, subnetID)
 }

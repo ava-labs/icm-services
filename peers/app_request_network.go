@@ -22,9 +22,8 @@ import (
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network"
 	"github.com/ava-labs/avalanchego/network/peer"
-	avagoCommon "github.com/ava-labs/avalanchego/snow/engine/common"
+	"github.com/ava-labs/avalanchego/snow/engine/common"
 	snowVdrs "github.com/ava-labs/avalanchego/snow/validators"
-	vdrs "github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/upgrade"
@@ -34,16 +33,15 @@ import (
 	"github.com/ava-labs/avalanchego/utils/sampler"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
+	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/zap"
+
 	"github.com/ava-labs/icm-services/cache"
 	"github.com/ava-labs/icm-services/peers/utils"
 	"github.com/ava-labs/icm-services/peers/validators"
-	subnetWarp "github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-
 	sharedUtils "github.com/ava-labs/icm-services/utils"
-	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/zap"
 )
 
 const (
@@ -59,16 +57,24 @@ const (
 	canonicalValidatorSetCacheTTL = 2 * time.Second
 )
 
+var _ AppRequestNetwork = (*appRequestNetwork)(nil)
+
 var (
 	ErrNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
 	errTrackingTooManySubnets  = fmt.Errorf("cannot track more than %d subnets", maxNumSubnets)
 )
 
 type AppRequestNetwork interface {
-	GetCanonicalValidators(ctx context.Context, subnetID ids.ID, skipCache bool) (
-		*CanonicalValidators,
-		error,
-	)
+	GetCanonicalValidators(
+		ctx context.Context,
+		subnetID ids.ID,
+		skipCache bool,
+		pchainHeight uint64,
+	) (*CanonicalValidators, error)
+	GetAllValidatorSets(
+		ctx context.Context,
+		pchainHeight uint64,
+	) (map[ids.ID]snowVdrs.WarpSet, error)
 	GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error)
 	RegisterAppRequest(requestID ids.RequestID)
 	RegisterRequestID(
@@ -82,7 +88,10 @@ type AppRequestNetwork interface {
 		allower subnets.Allower,
 	) set.Set[ids.NodeID]
 	Shutdown()
-	TrackSubnet(subnetID ids.ID)
+	TrackSubnet(ctx context.Context, subnetID ids.ID)
+	StartCacheValidatorSets(ctx context.Context)
+	BuildCanonicalValidators(validatorSet snowVdrs.WarpSet) *CanonicalValidators
+	IsGraniteActivated() bool
 }
 
 type appRequestNetwork struct {
@@ -102,8 +111,15 @@ type appRequestNetwork struct {
 	lruSubnets         *linked.Hashmap[ids.ID, interface{}]
 	trackedSubnetsLock *sync.RWMutex
 
-	manager                    vdrs.Manager
-	canonicalValidatorSetCache *cache.TTLCache[ids.ID, avalancheWarp.CanonicalValidatorSet]
+	latestSyncedPChainHeight uint64
+	// Used by the signature aggregator to limit how far back in P-Chain history it will look
+	maxPChainLookback int64
+
+	manager                    snowVdrs.Manager
+	canonicalValidatorSetCache *cache.TTLCache[ids.ID, snowVdrs.WarpSet]
+	epochedValidatorSetCache   *cache.FIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet]
+
+	networkUpgradeConfig *upgrade.Config
 }
 
 // NewNetwork creates a P2P network client for interacting with validators
@@ -116,6 +132,7 @@ func NewNetwork(
 	trackedSubnets set.Set[ids.ID],
 	manuallyTrackedPeers []info.Peer,
 	cfg Config,
+	validatorSetsCacheSize uint64,
 ) (AppRequestNetwork, error) {
 	metrics := newAppRequestNetworkMetrics(relayerRegistry)
 
@@ -137,12 +154,17 @@ func NewNetwork(
 		)
 		return nil, err
 	}
-	networkID, err := infoAPI.GetNetworkID(context.Background())
+	networkID, err := infoAPI.GetNetworkID(ctx)
 	if err != nil {
 		logger.Error(
 			"Failed to get network ID",
 			zap.Error(err),
 		)
+		return nil, err
+	}
+
+	upgradeConfig, err := infoAPI.Upgrades(ctx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -186,8 +208,8 @@ func NewNetwork(
 	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeID))
 
 	// Set the activation time for the latest network upgrade
-	upgradeTime := upgrade.GetConfig(networkID).FortunaTime
 
+	upgradeTime := upgradeConfig.GraniteTime
 	testNetwork, err := network.NewTestNetwork(
 		logger,
 		peerNetworkRegistry,
@@ -214,7 +236,7 @@ func NewNetwork(
 
 	// Connect to a sample of the primary network validators, with connection
 	// info pulled from the info API
-	peers, err := infoAPI.Peers(context.Background(), nil)
+	peers, err := infoAPI.Peers(ctx, nil)
 	if err != nil {
 		logger.Error(
 			"Failed to get peers",
@@ -229,7 +251,13 @@ func NewNetwork(
 
 	pClient := platformvm.NewClient(cfg.GetPChainAPI().BaseURL)
 	options := utils.InitializeOptions(cfg.GetPChainAPI())
-	vdrs, err := pClient.GetCurrentValidators(context.Background(), constants.PrimaryNetworkID, nil, options...)
+
+	vdrs, err := pClient.GetCurrentValidators(
+		ctx,
+		constants.PrimaryNetworkID,
+		nil,
+		options...,
+	)
 	if err != nil {
 		logger.Error("Failed to get current validators", zap.Error(err))
 		return nil, err
@@ -273,7 +301,8 @@ func NewNetwork(
 	for _, subnetID := range trackedSubnets.List() {
 		lruSubnets.Put(subnetID, nil)
 	}
-	vdrsCache := cache.NewTTLCache[ids.ID, avalancheWarp.CanonicalValidatorSet](canonicalValidatorSetCacheTTL)
+	vdrsCache := cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL)
+	epochedVdrsCache := cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](int(validatorSetsCacheSize))
 
 	arNetwork := &appRequestNetwork{
 		network:                    testNetwork,
@@ -288,21 +317,28 @@ func NewNetwork(
 		manager:                    manager,
 		lruSubnets:                 lruSubnets,
 		canonicalValidatorSetCache: vdrsCache,
+		epochedValidatorSetCache:   epochedVdrsCache,
+		maxPChainLookback:          cfg.GetMaxPChainLookback(),
+		networkUpgradeConfig:       upgradeConfig,
 	}
 
-	go arNetwork.startUpdateValidators(ctx)
+	go arNetwork.startUpdateTrackedValidators(ctx)
 
 	return arNetwork, nil
 }
 
-// Helper to scope lock acquisition
-func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) {
+func (n *appRequestNetwork) IsGraniteActivated() bool {
+	return n.networkUpgradeConfig.IsGraniteActivated(time.Now())
+}
+
+// trackSubnet adds the subnetID to the set of tracked subnets. Returns true iff the subnet was already being tracked.
+func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) bool {
 	n.trackedSubnetsLock.Lock()
 	defer n.trackedSubnetsLock.Unlock()
 	if n.trackedSubnets.Contains(subnetID) {
 		// update the access to keep it in the LRU
 		n.lruSubnets.Put(subnetID, nil)
-		return
+		return true
 	}
 	if n.lruSubnets.Len() >= maxNumSubnets {
 		oldestSubnetID, _, _ := n.lruSubnets.Oldest()
@@ -316,35 +352,26 @@ func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) {
 	n.logger.Info("Tracking subnet", zap.Stringer("subnetID", subnetID))
 	n.lruSubnets.Put(subnetID, nil)
 	n.trackedSubnets.Add(subnetID)
+	return false
 }
 
 // TrackSubnet adds the subnet to the list of tracked subnets
 // and initiates the connections to the subnet's validators asynchronously
-func (n *appRequestNetwork) TrackSubnet(subnetID ids.ID) {
-	n.trackSubnet(subnetID)
-	n.updateValidatorSet(context.Background(), subnetID)
+func (n *appRequestNetwork) TrackSubnet(ctx context.Context, subnetID ids.ID) {
+	// Track the subnet. Update the validator set if we weren't already tracking it.
+	if !n.trackSubnet(subnetID) {
+		n.updateTrackedValidatorSet(ctx, subnetID)
+	}
 }
 
-func (n *appRequestNetwork) startUpdateValidators(ctx context.Context) {
+func (n *appRequestNetwork) startUpdateTrackedValidators(ctx context.Context) {
 	// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
 	ticker := time.NewTicker(ValidatorRefreshPeriod)
+
 	for {
 		select {
 		case <-ticker.C:
-			n.trackedSubnetsLock.RLock()
-			subnets := n.trackedSubnets.List()
-			n.trackedSubnetsLock.RUnlock()
-
-			n.logger.Debug(
-				"Fetching validators for subnets",
-				zap.Any("subnetIDs", append([]ids.ID{constants.PrimaryNetworkID}, subnets...)),
-			)
-
-			n.updateValidatorSet(ctx, constants.PrimaryNetworkID)
-			for _, subnet := range subnets {
-				n.updateValidatorSet(ctx, subnet)
-			}
-
+			n.updateTrackedValidatorSets(ctx)
 		case <-ctx.Done():
 			n.logger.Info("Stopping updating validator process...")
 			return
@@ -352,31 +379,116 @@ func (n *appRequestNetwork) startUpdateValidators(ctx context.Context) {
 	}
 }
 
-func (n *appRequestNetwork) updateValidatorSet(
+func (n *appRequestNetwork) StartCacheValidatorSets(ctx context.Context) {
+	// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
+	ticker := time.NewTicker(ValidatorRefreshPeriod)
+
+	for {
+		select {
+		case <-ticker.C:
+			n.cacheMostRecentValidatorSets(ctx)
+		case <-ctx.Done():
+			n.logger.Info("Stopping caching validator process...")
+			return
+		}
+	}
+}
+
+func (n *appRequestNetwork) cacheMostRecentValidatorSets(ctx context.Context) {
+	latestPChainHeight, err := n.validatorClient.GetLatestHeight(ctx)
+	if err != nil {
+		// This is not a critical error, just log and return
+		n.logger.Error("Failed to get P-Chain height", zap.Error(err))
+		return
+	}
+
+	if n.latestSyncedPChainHeight == 0 {
+		// First time initialization
+		n.latestSyncedPChainHeight = latestPChainHeight - 1
+		n.logger.Info("Initializing P-Chain height", zap.Uint64("height", n.latestSyncedPChainHeight))
+	}
+
+	for n.latestSyncedPChainHeight < latestPChainHeight {
+		n.latestSyncedPChainHeight++
+		_, err := n.GetAllValidatorSets(ctx, n.latestSyncedPChainHeight)
+		// If we fail to get the validator sets for this height, log and check the next height.
+		if err != nil {
+			n.logger.Error("Failed to get canonical validators",
+				zap.Uint64("height", latestPChainHeight),
+				zap.Error(err),
+			)
+			continue
+		}
+	}
+}
+
+func (n *appRequestNetwork) updateTrackedValidatorSets(ctx context.Context) {
+	cctx, cancel := context.WithTimeout(ctx, sharedUtils.DefaultRPCTimeout)
+	defer cancel()
+	allValidators, err := n.GetAllValidatorSets(cctx, pchainapi.ProposedHeight)
+	// If we fail to get the validator sets, log and return
+	if err != nil {
+		n.logger.Error("Failed to get latest validators", zap.Error(err))
+		return
+	}
+
+	n.trackedSubnetsLock.RLock()
+	subnets := append(n.trackedSubnets.List(), constants.PrimaryNetworkID)
+	n.trackedSubnetsLock.RUnlock()
+
+	// Update the validators for each tracked subnet for the most recent height
+	for _, subnetID := range subnets {
+		vdrs, ok := allValidators[subnetID]
+		if !ok {
+			n.logger.Warn("No validator set found for tracked subnet",
+				zap.Stringer("subnetID", subnetID),
+				zap.Uint64("pchainHeight", n.latestSyncedPChainHeight),
+			)
+			continue
+		}
+		// If we fail to get the validator sets for this subnet, log and continue to the next subnet
+		err := n.updatedTrackedValidators(subnetID, vdrs)
+		if err != nil {
+			n.logger.Error("Failed to update tracked validators",
+				zap.Stringer("subnetID", subnetID),
+				zap.Error(err),
+			)
+		}
+	}
+}
+
+// Update the tracked validators for a single subnet. This is used when tracking a new subnet for the first time.
+func (n *appRequestNetwork) updateTrackedValidatorSet(
 	ctx context.Context,
 	subnetID ids.ID,
 ) error {
-	n.validatorSetLock.Lock()
-	defer n.validatorSetLock.Unlock()
-
-	// Fetch the subnet validators from the P-Chain
-	getProposedValidatorsCtx, getProposedValidatorsCtxCancel := context.WithTimeout(ctx, sharedUtils.DefaultRPCTimeout)
-	defer getProposedValidatorsCtxCancel()
-	validators, err := n.validatorClient.GetProposedValidators(getProposedValidatorsCtx, subnetID)
+	cctx, cancel := context.WithTimeout(ctx, sharedUtils.DefaultRPCTimeout)
+	defer cancel()
+	vdrs, err := n.validatorClient.GetProposedValidators(cctx, subnetID)
 	if err != nil {
 		return err
 	}
 
-	validatorsMap := make(map[ids.NodeID]*vdrs.GetValidatorOutput)
-	for _, vdr := range validators {
-		validatorsMap[vdr.NodeID] = vdr
-	}
+	return n.updatedTrackedValidators(subnetID, vdrs)
+}
+
+func (n *appRequestNetwork) updatedTrackedValidators(
+	subnetID ids.ID,
+	vdrs snowVdrs.WarpSet,
+) error {
+	n.validatorSetLock.Lock()
+	defer n.validatorSetLock.Unlock()
+
+	nodeIDs := validators.NodeIDs(vdrs)
 
 	// Remove any elements from the manager that are not in the new validator set
 	currentVdrs := n.manager.GetValidatorIDs(subnetID)
 	for _, nodeID := range currentVdrs {
-		if _, ok := validatorsMap[nodeID]; !ok {
-			n.logger.Debug("Removing validator", zap.Stringer("nodeID", nodeID), zap.Stringer("subnetID", subnetID))
+		if !nodeIDs.Contains(nodeID) {
+			n.logger.Debug("Removing validator",
+				zap.Stringer("nodeID", nodeID),
+				zap.Stringer("subnetID", subnetID),
+			)
 			weight := n.manager.GetWeight(subnetID, nodeID)
 			if err := n.manager.RemoveWeight(subnetID, nodeID, weight); err != nil {
 				return err
@@ -385,17 +497,22 @@ func (n *appRequestNetwork) updateValidatorSet(
 	}
 
 	// Add any elements from the new validator set that are not in the manager
-	for _, vdr := range validators {
-		if _, ok := n.manager.GetValidator(subnetID, vdr.NodeID); !ok {
-			n.logger.Debug("Adding validator", zap.Stringer("nodeID", vdr.NodeID), zap.Stringer("subnetID", subnetID))
-			if err := n.manager.AddStaker(
-				subnetID,
-				vdr.NodeID,
-				vdr.PublicKey,
-				ids.Empty,
-				vdr.Weight,
-			); err != nil {
-				return err
+	for _, vdr := range vdrs.Validators {
+		for _, nodeID := range vdr.NodeIDs {
+			if _, ok := n.manager.GetValidator(subnetID, nodeID); !ok {
+				n.logger.Debug("Adding validator",
+					zap.Stringer("nodeID", nodeID),
+					zap.Stringer("subnetID", subnetID),
+				)
+				if err := n.manager.AddStaker(
+					subnetID,
+					nodeID,
+					vdr.PublicKey,
+					ids.Empty,
+					vdr.Weight,
+				); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -414,43 +531,113 @@ type CanonicalValidators struct {
 	ConnectedNodes  set.Set[ids.NodeID]
 	// ValidatorSet is the full canonical validator set for the subnet
 	// and not only the connected nodes.
-	ValidatorSet          avalancheWarp.CanonicalValidatorSet
+	ValidatorSet          snowVdrs.WarpSet
 	NodeValidatorIndexMap map[ids.NodeID]int
 }
 
 // Returns the Warp Validator and its index in the canonical Validator ordering for a given nodeID
-func (c *CanonicalValidators) GetValidator(nodeID ids.NodeID) (*warp.Validator, int) {
+func (c *CanonicalValidators) GetValidator(nodeID ids.NodeID) (*snowVdrs.Warp, int) {
 	return c.ValidatorSet.Validators[c.NodeValidatorIndexMap[nodeID]], c.NodeValidatorIndexMap[nodeID]
 }
 
+func (n *appRequestNetwork) getValidatorSetGranite(
+	ctx context.Context,
+	subnetID ids.ID,
+	pchainHeight uint64,
+) (snowVdrs.WarpSet, error) {
+	allValidators, err := n.GetAllValidatorSets(ctx, pchainHeight)
+	if err != nil {
+		return snowVdrs.WarpSet{}, fmt.Errorf("failed to get all validators at P-Chain height %d: %w", pchainHeight, err)
+	}
+
+	validatorSet, ok := allValidators[subnetID]
+	if !ok {
+		return snowVdrs.WarpSet{}, fmt.Errorf("no validators for subnet %s at P-Chain height %d", subnetID, pchainHeight)
+	}
+	return validatorSet, nil
+}
+
+func (n *appRequestNetwork) GetAllValidatorSets(
+	ctx context.Context,
+	pchainHeight uint64,
+) (map[ids.ID]snowVdrs.WarpSet, error) {
+	// If we're getting the proposed height, bypass the cache and get the latest data
+	// We can't cache this call because we don't know the actual P-Chain height being returned.
+	if pchainHeight == pchainapi.ProposedHeight {
+		return n.validatorClient.GetAllValidatorSets(ctx, pchainHeight)
+	}
+
+	// Use FIFO cache for epoched validators (specific heights) - immutable historical data
+	// FIFO cache key is pchainHeight, fetch function uses the passed height
+	fetchVdrsFunc := func(height uint64) (map[ids.ID]snowVdrs.WarpSet, error) {
+		if n.maxPChainLookback >= 0 && int64(height) < int64(n.latestSyncedPChainHeight)-n.maxPChainLookback {
+			return nil, fmt.Errorf("requested P-Chain height %d is beyond the max lookback of %d from latest height %d",
+				height, n.maxPChainLookback, n.latestSyncedPChainHeight,
+			)
+		}
+
+		n.logger.Debug("Fetching all canonical validator sets at P-Chain height", zap.Uint64("pchainHeight", height))
+		startPChainAPICall := time.Now()
+		validatorSet, err := n.validatorClient.GetAllValidatorSets(ctx, height)
+		n.setPChainAPICallLatencyMS(time.Since(startPChainAPICall).Milliseconds())
+		return validatorSet, err
+	}
+	return n.epochedValidatorSetCache.Get(pchainHeight, fetchVdrsFunc)
+}
+
 // GetCanonicalValidators returns the validator information in canonical ordering for the given subnet
-// at the time of the call, as well as the total weight of the validators that this network is connected to
+// at the specified P-Chain height, as well as the total weight of the validators that this network is connected to
+// The caller determines the appropriate P-Chain height (ProposedHeight for current, specific height for epoched)
 func (n *appRequestNetwork) GetCanonicalValidators(
 	ctx context.Context,
 	subnetID ids.ID,
 	skipCache bool,
+	pchainHeight uint64,
 ) (*CanonicalValidators, error) {
-	// Get the subnet's current canonical validator set
-	fetchVdrsFunc := func(subnetID ids.ID) (avalancheWarp.CanonicalValidatorSet, error) {
-		startPChainAPICall := time.Now()
-		validatorSet, err := n.validatorClient.GetCurrentCanonicalValidatorSet(ctx, subnetID)
-		n.setPChainAPICallLatencyMS(float64(time.Since(startPChainAPICall).Milliseconds()))
-		return validatorSet, err
+	n.logger.Debug("Getting validator set at P-Chain height",
+		zap.Stringer("subnetID", subnetID),
+		zap.Uint64("pchainHeight", pchainHeight),
+		zap.Bool("isProposedHeight", pchainHeight == pchainapi.ProposedHeight),
+	)
+
+	var validatorSet snowVdrs.WarpSet
+	var err error
+
+	if pchainHeight == pchainapi.ProposedHeight {
+		// Get the subnet's current canonical validator set
+		fetchVdrsFunc := func(subnetID ids.ID) (snowVdrs.WarpSet, error) {
+			startPChainAPICall := time.Now()
+			validatorSet, err := n.validatorClient.GetProposedValidators(ctx, subnetID)
+			n.setPChainAPICallLatencyMS(time.Since(startPChainAPICall).Milliseconds())
+			if err != nil {
+				return snowVdrs.WarpSet{}, err
+			}
+			return validatorSet, nil
+		}
+		validatorSet, err = n.canonicalValidatorSetCache.Get(subnetID, fetchVdrsFunc, skipCache)
+	} else {
+		validatorSet, err = n.getValidatorSetGranite(ctx, subnetID, pchainHeight)
 	}
-	validatorSet, err := n.canonicalValidatorSetCache.Get(subnetID, fetchVdrsFunc, skipCache)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get validator set at P-Chain height %d: %w", pchainHeight, err)
 	}
 
+	return n.BuildCanonicalValidators(validatorSet), nil
+}
+
+// BuildCanonicalValidators builds the CanonicalValidators struct from a validator set
+func (n *appRequestNetwork) BuildCanonicalValidators(
+	validatorSet snowVdrs.WarpSet,
+) *CanonicalValidators {
 	// We make queries to node IDs, not unique validators as represented by a BLS pubkey, so we need this map to track
 	// responses from nodes and populate the signatureMap with the corresponding validator signature
 	// This maps node IDs to the index in the canonical validator set
 	nodeValidatorIndexMap := make(map[ids.NodeID]int)
-	nodeIDs := set.NewSet[ids.NodeID](len(nodeValidatorIndexMap))
+	nodeIDs := set.NewSet[ids.NodeID](len(validatorSet.Validators))
 	for i, vdr := range validatorSet.Validators {
-		for _, node := range vdr.NodeIDs {
-			nodeValidatorIndexMap[node] = i
-			nodeIDs.Add(node)
+		for _, nodeID := range vdr.NodeIDs {
+			nodeValidatorIndexMap[nodeID] = i
+			nodeIDs.Add(nodeID)
 		}
 	}
 
@@ -463,14 +650,18 @@ func (n *appRequestNetwork) GetCanonicalValidators(
 	}
 
 	// Calculate the total weight of connected validators.
-	connectedWeight := calculateConnectedWeight(validatorSet.Validators, nodeValidatorIndexMap, connectedPeers)
+	connectedWeight := calculateConnectedWeight(
+		validatorSet.Validators,
+		nodeValidatorIndexMap,
+		connectedPeers,
+	)
 
 	return &CanonicalValidators{
 		ConnectedWeight:       connectedWeight,
 		ConnectedNodes:        connectedPeers,
 		ValidatorSet:          validatorSet,
 		NodeValidatorIndexMap: nodeValidatorIndexMap,
-	}, nil
+	}
 }
 
 func (n *appRequestNetwork) Send(
@@ -479,18 +670,20 @@ func (n *appRequestNetwork) Send(
 	subnetID ids.ID,
 	allower subnets.Allower,
 ) set.Set[ids.NodeID] {
-	return n.network.Send(msg, avagoCommon.SendConfig{NodeIDs: nodeIDs}, subnetID, allower)
+	return n.network.Send(msg, common.SendConfig{NodeIDs: nodeIDs}, subnetID, allower)
 }
 
 func (n *appRequestNetwork) RegisterAppRequest(requestID ids.RequestID) {
 	n.handler.RegisterAppRequest(requestID)
 }
+
 func (n *appRequestNetwork) RegisterRequestID(
 	requestID uint32,
 	requestedNodes set.Set[ids.NodeID],
 ) chan message.InboundMessage {
 	return n.handler.RegisterRequestID(requestID, requestedNodes)
 }
+
 func (n *appRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
 	return n.validatorClient.GetSubnetID(ctx, blockchainID)
 }
@@ -499,24 +692,33 @@ func (n *appRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID
 // Metrics
 //
 
-func (n *appRequestNetwork) setPChainAPICallLatencyMS(latency float64) {
-	n.metrics.pChainAPICallLatencyMS.Observe(latency)
+func (n *appRequestNetwork) setPChainAPICallLatencyMS(latency int64) {
+	n.metrics.pChainAPICallLatencyMS.Observe(float64(latency))
 }
 
 // Non-receiver util functions
 
 func GetNetworkHealthFunc(network AppRequestNetwork, subnetIDs []ids.ID) func(context.Context) error {
 	return func(ctx context.Context) error {
+		allValidatorSets, err := network.GetAllValidatorSets(
+			ctx,
+			pchainapi.ProposedHeight,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to get all validator sets: %w", err)
+		}
+
 		for _, subnetID := range subnetIDs {
-			vdrs, err := network.GetCanonicalValidators(ctx, subnetID, false)
-			if err != nil {
-				return fmt.Errorf(
-					"failed to get connected validators: %s, %w", subnetID, err)
+			vdrs, ok := allValidatorSets[subnetID]
+			if !ok {
+				return fmt.Errorf("no validators for subnet %s", subnetID)
 			}
+			canonicalSet := network.BuildCanonicalValidators(vdrs)
+
 			if !sharedUtils.CheckStakeWeightExceedsThreshold(
-				big.NewInt(0).SetUint64(vdrs.ConnectedWeight),
-				vdrs.ValidatorSet.TotalWeight,
-				subnetWarp.WarpDefaultQuorumNumerator,
+				big.NewInt(0).SetUint64(canonicalSet.ConnectedWeight),
+				canonicalSet.ValidatorSet.TotalWeight,
+				warp.WarpDefaultQuorumNumerator,
 			) {
 				return ErrNotEnoughConnectedStake
 			}
@@ -526,7 +728,7 @@ func GetNetworkHealthFunc(network AppRequestNetwork, subnetIDs []ids.ID) func(co
 }
 
 func calculateConnectedWeight(
-	validatorSet []*warp.Validator,
+	validatorSet []*snowVdrs.Warp,
 	nodeValidatorIndexMap map[ids.NodeID]int,
 	connectedNodes set.Set[ids.NodeID],
 ) uint64 {

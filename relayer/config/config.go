@@ -11,15 +11,12 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
-	"time"
 
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/peers"
 	"go.uber.org/zap"
 
-	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 
@@ -91,8 +88,6 @@ type Config struct {
 	tlsCert                *tls.Certificate
 	blockchainIDToSubnetID map[ids.ID]ids.ID
 	trackedSubnets         set.Set[ids.ID]
-
-	networkUpgradeConfig *upgrade.Config
 }
 
 func DisplayUsageText() {
@@ -227,13 +222,20 @@ func getWarpConfig(client ethclient.Client) (*warp.Config, error) {
 		if !ok {
 			continue
 		}
+
+		// If the upgrade is scheduled in the future, skip it. If it activates during the lifetime of the relayer
+		// it will become unhealthy and restart and pick up the new config on next startup.
+		if cfg.Timestamp() != nil && *cfg.Timestamp() > latestBlock.Time() {
+			continue
+		}
+
+		// This is the first non-future config found, so use it for now.
 		if warpConfig == nil {
 			warpConfig = cfg
 			continue
 		}
-		// Grab the latest already activated Warp config, if a new upgrade activates during the lifetime of the relayer
-		// it will become unhealthy and restart and pick up the new config on next startup.
-		if *cfg.Timestamp() > *warpConfig.Timestamp() && *cfg.Timestamp() >= latestBlock.Time() {
+		// Do the nil check to avoid a panic if the initial config has no timestamp.
+		if warpConfig.Timestamp() == nil || *cfg.Timestamp() > *warpConfig.Timestamp() {
 			warpConfig = cfg
 		}
 	}
@@ -281,20 +283,7 @@ func (c *Config) initializeTrackedSubnets() error {
 	return nil
 }
 
-func (c *Config) initializeNetworkUpgradeConfig(ctx context.Context) error {
-	infoClient := info.NewClient(c.InfoAPI.BaseURL)
-	upgradeConfig, err := infoClient.Upgrades(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get network upgrade config: %w", err)
-	}
-	c.networkUpgradeConfig = upgradeConfig
-	return nil
-}
-
 func (c *Config) Initialize(ctx context.Context) error {
-	if err := c.initializeNetworkUpgradeConfig(ctx); err != nil {
-		return err
-	}
 	if err := c.initializeWarpConfigs(ctx); err != nil {
 		return err
 	}
@@ -340,8 +329,8 @@ func (c *Config) LogSafeField() zap.Field {
 	return zap.Any("config", c.sanitizeForLogging())
 }
 
-func (c *Config) IsGraniteActivated() bool {
-	return c.networkUpgradeConfig.IsGraniteActivated(time.Now())
+func (c *Config) GetMaxPChainLookback() int64 {
+	return -1 // No max lookback for relayer
 }
 
 func (c *Config) sanitizeForLogging() map[string]any {

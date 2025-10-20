@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
+	predicateutils "github.com/ava-labs/avalanchego/vms/evm/predicate"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -23,7 +24,6 @@ import (
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	predicateutils "github.com/ava-labs/subnet-evm/predicate"
 	"github.com/ava-labs/subnet-evm/rpc"
 	"go.uber.org/zap"
 )
@@ -48,6 +48,7 @@ type destinationClient struct {
 	readonlyConcurrentSigners []*readonlyConcurrentSigner
 
 	destinationBlockchainID    ids.ID
+	rpcEndpointURL             string
 	evmChainID                 *big.Int
 	blockGasLimit              uint64
 	maxBaseFee                 *big.Int
@@ -208,6 +209,7 @@ func NewDestinationClient(
 		client:                     client,
 		readonlyConcurrentSigners:  readonlyConcurrentSigners,
 		destinationBlockchainID:    destinationID,
+		rpcEndpointURL:             destinationBlockchain.RPCEndpoint.BaseURL,
 		evmChainID:                 evmChainID,
 		logger:                     logger,
 		blockGasLimit:              destinationBlockchain.BlockGasLimit,
@@ -390,19 +392,29 @@ func (s *concurrentSigner) issueTransaction(
 	)
 
 	// Construct the actual transaction to broadcast on the destination chain
-	tx := predicateutils.NewPredicateTx(
-		s.destinationClient.evmChainID,
-		s.currentNonce,
-		&data.to,
-		data.gasLimit,
-		data.gasFeeCap,
-		data.gasTipCap,
-		big.NewInt(0),
-		data.callData,
-		types.AccessList{},
-		warp.ContractAddress,
-		data.signedMessage.Bytes(),
-	)
+	// Create predicate from the signed warp message
+	predicate := predicateutils.New(data.signedMessage.Bytes())
+
+	// Create access list with the predicate for the warp precompile
+	accessList := types.AccessList{
+		{
+			Address:     warp.ContractAddress,
+			StorageKeys: predicate,
+		},
+	}
+
+	// Create a standard EIP-1559 transaction with the predicate access list
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:    s.destinationClient.evmChainID,
+		Nonce:      s.currentNonce,
+		To:         &data.to,
+		Gas:        data.gasLimit,
+		GasFeeCap:  data.gasFeeCap,
+		GasTipCap:  data.gasTipCap,
+		Value:      big.NewInt(0),
+		Data:       data.callData,
+		AccessList: accessList,
+	})
 
 	// Sign and send the transaction on the destination chain
 	signedTx, err := s.signer.SignTx(tx, s.destinationClient.evmChainID)
@@ -502,4 +514,8 @@ func (c *destinationClient) DestinationBlockchainID() ids.ID {
 
 func (c *destinationClient) BlockGasLimit() uint64 {
 	return c.blockGasLimit
+}
+
+func (c *destinationClient) GetRPCEndpointURL() string {
+	return c.rpcEndpointURL
 }

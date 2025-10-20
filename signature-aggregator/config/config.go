@@ -19,6 +19,7 @@ const (
 	defaultMetricsPort = uint16(8081)
 
 	DefaultSignatureCacheSize = uint64(1024 * 1024)
+	DefaultMaxPChainLookback  = int64(1000)
 )
 
 var defaultLogLevel = logging.Info.String()
@@ -42,6 +43,7 @@ type Config struct {
 	TLSCertPath          string                `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"`
 	TLSKeyPath           string                `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
 	ManuallyTrackedPeers []*basecfg.PeerConfig `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"`
+	MaxPChainLookback    int64                 `mapstructure:"max-p-chain-lookback" json:"max-p-chain-lookback"`
 
 	// convenience fields
 	trackedSubnets set.Set[ids.ID]
@@ -99,4 +101,8 @@ func (c *Config) GetTrackedSubnets() set.Set[ids.ID] {
 
 func (c *Config) GetTLSCert() *tls.Certificate {
 	return c.tlsCert
+}
+
+func (c *Config) GetMaxPChainLookback() int64 {
+	return c.MaxPChainLookback
 }

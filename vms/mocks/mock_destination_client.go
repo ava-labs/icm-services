@@ -86,6 +86,20 @@ func (mr *MockDestinationClientMockRecorder) DestinationBlockchainID() *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DestinationBlockchainID", reflect.TypeOf((*MockDestinationClient)(nil).DestinationBlockchainID))
 }
 
+// GetRPCEndpointURL mocks base method.
+func (m *MockDestinationClient) GetRPCEndpointURL() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRPCEndpointURL")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetRPCEndpointURL indicates an expected call of GetRPCEndpointURL.
+func (mr *MockDestinationClientMockRecorder) GetRPCEndpointURL() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRPCEndpointURL", reflect.TypeOf((*MockDestinationClient)(nil).GetRPCEndpointURL))
+}
+
 // SendTx mocks base method.
 func (m *MockDestinationClient) SendTx(signedMessage *warp.Message, deliverers set.Set[common.Address], toAddress string, gasLimit uint64, callData []byte) (*types.Receipt, error) {
 	m.ctrl.T.Helper()

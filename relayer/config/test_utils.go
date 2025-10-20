@@ -1,4 +1,4 @@
-//go:build testing
+//go:build test
 
 package config
 

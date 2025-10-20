@@ -6,9 +6,13 @@ set -e
 
 HELP=
 LOG_LEVEL=
+ACTIVATE_GRANITE=
+EPOCH_DURATION=
 while [ $# -gt 0 ]; do
     case "$1" in
         -v | --verbose) LOG_LEVEL=debug ;;
+        -g | --activate-granite) ACTIVATE_GRANITE=true ;;
+        -e | --epoch-duration) EPOCH_DURATION=$2 ;;
         -h | --help) HELP=true ;;
     esac
     shift
@@ -20,6 +24,8 @@ if [ "$HELP" = true ]; then
     echo ""
     echo "Options:"
     echo "  -v, --verbose                     Enable debug logs"
+    echo "  -g, --active-granite              Activate Granite upgrade for testing"
+    echo "  -e, --epoch-duration              Set the epoch duration for Granite testing"
     echo "  -h, --help                        Print this help message"
     exit 0
 fi
@@ -55,9 +61,14 @@ export AVAGO_PLUGIN_DIR=$BASEDIR/avalanchego/plugins
 go run github.com/onsi/ginkgo/v2/ginkgo build ./tests/
 go build -v -o tests/cmd/decider/decider ./tests/cmd/decider/
 
+if [ -n "$EPOCH_DURATION" ]; then
+  export GRANITE_EPOCH_DURATION=$EPOCH_DURATION
+fi
+
 # Run the tests
 echo "Running e2e tests $RUN_E2E"
 RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${SIG_AGG_PATH:-"$BASEDIR/icm-services/signature-aggregator"} ./tests/tests.test \
+  --activate-granite=${ACTIVATE_GRANITE:-"false"} \
   --ginkgo.vv \
   --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \
   --ginkgo.focus=${GINKGO_FOCUS:-""} 

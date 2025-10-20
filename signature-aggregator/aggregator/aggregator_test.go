@@ -11,6 +11,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
+	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/constants"
@@ -19,6 +20,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/peers/mocks"
@@ -103,13 +105,13 @@ func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []
 	utils.Sort(validatorValues)
 
 	// Placeholder for results
-	validatorSet := make([]*warp.Validator, validatorCount)
+	validatorSet := make([]*validators.Warp, validatorCount)
 	validatorSigners := make([]*localsigner.LocalSigner, validatorCount)
 	nodeValidatorIndexMap := make(map[ids.NodeID]int)
 	connectedNodes := set.NewSet[ids.NodeID](validatorCount)
 	for i, validator := range validatorValues {
 		validatorSigners[i] = validator.blsSigner
-		validatorSet[i] = &warp.Validator{
+		validatorSet[i] = &validators.Warp{
 			PublicKey:      validator.blsPublicKey,
 			PublicKeyBytes: validator.blsPublicKeyBytes,
 			Weight:         1,
@@ -122,7 +124,7 @@ func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []
 	return &peers.CanonicalValidators{
 		ConnectedWeight: uint64(validatorCount),
 		ConnectedNodes:  connectedNodes,
-		ValidatorSet: warp.CanonicalValidatorSet{
+		ValidatorSet: validators.WarpSet{
 			Validators:  validatorSet,
 			TotalWeight: uint64(validatorCount),
 		},
@@ -159,6 +161,7 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 				tc.requiredQuorumPercentage,
 				tc.quorumPercentageBuffer,
 				false,
+				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
 			)
 			require.Nil(t, signedMsg)
 			require.ErrorIs(t, err, errInvalidQuorumPercentage)
@@ -171,18 +174,19 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
 	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
-	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
-	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false).Return(
+	mockNetwork.EXPECT().TrackSubnet(gomock.Any(), ids.Empty)
+	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false, uint64(pchainapi.ProposedHeight)).Return(
 		&peers.CanonicalValidators{
 			ConnectedWeight: 0,
-			ValidatorSet: warp.CanonicalValidatorSet{
-				Validators:  []*warp.Validator{},
+			ValidatorSet: validators.WarpSet{
+				Validators:  []*validators.Warp{},
 				TotalWeight: 0,
 			},
 		},
 		nil,
 	)
-	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false)
+	_, err = aggregator.CreateSignedMessage(
+		context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorContains(t, err, "no signatures")
 }
 
@@ -191,18 +195,19 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
 	mockNetwork.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
-	mockNetwork.EXPECT().TrackSubnet(ids.Empty)
-	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false).Return(
+	mockNetwork.EXPECT().TrackSubnet(gomock.Any(), ids.Empty)
+	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), ids.Empty, false, uint64(pchainapi.ProposedHeight)).Return(
 		&peers.CanonicalValidators{
 			ConnectedWeight: 0,
-			ValidatorSet: warp.CanonicalValidatorSet{
-				Validators:  []*warp.Validator{},
+			ValidatorSet: validators.WarpSet{
+				Validators:  []*validators.Warp{},
 				TotalWeight: 1,
 			},
 		},
 		nil,
 	).AnyTimes()
-	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false)
+	_, err = aggregator.CreateSignedMessage(
+		context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorContains(
 		t,
 		err,
@@ -253,8 +258,10 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		nil,
 	)
 
-	mockNetwork.EXPECT().TrackSubnet(subnetID)
-	mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), subnetID, false).Return(
+	mockNetwork.EXPECT().TrackSubnet(gomock.Any(), subnetID)
+	mockNetwork.EXPECT().GetCanonicalValidators(
+		gomock.Any(), subnetID, false, uint64(pchainapi.ProposedHeight),
+	).Return(
 		connectedValidators,
 		nil,
 	)
@@ -292,7 +299,8 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		nil,
 	).Times(1)
 
-	_, err = aggregator.CreateSignedMessage(context.Background(), logging.NoLog{}, msg, nil, subnetID, 80, 0, false)
+	_, err = aggregator.CreateSignedMessage(
+		context.Background(), logging.NoLog{}, msg, nil, subnetID, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorIs(
 		t,
 		err,
@@ -344,8 +352,8 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				nil,
 			)
 
-			mockNetwork.EXPECT().TrackSubnet(subnetID)
-			mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), subnetID, false).Return(
+			mockNetwork.EXPECT().TrackSubnet(gomock.Any(), subnetID)
+			mockNetwork.EXPECT().GetCanonicalValidators(gomock.Any(), subnetID, false, uint64(pchainapi.ProposedHeight)).Return(
 				connectedValidators,
 				nil,
 			)
@@ -417,6 +425,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				tc.requiredQuorumPercentage,
 				tc.quorumPercentageBuffer,
 				false,
+				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
 			)
 			require.NoError(t, err)
 
@@ -516,8 +525,8 @@ func TestGetExcludedValidators(t *testing.T) {
 				},
 			},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{
 						{NodeIDs: []ids.NodeID{nodeID1}},
 						{NodeIDs: []ids.NodeID{nodeID2}},
 					},
@@ -544,8 +553,8 @@ func TestGetExcludedValidators(t *testing.T) {
 				},
 			},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{
 						{NodeIDs: []ids.NodeID{nodeID1}},
 						{NodeIDs: []ids.NodeID{nodeID2}},
 					},
@@ -579,8 +588,8 @@ func TestGetExcludedValidators(t *testing.T) {
 				},
 			},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{
 						{NodeIDs: []ids.NodeID{nodeID1}},
 						{NodeIDs: []ids.NodeID{nodeID2, nodeID3}},
 					},
@@ -606,8 +615,8 @@ func TestGetExcludedValidators(t *testing.T) {
 				},
 			},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{
 						{NodeIDs: []ids.NodeID{nodeID1}},
 						{NodeIDs: []ids.NodeID{nodeID2}},
 					},
@@ -627,8 +636,8 @@ func TestGetExcludedValidators(t *testing.T) {
 				},
 			},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{
 						{NodeIDs: []ids.NodeID{nodeID1}},
 					},
 				},
@@ -652,8 +661,8 @@ func TestGetExcludedValidators(t *testing.T) {
 				},
 			},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{
 						{NodeIDs: []ids.NodeID{nodeID1, nodeID2}},
 					},
 				},
@@ -664,8 +673,8 @@ func TestGetExcludedValidators(t *testing.T) {
 			name:         "no L1 validators",
 			l1Validators: []platformvm.ClientPermissionlessValidator{},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{
 						{NodeIDs: []ids.NodeID{nodeID3}},
 					},
 				},
@@ -676,8 +685,8 @@ func TestGetExcludedValidators(t *testing.T) {
 			name:         "empty validator set",
 			l1Validators: []platformvm.ClientPermissionlessValidator{},
 			connected: &peers.CanonicalValidators{
-				ValidatorSet: warp.CanonicalValidatorSet{
-					Validators: []*warp.Validator{},
+				ValidatorSet: validators.WarpSet{
+					Validators: []*validators.Warp{},
 				},
 			},
 			excludedIdx: []int{},

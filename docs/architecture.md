@@ -1,5 +1,7 @@
 # Architecture
+
 Partial class diagram illustrating the important classes and functions for processing incoming blocks and relaying the contained Warp messages.
+
 ```mermaid
 classDiagram
     Listener o-- "per RelayerID" ApplicationRelayer
@@ -26,5 +28,4 @@ classDiagram
     RelayerDatabase : Put()
     AppRequestNetwork : ConnectPeers()
     AppRequestNetwork : ConnectToCanonicalValidators()
-    CanonicalValidatorClient : GetCurrentCanonicalValidatorSet()
 ```

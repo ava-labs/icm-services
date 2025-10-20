@@ -9,6 +9,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/icm-services/config"
@@ -70,4 +71,8 @@ func (i *InfoAPI) Peers(ctx context.Context, nodeIDs []ids.NodeID) ([]info.Peer,
 
 func (i *InfoAPI) Uptime(ctx context.Context) (*info.UptimeResponse, error) {
 	return i.client.Uptime(ctx, i.options...)
+}
+
+func (i *InfoAPI) Upgrades(ctx context.Context, options ...rpc.Option) (*upgrade.Config, error) {
+	return i.client.Upgrades(ctx, options...)
 }
