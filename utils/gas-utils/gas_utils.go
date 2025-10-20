@@ -41,6 +41,8 @@ func (u *UpgradeRules) IsGraniteActivated() bool {
 // - The number of Teleporter receipts
 // - Base gas cost for {receiveCrossChainMessage} call
 // - The number of validator signatures included in the aggregate signature
+// TODO: Benchmark to conffrm that gas limits estimates are accurate.
+// specifically confirm that numTeleporterMessageChunks is necessary to be accounted for separately.
 func CalculateReceiveMessageGasLimit(
 	rules precompileconfig.Rules,
 	numSigners int,
