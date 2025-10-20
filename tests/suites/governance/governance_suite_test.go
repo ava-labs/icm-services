@@ -70,6 +70,7 @@ var _ = ginkgo.BeforeSuite(func() {
 
 var _ = ginkgo.AfterSuite(func() {
 	LocalNetworkInstance.TearDownNetwork()
+	LocalNetworkInstance = nil
 })
 
 var _ = ginkgo.Describe("[Governance integration tests]", func() {
