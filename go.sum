@@ -102,8 +102,8 @@ github.com/ashanbrown/forbidigo v1.6.0 h1:D3aewfM37Yb3pxHujIPSpTf6oQk9sc9WZi8ger
 github.com/ashanbrown/forbidigo v1.6.0/go.mod h1:Y8j9jy9ZYAEHXdu723cUlraTqbzjKF1MUyfOKL+AjcU=
 github.com/ashanbrown/makezero v1.2.0 h1:/2Lp1bypdmK9wDIq7uWBlDF1iMUpIIS4A+pF6C9IEUU=
 github.com/ashanbrown/makezero v1.2.0/go.mod h1:dxlPhHbDMC6N6xICzFBSK+4njQDdK8euNO0qjQMtGY4=
-github.com/ava-labs/avalanchego v1.13.6-rc.1.0.20251013184242-946ea96c2844 h1:g9ZTYIBpFvrIPBTRqD5RQO0NO5+IcMro1yKnuYAmNJU=
-github.com/ava-labs/avalanchego v1.13.6-rc.1.0.20251013184242-946ea96c2844/go.mod h1:27SGpJ0L+3jVMfjY8X5nmgkZ3sFSc7vGeJj+SFjAKL0=
+github.com/ava-labs/avalanchego v1.14.0-fuji-rc.0 h1:hMAunm8Z0qTrkuKSmdiOi8o02pHwo5+SzT35/HaN3S8=
+github.com/ava-labs/avalanchego v1.14.0-fuji-rc.0/go.mod h1:++BtV8gC0STjshWqxBjodPfSxozB17QBLZZZycj2mvI=
 github.com/ava-labs/coreth v0.15.4-rc.4 h1:ze7/IwDptWG1u2d32uUZz9Ix9ycVUtlB8JufuSKSSS4=
 github.com/ava-labs/coreth v0.15.4-rc.4/go.mod h1:yVwuMyPkZ48xzZ0y2OdIwaoUqvSsgPYoodyX9BZJ2uo=
 github.com/ava-labs/firewood-go-ethhash/ffi v0.0.12 h1:aMcrLbpJ/dyu2kZDf/Di/4JIWsUcYPyTDKymiHpejt0=
@@ -112,8 +112,8 @@ github.com/ava-labs/icm-contracts v1.0.10-0.20251016202108-cabdb44d0e67 h1:/0CZc
 github.com/ava-labs/icm-contracts v1.0.10-0.20251016202108-cabdb44d0e67/go.mod h1:kfXYVp8GRi64zlrq22eF7JRZHYPTPgWv9yU6SZGeUuU=
 github.com/ava-labs/libevm v1.13.15-0.20251003195629-910e897c54c3 h1:1YeVupq12lUT9FJh7kH5InEVIeGWyAAoTBfyqYpNJaM=
 github.com/ava-labs/libevm v1.13.15-0.20251003195629-910e897c54c3/go.mod h1:ivRC/KojP8sai7j8WnpXIReQpcRklL2bIzoysnjpARQ=
-github.com/ava-labs/subnet-evm v0.7.10-0.20251013155523-47a1ce400863 h1:0SBzgikdV78A9nPEytYnKBjMlzEp1MsrPXYAHVslqY4=
-github.com/ava-labs/subnet-evm v0.7.10-0.20251013155523-47a1ce400863/go.mod h1:6Py9DfQwKQFLv+dYNJV15pjBWMNcubpiBLS9fw247go=
+github.com/ava-labs/subnet-evm v0.8.0-fuji-rc.2 h1:eLo4TrGbfaXipOl2wfz1yv/9s8C2u1J1UgMOjvG4hYo=
+github.com/ava-labs/subnet-evm v0.8.0-fuji-rc.2/go.mod h1:qUG6UpJztpTVEXALjKeXBn/usVD1ZnpsfaHXqjRrvr8=
 github.com/aws/aws-sdk-go-v2 v1.39.3 h1:h7xSsanJ4EQJXG5iuW4UqgP7qBopLpj84mpkNx3wPjM=
 github.com/aws/aws-sdk-go-v2 v1.39.3/go.mod h1:yWSxrnioGUZ4WVv9TgMrNUeLV3PFESn/v+6T/Su8gnM=
 github.com/aws/aws-sdk-go-v2/config v1.31.12 h1:pYM1Qgy0dKZLHX2cXslNacbcEFMkDMl+Bcj5ROuS6p8=
