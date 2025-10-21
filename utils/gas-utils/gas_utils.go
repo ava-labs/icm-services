@@ -17,6 +17,7 @@ import (
 const (
 	MarkMessageReceiptGasCost   uint64 = 2500
 	DecodeMessageGasCostPerByte uint64 = 35
+	TeleporterOverheadGasCost   uint64 = 50_000
 
 	BaseFeeFactor        = 2
 	MaxPriorityFeePerGas = 2500000000 // 2.5 gwei
@@ -41,14 +42,14 @@ func (u *UpgradeRules) IsGraniteActivated() bool {
 // - The number of Teleporter receipts
 // - Base gas cost for {receiveCrossChainMessage} call
 // - The number of validator signatures included in the aggregate signature
-// TODO: Benchmark to conffrm that gas limits estimates are accurate.
-// specifically confirm that numTeleporterMessageChunks is necessary to be accounted for separately.
+// TODO: Benchmark to confirm that gas limits estimates are accurate.
+// specifically confirm that numTeleporterMessageBytes and TeleporterOverheadGasCost are correct.
 func CalculateReceiveMessageGasLimit(
 	rules precompileconfig.Rules,
 	numSigners int,
 	executionRequiredGasLimit *big.Int,
 	numPredicateChunks int,
-	numTeleporterMessageChunks int,
+	numTeleporterMessageBytes int,
 	teleporterReceiptsCount int,
 ) (uint64, error) {
 	if !executionRequiredGasLimit.IsUint64() {
@@ -64,11 +65,12 @@ func CalculateReceiveMessageGasLimit(
 		uint64(numPredicateChunks) * gasConfig.PerWarpMessageChunk * 2,
 		// Take into the variable gas cost for decoding the Teleporter message
 		// and marking the receipts as received.
-		uint64(numTeleporterMessageChunks) * gasConfig.PerWarpMessageChunk,
+		uint64(numTeleporterMessageBytes) * DecodeMessageGasCostPerByte,
 		uint64(teleporterReceiptsCount) * MarkMessageReceiptGasCost,
 		uint64(numSigners) * gasConfig.PerWarpSigner,
 		gasConfig.VerifyPredicateBase,
 		gasConfig.GetVerifiedWarpMessageBase,
+		TeleporterOverheadGasCost,
 	}
 
 	res := gasAmounts[0]

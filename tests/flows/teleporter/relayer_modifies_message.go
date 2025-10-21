@@ -129,7 +129,7 @@ func createAlteredReceiveCrossChainMessageTransaction(
 		&gasUtils.UpgradeRules{UpgradeConfig: upgradeRules},
 		numSigners,
 		requiredGasLimit,
-		len(predicate.New(signedMessage.Bytes())),
+		len(signedMessage.Bytes()),
 		len(signedMessage.Payload),
 		len(teleporterMessage.Receipts),
 	)
