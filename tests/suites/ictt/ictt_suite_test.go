@@ -51,13 +51,13 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestValidatorManager(t *testing.T) {
+func TestICTT(t *testing.T) {
 	if os.Getenv("RUN_E2E") == "" {
 		t.Skip("Environment variable RUN_E2E not set; skipping E2E tests")
 	}
 
 	RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Teleporter e2e test")
+	ginkgo.RunSpecs(t, "ICTT e2e test")
 }
 
 // Define the Teleporter before and after suite functions.
@@ -167,7 +167,7 @@ var _ = ginkgo.AfterSuite(func() {
 	LocalNetworkInstance = nil
 })
 
-var _ = ginkgo.Describe("[Validator manager integration tests]", func() {
+var _ = ginkgo.Describe("[ICTT integration tests]", func() {
 	// ICTT tests
 	ginkgo.It("Transfer an ERC20 token between two L1s",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel),
