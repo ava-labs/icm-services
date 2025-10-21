@@ -124,7 +124,7 @@ func createAlteredReceiveCrossChainMessageTransaction(
 	numSigners, err := signedMessage.Signature.NumSigners()
 	Expect(err).Should(BeNil())
 
-	upgradeRules := upgrade.GetConfig(constants.LocalID)
+	upgradeRules := upgrade.GetConfig(constants.MainnetID)
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
 		&gasUtils.UpgradeRules{UpgradeConfig: upgradeRules},
 		numSigners,

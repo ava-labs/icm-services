@@ -700,7 +700,7 @@ func CreateReceiveCrossChainMessageTransaction(
 	Expect(err).Should(BeNil())
 
 	teleporterMessage := ParseTeleporterMessage(signedMessage.UnsignedMessage)
-	upgradeRules := upgrade.GetConfig(constants.LocalID)
+	upgradeRules := upgrade.GetConfig(constants.MainnetID)
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
 		&gasUtils.UpgradeRules{UpgradeConfig: upgradeRules},
 		numSigners,
