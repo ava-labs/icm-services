@@ -174,9 +174,6 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 	signatureAggregator *SignatureAggregator,
 ) *types.Receipt {
 	// Fetch the Teleporter message from the logs
-	sendEvent, err := GetEventFromLogs(sourceReceipt.Logs, t.TeleporterMessenger(source).ParseSendCrossChainMessage)
-	Expect(err).Should(BeNil())
-
 	signedWarpMessage := ConstructSignedWarpMessage(
 		ctx,
 		sourceReceipt,
@@ -190,7 +187,6 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 	signedTx := CreateReceiveCrossChainMessageTransaction(
 		ctx,
 		signedWarpMessage,
-		sendEvent.Message.RequiredGasLimit,
 		t.TeleporterMessengerAddress(source),
 		fundedKey,
 		destination,
@@ -689,7 +685,6 @@ func CreateSendCrossChainMessageTransaction(
 func CreateReceiveCrossChainMessageTransaction(
 	ctx context.Context,
 	signedMessage *avalancheWarp.Message,
-	requiredGasLimit *big.Int,
 	teleporterContractAddress common.Address,
 	senderKey *ecdsa.PrivateKey,
 	l1Info interfaces.L1TestInfo,
@@ -704,7 +699,7 @@ func CreateReceiveCrossChainMessageTransaction(
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
 		&gasUtils.UpgradeRules{UpgradeConfig: upgradeRules},
 		numSigners,
-		requiredGasLimit,
+		teleporterMessage.RequiredGasLimit,
 		len(predicate.New(signedMessage.Bytes())),
 		len(signedMessage.Payload),
 		len(teleporterMessage.Receipts),
