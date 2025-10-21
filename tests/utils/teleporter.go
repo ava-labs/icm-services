@@ -11,6 +11,8 @@ import (
 	"os"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/upgrade"
+	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
@@ -172,9 +174,6 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 	signatureAggregator *SignatureAggregator,
 ) *types.Receipt {
 	// Fetch the Teleporter message from the logs
-	sendEvent, err := GetEventFromLogs(sourceReceipt.Logs, t.TeleporterMessenger(source).ParseSendCrossChainMessage)
-	Expect(err).Should(BeNil())
-
 	signedWarpMessage := ConstructSignedWarpMessage(
 		ctx,
 		sourceReceipt,
@@ -188,7 +187,6 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 	signedTx := CreateReceiveCrossChainMessageTransaction(
 		ctx,
 		signedWarpMessage,
-		sendEvent.Message.RequiredGasLimit,
 		t.TeleporterMessengerAddress(source),
 		fundedKey,
 		destination,
@@ -687,7 +685,6 @@ func CreateSendCrossChainMessageTransaction(
 func CreateReceiveCrossChainMessageTransaction(
 	ctx context.Context,
 	signedMessage *avalancheWarp.Message,
-	requiredGasLimit *big.Int,
 	teleporterContractAddress common.Address,
 	senderKey *ecdsa.PrivateKey,
 	l1Info interfaces.L1TestInfo,
@@ -698,9 +695,11 @@ func CreateReceiveCrossChainMessageTransaction(
 	Expect(err).Should(BeNil())
 
 	teleporterMessage := ParseTeleporterMessage(signedMessage.UnsignedMessage)
+	upgradeRules := upgrade.GetConfig(constants.MainnetID)
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
+		&gasUtils.UpgradeRules{UpgradeConfig: upgradeRules},
 		numSigners,
-		requiredGasLimit,
+		teleporterMessage.RequiredGasLimit,
 		len(predicate.New(signedMessage.Bytes())),
 		len(signedMessage.Payload),
 		len(teleporterMessage.Receipts),
