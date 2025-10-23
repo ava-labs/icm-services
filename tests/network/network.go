@@ -63,6 +63,10 @@ type LocalNetwork struct {
 	graniteActivated                bool
 }
 
+func (n *LocalNetwork) IsGraniteActivated() bool {
+	return n.graniteActivated
+}
+
 const (
 	fundedKeyStr = "56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"
 	timeout      = 120 * time.Second
@@ -386,22 +390,17 @@ func (n *LocalNetwork) ConvertSubnet(
 	l1 = n.AddSubnetValidators(tmpnetNodes, l1, true)
 
 	if n.graniteActivated {
-		graniteEpochDuration := n.graniteEpochDuration
-		epochSeconds := int(graniteEpochDuration.Seconds())
-
-		pchainWaitTime := time.Duration(epochSeconds) * time.Second
-		if pchainWaitTime < 20*time.Second {
-			pchainWaitTime = 20 * time.Second
-		}
-
+		goLog.Println("Waiting for Granite epoch to complete for ", n.graniteEpochDuration)
 		// Wait for P-Chain to finalize and propagate transactions
-		time.Sleep(pchainWaitTime)
 
-		utils.AdvanceProposerVM(ctx, l1, senderKey, 50)
+		utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
+
+		time.Sleep(n.graniteEpochDuration)
 	}
 
 	aggregator := n.GetSignatureAggregator()
 	defer aggregator.Shutdown()
+
 	validationIDs := utils.InitializeValidatorSet(
 		ctx,
 		senderKey,

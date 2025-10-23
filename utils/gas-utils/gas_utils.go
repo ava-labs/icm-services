@@ -8,7 +8,6 @@ import (
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/utils/math"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 )
 
 const (
@@ -44,14 +43,14 @@ func CalculateReceiveMessageGasLimit(
 		executionRequiredGasLimit.Uint64(),
 		// The variable gas on message bytes is accounted for both when used in predicate verification
 		// and also when used in `getVerifiedWarpMessage`
-		uint64(numPredicateChunks) * warp.GasCostPerWarpMessageChunk * 2,
+		uint64(numPredicateChunks) * 10000 * 2,
 		// Take into the variable gas cost for decoding the Teleporter message
 		// and marking the receipts as received.
 		uint64(teleporterMessageSize) * DecodeMessageGasCostPerByte,
 		uint64(teleporterReceiptsCount) * MarkMessageReceiptGasCost,
 		ReceiveCrossChainMessageBaseGasCost,
-		uint64(numSigners) * warp.GasCostPerWarpSigner,
-		warp.GasCostPerSignatureVerification,
+		uint64(numSigners) * 10000,
+		200000,
 	}
 
 	res := gasAmounts[0]

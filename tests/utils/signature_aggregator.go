@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	goLog "log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/avalanchego/vms/proposervm"
+	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/libevm/log"
 
 	. "github.com/onsi/gomega"
@@ -51,6 +54,7 @@ type AggregateSignaturesRequest struct {
 	Justification    string `json:"justification,omitempty"`
 	SigningSubnetID  string `json:"signing-subnet-id,omitempty"`
 	QuorumPercentage uint64 `json:"quorum-percentage,omitempty"`
+	PChainHeight     uint64 `json:"pchain-height,omitempty"`
 }
 
 type SignatureAggregatorResponse struct {
@@ -119,11 +123,13 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	justification []byte,
 	inputSigningSubnet ids.ID,
 	quorumPercentage uint64,
+	destination interfaces.L1TestInfo,
 ) (*avalancheWarp.Message, error) {
 	var err error
 	var signedMessage *avalancheWarp.Message
 	for i := 0; i < 3; i++ {
-		signedMessage, err = s.createSignedMessage(unsignedMessage, justification, inputSigningSubnet, quorumPercentage)
+		signedMessage, err = s.createSignedMessage(
+			unsignedMessage, justification, inputSigningSubnet, quorumPercentage, destination)
 		if err == nil {
 			return signedMessage, nil
 		}
@@ -137,7 +143,18 @@ func (s *SignatureAggregator) createSignedMessage(
 	justification []byte,
 	inputSigningSubnet ids.ID,
 	quorumPercentage uint64,
+	destination interfaces.L1TestInfo,
 ) (*avalancheWarp.Message, error) {
+	isGraniteActivated := os.Getenv("IS_GRANITE_ACTIVATED") == "true"
+	var pChainHeight uint64
+	if isGraniteActivated {
+		proposerClient := proposervm.NewJSONRPCClient(destination.NodeURIs[0], "P")
+		currentEpoch, err := proposerClient.GetCurrentEpoch(context.Background())
+		Expect(err).Should(BeNil())
+		pChainHeight = currentEpoch.PChainHeight
+		goLog.Println("Using P-Chain height for signature creation: ", pChainHeight, "epoch number: ", currentEpoch.Number)
+	}
+
 	client := &http.Client{
 		Timeout: 20 * time.Second,
 	}
@@ -147,6 +164,7 @@ func (s *SignatureAggregator) createSignedMessage(
 		Justification:    hex.EncodeToString(justification),
 		SigningSubnetID:  inputSigningSubnet.String(),
 		QuorumPercentage: quorumPercentage,
+		PChainHeight:     pChainHeight,
 	}
 
 	b, err := json.Marshal(reqBody)

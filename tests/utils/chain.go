@@ -638,6 +638,7 @@ func GetSignedMessage(
 		justification,
 		signingSubnetID,
 		warp.WarpDefaultQuorumNumerator,
+		destination,
 	)
 	Expect(err).Should(BeNil())
 
