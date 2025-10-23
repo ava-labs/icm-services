@@ -37,6 +37,7 @@ components=
 reuse_network_dir=
 root_dir=
 network_dir=
+activate_granite=false
 reuse_network=false
 epoch_duration=
 activate_granite=
@@ -72,6 +73,8 @@ while [ $# -gt 0 ]; do
             shift;;
         --help) 
             printHelp && exit 0 ;;
+        --activate-granite)
+            activate_granite=true;;
         *) 
             echo "Invalid option: $1" && printHelp && exit 1;;
     esac
@@ -158,6 +161,7 @@ for component in $(echo $components | tr ',' ' '); do
     --activate-granite=${activate_granite:-"false"} \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
+    --activate-granite=${activate_granite} \
     --network-dir=${network_dir} \
     --ginkgo.vv \
     --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \

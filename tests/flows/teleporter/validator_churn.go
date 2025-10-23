@@ -136,7 +136,6 @@ func ValidatorChurn(network *localnetwork.LocalNetwork, teleporter utils.Telepor
 	signedTx := utils.CreateReceiveCrossChainMessageTransaction(
 		ctx,
 		signedWarpMessage,
-		sendEvent.Message.RequiredGasLimit,
 		teleporterContractAddress,
 		fundedKey,
 		l1BInfo,

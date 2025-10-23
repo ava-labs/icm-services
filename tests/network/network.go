@@ -627,6 +627,7 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 			)
 		}
 		if chainIDStr == utils.CChainPathSpecifier {
+			n.Network.PrimarySubnetConfig = cfg
 			n.Network.PrimaryChainConfigs[utils.CChainPathSpecifier] = cfg
 			continue
 		}
@@ -634,7 +635,6 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 		for _, l1 := range n.Network.Subnets {
 			for _, chain := range l1.Chains {
 				if chain.ChainID.String() == chainIDStr {
-					n.Network.PrimarySubnetConfig = cfg
 					chain.Config = chainConfig
 				}
 			}
