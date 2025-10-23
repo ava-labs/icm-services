@@ -37,7 +37,6 @@ components=
 reuse_network_dir=
 root_dir=
 network_dir=
-activate_granite=false
 reuse_network=false
 epoch_duration=
 activate_granite=
@@ -100,9 +99,8 @@ fi
 
 if [ -n "$epoch_duration" ]; then
     export GRANITE_EPOCH_DURATION=$epoch_duration
+    echo "GRANITE_EPOCH_DURATION: $GRANITE_EPOCH_DURATION"
 fi
-
-echo "GRANITE_EPOCH_DURATION: $GRANITE_EPOCH_DURATION"
 
 source "$ICM_CONTRACTS_PATH"/scripts/constants.sh
 source "$ICM_CONTRACTS_PATH"/scripts/versions.sh
