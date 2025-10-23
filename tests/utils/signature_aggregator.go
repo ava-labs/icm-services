@@ -8,17 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	goLog "log"
 	"net/http"
 	"os"
 	"os/exec"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/libevm/log"
+	"go.uber.org/zap"
 
 	. "github.com/onsi/gomega"
 )
@@ -145,14 +146,14 @@ func (s *SignatureAggregator) createSignedMessage(
 	quorumPercentage uint64,
 	destination interfaces.L1TestInfo,
 ) (*avalancheWarp.Message, error) {
-	isGraniteActivated := os.Getenv("IS_GRANITE_ACTIVATED") == "true"
-	var pChainHeight uint64
-	if isGraniteActivated {
-		proposerClient := proposervm.NewJSONRPCClient(destination.NodeURIs[0], "P")
-		currentEpoch, err := proposerClient.GetCurrentEpoch(context.Background())
-		Expect(err).Should(BeNil())
+	var pChainHeight uint64 = uint64(pchainapi.ProposedHeight)
+
+	proposerClient := proposervm.NewJSONRPCClient(destination.NodeURIs[0], destination.BlockchainID.String())
+	currentEpoch, err := proposerClient.GetCurrentEpoch(context.Background())
+	Expect(err).Should(BeNil())
+	log.Info("current epoch", zap.Any("epoch", currentEpoch))
+	if currentEpoch.Number != 0 {
 		pChainHeight = currentEpoch.PChainHeight
-		goLog.Println("Using P-Chain height for signature creation: ", pChainHeight, "epoch number: ", currentEpoch.Number)
 	}
 
 	client := &http.Client{

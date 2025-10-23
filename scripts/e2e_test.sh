@@ -64,13 +64,6 @@ while [ $# -gt 0 ]; do
                 echo "Invalid epoch duration $2" && printHelp && exit 1
             fi 
             shift;;
-        --activate-granite)
-            if [[ $2 != --* ]]; then
-                activate_granite=$2
-            else 
-                echo "Invalid activate granite $2" && printHelp && exit 1
-            fi 
-            shift;;
         --help) 
             printHelp && exit 0 ;;
         --activate-granite)
@@ -109,11 +102,6 @@ if [ -n "$epoch_duration" ]; then
     export GRANITE_EPOCH_DURATION=$epoch_duration
 fi
 
-if [ -n "$activate_granite" ]; then
-    export IS_GRANITE_ACTIVATED=$activate_granite
-fi
-
-echo "IS_GRANITE_ACTIVATED: $IS_GRANITE_ACTIVATED"
 echo "GRANITE_EPOCH_DURATION: $GRANITE_EPOCH_DURATION"
 
 source "$ICM_CONTRACTS_PATH"/scripts/constants.sh
@@ -161,7 +149,6 @@ for component in $(echo $components | tr ',' ' '); do
     --activate-granite=${activate_granite:-"false"} \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
-    --activate-granite=${activate_granite} \
     --network-dir=${network_dir} \
     --ginkgo.vv \
     --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \
