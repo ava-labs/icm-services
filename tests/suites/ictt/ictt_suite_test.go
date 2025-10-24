@@ -63,7 +63,7 @@ func TestICTT(t *testing.T) {
 // Define the Teleporter before and after suite functions.
 var _ = ginkgo.BeforeSuite(func() {
 	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
-	
+
 	// Generate the Teleporter deployment values
 	teleporterDeployerTransaction,
 		teleporterDeployedBytecode,
