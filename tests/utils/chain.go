@@ -439,7 +439,7 @@ func GetPChainInfo(cChainInfo interfaces.L1TestInfo) interfaces.L1TestInfo {
 	Expect(err).Should(BeNil())
 	return interfaces.L1TestInfo{
 		BlockchainID:                 pChainBlockchainID,
-		SubnetID:                     cChainInfo.BlockchainID,
+		SubnetID:                     cChainInfo.SubnetID,
 		NodeURIs:                     cChainInfo.NodeURIs,
 		WSClient:                     cChainInfo.WSClient,
 		RPCClient:                    cChainInfo.RPCClient,
