@@ -10,7 +10,7 @@ ICM_CONTRACTS_PATH=$(
 )
 
 function printHelp() {
-    echo "Usage: ./scripts/e2e_test.sh [--component component]"
+    echo "Usage: ./scripts/e2e_test.sh [--components component]"
     echo ""
     printUsage
 }
