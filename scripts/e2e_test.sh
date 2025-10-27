@@ -10,7 +10,7 @@ ICM_CONTRACTS_PATH=$(
 )
 
 function printHelp() {
-    echo "Usage: ./scripts/e2e_test.sh [--component component]"
+    echo "Usage: ./scripts/e2e_test.sh [--components component]"
     echo ""
     printUsage
 }
@@ -37,7 +37,6 @@ components=
 reuse_network_dir=
 root_dir=
 network_dir=
-activate_granite=false
 reuse_network=false
 epoch_duration=
 activate_granite=
@@ -62,13 +61,6 @@ while [ $# -gt 0 ]; do
                 epoch_duration=$2
             else 
                 echo "Invalid epoch duration $2" && printHelp && exit 1
-            fi 
-            shift;;
-        --activate-granite)
-            if [[ $2 != --* ]]; then
-                activate_granite=$2
-            else 
-                echo "Invalid activate granite $2" && printHelp && exit 1
             fi 
             shift;;
         --help) 
@@ -107,14 +99,8 @@ fi
 
 if [ -n "$epoch_duration" ]; then
     export GRANITE_EPOCH_DURATION=$epoch_duration
+    echo "GRANITE_EPOCH_DURATION: $GRANITE_EPOCH_DURATION"
 fi
-
-if [ -n "$activate_granite" ]; then
-    export IS_GRANITE_ACTIVATED=$activate_granite
-fi
-
-echo "IS_GRANITE_ACTIVATED: $IS_GRANITE_ACTIVATED"
-echo "GRANITE_EPOCH_DURATION: $GRANITE_EPOCH_DURATION"
 
 source "$ICM_CONTRACTS_PATH"/scripts/constants.sh
 source "$ICM_CONTRACTS_PATH"/scripts/versions.sh
@@ -161,7 +147,6 @@ for component in $(echo $components | tr ',' ' '); do
     --activate-granite=${activate_granite:-"false"} \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
-    --activate-granite=${activate_granite} \
     --network-dir=${network_dir} \
     --ginkgo.vv \
     --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \
