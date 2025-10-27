@@ -390,11 +390,9 @@ func (n *LocalNetwork) ConvertSubnet(
 	l1 = n.AddSubnetValidators(tmpnetNodes, l1, true)
 
 	if n.graniteActivated {
-		goLog.Println("Waiting for Granite epoch to complete for ", n.graniteEpochDuration)
 		// Wait for P-Chain to finalize and propagate transactions
-
 		utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
-
+		goLog.Println("Waiting for Granite epoch to complete for ", n.graniteEpochDuration)
 		time.Sleep(n.graniteEpochDuration)
 	}
 

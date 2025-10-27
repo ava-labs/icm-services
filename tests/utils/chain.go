@@ -440,6 +440,7 @@ func GetPChainInfo(cChainInfo interfaces.L1TestInfo) interfaces.L1TestInfo {
 	return interfaces.L1TestInfo{
 		BlockchainID: pChainBlockchainID,
 		SubnetID:     ids.Empty,
+		NodeURIs:     cChainInfo.NodeURIs,
 	}
 }
 

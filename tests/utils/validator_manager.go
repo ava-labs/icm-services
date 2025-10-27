@@ -1149,7 +1149,7 @@ func InitiateAndCompleteEndInitialPoSValidation(
 		nil,
 		l1Info.SubnetID,
 		67,
-		l1Info,
+		pChainInfo,
 	)
 	Expect(err).Should(BeNil())
 
@@ -1249,7 +1249,7 @@ func InitiateAndCompleteEndPoSValidation(
 		nil,
 		l1Info.SubnetID,
 		67,
-		l1Info,
+		pChainInfo,
 	)
 	Expect(err).Should(BeNil())
 
@@ -1331,7 +1331,7 @@ func InitiateAndCompleteEndInitialPoAValidation(
 		nil,
 		l1Info.SubnetID,
 		67,
-		l1Info,
+		pChainInfo,
 	)
 	Expect(err).Should(BeNil())
 

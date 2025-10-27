@@ -33,6 +33,7 @@ const (
 type SignatureAggregator struct {
 	cmd        *exec.Cmd
 	cancelFunc context.CancelFunc
+	apiURI     string // Primary network node URI for P-Chain access
 }
 
 type SignatureAggregatorConfig struct {
@@ -148,7 +149,7 @@ func (s *SignatureAggregator) createSignedMessage(
 	isGraniteActivated := os.Getenv("IS_GRANITE_ACTIVATED") == "true"
 	var pChainHeight uint64
 	if isGraniteActivated {
-		proposerClient := proposervm.NewJSONRPCClient(destination.NodeURIs[0], "P")
+		proposerClient := proposervm.NewJSONRPCClient(destination.NodeURIs[0], destination.BlockchainID.String())
 		currentEpoch, err := proposerClient.GetCurrentEpoch(context.Background())
 		Expect(err).Should(BeNil())
 		pChainHeight = currentEpoch.PChainHeight
