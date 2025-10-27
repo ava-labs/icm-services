@@ -154,7 +154,8 @@ func (s *SignatureAggregator) createSignedMessage(
 	log.Info("current epoch", zap.Any("epoch", currentEpoch))
 	if currentEpoch.Number != 0 {
 		pChainHeight = currentEpoch.PChainHeight
-		log.Info("Using P-Chain height for signature creation", zap.Uint64("pChainHeight", pChainHeight), zap.Uint64("epochNumber", currentEpoch.Number))
+		log.Info("Using P-Chain height for signature creation",
+			zap.Uint64("pChainHeight", pChainHeight), zap.Uint64("epochNumber", currentEpoch.Number))
 	}
 
 	client := &http.Client{
