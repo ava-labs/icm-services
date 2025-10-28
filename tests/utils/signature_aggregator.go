@@ -130,7 +130,12 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	var signedMessage *avalancheWarp.Message
 	for i := 0; i < 3; i++ {
 		signedMessage, err = s.createSignedMessage(
-			unsignedMessage, justification, inputSigningSubnet, quorumPercentage, destination)
+			unsignedMessage,
+			justification,
+			inputSigningSubnet,
+			quorumPercentage,
+			destination,
+		)
 		if err == nil {
 			return signedMessage, nil
 		}
@@ -155,7 +160,9 @@ func (s *SignatureAggregator) createSignedMessage(
 	if currentEpoch.Number != 0 {
 		pChainHeight = currentEpoch.PChainHeight
 		log.Info("Using P-Chain height for signature creation",
-			zap.Uint64("pChainHeight", pChainHeight), zap.Uint64("epochNumber", currentEpoch.Number))
+			zap.Uint64("pChainHeight", pChainHeight),
+			zap.Uint64("epochNumber", currentEpoch.Number),
+		)
 	}
 
 	client := &http.Client{
