@@ -19,7 +19,6 @@ import (
 	"github.com/ava-labs/avalanchego/vms/proposervm"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/libevm/log"
-	"go.uber.org/zap"
 
 	. "github.com/onsi/gomega"
 )
