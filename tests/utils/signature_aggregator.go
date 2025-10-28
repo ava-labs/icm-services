@@ -156,12 +156,12 @@ func (s *SignatureAggregator) createSignedMessage(
 	proposerClient := proposervm.NewJSONRPCClient(destination.NodeURIs[0], destination.BlockchainID.String())
 	currentEpoch, err := proposerClient.GetCurrentEpoch(context.Background())
 	Expect(err).Should(BeNil())
-	log.Info("current epoch", zap.Any("epoch", currentEpoch))
+	log.Info("current epoch", "epoch", currentEpoch)
 	if currentEpoch.Number != 0 {
 		pChainHeight = currentEpoch.PChainHeight
 		log.Info("Using P-Chain height for signature creation",
-			zap.Uint64("pChainHeight", pChainHeight),
-			zap.Uint64("epochNumber", currentEpoch.Number),
+			"pChainHeight", pChainHeight,
+			"epochNumber", currentEpoch.Number,
 		)
 	}
 
