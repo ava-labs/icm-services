@@ -118,8 +118,8 @@ github.com/ava-labs/libevm v1.13.15-0.20251003195629-910e897c54c3 h1:1YeVupq12lU
 github.com/ava-labs/libevm v1.13.15-0.20251003195629-910e897c54c3/go.mod h1:ivRC/KojP8sai7j8WnpXIReQpcRklL2bIzoysnjpARQ=
 github.com/ava-labs/subnet-evm v0.8.0-fuji h1:15GuP6ZWgHjuY2rU2gGm1V3Ye+/N3fRQJ8HAE/G+aag=
 github.com/ava-labs/subnet-evm v0.8.0-fuji/go.mod h1:F4JexfW6yR28muXVRoN5DYvUeSMpPhJtAHNl51J1l44=
-github.com/aws/aws-sdk-go-v2 v1.39.4 h1:qTsQKcdQPHnfGYBBs+Btl8QwxJeoWcOcPcixK90mRhg=
-github.com/aws/aws-sdk-go-v2 v1.39.4/go.mod h1:yWSxrnioGUZ4WVv9TgMrNUeLV3PFESn/v+6T/Su8gnM=
+github.com/aws/aws-sdk-go-v2 v1.39.5 h1:e/SXuia3rkFtapghJROrydtQpfQaaUgd1cUvyO1mp2w=
+github.com/aws/aws-sdk-go-v2 v1.39.5/go.mod h1:yWSxrnioGUZ4WVv9TgMrNUeLV3PFESn/v+6T/Su8gnM=
 github.com/aws/aws-sdk-go-v2/config v1.31.15 h1:gE3M4xuNXfC/9bG4hyowGm/35uQTi7bUKeYs5e/6uvU=
 github.com/aws/aws-sdk-go-v2/config v1.31.15/go.mod h1:HvnvGJoE2I95KAIW8kkWVPJ4XhdrlvwJpV6pEzFQa8o=
 github.com/aws/aws-sdk-go-v2/credentials v1.18.19 h1:Jc1zzwkSY1QbkEcLujwqRTXOdvW8ppND3jRBb/VhBQc=
