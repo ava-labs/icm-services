@@ -397,7 +397,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	// Create access list with the predicate for the warp precompile
 	accessList := types.AccessList{
-		{
+		types.AccessTuple{
 			Address:     warp.ContractAddress,
 			StorageKeys: predicate,
 		},
