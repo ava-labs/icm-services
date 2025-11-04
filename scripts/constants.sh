@@ -27,9 +27,6 @@ signature_aggregator_path="$BASE_PATH/build/signature-aggregator"
 # Set the PATHS
 GOPATH="$(go env GOPATH)"
 
-ICM_CONTRACTS_PATH="$BASE_PATH"/tests/contracts/lib/icm-contracts
-source $ICM_CONTRACTS_PATH/scripts/constants.sh
-
 # Avalabs docker hub repo is avaplatform/icm-relayer.
 # Here we default to the local image (icm-relayer) as to avoid unintentional pushes
 # You should probably set it - export DOCKER_REPO='avaplatform/icm-relayer'
@@ -45,6 +42,7 @@ git_commit=${RELAYER_COMMIT:-$( git rev-list -1 HEAD )}
 # We use "export" here instead of just setting a bash variable because we need
 # to pass this flag to all child processes spawned by the shell.
 export CGO_CFLAGS="-O -D__BLST_PORTABLE__"
+
 # While CGO_ENABLED doesn't need to be explicitly set, it produces a much more
 # clear error due to the default value change in go1.20.
 export CGO_ENABLED=1

@@ -15,9 +15,9 @@ import (
 
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/icm-contracts/tests/interfaces"
-	"github.com/ava-labs/icm-contracts/tests/network"
-	"github.com/ava-labs/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	"github.com/ava-labs/libevm/log"

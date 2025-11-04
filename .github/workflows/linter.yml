@@ -12,6 +12,22 @@ on:
       - "**"
 
 jobs:
+  solhint:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+
+    - name: Install solhint
+      run: |
+        npm install solhint -g
+        solhint --version
+
+    - name: Run solhint
+      run: ./scripts/lint.sh --sol-lint
+
   golangci:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -29,6 +45,39 @@ jobs:
 
     - name: Run Lint
       run: ./scripts/lint.sh --go-lint
+
+  format-solidity:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+      
+      - name: Check Solidity Formatting
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          ./scripts/lint.sh --sol-format-check
+
+  protobuf-gen-check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+      with:
+          submodules: recursive
+
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: 'go.mod'
 
     - name: Ensure protobuf changes are checked in
       run: |

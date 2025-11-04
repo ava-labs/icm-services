@@ -4,7 +4,7 @@
 package main
 
 import (
-	teleportermessenger "github.com/ava-labs/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
+	teleportermessenger "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
 	"github.com/ava-labs/libevm/common"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"math/big"
 
-	localnetwork "github.com/ava-labs/icm-contracts/tests/network"
-	"github.com/ava-labs/icm-contracts/tests/utils"
+	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
@@ -34,14 +34,13 @@ func InsufficientGas(network *localnetwork.LocalNetwork, teleporter utils.Telepo
 	)
 
 	// Send message from L1A to L1B with 0 execution gas, which should fail to execute
-	message := "Hello, world!"
 	optsA, err := bind.NewKeyedTransactorWithChainID(
 		fundedKey,
 		l1AInfo.EVMChainID,
 	)
 	Expect(err).Should(BeNil())
 	tx, err := l1ATestMessenger.SendMessage(
-		optsA, l1BInfo.BlockchainID, testMessengerContractB, fundedAddress, big.NewInt(0), big.NewInt(0), message,
+		optsA, l1BInfo.BlockchainID, testMessengerContractB, fundedAddress, big.NewInt(0), big.NewInt(0), HELLO_WORLD,
 	)
 	Expect(err).Should(BeNil())
 
@@ -109,5 +108,5 @@ func InsufficientGas(network *localnetwork.LocalNetwork, teleporter utils.Telepo
 	//
 	_, currMessage, err := l1BTestMessenger.GetCurrentMessage(&bind.CallOpts{}, l1AInfo.BlockchainID)
 	Expect(err).Should(BeNil())
-	Expect(currMessage).Should(Equal(message))
+	Expect(currMessage).Should(Equal(HELLO_WORLD))
 }
