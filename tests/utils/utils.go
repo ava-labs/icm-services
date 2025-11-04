@@ -19,9 +19,9 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	batchcrosschainmessenger "github.com/ava-labs/icm-services/abi-bindings/go/BatchCrossChainMessenger"
+	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
+	batchcrosschainmessenger "github.com/ava-labs/icm-services/abi-bindings/go/utilities/BatchCrossChainMessenger"
 	"github.com/ava-labs/icm-services/config"
-	teleportermessenger "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	teleporterTestUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
@@ -549,6 +549,7 @@ func DeployBatchCrossChainMessenger(
 		l1.RPCClient,
 		teleporter.TeleporterRegistryAddress(l1),
 		teleporterManager,
+		teleporter.GetLatestTeleporterVersion(l1),
 	)
 	Expect(err).Should(BeNil())
 

@@ -8,9 +8,9 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/units"
-	exampleerc20 "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/mocks/ExampleERC20"
-	erc20tokenstakingmanager "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/validator-manager/ERC20TokenStakingManager"
-	istakingmanager "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/validator-manager/interfaces/IStakingManager"
+	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
+	erc20tokenstakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/ERC20TokenStakingManager"
+	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"

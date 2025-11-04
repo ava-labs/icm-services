@@ -20,11 +20,9 @@ echo "ARCH set to $ARCH"
 
 DEFAULT_CONTRACT_LIST="TeleporterMessenger TeleporterRegistry ExampleERC20 ExampleRewardCalculator TestMessenger ValidatorSetSig NativeTokenStakingManager ERC20TokenStakingManager
 TokenHome TokenRemote ERC20TokenHome ERC20TokenHomeUpgradeable ERC20TokenRemote ERC20TokenRemoteUpgradeable NativeTokenHome NativeTokenHomeUpgradeable NativeTokenRemote NativeTokenRemoteUpgradeable
-WrappedNativeToken MockERC20SendAndCallReceiver MockNativeSendAndCallReceiver ExampleERC20Decimals IStakingManager ACP99Manager ValidatorManager PoAManager BatchCrossChainMessenger"
+WrappedNativeToken MockERC20SendAndCallReceiver MockNativeSendAndCallReceiver ExampleERC20Decimals IStakingManager ACP99Manager ValidatorManager PoAManager BatchCrossChainMessenger INativeMinter"
 PROXY_LIST="TransparentUpgradeableProxy ProxyAdmin"
 ACCESS_LIST="OwnableUpgradeable"
-
-SUBNET_EVM_LIST="INativeMinter"
 
 EXTERNAL_LIBS="ValidatorMessages"
 
@@ -88,7 +86,7 @@ while read -r filepath; do
     # so that each remapping is of the form @token=lib/path/to/remapping
     transformed_lines=$(sed -n "s|^\(@[^=]*=\)\(.*\)|\1$dir_path/\2|p" "$filepath")
     remappings+=" $transformed_lines "
-done < <(find "$REPO_PATH/lib" -type f -name "remappings.txt" )
+done < <(find "$REPO_PATH/icm-contracts/lib" -type f -name "remappings.txt" )
 
 function convertToLower() {
     if [ "$ARCH" = 'arm64' ]; then
