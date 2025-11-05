@@ -131,7 +131,7 @@ for component in $(echo $components | tr ',' ' '); do
 
     echo "Running e2e tests for $component"
 
-    RUN_E2E=true SIG_AGG_PATH=$ICM_SERVICES_BUILD_PATH/signature-aggregator ./tests/suites/$component/$component.test \
+    RUN_E2E=true SIG_AGG_PATH=$ICM_SERVICES_BUILD_PATH/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
     --activate-granite=${activate_granite} \
