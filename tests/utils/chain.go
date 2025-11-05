@@ -282,7 +282,12 @@ func CalculateTxParams(
 	Expect(err).Should(BeNil())
 
 	gasFeeCap := baseFee.Mul(baseFee, big.NewInt(gasUtils.BaseFeeFactor))
-	gasFeeCap.Add(gasFeeCap, big.NewInt(gasUtils.MaxPriorityFeePerGas))
+	maxPriorityFeePerGas := big.NewInt(gasUtils.MaxPriorityFeePerGas)
+	gasFeeCap.Add(gasFeeCap, maxPriorityFeePerGas)
+
+	if gasTipCap.Cmp(maxPriorityFeePerGas) > 0 {
+		gasTipCap = maxPriorityFeePerGas
+	}
 
 	return gasFeeCap, gasTipCap, nonce
 }
