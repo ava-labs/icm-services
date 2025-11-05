@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+# See the file LICENSE for licensing terms.
+
+set -e
+
+HELP=
+LOG_LEVEL=
+ACTIVATE_GRANITE=
+EPOCH_DURATION=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -v | --verbose) LOG_LEVEL=debug ;;
+        -g | --activate-granite) ACTIVATE_GRANITE=true ;;
+        -e | --epoch-duration) EPOCH_DURATION=$2 ;;
+        -h | --help) HELP=true ;;
+    esac
+    shift
+done
+
+if [ "$HELP" = true ]; then
+    echo "Usage: ./scripts/relayer_e2e_test.sh [OPTIONS]"
+    echo "Run E2E tests for ICM Services."
+    echo ""
+    echo "Options:"
+    echo "  -v, --verbose                     Enable debug logs"
+    echo "  -g, --active-granite              Activate Granite upgrade for testing"
+    echo "  -e, --epoch-duration              Set the epoch duration for Granite testing"
+    echo "  -h, --help                        Print this help message"
+    exit 0
+fi
+
+BASE_PATH=$(
+  cd "$(dirname "${BASH_SOURCE[0]}")"
+  cd .. && pwd
+)
+
+source "$BASE_PATH"/scripts/constants.sh
+source "$BASE_PATH"/scripts/versions.sh
+
+BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
+
+cwd=$(pwd)
+# Install the avalanchego and subnet-evm binaries
+rm -rf $BASEDIR/avalanchego
+BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego ./scripts/install_avalanchego_release.sh
+BASEDIR=$BASEDIR ./scripts/install_subnetevm_release.sh
+
+# Install signature-aggregator to the location used by the tests
+SIGNATURE_AGGREGATOR_PATH=$BASEDIR/icm-services/signature-aggregator
+./scripts/build_signature_aggregator.sh $SIGNATURE_AGGREGATOR_PATH
+echo "signature-aggregator Path: ${SIGNATURE_AGGREGATOR_PATH}"
+
+cp ${BASEDIR}/subnet-evm/subnet-evm ${BASEDIR}/avalanchego/plugins/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
+echo "Copied ${BASEDIR}/subnet-evm/subnet-evm binary to ${BASEDIR}/avalanchego/plugins/"
+
+export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
+export AVALANCHEGO_PATH=$BASEDIR/avalanchego/avalanchego
+export AVAGO_PLUGIN_DIR=$BASEDIR/avalanchego/plugins
+
+go run github.com/onsi/ginkgo/v2/ginkgo build ./tests/
+go build -v -o tests/cmd/decider/decider ./tests/cmd/decider/
+
+if [ -n "$EPOCH_DURATION" ]; then
+  export GRANITE_EPOCH_DURATION=$EPOCH_DURATION
+fi
+
+# Run the tests
+echo "Running e2e tests $RUN_E2E"
+RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${SIG_AGG_PATH:-"$BASEDIR/icm-services/signature-aggregator"} ./tests/tests.test \
+  --activate-granite=${ACTIVATE_GRANITE:-"false"} \
+  --ginkgo.vv \
+  --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \
+  --ginkgo.focus=${GINKGO_FOCUS:-""} 
+
+echo "e2e tests passed"
+exit 0

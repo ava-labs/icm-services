@@ -36,7 +36,7 @@ To start developing on ICM Services, you'll need Golang v1.22.10.
 - Run the unit tests
 
 ```sh
-./scripts/test.sh
+./scripts/unit-test.sh
 ```
 
 ### Continuous Integration (CI)

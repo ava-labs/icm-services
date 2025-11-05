@@ -10,7 +10,7 @@ issues:
   # skip auto-generated files.
   exclude-files:
     - ".*mock.*"
-    - "tests/abi-bindings/.*"
+    - ".*/abi-bindings/.*"
     - ".*.pb.go"
 
 linters:
