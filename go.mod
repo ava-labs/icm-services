@@ -5,7 +5,7 @@ go 1.24.9
 require (
 	github.com/ava-labs/avalanchego v1.14.0
 	github.com/ava-labs/libevm v1.13.15-0.20251016142715-1bccf4f2ddb2
-	github.com/ava-labs/subnet-evm v0.8.0-rc.0
+	github.com/ava-labs/subnet-evm v0.8.0
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/pkg/errors v0.9.1
