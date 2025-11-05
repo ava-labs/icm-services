@@ -53,5 +53,5 @@ icm-contracts/docker-compose-run-local.yml
 icm-contracts/docs/
 icm-contracts/coverage/
 
-icm-contracts/TeleporterRegistryAddress.json
-icm-contracts/ValidatorAddresses.json
+TeleporterRegistryAddress.json
+ValidatorAddresses.json

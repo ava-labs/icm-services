@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   solidity-unit-tests:
+    name: solidity-unit-tests
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:

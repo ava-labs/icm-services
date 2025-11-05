@@ -17,7 +17,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$HELP" = true ]; then
-    echo "Usage: ./scripts/test.sh [OPTIONS]"
+    echo "Usage: ./scripts/unit-test.sh [OPTIONS]"
     echo "Run unit tests for ICM Services."
     echo ""
     echo "Options:"

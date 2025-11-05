@@ -51,6 +51,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestE2E(t *testing.T) {
+	if os.Getenv("RUN_E2E") == "" {
+		t.Skip("Environment variable RUN_E2E not set; skipping E2E tests")
+	}
+
 	// Handle SIGINT and SIGTERM signals.
 	signalChan := make(chan os.Signal, 2)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
@@ -60,10 +64,6 @@ func TestE2E(t *testing.T) {
 		cleanup()
 		os.Exit(1)
 	}()
-
-	if os.Getenv("RUN_E2E") == "" {
-		t.Skip("Environment variable RUN_E2E not set; skipping E2E tests")
-	}
 
 	RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, "Relayer e2e test")

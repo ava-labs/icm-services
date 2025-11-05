@@ -115,7 +115,7 @@ cd $REPO_PATH
 BASEDIR=$BASEDIR ICM_SERVICES_BUILD_PATH=$ICM_SERVICES_BUILD_PATH "${REPO_PATH}/scripts/install_sig_agg_release.sh"
 echo "Installed signature-aggregator from icm-services release ${ICM_SERVICES_VERSION}"
 
-cd $ICM_CONTRACTS_PATH
+cd $REPO_PATH
 if command -v forge &> /dev/null; then
   forge build --skip test
 else
@@ -123,11 +123,11 @@ else
   $HOME/.foundry/bin/forge build
 fi
 
-cd "$ICM_CONTRACTS_PATH"
+cd "$REPO_PATH"
 
 for component in $(echo $components | tr ',' ' '); do
     echo "Building e2e tests for $component"
-    go run github.com/onsi/ginkgo/v2/ginkgo build ./tests/suites/$component
+    go run github.com/onsi/ginkgo/v2/ginkgo build ./icm-contracts/tests/suites/$component
 
     echo "Running e2e tests for $component"
 

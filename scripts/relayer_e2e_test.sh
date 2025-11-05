@@ -19,7 +19,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$HELP" = true ]; then
-    echo "Usage: ./scripts/e2e_test.sh [OPTIONS]"
+    echo "Usage: ./scripts/relayer_e2e_test.sh [OPTIONS]"
     echo "Run E2E tests for ICM Services."
     echo ""
     echo "Options:"

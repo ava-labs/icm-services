@@ -48,7 +48,7 @@ To run the E2E tests locally, you'll need to install Gingko following the instru
 Then run the following command from the root of the repository:
 
 ```bash
-./scripts/e2e_test.sh
+./scripts/contracts_e2e_test.sh
 ```
 
 ### Run specific E2E tests
@@ -56,19 +56,19 @@ Then run the following command from the root of the repository:
 To run a specific E2E test, specify the environment variable `GINKGO_FOCUS`, which will then look for test descriptions that match the provided input. For example, to run the `Calculate Teleporter message IDs` test:
 
 ```bash
-GINKGO_FOCUS="Calculate Teleporter message IDs" ./scripts/e2e_test.sh
+GINKGO_FOCUS="Calculate Teleporter message IDs" ./scripts/contracts_e2e_test.sh
 ```
 
 A substring of the full test description can be used as well:
 
 ```bash
-GINKGO_FOCUS="Calculate Teleporter" ./scripts/e2e_test.sh
+GINKGO_FOCUS="Calculate Teleporter" ./scripts/contracts_e2e_test.sh
 ```
 
 The E2E test script also supports a `--components` flag, making it easy to run all the test cases for a particular project. For example, to run all E2E tests for the `tests/flows/ictt/` folder:
 
 ```bash
-./scripts/e2e_test.sh --components "ictt"
+./scripts/contracts_e2e_test.sh --components "ictt"
 ```
 
 ## ABI Bindings

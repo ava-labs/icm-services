@@ -7,12 +7,12 @@ if ! [[ "$0" =~ scripts/protobuf_codegen.sh ]]; then
   exit 255
 fi
 
-RELAYER_PATH=$(
+REPO_PATH=$(
     cd "$(dirname "${BASH_SOURCE[0]}")"
     cd .. && pwd
 )
 
-source $RELAYER_PATH/scripts/versions.sh
+source $REPO_PATH/scripts/versions.sh
 
 ## install "protoc-gen-go"
 PROTOC_GEN_GO_VERSION=$(getDepVersion google.golang.org/protobuf)

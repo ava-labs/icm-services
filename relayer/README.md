@@ -507,7 +507,7 @@ _Note:_ Given these semantics for computing the starting block height, it's poss
 Unit tests can be ran locally by running the command in the root of the project:
 
 ```bash
-./scripts/test.sh
+./scripts/unit-test.sh
 ```
 
 If your temporary directory is not writable, the unit tests may fail with messages like `fork/exec /tmp/go-build2296620589/b247/config.test: permission denied`. To fix this, set the `TMPDIR` environment variable to something writable, for example `export TMPDIR=~/tmp`.
@@ -517,13 +517,13 @@ If your temporary directory is not writable, the unit tests may fail with messag
 To run the E2E tests locally, you'll need to install Gingko following the instructions [here](https://onsi.github.io/ginkgo/#installing-ginkgo). Run the tests using the dedicated script:
 
 ```bash
-./scripts/e2e_test.sh
+./scripts/relayer_e2e_test.sh
 ```
 
 To run a specific E2E test, specify the environment variable `GINKGO_FOCUS`, which will then look for [test descriptions](./tests/e2e_test.go#L68) that match the provided input. For example, to run the `Basic Relay` test:
 
 ```bash
-GINKGO_FOCUS="Basic" ./scripts/e2e_test.sh
+GINKGO_FOCUS="Basic" ./scripts/relayer_e2e_test.sh
 ```
 
 The E2E tests use the `TeleporterMessenger` contract deployment transaction specified in the following files:

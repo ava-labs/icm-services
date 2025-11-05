@@ -1,7 +1,7 @@
 # Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 # See the file LICENSE for licensing terms.
 
-name: Run Golang Linter
+name: Run Lint and Format Checks
 
 on:
   push:
@@ -13,12 +13,13 @@ on:
 
 jobs:
   solhint:
+    name: solhint
     runs-on: ubuntu-22.04
     timeout-minutes: 10
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v5 # Purposefully not recursive
 
     - name: Install solhint
       run: |
@@ -29,6 +30,7 @@ jobs:
       run: ./scripts/lint.sh --sol-lint
 
   golangci:
+    name: golanci lint
     runs-on: ubuntu-22.04
     timeout-minutes: 10
 
@@ -47,6 +49,7 @@ jobs:
       run: ./scripts/lint.sh --go-lint
 
   format-solidity:
+    name: format solidity
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     
@@ -65,6 +68,7 @@ jobs:
           ./scripts/lint.sh --sol-format-check
 
   protobuf-gen-check:
+    name: check protobuf generation
     runs-on: ubuntu-22.04
     timeout-minutes: 10
 
@@ -85,3 +89,83 @@ jobs:
         git update-index --really-refresh >> /dev/null
         git diff-index HEAD # to show the differences
         git diff-index --quiet HEAD || (echo 'protobuf generated code changes have not all been checked in' && exit 1)
+  
+  codegen_check:
+    name: check code generation
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+
+      - name: Generate code
+        run: go generate ./...
+
+      - name: Print diff
+        run: git --no-pager diff
+
+      - name: Fail if diff exists
+        run: git --no-pager diff --quiet
+
+  gomod_check:
+    name: Check go.mod
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - run: go mod tidy
+      - run: git --no-pager diff -- go.mod go.sum  # This prints the diff
+      - run: git --no-pager diff --quiet -- go.mod go.sum  # This errors if there is a diff
+
+
+  abi_binding:
+    name: abi_binding
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Install solc
+        run: |
+          source ./scripts/versions.sh
+          wget https://github.com/ethereum/solidity/releases/download/v$SOLIDITY_VERSION/solc-static-linux
+          chmod +x solc-static-linux
+          sudo mv solc-static-linux /usr/local/bin/solc
+
+      - name: Generate ABI Go bindings
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          export GOPATH=$HOME/go
+          export PATH="$PATH:$GOPATH/bin"
+          ./scripts/abi_bindings.sh
+
+      - name: Print diff
+        run: git --no-pager diff -- abi-bindings/**.go
+
+      - name: Fail if diff exists
+        run: git --no-pager diff --quiet -- abi-bindings/**.go

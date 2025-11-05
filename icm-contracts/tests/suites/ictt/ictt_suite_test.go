@@ -24,7 +24,7 @@ import (
 
 const (
 	teleporterByteCodeFile  = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
-	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
+	warpGenesisTemplateFile = "./icm-contracts/tests/utils/warp-genesis-template.json"
 
 	icttLabel              = "ICTT"
 	erc20TokenHomeLabel    = "ERC20TokenHome"
