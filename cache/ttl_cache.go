@@ -12,8 +12,9 @@ import (
 )
 
 type TTLCacheItem[V any] struct {
-	value     V
-	timestamp time.Time
+	value      V
+	timestamp  time.Time
+	expiration *time.Time // Optional: if set, expiration time is used instead of timestamp + ttl
 }
 
 // Cache with per-key TTL tracking and single-flight fetch
@@ -62,6 +63,65 @@ func (c *TTLCache[K, V]) Get(key K, fetchFunc func(K) (V, error), invalidate boo
 		c.data[key] = TTLCacheItem[V]{
 			value:     newValue,
 			timestamp: time.Now(),
+		}
+		c.lock.Unlock()
+
+		return newValue, nil
+	})
+
+	if err != nil {
+		return *new(V), err
+	}
+
+	return v.(V), nil
+}
+
+// GetWithExpiration checks if the cached value is fresh, otherwise fetches using fetchFunc.
+// The expirationFunc is called with the fetched value to determine its expiration time.
+// This allows per-entry TTLs based on the value itself.
+// Concurrent fetches for the same key are deduplicated.
+func (c *TTLCache[K, V]) GetWithExpiration(
+	key K,
+	fetchFunc func(K) (V, error),
+	expirationFunc func(V) time.Time,
+	invalidate bool,
+) (V, error) {
+	if invalidate {
+		c.lock.Lock()
+		delete(c.data, key)
+		c.lock.Unlock()
+	} else {
+		c.lock.RLock()
+		item, exists := c.data[key]
+		c.lock.RUnlock()
+		if exists {
+			// Check expiration: use explicit expiration time if set, otherwise use timestamp + ttl
+			var isExpired bool
+			if item.expiration != nil {
+				isExpired = time.Now().After(*item.expiration)
+			} else {
+				isExpired = time.Since(item.timestamp) >= c.ttl
+			}
+			if !isExpired {
+				return item.value, nil
+			}
+		}
+	}
+
+	keyStr := keyToString(key)
+
+	v, err, _ := c.sfGroup.Do(keyStr, func() (interface{}, error) {
+		newValue, fetchErr := fetchFunc(key)
+		if fetchErr != nil {
+			return *new(V), fetchErr
+		}
+
+		expiration := expirationFunc(newValue)
+		c.lock.Lock()
+		c.data[key] = TTLCacheItem[V]{
+			value:      newValue,
+			timestamp:  time.Now(),
+			expiration: &expiration,
 		}
 		c.lock.Unlock()
 

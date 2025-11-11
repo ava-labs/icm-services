@@ -95,6 +95,7 @@ type AppRequestNetwork interface {
 	BuildCanonicalValidators(validatorSet snowVdrs.WarpSet) *CanonicalValidators
 	IsGraniteActivated() bool
 	GetLatestSyncedPChainHeight() uint64
+	GetGraniteEpochDuration() time.Duration
 }
 
 type appRequestNetwork struct {
@@ -340,6 +341,15 @@ func (n *appRequestNetwork) IsGraniteActivated() bool {
 // GetLatestSyncedPChainHeight returns the highest P-Chain height that has been successfully cached.
 func (n *appRequestNetwork) GetLatestSyncedPChainHeight() uint64 {
 	return n.latestSyncedPChainHeight.Load()
+}
+
+// GetGraniteEpochDuration returns the Granite epoch duration from the network upgrade config.
+// Returns 0 if Granite is not activated or epoch duration is not configured.
+func (n *appRequestNetwork) GetGraniteEpochDuration() time.Duration {
+	if n.networkUpgradeConfig == nil {
+		return 0
+	}
+	return n.networkUpgradeConfig.GraniteEpochDuration
 }
 
 // trackSubnet adds the subnetID to the set of tracked subnets. Returns true iff the subnet was already being tracked.

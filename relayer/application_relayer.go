@@ -15,7 +15,9 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/avalanchego/vms/proposervm/block"
 
+	"github.com/ava-labs/icm-services/cache"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/peers"
@@ -71,6 +73,8 @@ type ApplicationRelayer struct {
 	proposerClient            *peers.ProposerVMAPI
 	signatureAggregator       *aggregator.SignatureAggregator
 	processMessageSemaphore   chan struct{}
+	epochCache                *cache.TTLCache[string, block.Epoch]
+	epochDuration             time.Duration
 }
 
 func NewApplicationRelayer(
@@ -163,6 +167,10 @@ func NewApplicationRelayer(
 
 	proposerClient := peers.NewProposerVMAPI(baseURL, blockchainID, destAPIConfig)
 
+	// We don't use a TTL value here since we use the expiration time calculated in the expirationFunc.
+	// The cached epoch has different expiration times based on the epoch.StartTime + epochDuration.
+	epochCache := cache.NewTTLCache[string, block.Epoch](0)
+
 	ar := ApplicationRelayer{
 		logger:                    logger,
 		metrics:                   metrics,
@@ -177,6 +185,8 @@ func NewApplicationRelayer(
 		proposerClient:            proposerClient,
 		signatureAggregator:       signatureAggregator,
 		processMessageSemaphore:   processMessageSemaphore,
+		epochCache:                epochCache,
+		epochDuration:             network.GetGraniteEpochDuration(),
 	}
 
 	return &ar, nil
@@ -382,7 +392,43 @@ func (r *ApplicationRelayer) getPChainHeightForDestination(ctx context.Context) 
 		}
 		return height, nil
 	}
-	epoch, err := r.proposerClient.GetCurrentEpoch(ctx)
+
+	// Use cached epoch to avoid per-message fetches. The epoch is static over its duration.
+	// We calculate the TTL based on epoch.StartTime + epochDuration to cache for the exact
+	// remaining duration. The cache automatically expires entries when the epoch expiration
+	// time is reached. If the sealing block hasn't been accepted by the calculated end time,
+	// we'll continue fetching until a new epoch is returned.
+	cacheKey := r.relayerID.DestinationBlockchainID.String()
+	fetchEpochFunc := func(_ string) (block.Epoch, error) {
+		epoch, err := r.proposerClient.GetCurrentEpoch(ctx)
+		if err != nil {
+			return block.Epoch{}, err
+		}
+
+		r.logger.Info("Successfully retrieved epoch from ProposerVM",
+			zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
+			zap.Uint64("epochNumber", epoch.Number),
+			zap.Uint64("epochPChainHeight", epoch.PChainHeight),
+			zap.Int64("epochStartTime", epoch.StartTime),
+		)
+
+		return epoch, nil
+	}
+
+	// Calculate expiration time based on epoch.StartTime + epochDuration
+	expirationFunc := func(epoch block.Epoch) time.Time {
+		// epoch.StartTime is in nanoseconds (Unix timestamp)
+		epochStartTime := time.Unix(0, epoch.StartTime)
+		expiration := epochStartTime.Add(r.epochDuration)
+		r.logger.Debug("Calculated epoch expiration",
+			zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
+			zap.Uint64("epochNumber", epoch.Number),
+			zap.Time("epochExpiration", expiration),
+		)
+		return expiration
+	}
+
+	epoch, err := r.epochCache.GetWithExpiration(cacheKey, fetchEpochFunc, expirationFunc, false)
 	if err != nil {
 		r.logger.Error("Failed to get current epoch from destination chain ProposerVM",
 			zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
@@ -390,13 +436,6 @@ func (r *ApplicationRelayer) getPChainHeightForDestination(ctx context.Context) 
 		)
 		return 0, err
 	}
-
-	r.logger.Info("Successfully retrieved epoch from ProposerVM",
-		zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
-		zap.Uint64("epochNumber", epoch.Number),
-		zap.Uint64("epochPChainHeight", epoch.PChainHeight),
-		zap.Int64("epochStartTime", epoch.StartTime),
-	)
 
 	// This should only be the case around activation time
 	// but should be safe to keep this as a failsafe.
