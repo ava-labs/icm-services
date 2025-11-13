@@ -30,7 +30,7 @@ jobs:
       run: ./scripts/lint.sh --sol-lint
 
   golangci:
-    name: golanci lint
+    name: golanci
     runs-on: ubuntu-22.04
     timeout-minutes: 10
 
