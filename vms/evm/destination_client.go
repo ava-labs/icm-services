@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/url"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -64,8 +65,11 @@ type destinationClient struct {
 	txInclusionTimeout         time.Duration
 
 	// Epoch cache for Granite - cached per destination blockchain
-	epochCache     *cache.TTLCache[string, block.Epoch]
-	proposerClient *peers.ProposerVMAPI
+	epochValue        block.Epoch
+	epochExpiration   time.Time
+	epochMu           sync.RWMutex
+	epochSingleFlight *cache.SingleFlight
+	proposerClient    *peers.ProposerVMAPI
 }
 
 // Type alias for the destinationClient to have access to the fields but not the methods of the concurrentSigner.
@@ -215,9 +219,8 @@ func NewDestinationClient(
 		zap.Uint64("nonce", pendingNonce),
 	)
 
-	// Initialize epoch cache. The TTL value doesn't matter since we use GetWithExpiration
-	// which sets explicit expiration times based on epoch.StartTime + epochDuration.
-	epochCache := cache.NewTTLCache[string, block.Epoch](0)
+	// Initialize epoch cache components
+	epochSingleFlight := cache.NewSingleFlight()
 
 	// Create ProposerVM client for destination chain
 	endpoint, err := url.Parse(destinationBlockchain.RPCEndpoint.BaseURL)
@@ -249,7 +252,7 @@ func NewDestinationClient(
 		suggestedPriorityFeeBuffer: new(big.Int).SetUint64(destinationBlockchain.SuggestedPriorityFeeBuffer),
 		maxPriorityFeePerGas:       new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
 		txInclusionTimeout:         time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
-		epochCache:                 epochCache,
+		epochSingleFlight:          epochSingleFlight,
 		proposerClient:             proposerClient,
 	}
 
@@ -584,32 +587,34 @@ func (c *destinationClient) GetPChainHeightForDestination(
 		return 0, fmt.Errorf("proposerClient is required when Granite is activated")
 	}
 
-	epochDuration := network.GetGraniteEpochDuration()
+	// Check if cached epoch is still valid
+	c.epochMu.RLock()
+	if !c.epochExpiration.IsZero() && time.Now().Before(c.epochExpiration) {
+		epoch := c.epochValue
+		c.epochMu.RUnlock()
+		return epoch.PChainHeight, nil
+	}
+	c.epochMu.RUnlock()
 
-	// Use cached epoch to avoid per-message fetches. The epoch is static over its duration.
-	// We calculate the TTL based on epoch.StartTime + epochDuration to cache for the exact
-	// remaining duration. The cache automatically expires entries when the epoch expiration
-	// time is reached. If the sealing block hasn't been accepted by the calculated end time,
-	// we'll continue fetching until a new epoch is returned.
-	cacheKey := c.destinationBlockchainID.String()
-	fetchEpochFunc := func(_ string) (block.Epoch, error) {
-		epoch, err := c.proposerClient.GetCurrentEpoch(ctx)
-		if err != nil {
-			return block.Epoch{}, err
+	// Use singleflight to deduplicate concurrent fetches
+	key := "epoch" // Single value cache, so key is constant
+	result, err, _ := c.epochSingleFlight.Do(key, func() (interface{}, error) {
+		epoch, fetchErr := c.proposerClient.GetCurrentEpoch(ctx)
+		if fetchErr != nil {
+			return block.Epoch{}, fetchErr
 		}
+
+		epochDuration := network.GetGraniteEpochDuration()
 
 		c.logger.Info("Successfully retrieved epoch from ProposerVM",
 			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
 			zap.Uint64("epochNumber", epoch.Number),
 			zap.Uint64("epochPChainHeight", epoch.PChainHeight),
 			zap.Int64("epochStartTime", epoch.StartTime),
+			zap.Duration("epochDuration", epochDuration),
 		)
 
-		return epoch, nil
-	}
-
-	// Calculate expiration time based on epoch.StartTime + epochDuration
-	expirationFunc := func(epoch block.Epoch) time.Time {
+		// Calculate expiration time based on epoch.StartTime + epochDuration
 		// epoch.StartTime is in nanoseconds (Unix timestamp)
 		epochStartTime := time.Unix(0, epoch.StartTime)
 		expiration := epochStartTime.Add(epochDuration)
@@ -618,10 +623,16 @@ func (c *destinationClient) GetPChainHeightForDestination(
 			zap.Uint64("epochNumber", epoch.Number),
 			zap.Time("epochExpiration", expiration),
 		)
-		return expiration
-	}
 
-	epoch, err := c.epochCache.GetWithExpiration(cacheKey, fetchEpochFunc, expirationFunc, false)
+		// Store in cache
+		c.epochMu.Lock()
+		c.epochValue = epoch
+		c.epochExpiration = expiration
+		c.epochMu.Unlock()
+
+		return epoch, nil
+	})
+
 	if err != nil {
 		c.logger.Error("Failed to get current epoch from destination chain ProposerVM",
 			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
@@ -629,6 +640,8 @@ func (c *destinationClient) GetPChainHeightForDestination(
 		)
 		return 0, err
 	}
+
+	epoch := result.(block.Epoch)
 
 	// This should only be the case around activation time
 	// but should be safe to keep this as a failsafe.

@@ -18,24 +18,16 @@ type FIFOCache[K comparable, V any] struct {
 	capacity int
 
 	// Single-flight mechanism
-	inflight   map[K]*call[V]
-	inflightLk sync.Mutex
-}
-
-// call represents an in-flight fetch operation
-type call[V any] struct {
-	wg  sync.WaitGroup
-	val V
-	err error
+	singleFlight *SingleFlight
 }
 
 // NewFIFOCache creates a new FIFO cache with the given capacity and fetch function
 func NewFIFOCache[K comparable, V any](capacity int) *FIFOCache[K, V] {
 	return &FIFOCache[K, V]{
-		cache:    make(map[K]V),
-		queue:    make([]K, 0, capacity),
-		capacity: capacity,
-		inflight: make(map[K]*call[V]),
+		cache:        make(map[K]V),
+		queue:        make([]K, 0, capacity),
+		capacity:     capacity,
+		singleFlight: NewSingleFlight(),
 	}
 }
 
@@ -50,41 +42,27 @@ func (c *FIFOCache[K, V]) Get(key K, fetchFunc FetchFunc[K, V]) (V, error) {
 	}
 	c.lk.RUnlock()
 
-	// Single-flight mechanism
-	c.inflightLk.Lock()
-	if cl, ok := c.inflight[key]; ok {
-		// Another goroutine is already fetching this key
-		c.inflightLk.Unlock()
-		cl.wg.Wait()
-		return cl.val, cl.err
-	}
+	// Use singleflight to deduplicate concurrent fetches
+	keyStr := keyToString(key)
+	result, err, _ := c.singleFlight.Do(keyStr, func() (interface{}, error) {
+		val, fetchErr := fetchFunc(key)
+		if fetchErr != nil {
+			return *new(V), fetchErr
+		}
 
-	// We're the first to request this key
-	cl := &call[V]{}
-	cl.wg.Add(1)
-	c.inflight[key] = cl
-	c.inflightLk.Unlock()
-
-	// Fetch the value
-	val, err := fetchFunc(key)
-	cl.val = val
-	cl.err = err
-
-	if err == nil {
 		// Store in cache
 		c.lk.Lock()
 		c.set(key, val)
 		c.lk.Unlock()
+
+		return val, nil
+	})
+
+	if err != nil {
+		return *new(V), err
 	}
 
-	// Clean up inflight tracking
-	c.inflightLk.Lock()
-	delete(c.inflight, key)
-	c.inflightLk.Unlock()
-
-	cl.wg.Done()
-
-	return val, err
+	return result.(V), nil
 }
 
 // set adds a key-value pair to the cache (caller must hold write lock)
