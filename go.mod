@@ -12,7 +12,7 @@ require (
 	github.com/ava-labs/avalanchego v1.14.1-db-metrics-fix
 	github.com/ava-labs/icm-contracts v1.0.10-0.20251105224503-7d4784cff747
 	github.com/ava-labs/libevm v1.13.15-0.20251016142715-1bccf4f2ddb2
-	github.com/ava-labs/subnet-evm v0.8.1-0.20251111182129-7fc05124d976
+	github.com/ava-labs/subnet-evm v0.8.1-db-metrics-fix
 	github.com/aws/aws-sdk-go-v2 v1.39.6
 	github.com/aws/aws-sdk-go-v2/config v1.31.20
 	github.com/aws/aws-sdk-go-v2/service/kms v1.48.2
