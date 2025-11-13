@@ -29,8 +29,8 @@ import (
 	"github.com/ava-labs/icm-services/peers/validators"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 // now populated TLS cert and key and result in same nodeID
 // - Requests an aggregated signature from the signature aggregator API which
 // will only be returned successfully if the nodeID is explicitly allowed by the subnet
-func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ValidatorsOnlyNetwork(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	// Begin Setup step
 	ctx := context.Background()
 
@@ -66,9 +66,11 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 
 	// Create a config without TLS cert and key
 	baseConfig := testUtils.CreateDefaultSignatureAggregatorConfig(
+		log,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 	)
 	baseConfigPath := testUtils.WriteSignatureAggregatorConfig(
+		log,
 		baseConfig,
 		testUtils.DefaultSignatureAggregatorCfgFname,
 	)
@@ -82,12 +84,16 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 	signatureAggregatorConfig.TLSKeyPath = keyPath
 
 	signatureAggregatorConfigPath := testUtils.WriteSignatureAggregatorConfig(
+		log,
 		signatureAggregatorConfig,
 		testUtils.DefaultSignatureAggregatorCfgFname,
 	)
-	log.Info("Starting the signature aggregator", "configPath", signatureAggregatorConfigPath)
+	log.Info("Starting the signature aggregator",
+		zap.String("configPath", signatureAggregatorConfigPath),
+	)
 	signatureAggregatorCancel, readyChan := testUtils.RunSignatureAggregatorExecutable(
 		ctx,
+		log,
 		signatureAggregatorConfigPath,
 		signatureAggregatorConfig,
 	)
@@ -105,20 +111,21 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 	nodeID := ids.NodeIDFromCert(peerCert)
 
 	signatureAggregatorCancel()
-	log.Info("Retrieved nodeID", "nodeID", nodeID)
+	log.Info("Retrieved nodeID", zap.Stringer("nodeID", nodeID))
 
 	// We have to send the message before making the network private.
 
 	log.Info("Sending teleporter message from B -> A")
 	receipt, _, _ := testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1BInfo,
 		l1AInfo,
 		fundedKey,
 		fundedAddress,
 	)
-	warpMessage := getWarpMessageFromLog(ctx, receipt, l1BInfo)
+	warpMessage := getWarpMessageFromLog(ctx, log, receipt, l1BInfo)
 
 	// Restart l1B and make it private
 	relayerNodeIDSet := set.NewSet[ids.NodeID](1)
@@ -212,6 +219,7 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 	log.Info("Starting the signature aggregator with a floating TLS cert")
 	signatureAggregatorCancel, readyChan = testUtils.RunSignatureAggregatorExecutable(
 		ctx,
+		log,
 		baseConfigPath,
 		baseConfig,
 	)
@@ -229,6 +237,7 @@ func ValidatorsOnlyNetwork(network *network.LocalNetwork, teleporter utils.Telep
 	log.Info("Starting the signature aggregator with the same TLS cert")
 	signatureAggregatorCancel, readyChan = testUtils.RunSignatureAggregatorExecutable(
 		ctx,
+		log,
 		signatureAggregatorConfigPath,
 		signatureAggregatorConfig,
 	)
