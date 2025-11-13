@@ -4,6 +4,7 @@
 package cache
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -72,4 +73,12 @@ func (c *TTLCache[K, V]) Get(key K, fetchFunc func(K) (V, error), invalidate boo
 	}
 
 	return v.(V), nil
+}
+
+// keyToString is defined to allow for both fmt.Stringer and primitive string types.
+func keyToString[K comparable](key K) string {
+	if s, ok := any(key).(fmt.Stringer); ok {
+		return s.String()
+	}
+	return fmt.Sprintf("%v", key)
 }
