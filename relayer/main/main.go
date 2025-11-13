@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -89,7 +88,7 @@ func main() {
 	}
 	logLevel, err := logging.ToLevel(cfg.LogLevel)
 	if err != nil {
-		log.Fatalf("error reading log level from config: %s", err)
+		panic(fmt.Errorf("error reading log level from config: %w", err))
 	}
 	logger := logging.NewLogger(
 		"icm-relayer",
@@ -367,12 +366,12 @@ func buildConfig() config.Config {
 	// Parse the flags
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		config.DisplayUsageText()
-		log.Fatalf("couldn't parse flags: %s", err)
+		panic(fmt.Errorf("couldn't parse flags: %w", err))
 	}
 	// If the version flag is set, display the version then exit
 	displayVersion, err := fs.GetBool(config.VersionKey)
 	if err != nil {
-		log.Fatalf("error reading %s flag value: %s", config.VersionKey, err)
+		panic(fmt.Errorf("error reading %s flag value: %w", config.VersionKey, err))
 	}
 	if displayVersion {
 		fmt.Printf("%s\n", version)
@@ -381,7 +380,7 @@ func buildConfig() config.Config {
 	// If the help flag is set, output the usage text then exit
 	help, err := fs.GetBool(config.HelpKey)
 	if err != nil {
-		log.Fatalf("error reading %s flag value: %s", config.HelpKey, err)
+		panic(fmt.Errorf("error reading %s flag value: %w", config.HelpKey, err))
 	}
 	if help {
 		config.DisplayUsageText()
@@ -390,12 +389,12 @@ func buildConfig() config.Config {
 
 	v, err := config.BuildViper(fs)
 	if err != nil {
-		log.Fatalf("couldn't build viper: %s", err)
+		panic(fmt.Errorf("couldn't build viper: %w", err))
 	}
 
 	cfg, err := config.NewConfig(v)
 	if err != nil {
-		log.Fatalf("couldn't build config: %s", err)
+		panic(fmt.Errorf("couldn't build config: %w", err))
 	}
 	return cfg
 }

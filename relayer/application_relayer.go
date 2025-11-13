@@ -435,7 +435,7 @@ func (r *ApplicationRelayer) createSignedMessage(
 			r.signingSubnetID.String(),
 		)
 	}
-	err = utils.WithRetriesTimeout(r.logger, operation, retryTimeout, "warp_getMessageAggregateSignature")
+	err = utils.WithRetriesTimeout(r.logger.With(), operation, retryTimeout, "warp_getMessageAggregateSignature")
 	if err != nil {
 		r.logger.Error(
 			"Failed to get aggregate signature from node endpoint.",

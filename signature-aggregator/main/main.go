@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -52,7 +51,7 @@ func main() {
 
 	logLevel, err := logging.ToLevel(cfg.LogLevel)
 	if err != nil {
-		log.Fatalf("error reading log level from config: %s", err)
+		panic(fmt.Errorf("error reading log level from config: %w", err))
 	}
 
 	logger := logging.NewLogger(
@@ -232,12 +231,12 @@ func buildConfig() config.Config {
 	fs := config.BuildFlagSet()
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		config.DisplayUsageText()
-		log.Fatalf("Failed to parse flags: %s", err)
+		panic(fmt.Errorf("Failed to parse flags: %w", err))
 	}
 
 	displayVersion, err := fs.GetBool(config.VersionKey)
 	if err != nil {
-		log.Fatalf("error reading %s flag: %s", config.VersionKey, err)
+		panic(fmt.Errorf("error reading %s flag: %w", config.VersionKey, err))
 	}
 	if displayVersion {
 		fmt.Printf("%s\n", version)
@@ -246,7 +245,7 @@ func buildConfig() config.Config {
 
 	help, err := fs.GetBool(config.HelpKey)
 	if err != nil {
-		log.Fatalf("error reading %s flag value: %s", config.HelpKey, err)
+		panic(fmt.Errorf("error reading %s flag value: %w", config.HelpKey, err))
 	}
 	if help {
 		config.DisplayUsageText()
@@ -254,12 +253,12 @@ func buildConfig() config.Config {
 	}
 	v, err := config.BuildViper(fs)
 	if err != nil {
-		log.Fatalf("couldn't configure flags: %s", err)
+		panic(fmt.Errorf("couldn't configure flags: %w", err))
 	}
 
 	cfg, err := config.NewConfig(v)
 	if err != nil {
-		log.Fatalf("couldn't build config: %s", err)
+		panic(fmt.Errorf("couldn't build config: %w", err))
 	}
 	return cfg
 }
