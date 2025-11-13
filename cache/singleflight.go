@@ -4,8 +4,6 @@
 package cache
 
 import (
-	"fmt"
-
 	"golang.org/x/sync/singleflight"
 )
 
@@ -25,13 +23,4 @@ func NewSingleFlight() *SingleFlight {
 // waits for the original to complete and receives the same results.
 func (sf *SingleFlight) Do(key string, fn func() (interface{}, error)) (interface{}, error, bool) {
 	return sf.group.Do(key, fn)
-}
-
-// keyToString converts a comparable key to a string for use with singleflight.
-// It handles both fmt.Stringer and primitive types.
-func keyToString[K comparable](key K) string {
-	if s, ok := any(key).(fmt.Stringer); ok {
-		return s.String()
-	}
-	return fmt.Sprintf("%v", key)
 }

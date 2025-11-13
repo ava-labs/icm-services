@@ -568,9 +568,6 @@ func (c *destinationClient) GetPChainHeightForDestination(
 ) (uint64, error) {
 	if !network.IsGraniteActivated() {
 		c.logger.Debug("Granite is not activated, using ProposedHeight")
-		if c.proposerClient == nil {
-			return pchainapi.ProposedHeight, nil
-		}
 		// Get the proposed height from the ProposerVM API to be able to cache the validator sets for this height
 		height, err := c.proposerClient.GetProposedHeight(ctx)
 		if err != nil {
@@ -581,10 +578,6 @@ func (c *destinationClient) GetPChainHeightForDestination(
 			return pchainapi.ProposedHeight, nil
 		}
 		return height, nil
-	}
-
-	if c.proposerClient == nil {
-		return 0, fmt.Errorf("proposerClient is required when Granite is activated")
 	}
 
 	// Check if cached epoch is still valid
