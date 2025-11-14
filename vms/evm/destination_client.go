@@ -234,10 +234,6 @@ func NewDestinationClient(
 	blockchainID := destinationBlockchain.BlockchainID
 	proposerClient := peers.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
 
-	logger.Info("Initialized ProposerVM client for destination chain",
-		zap.Stringer("destinationBlockchainID", destinationID),
-	)
-
 	destClient = destinationClient{
 		client:                     client,
 		readonlyConcurrentSigners:  readonlyConcurrentSigners,
