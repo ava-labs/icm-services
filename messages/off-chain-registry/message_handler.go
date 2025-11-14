@@ -175,8 +175,8 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 
 	m.logger.Info(
 		"Version is already registered in the TeleporterRegistry contract",
-		zap.String("version", entry.Version.String()),
-		zap.String("registeredAddress", address.String()),
+		zap.Stringer("version", entry.Version),
+		zap.Stringer("registeredAddress", address),
 	)
 	return false, nil
 }

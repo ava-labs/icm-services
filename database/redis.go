@@ -48,7 +48,8 @@ func (r *RedisDatabase) Get(relayerID common.Hash, key DataKey) ([]byte, error) 
 	if err != nil {
 		r.logger.Debug("Error retrieving key from Redis",
 			zap.String("key", compositeKey),
-			zap.Error(err))
+			zap.Error(err),
+		)
 		if err == redis.Nil {
 			return nil, ErrKeyNotFound
 		}
@@ -66,7 +67,8 @@ func (r *RedisDatabase) Put(relayerID common.Hash, key DataKey, value []byte) er
 	if err != nil {
 		r.logger.Error("Error storing key in Redis",
 			zap.String("key", compositeKey),
-			zap.Error(err))
+			zap.Error(err),
+		)
 		return err
 	}
 	return nil
