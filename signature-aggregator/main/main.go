@@ -47,21 +47,28 @@ const (
 func main() {
 	// Register all libevm extras in order to be able to get pre-compile information from the genesis block
 	evm.RegisterAllLibEVMExtras()
-	cfg := buildConfig()
-
-	logLevel, err := logging.ToLevel(cfg.LogLevel)
-	if err != nil {
-		panic(fmt.Errorf("error reading log level from config: %w", err))
-	}
 
 	logger := logging.NewLogger(
 		"signature-aggregator",
 		logging.NewWrappedCore(
-			logLevel,
+			logging.Info,
 			os.Stdout,
 			logging.JSON.ConsoleEncoder(),
 		),
 	)
+
+	cfg, err := buildConfig(logger)
+	if err != nil {
+		logger.Fatal("couldn't build config", zap.Error(err))
+		os.Exit(1)
+	}
+
+	logLevel, err := logging.ToLevel(cfg.LogLevel)
+	if err != nil {
+		logger.Fatal("error reading log level from config", zap.Error(err))
+		os.Exit(1)
+	}
+	logger.SetLevel(logLevel)
 
 	logger.Info("Initializing signature-aggregator")
 
@@ -142,7 +149,7 @@ func main() {
 		registries[timeoutManagerMetricsPrefix],
 		cfg.GetTrackedSubnets(),
 		manuallyTrackedPeers,
-		&cfg,
+		cfg,
 		vdrCacheSize,
 	)
 	if err != nil {
@@ -227,16 +234,18 @@ func main() {
 // buildConfig parses the flags and builds the config
 // Errors here should call log.Fatalf to exit the program
 // since these errors are prior to building the logger struct
-func buildConfig() config.Config {
+func buildConfig(log logging.Logger) (*config.Config, error) {
 	fs := config.BuildFlagSet()
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		config.DisplayUsageText()
-		panic(fmt.Errorf("Failed to parse flags: %w", err))
+		log.Fatal("Failed to parse flags", zap.Error(err))
+		return nil, fmt.Errorf("Failed to parse flags: %w", err)
 	}
 
 	displayVersion, err := fs.GetBool(config.VersionKey)
 	if err != nil {
-		panic(fmt.Errorf("error reading %s flag: %w", config.VersionKey, err))
+		log.Fatal("error reading flag", zap.String("key", config.VersionKey), zap.Error(err))
+		return nil, err
 	}
 	if displayVersion {
 		fmt.Printf("%s\n", version)
@@ -245,7 +254,8 @@ func buildConfig() config.Config {
 
 	help, err := fs.GetBool(config.HelpKey)
 	if err != nil {
-		panic(fmt.Errorf("error reading %s flag value: %w", config.HelpKey, err))
+		log.Fatal("error reading flag", zap.String("key", config.HelpKey), zap.Error(err))
+		return nil, err
 	}
 	if help {
 		config.DisplayUsageText()
@@ -253,12 +263,14 @@ func buildConfig() config.Config {
 	}
 	v, err := config.BuildViper(fs)
 	if err != nil {
-		panic(fmt.Errorf("couldn't configure flags: %w", err))
+		log.Fatal("couldn't configure flags", zap.Error(err))
+		return nil, err
 	}
 
 	cfg, err := config.NewConfig(v)
 	if err != nil {
-		panic(fmt.Errorf("couldn't build config: %w", err))
+		log.Fatal("couldn't build config", zap.Error(err))
+		return nil, err
 	}
-	return cfg
+	return &cfg, nil
 }
