@@ -46,7 +46,7 @@ func InitializeConnectionsAndCheckStake(
 		eg.Go(func() error {
 			logger.Info("Checking sufficient stake for source blockchain",
 				zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
-				zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
+				zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
 			)
 			return checkSufficientConnectedStake(ectx, logger, network, cfg, sourceBlockchain)
 		})
@@ -104,7 +104,7 @@ func checkSufficientConnectedStake(
 			logger.Debug(
 				"Connected validator details",
 				zap.Stringer("subnetID", subnetID),
-				zap.String("nodeID", nodeID.String()),
+				zap.Stringer("nodeID", nodeID),
 				zap.Uint64("weight", vdr.Weight),
 			)
 		}

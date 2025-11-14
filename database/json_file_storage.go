@@ -114,7 +114,7 @@ func (s *JSONFileStorage) getCurrentState(relayerID common.Hash) (chainState, bo
 	if err != nil {
 		s.logger.Error(
 			"failed to read file",
-			zap.String("relayerID", relayerID.String()),
+			zap.Stringer("relayerID", relayerID),
 			zap.Error(err),
 		)
 		return nil, false, err

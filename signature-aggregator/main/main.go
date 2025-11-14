@@ -211,7 +211,7 @@ func main() {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 		sig := <-sigChan
-		logger.Info("Receive os signal", zap.String("signal", sig.String()))
+		logger.Info("Receive os signal", zap.Stringer("signal", sig))
 
 		// Cancel the parent context
 		// This will cascade to errgroup context

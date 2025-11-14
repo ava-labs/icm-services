@@ -217,7 +217,7 @@ func NewDestinationClient(
 
 	logger.Info(
 		"Initialized destination client",
-		zap.String("evmChainID", evmChainID.String()),
+		zap.Stringer("evmChainID", evmChainID),
 		zap.Uint64("nonce", pendingNonce),
 	)
 
@@ -421,7 +421,7 @@ func (s *concurrentSigner) issueTransaction(
 ) error {
 	s.logger.Debug(
 		"Processing transaction",
-		zap.String("to", data.to.String()),
+		zap.Stringer("to", data.to),
 	)
 
 	// Construct the actual transaction to broadcast on the destination chain
@@ -464,7 +464,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	s.logger.Info(
 		"Sending transaction",
-		zap.String("txID", signedTx.Hash().String()),
+		zap.Stringer("txID", signedTx.Hash()),
 		zap.Uint64("nonce", s.currentNonce),
 	)
 
@@ -477,7 +477,7 @@ func (s *concurrentSigner) issueTransaction(
 	}
 	s.logger.Info(
 		"Sent transaction",
-		zap.String("txID", signedTx.Hash().String()),
+		zap.Stringer("txID", signedTx.Hash()),
 		zap.Uint64("nonce", s.currentNonce),
 	)
 

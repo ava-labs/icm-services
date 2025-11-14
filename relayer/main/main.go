@@ -350,7 +350,7 @@ func main() {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 		sig := <-sigChan
-		logger.Info("Receive os signal", zap.String("signal", sig.String()))
+		logger.Info("Receive os signal", zap.Stringer("signal", sig))
 
 		// Cancel the parent context
 		// This will cascade to errgroup context
@@ -582,7 +582,7 @@ func createApplicationRelayersForSourceChain(
 	if !cfg.ProcessMissedBlocks {
 		logger.Info(
 			"processed-missed-blocks set to false, starting processing from chain head",
-			zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
+			zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
 		)
 		height = currentHeight + 1
 		minHeight = height
@@ -602,7 +602,7 @@ func createApplicationRelayersForSourceChain(
 			if err != nil {
 				logger.Error(
 					"Failed to calculate starting block height",
-					zap.String("relayerID", relayerID.ID.String()),
+					zap.Stringer("relayerID", relayerID.ID),
 					zap.Error(err),
 				)
 				return nil, 0, err
@@ -624,7 +624,7 @@ func createApplicationRelayersForSourceChain(
 		if err != nil {
 			logger.Error(
 				"Failed to create checkpoint manager",
-				zap.String("relayerID", relayerID.ID.String()),
+				zap.Stringer("relayerID", relayerID.ID),
 				zap.Error(err),
 			)
 			return nil, 0, err
@@ -645,7 +645,7 @@ func createApplicationRelayersForSourceChain(
 		if err != nil {
 			logger.Error(
 				"Failed to create application relayer",
-				zap.String("relayerID", relayerID.ID.String()),
+				zap.Stringer("relayerID", relayerID.ID),
 				zap.Error(err),
 			)
 			return nil, 0, err
@@ -654,11 +654,11 @@ func createApplicationRelayersForSourceChain(
 
 		logger.Info(
 			"Created application relayer",
-			zap.String("relayerID", relayerID.ID.String()),
-			zap.String("sourceBlockchainID", relayerID.SourceBlockchainID.String()),
-			zap.String("destinationBlockchainID", relayerID.DestinationBlockchainID.String()),
-			zap.String("originSenderAddress", relayerID.OriginSenderAddress.String()),
-			zap.String("destinationAddress", relayerID.DestinationAddress.String()),
+			zap.Stringer("relayerID", relayerID.ID),
+			zap.Stringer("sourceBlockchainID", relayerID.SourceBlockchainID),
+			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
+			zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
+			zap.Stringer("destinationAddress", relayerID.DestinationAddress),
 		)
 	}
 	return applicationRelayers, minHeight, nil
