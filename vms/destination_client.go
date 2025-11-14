@@ -6,12 +6,14 @@
 package vms
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
@@ -48,6 +50,14 @@ type DestinationClient interface {
 
 	// GetRPCEndpointURL returns the RPC endpoint URL for this destination blockchain
 	GetRPCEndpointURL() string
+
+	// GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
+	// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated.
+	// The epoch is cached per destination blockchain to avoid per-message fetches.
+	GetPChainHeightForDestination(
+		ctx context.Context,
+		network peers.AppRequestNetwork,
+	) (uint64, error)
 }
 
 func NewDestinationClient(

@@ -10,11 +10,13 @@
 package mocks
 
 import (
+	context "context"
 	reflect "reflect"
 
 	ids "github.com/ava-labs/avalanchego/ids"
 	set "github.com/ava-labs/avalanchego/utils/set"
 	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	peers "github.com/ava-labs/icm-services/peers"
 	common "github.com/ava-labs/libevm/common"
 	types "github.com/ava-labs/libevm/core/types"
 	gomock "go.uber.org/mock/gomock"
@@ -84,6 +86,21 @@ func (m *MockDestinationClient) DestinationBlockchainID() ids.ID {
 func (mr *MockDestinationClientMockRecorder) DestinationBlockchainID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DestinationBlockchainID", reflect.TypeOf((*MockDestinationClient)(nil).DestinationBlockchainID))
+}
+
+// GetPChainHeightForDestination mocks base method.
+func (m *MockDestinationClient) GetPChainHeightForDestination(ctx context.Context, network peers.AppRequestNetwork) (uint64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPChainHeightForDestination", ctx, network)
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPChainHeightForDestination indicates an expected call of GetPChainHeightForDestination.
+func (mr *MockDestinationClientMockRecorder) GetPChainHeightForDestination(ctx, network any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPChainHeightForDestination", reflect.TypeOf((*MockDestinationClient)(nil).GetPChainHeightForDestination), ctx, network)
 }
 
 // GetRPCEndpointURL mocks base method.
