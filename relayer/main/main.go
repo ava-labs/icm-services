@@ -394,7 +394,7 @@ func buildConfig(log logging.Logger) (*config.Config, error) {
 		fmt.Printf("%s\n", version)
 		os.Exit(0)
 	}
-	
+
 	// If the help flag is set, output the usage text then exit
 	help, err := fs.GetBool(config.HelpKey)
 	if err != nil {
