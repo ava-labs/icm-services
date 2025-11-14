@@ -40,6 +40,10 @@ const (
 	poolTxsPerAccount             = 16
 	pendingTxRefreshInterval      = 2 * time.Second
 	defaultBlockAcceptanceTimeout = 30 * time.Second
+
+	// epochCacheKey is the singleflight key for epoch caching
+	// Since we only cache one epoch per destination, the key is constant
+	epochCacheKey = "epoch"
 )
 
 // Client interface wraps the ethclient.Client interface for mocking purposes.
@@ -570,13 +574,8 @@ func (c *destinationClient) GetPChainHeightForDestination(
 		return height, nil
 	}
 
-	if c.proposerClient == nil {
-		return 0, fmt.Errorf("proposerClient is required when Granite is activated")
-	}
-
 	// Use singleflight to deduplicate concurrent fetches and serialize cache access
-	key := "epoch" // Single value cache, so key is constant
-	result, err, _ := c.epochSingleFlight.Do(key, func() (interface{}, error) {
+	result, err, _ := c.epochSingleFlight.Do(epochCacheKey, func() (interface{}, error) {
 		// Check if cached epoch is still valid
 		if !c.epochExpiration.IsZero() && time.Now().Before(c.epochExpiration) {
 			return c.epochValue, nil
@@ -592,25 +591,21 @@ func (c *destinationClient) GetPChainHeightForDestination(
 
 		c.logger.Info("Successfully retrieved epoch from ProposerVM",
 			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
-			zap.Uint64("epochNumber", epoch.Number),
-			zap.Uint64("epochPChainHeight", epoch.PChainHeight),
-			zap.Int64("epochStartTime", epoch.StartTime),
+			zap.Any("epoch", epoch),
 			zap.Duration("epochDuration", epochDuration),
 		)
 
 		// Calculate expiration time based on epoch.StartTime + epochDuration
 		// epoch.StartTime is in nanoseconds (Unix timestamp)
-		epochStartTime := time.Unix(0, epoch.StartTime)
-		expiration := epochStartTime.Add(epochDuration)
-		c.logger.Debug("Calculated epoch expiration",
-			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
-			zap.Uint64("epochNumber", epoch.Number),
-			zap.Time("epochExpiration", expiration),
-		)
-
 		// Update cache
 		c.epochValue = epoch
-		c.epochExpiration = expiration
+		c.epochExpiration = time.Unix(0, epoch.StartTime).Add(epochDuration)
+
+		c.logger.Debug("Calculated epoch expiration",
+			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
+			zap.Uint64("epochNumber", c.epochValue.Number),
+			zap.Time("epochExpiration", c.epochExpiration),
+		)
 
 		return epoch, nil
 	})
