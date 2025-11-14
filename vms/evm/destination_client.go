@@ -12,7 +12,6 @@ import (
 	"math/big"
 	"net/url"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -67,7 +66,6 @@ type destinationClient struct {
 	// Epoch cache for Granite - cached per destination blockchain
 	epochValue        block.Epoch
 	epochExpiration   time.Time
-	epochMu           sync.RWMutex
 	epochSingleFlight *cache.SingleFlight
 	proposerClient    *peers.ProposerVMAPI
 }
@@ -580,18 +578,19 @@ func (c *destinationClient) GetPChainHeightForDestination(
 		return height, nil
 	}
 
-	// Check if cached epoch is still valid
-	c.epochMu.RLock()
-	if !c.epochExpiration.IsZero() && time.Now().Before(c.epochExpiration) {
-		epoch := c.epochValue
-		c.epochMu.RUnlock()
-		return epoch.PChainHeight, nil
+	if c.proposerClient == nil {
+		return 0, fmt.Errorf("proposerClient is required when Granite is activated")
 	}
-	c.epochMu.RUnlock()
 
-	// Use singleflight to deduplicate concurrent fetches
+	// Use singleflight to deduplicate concurrent fetches and serialize cache access
 	key := "epoch" // Single value cache, so key is constant
 	result, err, _ := c.epochSingleFlight.Do(key, func() (interface{}, error) {
+		// Check if cached epoch is still valid
+		if !c.epochExpiration.IsZero() && time.Now().Before(c.epochExpiration) {
+			return c.epochValue, nil
+		}
+
+		// Fetch new epoch
 		epoch, fetchErr := c.proposerClient.GetCurrentEpoch(ctx)
 		if fetchErr != nil {
 			return block.Epoch{}, fetchErr
@@ -617,11 +616,9 @@ func (c *destinationClient) GetPChainHeightForDestination(
 			zap.Time("epochExpiration", expiration),
 		)
 
-		// Store in cache
-		c.epochMu.Lock()
+		// Update cache
 		c.epochValue = epoch
 		c.epochExpiration = expiration
-		c.epochMu.Unlock()
 
 		return epoch, nil
 	})
