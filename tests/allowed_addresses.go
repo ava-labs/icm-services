@@ -16,9 +16,9 @@ import (
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const relayerCfgFname1 = "relayer-config-1.json"
@@ -37,7 +37,7 @@ const numKeys = 4
 // -  Deliver from a specific source address to a specific destination address
 // Then, checks that each relayer instance is able to properly catch up on missed messages that
 // match its particular configuration.
-func AllowedAddresses(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func AllowedAddresses(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -68,7 +68,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 		allowedAddresses = append(allowedAddresses, allowedAddress)
 		allowedAddressesStr = append(allowedAddressesStr, allowedAddress.String())
 	}
-	log.Info("Allowed addresses", "allowedAddresses", allowedAddressesStr)
+	log.Info("Allowed addresses", zap.Strings("allowedAddresses", allowedAddressesStr))
 
 	// Track which addresses are allowed by each relayer
 	generalAllowedAddressIdx := 0
@@ -84,6 +84,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// All sources -> All destinations
 	// Will send from allowed Address 0 -> 0
 	relayerConfig1 := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -94,6 +95,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Specific source -> All destinations
 	// Will send from allowed Address 1 -> 0
 	relayerConfig2 := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -109,6 +111,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// All sources -> Specific destination
 	// Will send from allowed Address 2 -> 0
 	relayerConfig3 := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -135,6 +138,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Specific source -> Specific destination
 	// Will send from allowed Address 3 -> 0
 	relayerConfig4 := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -160,10 +164,10 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	relayerConfig4.APIPort = 8083
 	relayerConfig4.MetricsPort = 9093
 
-	relayerConfigPath1 := testUtils.WriteRelayerConfig(relayerConfig1, relayerCfgFname1)
-	relayerConfigPath2 := testUtils.WriteRelayerConfig(relayerConfig2, relayerCfgFname2)
-	relayerConfigPath3 := testUtils.WriteRelayerConfig(relayerConfig3, relayerCfgFname3)
-	relayerConfigPath4 := testUtils.WriteRelayerConfig(relayerConfig4, relayerCfgFname4)
+	relayerConfigPath1 := testUtils.WriteRelayerConfig(log, relayerConfig1, relayerCfgFname1)
+	relayerConfigPath2 := testUtils.WriteRelayerConfig(log, relayerConfig2, relayerCfgFname2)
+	relayerConfigPath3 := testUtils.WriteRelayerConfig(log, relayerConfig3, relayerCfgFname3)
+	relayerConfigPath4 := testUtils.WriteRelayerConfig(log, relayerConfig4, relayerCfgFname4)
 
 	//
 	// Test Relaying from Subnet A to Subnet B
@@ -174,6 +178,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	log.Info("Testing Relayer 1: All sources -> All destinations")
 	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath1,
 		relayerConfig1,
 	)
@@ -188,6 +193,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Allowed by Relayer 1
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -204,6 +210,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	log.Info("Testing Relayer 2: Specific source -> All destinations")
 	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath2,
 		relayerConfig2,
 	)
@@ -218,6 +225,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Disallowed by Relayer 2
 	_, _, id := testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -235,6 +243,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Allowed by Relayer 2
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -251,6 +260,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	log.Info("Testing Relayer 3: All sources -> Specific destination")
 	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath3,
 		relayerConfig3,
 	)
@@ -265,6 +275,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Disallowed by Relayer 3
 	_, _, id = testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -282,6 +293,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Allowed by Relayer 3
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -298,6 +310,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	log.Info("Testing Relayer 4: Specific source -> Specific destination")
 	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath4,
 		relayerConfig4,
 	)
@@ -311,6 +324,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Disallowed by Relayer 4
 	_, _, id = testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -328,6 +342,7 @@ func AllowedAddresses(network *network.LocalNetwork, teleporter utils.Teleporter
 	// Allowed by Relayer 4
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,

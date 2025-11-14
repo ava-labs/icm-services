@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
@@ -21,7 +22,6 @@ import (
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
@@ -29,7 +29,7 @@ import (
 // Tests relayer support for off-chain Teleporter Registry updates
 // - Configures the relayer to send an off-chain message to the Teleporter Registry
 // - Verifies that the Teleporter Registry is updated
-func ManualMessage(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ManualMessage(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -103,17 +103,23 @@ func ManualMessage(network *network.LocalNetwork, teleporter utils.TeleporterTes
 	// Set up relayer config
 	//
 	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{cChainInfo},
 		[]interfaces.L1TestInfo{cChainInfo},
 		fundedAddress,
 		relayerKey,
 	)
-	relayerConfigPath := testUtils.WriteRelayerConfig(relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath := testUtils.WriteRelayerConfig(
+		log,
+		relayerConfig,
+		testUtils.DefaultRelayerCfgFname,
+	)
 
 	log.Info("Starting the relayer")
 	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath,
 		relayerConfig,
 	)

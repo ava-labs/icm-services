@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
@@ -20,8 +21,8 @@ import (
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 // Tests epoch validator functionality in the Signature Aggregator API
@@ -40,7 +41,11 @@ import (
 // Test Case 3: Large PChainHeight (ProposedHeight)
 // - Uses ProposedHeight as PChainHeight to test the edge case
 // - Confirms that the system handles this correctly
-func SignatureAggregatorEpochAPI(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func SignatureAggregatorEpochAPI(
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	// Begin Setup step
 	ctx := context.Background()
 
@@ -49,16 +54,21 @@ func SignatureAggregatorEpochAPI(network *network.LocalNetwork, teleporter utils
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	signatureAggregatorConfig := testUtils.CreateDefaultSignatureAggregatorConfig(
+		log,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 	)
 
 	signatureAggregatorConfigPath := testUtils.WriteSignatureAggregatorConfig(
+		log,
 		signatureAggregatorConfig,
 		testUtils.DefaultSignatureAggregatorCfgFname,
 	)
-	log.Info("Starting the signature aggregator for epoch tests", "configPath", signatureAggregatorConfigPath)
+	log.Info("Starting the signature aggregator for epoch tests",
+		zap.String("configPath", signatureAggregatorConfigPath),
+	)
 	signatureAggregatorCancel, readyChan := testUtils.RunSignatureAggregatorExecutable(
 		ctx,
+		log,
 		signatureAggregatorConfigPath,
 		signatureAggregatorConfig,
 	)
@@ -75,13 +85,14 @@ func SignatureAggregatorEpochAPI(network *network.LocalNetwork, teleporter utils
 	log.Info("Sending teleporter message for epoch validator tests")
 	receipt, _, _ := testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
 		fundedKey,
 		fundedAddress,
 	)
-	warpMessage := getWarpMessageFromLog(ctx, receipt, l1AInfo)
+	warpMessage := getWarpMessageFromLog(ctx, log, receipt, l1AInfo)
 
 	client := http.Client{
 		Timeout: 20 * time.Second,
@@ -92,8 +103,8 @@ func SignatureAggregatorEpochAPI(network *network.LocalNetwork, teleporter utils
 	// Helper function to send API request with specific PChainHeight
 	var sendRequestWithPChainHeight = func(pchainHeight uint64, testDescription string) {
 		log.Info("Testing signature aggregation",
-			"testCase", testDescription,
-			"pchainHeight", pchainHeight,
+			zap.String("testCase", testDescription),
+			zap.Uint64("pchainHeight", pchainHeight),
 		)
 
 		reqBody := api.AggregateSignatureRequest{
@@ -130,9 +141,9 @@ func SignatureAggregatorEpochAPI(network *network.LocalNetwork, teleporter utils
 		Expect(signedMessage.ID()).Should(Equal(warpMessage.ID()))
 
 		log.Info("Successfully verified signed message",
-			"testCase", testDescription,
-			"pchainHeight", pchainHeight,
-			"messageID", signedMessage.ID().String(),
+			zap.String("testCase", testDescription),
+			zap.Uint64("pchainHeight", pchainHeight),
+			zap.Stringer("messageID", signedMessage.ID()),
 		)
 	}
 
@@ -143,13 +154,14 @@ func SignatureAggregatorEpochAPI(network *network.LocalNetwork, teleporter utils
 	log.Info("Testing reverse direction with epoch validators")
 	receipt, _, _ = testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1BInfo,
 		l1AInfo,
 		fundedKey,
 		fundedAddress,
 	)
-	warpMessage = getWarpMessageFromLog(ctx, receipt, l1BInfo)
+	warpMessage = getWarpMessageFromLog(ctx, log, receipt, l1BInfo)
 
 	sendRequestWithPChainHeight(5, "Reverse Direction - Epoched Validators at Height 50")
 

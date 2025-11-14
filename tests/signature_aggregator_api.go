@@ -13,14 +13,15 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 // Tests basic functionality of the Signature Aggregator API
@@ -32,7 +33,7 @@ import (
 // - Reads the warp message unsigned bytes from the log
 // - Sends the unsigned message to the signature aggregator API
 // - Confirms that the signed message is returned and matches the originally sent message
-func SignatureAggregatorAPI(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func SignatureAggregatorAPI(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	// Begin Setup step
 	ctx := context.Background()
 
@@ -41,16 +42,21 @@ func SignatureAggregatorAPI(network *network.LocalNetwork, teleporter utils.Tele
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	signatureAggregatorConfig := testUtils.CreateDefaultSignatureAggregatorConfig(
+		log,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 	)
 
 	signatureAggregatorConfigPath := testUtils.WriteSignatureAggregatorConfig(
+		log,
 		signatureAggregatorConfig,
 		testUtils.DefaultSignatureAggregatorCfgFname,
 	)
-	log.Info("Starting the signature aggregator", "configPath", signatureAggregatorConfigPath)
+	log.Info("Starting the signature aggregator",
+		zap.String("configPath", signatureAggregatorConfigPath),
+	)
 	signatureAggregatorCancel, readyChan := testUtils.RunSignatureAggregatorExecutable(
 		ctx,
+		log,
 		signatureAggregatorConfigPath,
 		signatureAggregatorConfig,
 	)
@@ -68,13 +74,14 @@ func SignatureAggregatorAPI(network *network.LocalNetwork, teleporter utils.Tele
 	log.Info("Sending teleporter message from A -> B")
 	receipt, _, _ := testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
 		fundedKey,
 		fundedAddress,
 	)
-	warpMessage := getWarpMessageFromLog(ctx, receipt, l1AInfo)
+	warpMessage := getWarpMessageFromLog(ctx, log, receipt, l1AInfo)
 
 	reqBody := api.AggregateSignatureRequest{
 		Message: "0x" + hex.EncodeToString(warpMessage.Bytes()),
@@ -122,13 +129,14 @@ func SignatureAggregatorAPI(network *network.LocalNetwork, teleporter utils.Tele
 	log.Info("Sending teleporter message from B -> A")
 	receipt, _, _ = testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1BInfo,
 		l1AInfo,
 		fundedKey,
 		fundedAddress,
 	)
-	warpMessage = getWarpMessageFromLog(ctx, receipt, l1BInfo)
+	warpMessage = getWarpMessageFromLog(ctx, log, receipt, l1BInfo)
 
 	reqBody = api.AggregateSignatureRequest{
 		Message: "0x" + hex.EncodeToString(warpMessage.Bytes()),

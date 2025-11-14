@@ -17,15 +17,16 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/icm-contracts/tests/network"
 	teleporterTestUtils "github.com/ava-labs/icm-contracts/tests/utils"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const (
@@ -35,6 +36,8 @@ const (
 )
 
 var (
+	log logging.Logger
+
 	localNetworkInstance *network.LocalNetwork
 	teleporterInfo       teleporterTestUtils.TeleporterTestInfo
 
@@ -73,10 +76,18 @@ func TestE2E(t *testing.T) {
 var _ = ginkgo.BeforeSuite(func() {
 	var ctx context.Context
 	ctx, cancelFn = context.WithCancel(context.Background())
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
+
+	log = logging.NewLogger(
+		"signature-aggregator",
+		logging.NewWrappedCore(
+			logging.Info,
+			os.Stdout,
+			logging.JSON.ConsoleEncoder(),
+		),
+	)
 
 	log.Info("Building all ICM service executables")
-	testUtils.BuildAllExecutables(ctx)
+	testUtils.BuildAllExecutables(ctx, log)
 
 	// Generate the Teleporter deployment values
 	teleporterContractAddress := common.HexToAddress(
@@ -173,7 +184,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		// Context cancellation is the only expected way for the process to exit
 		// otherwise log an error but don't panic to allow for easier cleanup
 		if !errors.Is(ctx.Err(), context.Canceled) {
-			log.Error("Decider exited abnormally: ", "error", err)
+			log.Error("Decider exited abnormally: ", zap.Error(err))
 		}
 	}()
 	log.Info("Started decider service")
@@ -202,33 +213,33 @@ var _ = ginkgo.AfterSuite(cleanup)
 
 var _ = ginkgo.Describe("[ICM Relayer Integration Tests", func() {
 	ginkgo.It("Basic Relay", func() {
-		BasicRelay(localNetworkInstance, teleporterInfo)
+		BasicRelay(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Manually Provided Message", func() {
-		ManualMessage(localNetworkInstance, teleporterInfo)
+		ManualMessage(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Shared Database", func() {
-		SharedDatabaseAccess(localNetworkInstance, teleporterInfo)
+		SharedDatabaseAccess(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Allowed Addresses", func() {
-		AllowedAddresses(localNetworkInstance, teleporterInfo)
+		AllowedAddresses(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Batch Message", func() {
-		BatchRelay(localNetworkInstance, teleporterInfo)
+		BatchRelay(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Relay Message API", func() {
-		RelayMessageAPI(localNetworkInstance, teleporterInfo)
+		RelayMessageAPI(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Warp API", func() {
-		WarpAPIRelay(localNetworkInstance, teleporterInfo)
+		WarpAPIRelay(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Signature Aggregator", func() {
-		SignatureAggregatorAPI(localNetworkInstance, teleporterInfo)
+		SignatureAggregatorAPI(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Signature Aggregator Epoch Validators", func() {
-		SignatureAggregatorEpochAPI(localNetworkInstance, teleporterInfo)
+		SignatureAggregatorEpochAPI(log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Validators Only Network", func() {
-		ValidatorsOnlyNetwork(localNetworkInstance, teleporterInfo)
+		ValidatorsOnlyNetwork(log, localNetworkInstance, teleporterInfo)
 	})
 })

@@ -32,9 +32,9 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 // Write the test database to /tmp since the data is not needed after the test
@@ -46,7 +46,7 @@ const (
 	DBUpdateSeconds                    = 1
 )
 
-func BuildAllExecutables(ctx context.Context) {
+func BuildAllExecutables(ctx context.Context, log logging.Logger) {
 	cmd := exec.Command("./scripts/build.sh")
 	out, err := cmd.CombinedOutput()
 	log.Info(string(out))
@@ -55,6 +55,7 @@ func BuildAllExecutables(ctx context.Context) {
 
 func RunRelayerExecutable(
 	ctx context.Context,
+	log logging.Logger,
 	relayerConfigPath string,
 	relayerConfig relayercfg.Config,
 ) (context.CancelFunc, chan struct{}) {
@@ -66,6 +67,7 @@ func RunRelayerExecutable(
 	readyChan := runExecutable(
 		relayerCmd,
 		relayerCtx,
+		log,
 		"icm-relayer",
 		healthCheckURL,
 	)
@@ -77,6 +79,7 @@ func RunRelayerExecutable(
 
 func RunSignatureAggregatorExecutable(
 	ctx context.Context,
+	log logging.Logger,
 	configPath string,
 	config signatureaggregatorcfg.Config,
 ) (context.CancelFunc, chan struct{}) {
@@ -92,6 +95,7 @@ func RunSignatureAggregatorExecutable(
 	readyChan := runExecutable(
 		signatureAggregatorCmd,
 		aggregatorCtx,
+		log,
 		"signature-aggregator",
 		healthCheckURL,
 	)
@@ -110,6 +114,7 @@ func ReadHexTextFile(filename string) string {
 
 // Constructs a relayer config with all subnets as sources and destinations
 func CreateDefaultRelayerConfig(
+	log logging.Logger,
 	teleporter teleporterTestUtils.TeleporterTestInfo,
 	sourceL1sInfo []interfaces.L1TestInfo,
 	destinationL1sInfo []interfaces.L1TestInfo,
@@ -121,10 +126,7 @@ func CreateDefaultRelayerConfig(
 		logLevel = logging.Info
 	}
 
-	log.Info(
-		"Setting up relayer config",
-		"logLevel", logLevel.LowerString(),
-	)
+	log.Info("Setting up relayer config", zap.String("logLevel", logLevel.LowerString()))
 	// Construct the config values for each subnet
 	sources := make([]*relayercfg.SourceBlockchain, len(sourceL1sInfo))
 	destinations := make([]*relayercfg.DestinationBlockchain, len(destinationL1sInfo))
@@ -161,10 +163,10 @@ func CreateDefaultRelayerConfig(
 
 		log.Info(
 			"Creating relayer config for source subnet",
-			"subnetID", l1Info.SubnetID.String(),
-			"blockchainID", l1Info.BlockchainID.String(),
-			"host", host,
-			"port", port,
+			zap.Stringer("subnetID", l1Info.SubnetID),
+			zap.Stringer("blockchainID", l1Info.BlockchainID),
+			zap.String("host", host),
+			zap.Uint32("port", port),
 		)
 	}
 
@@ -184,10 +186,10 @@ func CreateDefaultRelayerConfig(
 
 		log.Info(
 			"Creating relayer config for destination subnet",
-			"subnetID", l1Info.SubnetID.String(),
-			"blockchainID", l1Info.BlockchainID.String(),
-			"host", host,
-			"port", port,
+			zap.Stringer("subnetID", l1Info.SubnetID),
+			zap.Stringer("blockchainID", l1Info.BlockchainID),
+			zap.String("host", host),
+			zap.Uint32("port", port),
 		)
 	}
 
@@ -218,6 +220,7 @@ func CreateDefaultRelayerConfig(
 // callers use the defaults defined in the config package via viper, so that
 // there aren't two sets of "defaults".
 func CreateDefaultSignatureAggregatorConfig(
+	log logging.Logger,
 	sourceL1Info []interfaces.L1TestInfo,
 ) signatureaggregatorcfg.Config {
 	logLevel, err := logging.ToLevel(os.Getenv("LOG_LEVEL"))
@@ -227,7 +230,7 @@ func CreateDefaultSignatureAggregatorConfig(
 
 	log.Info(
 		"Setting up signature aggregator config",
-		"logLevel", logLevel.LowerString(),
+		zap.String("logLevel", logLevel.LowerString()),
 	)
 	// Construct the config values for each subnet
 	return signatureaggregatorcfg.Config{
@@ -269,6 +272,7 @@ func FundRelayers(
 
 func SendBasicTeleporterMessageAsync(
 	ctx context.Context,
+	log logging.Logger,
 	teleporter teleporterTestUtils.TeleporterTestInfo,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
@@ -291,8 +295,8 @@ func SendBasicTeleporterMessageAsync(
 	// Send a transaction to the Teleporter contract
 	log.Info(
 		"Sending teleporter transaction",
-		"sourceBlockchainID", source.BlockchainID,
-		"destinationBlockchainID", destination.BlockchainID,
+		zap.Stringer("sourceBlockchainID", source.BlockchainID),
+		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
 	)
 	_, teleporterMessageID := teleporterTestUtils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
@@ -307,6 +311,7 @@ func SendBasicTeleporterMessageAsync(
 
 func SendBasicTeleporterMessage(
 	ctx context.Context,
+	log logging.Logger,
 	teleporter teleporterTestUtils.TeleporterTestInfo,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
@@ -326,10 +331,9 @@ func SendBasicTeleporterMessage(
 	}
 
 	// Send a transaction to the Teleporter contract
-	log.Info(
-		"Sending teleporter transaction",
-		"sourceBlockchainID", source.BlockchainID,
-		"destinationBlockchainID", destination.BlockchainID,
+	log.Info("Sending teleporter transaction",
+		zap.Stringer("sourceBlockchainID", source.BlockchainID),
+		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
 	)
 	receipt, teleporterMessageID := teleporterTestUtils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
@@ -350,6 +354,7 @@ func SendBasicTeleporterMessage(
 
 func RelayBasicMessage(
 	ctx context.Context,
+	log logging.Logger,
 	teleporter teleporterTestUtils.TeleporterTestInfo,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
@@ -363,6 +368,7 @@ func RelayBasicMessage(
 
 	_, _, teleporterMessageID := SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		source,
 		destination,
@@ -408,7 +414,11 @@ func WaitTeleporterMessageDelivered(
 	}
 }
 
-func WriteRelayerConfig(relayerConfig relayercfg.Config, fname string) string {
+func WriteRelayerConfig(
+	log logging.Logger,
+	relayerConfig relayercfg.Config,
+	fname string,
+) string {
 	data, err := json.MarshalIndent(relayerConfig, "", "\t")
 	Expect(err).Should(BeNil())
 
@@ -419,12 +429,19 @@ func WriteRelayerConfig(relayerConfig relayercfg.Config, fname string) string {
 	Expect(err).Should(BeNil())
 	relayerConfigPath := f.Name()
 
-	log.Info("Created icm-relayer config", "configPath", relayerConfigPath, "config", string(data))
+	log.Info("Created icm-relayer config",
+		zap.String("configPath", relayerConfigPath),
+		zap.String("config", string(data)),
+	)
 	return relayerConfigPath
 }
 
 // TODO define interface over Config and write a generic function to write either config
-func WriteSignatureAggregatorConfig(signatureAggregatorConfig signatureaggregatorcfg.Config, fname string) string {
+func WriteSignatureAggregatorConfig(
+	log logging.Logger,
+	signatureAggregatorConfig signatureaggregatorcfg.Config,
+	fname string,
+) string {
 	data, err := json.MarshalIndent(signatureAggregatorConfig, "", "\t")
 	Expect(err).Should(BeNil())
 
@@ -435,12 +452,16 @@ func WriteSignatureAggregatorConfig(signatureAggregatorConfig signatureaggregato
 	Expect(err).Should(BeNil())
 	signatureAggregatorConfigPath := f.Name()
 
-	log.Info("Created signature-aggregator config", "configPath", signatureAggregatorConfigPath, "config", string(data))
+	log.Info("Created signature-aggregator config",
+		zap.String("configPath", signatureAggregatorConfigPath),
+		zap.String("config", string(data)),
+	)
 	return signatureAggregatorConfigPath
 }
 
 func TriggerProcessMissedBlocks(
 	ctx context.Context,
+	log logging.Logger,
 	teleporter teleporterTestUtils.TeleporterTestInfo,
 	sourceL1Info interfaces.L1TestInfo,
 	destinationSubnetInfo interfaces.L1TestInfo,
@@ -462,6 +483,7 @@ func TriggerProcessMissedBlocks(
 	log.Info("Sending three Teleporter messages from subnet A to subnet B")
 	_, _, id1 := SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		sourceL1Info,
 		destinationSubnetInfo,
@@ -470,6 +492,7 @@ func TriggerProcessMissedBlocks(
 	)
 	_, _, id2 := SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		sourceL1Info,
 		destinationSubnetInfo,
@@ -478,6 +501,7 @@ func TriggerProcessMissedBlocks(
 	)
 	_, _, id3 := SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		sourceL1Info,
 		destinationSubnetInfo,
@@ -487,7 +511,7 @@ func TriggerProcessMissedBlocks(
 
 	currHeight, err := sourceL1Info.RPCClient.BlockNumber(ctx)
 	Expect(err).Should(BeNil())
-	log.Info("Current block height", "height", currHeight)
+	log.Info("Current block height", zap.Uint64("height", currHeight))
 
 	// Configure the relayer such that it will only process the last of the three messages sent above.
 	// The relayer DB stores the height of the block *before* the first message, so by setting the
@@ -496,11 +520,12 @@ func TriggerProcessMissedBlocks(
 	modifiedRelayerConfig := currentRelayerConfig
 	modifiedRelayerConfig.SourceBlockchains[0].ProcessHistoricalBlocksFromHeight = currHeight
 	modifiedRelayerConfig.ProcessMissedBlocks = true
-	relayerConfigPath := WriteRelayerConfig(modifiedRelayerConfig, DefaultRelayerCfgFname)
+	relayerConfigPath := WriteRelayerConfig(log, modifiedRelayerConfig, DefaultRelayerCfgFname)
 
 	log.Info("Starting the relayer")
 	relayerCleanup, readyChan := RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath,
 		currentRelayerConfig,
 	)
@@ -562,9 +587,11 @@ func DeployBatchCrossChainMessenger(
 func runExecutable(
 	cmd *exec.Cmd,
 	ctx context.Context,
+	log logging.Logger,
 	appName string,
 	healthCheckUrl string,
 ) chan struct{} {
+	log = log.With(zap.String("appName", appName))
 	cmdOutput := make(chan string)
 
 	// Set up a pipe to capture the command's output
@@ -574,7 +601,7 @@ func runExecutable(
 	Expect(err).Should(BeNil())
 
 	// Start the command
-	log.Info("Starting executable", "appName", appName)
+	log.Info("Starting executable")
 	err = cmd.Start()
 	Expect(err).Should(BeNil())
 
@@ -600,18 +627,18 @@ func runExecutable(
 		// Context cancellation is the only expected way for the process to exit, otherwise log an error
 		// Don't panic to allow for easier cleanup
 		if !errors.Is(ctx.Err(), context.Canceled) {
-			log.Error("Executable exited abnormally", "appName", appName, "err", err)
+			log.Error("Executable exited abnormally", zap.Error(err))
 		}
 	}()
 	go func() { // wait for health check to report healthy
 		for {
 			resp, err := http.Get(healthCheckUrl)
 			if err == nil && resp.StatusCode == 200 {
-				log.Info("Health check passed", "appName", appName)
+				log.Info("Health check passed")
 				close(readyChan)
 				break
 			}
-			log.Info("Health check failed", "appName", appName, "err", err)
+			log.Info("Health check failed", zap.Error(err))
 			time.Sleep(time.Second * 1)
 		}
 	}()

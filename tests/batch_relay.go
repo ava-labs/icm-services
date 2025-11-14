@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-contracts/tests/network"
@@ -15,13 +16,12 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
 // Processes multiple Warp messages contained in the same block
-func BatchRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func BatchRelay(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 	err := testUtils.ClearRelayerStorage()
@@ -59,6 +59,7 @@ func BatchRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	// Set up relayer config
 	//
 	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -66,11 +67,12 @@ func BatchRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 		relayerKey,
 	)
 
-	relayerConfigPath := testUtils.WriteRelayerConfig(relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath := testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
 
 	log.Info("Starting the relayer")
 	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath,
 		relayerConfig,
 	)

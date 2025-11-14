@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/asn1"
 	"errors"
-	"log"
 	"math/big"
 
 	"github.com/ava-labs/libevm/common"
@@ -58,7 +57,7 @@ func NewKMSSigner(region, keyID string) (*KMSSigner, error) {
 	}
 	awsCfg, err := config.LoadDefaultConfig(context.Background(), optFns...)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	kmsClient := kms.NewFromConfig(awsCfg)
 

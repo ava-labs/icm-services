@@ -16,7 +16,6 @@ import (
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
 )
 
@@ -25,7 +24,7 @@ import (
 // - Relaying from Subnet B to Subnet A
 // - Relaying an already delivered message
 // - Setting ProcessHistoricalBlocksFromHeight in config
-func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func BasicRelay(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -46,6 +45,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	// Set up relayer config
 	//
 	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -56,7 +56,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	// The config needs to be validated in order to be passed to database.GetConfigRelayerIDs
 	relayerConfig.Validate()
 
-	relayerConfigPath := testUtils.WriteRelayerConfig(relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath := testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
 
 	//
 	// Test Relaying from Subnet A to Subnet B
@@ -66,6 +66,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	log.Info("Starting the relayer")
 	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath,
 		relayerConfig,
 	)
@@ -79,6 +80,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	log.Info("Sending transaction from Subnet A to Subnet B")
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -92,6 +94,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	log.Info("Test Relaying from Subnet B to Subnet A")
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1BInfo,
 		l1AInfo,
@@ -108,7 +111,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	//
 	log.Info("Test Relaying Already Delivered Message")
 	relayerConfig.ProcessMissedBlocks = true
-	relayerConfigPath = testUtils.WriteRelayerConfig(relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath = testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
 
 	logger := logging.NewLogger(
 		"icm-relayer",
@@ -154,6 +157,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	log.Info("Creating new relayer instance to test already delivered message")
 	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath,
 		relayerConfig,
 	)
@@ -176,6 +180,7 @@ func BasicRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestIn
 	log.Info("Test Setting ProcessHistoricalBlocksFromHeight in config")
 	testUtils.TriggerProcessMissedBlocks(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
