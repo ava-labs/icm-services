@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	ids "github.com/ava-labs/avalanchego/ids"
 	message "github.com/ava-labs/avalanchego/message"
@@ -88,6 +89,20 @@ func (m *MockAppRequestNetwork) GetCanonicalValidators(ctx context.Context, subn
 func (mr *MockAppRequestNetworkMockRecorder) GetCanonicalValidators(ctx, subnetID, skipCache, pchainHeight any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCanonicalValidators", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetCanonicalValidators), ctx, subnetID, skipCache, pchainHeight)
+}
+
+// GetGraniteEpochDuration mocks base method.
+func (m *MockAppRequestNetwork) GetGraniteEpochDuration() time.Duration {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGraniteEpochDuration")
+	ret0, _ := ret[0].(time.Duration)
+	return ret0
+}
+
+// GetGraniteEpochDuration indicates an expected call of GetGraniteEpochDuration.
+func (mr *MockAppRequestNetworkMockRecorder) GetGraniteEpochDuration() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGraniteEpochDuration", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetGraniteEpochDuration))
 }
 
 // GetLatestSyncedPChainHeight mocks base method.

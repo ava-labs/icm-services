@@ -6,14 +6,11 @@ package relayer
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/url"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 
 	"github.com/ava-labs/icm-services/database"
@@ -68,7 +65,6 @@ type ApplicationRelayer struct {
 	warpConfig                config.WarpConfig
 	checkpointManager         CheckpointManager
 	sourceWarpSignatureClient *rpc.Client // nil if configured to fetch signatures via AppRequest
-	proposerClient            *peers.ProposerVMAPI
 	signatureAggregator       *aggregator.SignatureAggregator
 	processMessageSemaphore   chan struct{}
 }
@@ -131,38 +127,6 @@ func NewApplicationRelayer(
 		}
 	}
 
-	rpcEndpoint := destinationClient.GetRPCEndpointURL()
-	blockchainID := relayerID.DestinationBlockchainID.String()
-
-	endpoint, err := url.Parse(rpcEndpoint)
-	if err != nil {
-		logger.Error(
-			"Failed to parse rpc endpoint",
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
-
-	logger.Info("Creating ProposerVM JSON RPC client for destination chain",
-		zap.String("originalRpcEndpoint", rpcEndpoint),
-		zap.String("baseURL", baseURL),
-		zap.String("destinationBlockchainID", blockchainID),
-	)
-
-	destAPIConfig, err := cfg.GetDestinationAPIConfig(blockchainID)
-	if err != nil {
-		logger.Error(
-			"Failed to get destination API config",
-			zap.String("destinationBlockchainID", blockchainID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	proposerClient := peers.NewProposerVMAPI(baseURL, blockchainID, destAPIConfig)
-
 	ar := ApplicationRelayer{
 		logger:                    logger,
 		metrics:                   metrics,
@@ -174,7 +138,6 @@ func NewApplicationRelayer(
 		warpConfig:                warpConfig,
 		checkpointManager:         checkpointManager,
 		sourceWarpSignatureClient: warpClient,
-		proposerClient:            proposerClient,
 		signatureAggregator:       signatureAggregator,
 		processMessageSemaphore:   processMessageSemaphore,
 	}
@@ -267,7 +230,7 @@ func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, ski
 			defaultQuorumPercentageBuffer,
 		)
 		// Determine the appropriate P-Chain height for validator set selection
-		pchainHeight, err := r.getPChainHeightForDestination(ctx)
+		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx, r.network)
 		if err != nil {
 			r.logger.Error(
 				"Failed to determine P-Chain height for validator set",
@@ -364,48 +327,6 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 
 func (r *ApplicationRelayer) RelayerID() database.RelayerID {
 	return r.relayerID
-}
-
-// getPChainHeightForDestination determines the appropriate P-Chain height for validator set selection
-// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated
-func (r *ApplicationRelayer) getPChainHeightForDestination(ctx context.Context) (uint64, error) {
-	if !r.network.IsGraniteActivated() {
-		r.logger.Debug("Granite is not activated, using ProposedHeight")
-		// Get the proposed height from the ProposerVM API to be able to cache the validator sets for this height
-		height, err := r.proposerClient.GetProposedHeight(ctx)
-		if err != nil {
-			r.logger.Warn("Failed to get proposed height using ProposerVM API, using ProposedHeight constant",
-				zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
-				zap.Error(err),
-			)
-			return pchainapi.ProposedHeight, nil
-		}
-		return height, nil
-	}
-	epoch, err := r.proposerClient.GetCurrentEpoch(ctx)
-	if err != nil {
-		r.logger.Error("Failed to get current epoch from destination chain ProposerVM",
-			zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
-			zap.Error(err),
-		)
-		return 0, err
-	}
-
-	r.logger.Info("Successfully retrieved epoch from ProposerVM",
-		zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
-		zap.Uint64("epochNumber", epoch.Number),
-		zap.Uint64("epochPChainHeight", epoch.PChainHeight),
-		zap.Int64("epochStartTime", epoch.StartTime),
-	)
-
-	// This should only be the case around activation time
-	// but should be safe to keep this as a failsafe.
-	if epoch.Number == 0 {
-		r.logger.Info("Epoch number is 0, using current validators (ProposedHeight)")
-		return pchainapi.ProposedHeight, nil
-	}
-
-	return epoch.PChainHeight, nil
 }
 
 // createSignedMessage fetches the signed Warp message from the source chain via RPC.
