@@ -5,6 +5,8 @@ package cache
 
 import (
 	"sync"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // FetchFunc is the function signature for fetching values
@@ -18,16 +20,15 @@ type FIFOCache[K comparable, V any] struct {
 	capacity int
 
 	// Single-flight mechanism
-	singleFlight *SingleFlight
+	singleFlight singleflight.Group
 }
 
 // NewFIFOCache creates a new FIFO cache with the given capacity and fetch function
 func NewFIFOCache[K comparable, V any](capacity int) *FIFOCache[K, V] {
 	return &FIFOCache[K, V]{
-		cache:        make(map[K]V),
-		queue:        make([]K, 0, capacity),
-		capacity:     capacity,
-		singleFlight: NewSingleFlight(),
+		cache:    make(map[K]V),
+		queue:    make([]K, 0, capacity),
+		capacity: capacity,
 	}
 }
 

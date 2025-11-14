@@ -21,7 +21,6 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
-	"github.com/ava-labs/icm-services/cache"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -32,6 +31,7 @@ import (
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/rpc"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -66,7 +66,7 @@ type destinationClient struct {
 	// Epoch cache for Granite - cached per destination blockchain
 	epochValue        block.Epoch
 	epochExpiration   time.Time
-	epochSingleFlight *cache.SingleFlight
+	epochSingleFlight singleflight.Group
 	proposerClient    *peers.ProposerVMAPI
 }
 
@@ -217,9 +217,6 @@ func NewDestinationClient(
 		zap.Uint64("nonce", pendingNonce),
 	)
 
-	// Initialize epoch cache components
-	epochSingleFlight := cache.NewSingleFlight()
-
 	// Create ProposerVM client for destination chain
 	endpoint, err := url.Parse(destinationBlockchain.RPCEndpoint.BaseURL)
 	if err != nil {
@@ -246,7 +243,6 @@ func NewDestinationClient(
 		suggestedPriorityFeeBuffer: new(big.Int).SetUint64(destinationBlockchain.SuggestedPriorityFeeBuffer),
 		maxPriorityFeePerGas:       new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
 		txInclusionTimeout:         time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
-		epochSingleFlight:          epochSingleFlight,
 		proposerClient:             proposerClient,
 	}
 
