@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"os/signal"
@@ -517,9 +518,7 @@ func createApplicationRelayers(
 			return nil, nil, err
 		}
 
-		for relayerID, applicationRelayer := range applicationRelayersForSource {
-			applicationRelayers[relayerID] = applicationRelayer
-		}
+		maps.Copy(applicationRelayers, applicationRelayersForSource)
 		minHeights[sourceBlockchain.GetBlockchainID()] = minHeight
 
 		logger.Info(
