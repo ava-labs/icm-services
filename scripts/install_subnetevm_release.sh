@@ -70,7 +70,7 @@ else
       git clone --no-checkout ${GIT_CLONE_URL} ${GIT_CLONE_PATH}
     fi
 
-    # check to see if the commitish exists in the repo
+    # check to see if the committish exists in the repo
     WORKDIR=$(pwd)
 
     cd ${GIT_CLONE_PATH}
