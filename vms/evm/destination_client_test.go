@@ -437,24 +437,20 @@ func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
 	receivedHeaders := make(map[string]string)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Capture query params
 		for key := range queryParams {
 			receivedParams[key] = r.URL.Query().Get(key)
 		}
 
-		// Capture headers
 		for key := range httpHeaders {
 			receivedHeaders[key] = r.Header.Get(key)
 		}
 
-		// Return valid JSON-RPC response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
 	}))
 	defer server.Close()
 
-	// Create client with both query params and headers
 	destinationBlockchain := config.DestinationBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
@@ -471,13 +467,11 @@ func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
 	_, err := NewDestinationClient(logger, &destinationBlockchain)
 	_ = err
 
-	// Verify all query params were received
 	for key, expectedValue := range queryParams {
 		require.Equal(t, expectedValue, receivedParams[key],
 			"Query param %s not forwarded correctly", key)
 	}
 
-	// Verify all headers were received
 	for key, expectedValue := range httpHeaders {
 		require.Equal(t, expectedValue, receivedHeaders[key],
 			"Header %s not forwarded correctly", key)

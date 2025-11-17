@@ -71,11 +71,9 @@ func TestInitializeOptionsCreatesCorrectTypes(t *testing.T) {
 
 	options := InitializeOptions(apiConfig)
 
-	// We should have one option per query param and one per header
 	expectedCount := len(apiConfig.QueryParams) + len(apiConfig.HTTPHeaders)
 	require.Len(t, options, expectedCount)
 
-	// All options should be non-nil
 	for i, opt := range options {
 		require.NotNil(t, opt, "option at index %d should not be nil", i)
 	}

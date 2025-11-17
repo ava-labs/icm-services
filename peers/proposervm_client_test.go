@@ -42,37 +42,28 @@ func TestProposerVMAPI_QueryParamsForwarding(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Track received query params
 			receivedParams := make(map[string]string)
 
-			// Create test server
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Capture query params
 				for key := range tt.queryParams {
 					receivedParams[key] = r.URL.Query().Get(key)
 				}
 
-				// Return a valid JSON-RPC response
 				w.Header().Set("Content-Type", "application/json")
-				// The actual response structure doesn't matter for this test
-				// We're just verifying the request contains the correct query params
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"height":100}}`))
 			}))
 			defer server.Close()
 
-			// Create ProposerVMAPI client with query params
 			apiConfig := &config.APIConfig{
 				BaseURL:     server.URL,
 				QueryParams: tt.queryParams,
 			}
 			client := NewProposerVMAPI(server.URL, "test-chain", apiConfig)
 
-			// Make a call (may fail due to response format, but query params should be sent)
 			ctx := context.Background()
 			client.GetProposedHeight(ctx)
 
-			// Verify all query params were received
 			for key, expectedValue := range tt.queryParams {
 				actualValue := receivedParams[key]
 				require.Equal(t, expectedValue, actualValue,
@@ -112,35 +103,29 @@ func TestProposerVMAPI_HTTPHeadersForwarding(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Track received headers
 			receivedHeaders := make(map[string]string)
 
-			// Create test server
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Capture headers
 				for key := range tt.httpHeaders {
 					receivedHeaders[key] = r.Header.Get(key)
 				}
 
-				// Return a valid JSON-RPC response
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"height":100}}`))
 			}))
 			defer server.Close()
 
-			// Create ProposerVMAPI client with headers
 			apiConfig := &config.APIConfig{
 				BaseURL:     server.URL,
 				HTTPHeaders: tt.httpHeaders,
 			}
 			client := NewProposerVMAPI(server.URL, "test-chain", apiConfig)
 
-			// Make a call (may fail due to response format, but headers should be sent)
 			ctx := context.Background()
 			client.GetProposedHeight(ctx)
 
-			// Verify all headers were received
+			// Verify all headers were received.
 			for key, expectedValue := range tt.httpHeaders {
 				actualValue := receivedHeaders[key]
 				require.Equal(t, expectedValue, actualValue,
@@ -161,29 +146,24 @@ func TestProposerVMAPI_CombinedQueryParamsAndHeaders(t *testing.T) {
 		"X-API-Key":     "header-key",
 	}
 
-	// Track what the server receives
 	receivedParams := make(map[string]string)
 	receivedHeaders := make(map[string]string)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Capture query params
 		for key := range queryParams {
 			receivedParams[key] = r.URL.Query().Get(key)
 		}
 
-		// Capture headers
 		for key := range httpHeaders {
 			receivedHeaders[key] = r.Header.Get(key)
 		}
 
-		// Return valid JSON-RPC response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"height":100}}`))
 	}))
 	defer server.Close()
 
-	// Create client with both query params and headers
 	apiConfig := &config.APIConfig{
 		BaseURL:     server.URL,
 		QueryParams: queryParams,
@@ -191,17 +171,14 @@ func TestProposerVMAPI_CombinedQueryParamsAndHeaders(t *testing.T) {
 	}
 	client := NewProposerVMAPI(server.URL, "test-chain", apiConfig)
 
-	// Make a call (may fail due to response format, but params/headers should be sent)
 	ctx := context.Background()
 	client.GetProposedHeight(ctx)
 
-	// Verify all query params were received
 	for key, expectedValue := range queryParams {
 		require.Equal(t, expectedValue, receivedParams[key],
 			"Query param %s not forwarded correctly", key)
 	}
 
-	// Verify all headers were received
 	for key, expectedValue := range httpHeaders {
 		require.Equal(t, expectedValue, receivedHeaders[key],
 			"Header %s not forwarded correctly", key)
@@ -217,12 +194,10 @@ func TestProposerVMAPI_GetCurrentEpochWithQueryParams(t *testing.T) {
 	receivedParams := make(map[string]string)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Capture query params
 		for key := range queryParams {
 			receivedParams[key] = r.URL.Query().Get(key)
 		}
 
-		// Return a valid JSON-RPC response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Number":1,"PChainHeight":100,"StartTime":1234567890}}`))
@@ -238,7 +213,6 @@ func TestProposerVMAPI_GetCurrentEpochWithQueryParams(t *testing.T) {
 	ctx := context.Background()
 	client.GetCurrentEpoch(ctx)
 
-	// Verify query params were forwarded
 	for key, expectedValue := range queryParams {
 		require.Equal(t, expectedValue, receivedParams[key],
 			"Query param %s not forwarded in GetCurrentEpoch", key)
