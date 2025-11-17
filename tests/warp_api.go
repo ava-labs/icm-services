@@ -30,7 +30,12 @@ const rpcSignatureMetricName = "app_fetch_signature_rpc_count"
 // - Relaying from Subnet A to Subnet B
 // - Relaying from Subnet B to Subnet A
 // - Verifying the messages were signed using the Warp API
-func WarpAPIRelay(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func WarpAPIRelay(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -40,7 +45,6 @@ func WarpAPIRelay(log logging.Logger, network *network.LocalNetwork, teleporter 
 	//
 	// Fund the relayer address on all subnets
 	//
-	ctx := context.Background()
 
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
