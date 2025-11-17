@@ -74,7 +74,7 @@ func NewDestinationClient(
 // CreateDestinationClients creates destination clients for all subnets configured as destinations
 func CreateDestinationClients(
 	logger logging.Logger,
-	relayerConfig config.Config,
+	relayerConfig *config.Config,
 ) (map[ids.ID]DestinationClient, error) {
 	destinationClients := make(map[ids.ID]DestinationClient)
 	for _, subnetInfo := range relayerConfig.DestinationBlockchains {

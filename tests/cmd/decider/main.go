@@ -6,10 +6,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net"
+	"os"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	pb "github.com/ava-labs/icm-services/proto/pb/decider"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -32,18 +34,28 @@ func main() {
 	flag.Parse()
 
 	server := grpc.NewServer()
-
 	pb.RegisterDeciderServiceServer(server, &deciderServer{})
+
+	log := logging.NewLogger(
+		"signature-aggregator",
+		logging.NewWrappedCore(
+			logging.Info,
+			os.Stdout,
+			logging.JSON.ConsoleEncoder(),
+		),
+	)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
-		log.Fatalf("decider failed to listen: %v", err)
+		log.Fatal("decider failed to listen", zap.Error(err))
+		os.Exit(1)
 	}
 
-	log.Printf("decider listening at %v", listener.Addr())
+	log.Info("decider listening at", zap.Stringer("address", listener.Addr()))
 
 	err = server.Serve(listener)
 	if err != nil {
-		log.Fatalf("decider failed to serve: %v", err)
+		log.Fatal("decider failed to serve", zap.Error(err))
+		os.Exit(1)
 	}
 }
