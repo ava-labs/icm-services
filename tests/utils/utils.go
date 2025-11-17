@@ -242,6 +242,7 @@ func CreateDefaultSignatureAggregatorConfig(
 		MetricsPort:        8081,
 		SignatureCacheSize: (1024 * 1024),
 		AllowPrivateIPs:    true,
+		MaxPChainLookback:  -1,
 	}
 }
 

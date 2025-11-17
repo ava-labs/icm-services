@@ -8,7 +8,9 @@ package evm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
+	"net/url"
 	"reflect"
 	"time"
 
@@ -16,7 +18,10 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	predicateutils "github.com/ava-labs/avalanchego/vms/evm/predicate"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/avalanchego/vms/proposervm/block"
+	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
@@ -26,6 +31,7 @@ import (
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/rpc"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -34,6 +40,10 @@ const (
 	poolTxsPerAccount             = 16
 	pendingTxRefreshInterval      = 2 * time.Second
 	defaultBlockAcceptanceTimeout = 30 * time.Second
+
+	// epochCacheKey is the singleflight key for epoch caching
+	// Since we only cache one epoch per destination, the key is constant
+	epochCacheKey = "epoch"
 )
 
 // Client interface wraps the ethclient.Client interface for mocking purposes.
@@ -56,6 +66,12 @@ type destinationClient struct {
 	maxPriorityFeePerGas       *big.Int
 	logger                     logging.Logger
 	txInclusionTimeout         time.Duration
+
+	// Epoch cache for Granite - cached per destination blockchain
+	epochValue        block.Epoch
+	epochExpiration   time.Time
+	epochSingleFlight singleflight.Group
+	proposerClient    *peers.ProposerVMAPI
 }
 
 // Type alias for the destinationClient to have access to the fields but not the methods of the concurrentSigner.
@@ -205,6 +221,20 @@ func NewDestinationClient(
 		zap.Uint64("nonce", pendingNonce),
 	)
 
+	// Create ProposerVM client for destination chain
+	endpoint, err := url.Parse(destinationBlockchain.RPCEndpoint.BaseURL)
+	if err != nil {
+		logger.Error("Failed to parse rpc endpoint for ProposerVM client",
+			zap.Stringer("destinationBlockchainID", destinationID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
+	blockchainID := destinationBlockchain.BlockchainID
+	proposerClient := peers.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
+
 	destClient = destinationClient{
 		client:                     client,
 		readonlyConcurrentSigners:  readonlyConcurrentSigners,
@@ -217,6 +247,7 @@ func NewDestinationClient(
 		suggestedPriorityFeeBuffer: new(big.Int).SetUint64(destinationBlockchain.SuggestedPriorityFeeBuffer),
 		maxPriorityFeePerGas:       new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
 		txInclusionTimeout:         time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
+		proposerClient:             proposerClient,
 	}
 
 	return &destClient, nil
@@ -339,7 +370,7 @@ func (c *destinationClient) SendTx(
 
 	if result.err != nil {
 		c.logger.Error(
-			"Transaction failed to be included or confirmed",
+			"Transaction failed to be issued or confirmed",
 			zap.Error(result.err),
 		)
 		return nil, result.err
@@ -370,6 +401,8 @@ func (s *concurrentSigner) processIncomingTransactions() {
 				zap.Error(err),
 			)
 			// If issueTransaction fails, we have not passed the resultChan to waitForReceipt
+			// so we need to release the semaphore slot here and send the error result
+			<-s.queuedTxSemaphore
 			messageData.resultChan <- txResult{
 				receipt: nil,
 				err:     err,
@@ -518,4 +551,81 @@ func (c *destinationClient) BlockGasLimit() uint64 {
 
 func (c *destinationClient) GetRPCEndpointURL() string {
 	return c.rpcEndpointURL
+}
+
+// GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
+// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated.
+// The epoch is cached per destination blockchain to avoid per-message fetches.
+func (c *destinationClient) GetPChainHeightForDestination(
+	ctx context.Context,
+	network peers.AppRequestNetwork,
+) (uint64, error) {
+	if !network.IsGraniteActivated() {
+		c.logger.Debug("Granite is not activated, using ProposedHeight")
+		// Get the proposed height from the ProposerVM API to be able to cache the validator sets for this height
+		height, err := c.proposerClient.GetProposedHeight(ctx)
+		if err != nil {
+			c.logger.Warn("Failed to get proposed height using ProposerVM API, using ProposedHeight constant",
+				zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
+				zap.Error(err),
+			)
+			return pchainapi.ProposedHeight, nil
+		}
+		return height, nil
+	}
+
+	// Use singleflight to deduplicate concurrent fetches and serialize cache access
+	result, err, _ := c.epochSingleFlight.Do(epochCacheKey, func() (interface{}, error) {
+		// Check if cached epoch is still valid
+		if !c.epochExpiration.IsZero() && time.Now().Before(c.epochExpiration) {
+			return c.epochValue, nil
+		}
+
+		// Fetch new epoch
+		epoch, fetchErr := c.proposerClient.GetCurrentEpoch(ctx)
+		if fetchErr != nil {
+			return block.Epoch{}, fetchErr
+		}
+
+		epochDuration := network.GetGraniteEpochDuration()
+
+		c.logger.Info("Successfully retrieved epoch from ProposerVM",
+			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
+			zap.Any("epoch", epoch),
+			zap.Duration("epochDuration", epochDuration),
+		)
+
+		// Calculate expiration time based on epoch.StartTime + epochDuration
+		// epoch.StartTime is in nanoseconds (Unix timestamp)
+		// Update cache
+		c.epochValue = epoch
+		c.epochExpiration = time.Unix(0, epoch.StartTime).Add(epochDuration)
+
+		c.logger.Debug("Calculated epoch expiration",
+			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
+			zap.Uint64("epochNumber", c.epochValue.Number),
+			zap.Time("epochExpiration", c.epochExpiration),
+		)
+
+		return epoch, nil
+	})
+
+	if err != nil {
+		c.logger.Error("Failed to get current epoch from destination chain ProposerVM",
+			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
+			zap.Error(err),
+		)
+		return 0, err
+	}
+
+	epoch := result.(block.Epoch)
+
+	// This should only be the case around activation time
+	// but should be safe to keep this as a failsafe.
+	if epoch.Number == 0 {
+		c.logger.Info("Epoch number is 0, using current validators (ProposedHeight)")
+		return pchainapi.ProposedHeight, nil
+	}
+
+	return epoch.PChainHeight, nil
 }
