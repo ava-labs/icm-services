@@ -5,7 +5,6 @@ package offchainregistry
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -17,7 +16,6 @@ import (
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/zap"
 )
 
@@ -143,17 +141,8 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 		return false, nil
 	}
 
-	// Get the correct destination client from the global map
-	client, ok := m.destinationClient.Client().(ethclient.Client)
-	if !ok {
-		panic(fmt.Sprintf(
-			"Destination client for chain %s is not an Ethereum client",
-			m.destinationClient.DestinationBlockchainID().String()),
-		)
-	}
-
 	// Check if the version is already registered in the TeleporterRegistry contract.
-	registry, err := teleporterregistry.NewTeleporterRegistryCaller(m.registryAddress, client)
+	registry, err := teleporterregistry.NewTeleporterRegistryCaller(m.registryAddress, m.destinationClient.Client())
 	if err != nil {
 		m.logger.Error(
 			"Failed to create TeleporterRegistry caller",
@@ -161,6 +150,7 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 		)
 		return false, err
 	}
+
 	address, err := registry.GetAddressFromVersion(&bind.CallOpts{}, entry.Version)
 	if err != nil {
 		if strings.Contains(err.Error(), revertVersionNotFoundString) {

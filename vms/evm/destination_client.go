@@ -529,7 +529,7 @@ func (s *concurrentSigner) waitForReceipt(
 	}
 }
 
-func (c *destinationClient) Client() interface{} {
+func (c *destinationClient) Client() ethclient.Client {
 	return c.client
 }
 

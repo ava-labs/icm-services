@@ -19,6 +19,7 @@ import (
 	peers "github.com/ava-labs/icm-services/peers"
 	common "github.com/ava-labs/libevm/common"
 	types "github.com/ava-labs/libevm/core/types"
+	ethclient "github.com/ava-labs/subnet-evm/ethclient"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -61,10 +62,10 @@ func (mr *MockDestinationClientMockRecorder) BlockGasLimit() *gomock.Call {
 }
 
 // Client mocks base method.
-func (m *MockDestinationClient) Client() any {
+func (m *MockDestinationClient) Client() ethclient.Client {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Client")
-	ret0, _ := ret[0].(any)
+	ret0, _ := ret[0].(ethclient.Client)
 	return ret0
 }
 
