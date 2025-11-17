@@ -4,7 +4,6 @@
 package peers
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -62,8 +61,7 @@ func TestInfoAPI_QueryParamsForwarding(t *testing.T) {
 			client, err := NewInfoAPI(apiConfig)
 			require.NoError(t, err)
 
-			ctx := context.Background()
-			client.GetNetworkID(ctx)
+			client.GetNetworkID(t.Context())
 
 			for key, expectedValue := range tt.queryParams {
 				actualValue := receivedParams[key]
@@ -124,8 +122,7 @@ func TestInfoAPI_HTTPHeadersForwarding(t *testing.T) {
 			client, err := NewInfoAPI(apiConfig)
 			require.NoError(t, err)
 
-			ctx := context.Background()
-			client.GetNetworkID(ctx)
+			client.GetNetworkID(t.Context())
 
 			for key, expectedValue := range tt.httpHeaders {
 				actualValue := receivedHeaders[key]
@@ -173,8 +170,7 @@ func TestInfoAPI_CombinedQueryParamsAndHeaders(t *testing.T) {
 	client, err := NewInfoAPI(apiConfig)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	client.GetNetworkName(ctx)
+	client.GetNetworkName(t.Context())
 
 	for key, expectedValue := range queryParams {
 		require.Equal(t, expectedValue, receivedParams[key],
@@ -217,10 +213,8 @@ func TestInfoAPI_MultipleMethodsWithParams(t *testing.T) {
 	client, err := NewInfoAPI(apiConfig)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-
-	client.GetNetworkName(ctx)
-	client.GetNetworkID(ctx)
+	client.GetNetworkName(t.Context())
+	client.GetNetworkID(t.Context())
 
 	for _, params := range receivedParams {
 		for key, expectedValue := range queryParams {
@@ -248,8 +242,7 @@ func TestInfoAPI_NoQueryParamsOrHeaders(t *testing.T) {
 	client, err := NewInfoAPI(apiConfig)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	client.GetNetworkID(ctx)
+	client.GetNetworkID(t.Context())
 
 	require.True(t, requestReceived, "Request should have been sent to server")
 }

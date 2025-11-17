@@ -329,10 +329,7 @@ func TestDestinationClient_QueryParamsForwarding(t *testing.T) {
 			// Create destination client (this will make ChainID call)
 			logger := logging.NoLog{}
 			_, err := NewDestinationClient(logger, &destinationBlockchain)
-
-			// We expect an error because the mock server doesn't fully implement the EVM RPC protocol,
-			// but we're only interested in verifying that query params were sent correctly
-			_ = err
+			require.NoError(t, err)
 
 			// Verify all query params were received
 			for key, expectedValue := range tt.queryParams {
@@ -406,10 +403,7 @@ func TestDestinationClient_HTTPHeadersForwarding(t *testing.T) {
 			// Create destination client (this will make ChainID call)
 			logger := logging.NoLog{}
 			_, err := NewDestinationClient(logger, &destinationBlockchain)
-
-			// We expect an error because the mock server doesn't fully implement the EVM RPC protocol,
-			// but we're only interested in verifying that headers were sent correctly
-			_ = err
+			require.NoError(t, err)
 
 			// Verify all headers were received
 			for key, expectedValue := range tt.httpHeaders {
@@ -465,7 +459,7 @@ func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
 
 	logger := logging.NoLog{}
 	_, err := NewDestinationClient(logger, &destinationBlockchain)
-	_ = err
+	require.NoError(t, err)
 
 	for key, expectedValue := range queryParams {
 		require.Equal(t, expectedValue, receivedParams[key],
