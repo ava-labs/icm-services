@@ -29,8 +29,12 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func RelayMessageAPI(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
-	ctx := context.Background()
+func RelayMessageAPI(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()

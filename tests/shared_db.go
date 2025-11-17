@@ -16,7 +16,12 @@ import (
 const relayerCfgFnameA = "relayer-config-a.json"
 const relayerCfgFnameB = "relayer-config-b.json"
 
-func SharedDatabaseAccess(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func SharedDatabaseAccess(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -26,7 +31,6 @@ func SharedDatabaseAccess(log logging.Logger, network *network.LocalNetwork, tel
 	//
 	// Fund the relayer address on all subnets
 	//
-	ctx := context.Background()
 
 	log.Info("Funding relayer address on all subnets")
 	relayerKeyA, err := crypto.GenerateKey()

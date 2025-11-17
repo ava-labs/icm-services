@@ -29,7 +29,12 @@ import (
 // Tests relayer support for off-chain Teleporter Registry updates
 // - Configures the relayer to send an off-chain message to the Teleporter Registry
 // - Verifies that the Teleporter Registry is updated
-func ManualMessage(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ManualMessage(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -46,7 +51,6 @@ func ManualMessage(log logging.Logger, network *network.LocalNetwork, teleporter
 	//
 	// Fund the relayer address on all subnets
 	//
-	ctx := context.Background()
 
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
