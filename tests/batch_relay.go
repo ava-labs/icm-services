@@ -21,7 +21,12 @@ import (
 )
 
 // Processes multiple Warp messages contained in the same block
-func BatchRelay(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func BatchRelay(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 	err := testUtils.ClearRelayerStorage()
@@ -30,7 +35,6 @@ func BatchRelay(log logging.Logger, network *network.LocalNetwork, teleporter ut
 	//
 	// Deploy the batch messenger contracts
 	//
-	ctx := context.Background()
 	_, batchMessengerA := testUtils.DeployBatchCrossChainMessenger(
 		ctx,
 		fundedKey,

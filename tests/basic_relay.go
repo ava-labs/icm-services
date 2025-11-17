@@ -24,7 +24,12 @@ import (
 // - Relaying from Subnet B to Subnet A
 // - Relaying an already delivered message
 // - Setting ProcessHistoricalBlocksFromHeight in config
-func BasicRelay(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func BasicRelay(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -34,7 +39,6 @@ func BasicRelay(log logging.Logger, network *network.LocalNetwork, teleporter ut
 	//
 	// Fund the relayer address on all subnets
 	//
-	ctx := context.Background()
 
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()

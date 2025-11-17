@@ -42,13 +42,12 @@ import (
 // - Uses ProposedHeight as PChainHeight to test the edge case
 // - Confirms that the system handles this correctly
 func SignatureAggregatorEpochAPI(
+	ctx context.Context,
 	log logging.Logger,
 	network *network.LocalNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	// Begin Setup step
-	ctx := context.Background()
-
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
