@@ -6,8 +6,6 @@ package evm
 import (
 	"encoding/hex"
 	"math/big"
-	"os"
-	"syscall"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -141,15 +139,6 @@ func createUnsignedMessage() *warp.UnsignedMessage {
 }
 
 func TestUnpack(t *testing.T) {
-	logger := logging.NewLogger(
-		"icm-relayer",
-		logging.NewWrappedCore(
-			logging.Error,
-			os.NewFile(uintptr(syscall.Stdout), "/dev/null"), // write all test logs to /dev/null
-			logging.JSON.ConsoleEncoder(),
-		),
-	)
-
 	testCases := []struct {
 		name        string
 		input       string
@@ -185,7 +174,7 @@ func TestUnpack(t *testing.T) {
 			input, err := hex.DecodeString(testCase.input)
 			require.NoError(t, err)
 
-			msg, err := UnpackWarpMessage(logger, input)
+			msg, err := UnpackWarpMessage(logging.NoLog{}, input)
 			if testCase.expectError {
 				require.Error(t, err)
 			} else {
