@@ -13,13 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 // Fully formed name of the metric that tracks the number aggregate signatures fetched from the Warp API
@@ -29,7 +30,7 @@ const rpcSignatureMetricName = "app_fetch_signature_rpc_count"
 // - Relaying from Subnet A to Subnet B
 // - Relaying from Subnet B to Subnet A
 // - Verifying the messages were signed using the Warp API
-func WarpAPIRelay(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func WarpAPIRelay(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -50,6 +51,7 @@ func WarpAPIRelay(network *network.LocalNetwork, teleporter utils.TeleporterTest
 	// Set up relayer config
 	//
 	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -61,7 +63,7 @@ func WarpAPIRelay(network *network.LocalNetwork, teleporter utils.TeleporterTest
 		subnet.WarpAPIEndpoint = subnet.RPCEndpoint
 	}
 
-	relayerConfigPath := testUtils.WriteRelayerConfig(relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath := testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
 
 	//
 	// Test Relaying from Subnet A to Subnet B
@@ -71,6 +73,7 @@ func WarpAPIRelay(network *network.LocalNetwork, teleporter utils.TeleporterTest
 	log.Info("Starting the relayer")
 	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath,
 		relayerConfig,
 	)
@@ -85,6 +88,7 @@ func WarpAPIRelay(network *network.LocalNetwork, teleporter utils.TeleporterTest
 	log.Info("Sending transaction from Subnet A to Subnet B")
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -98,6 +102,7 @@ func WarpAPIRelay(network *network.LocalNetwork, teleporter utils.TeleporterTest
 	log.Info("Test Relaying from Subnet B to Subnet A")
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1BInfo,
 		l1AInfo,
@@ -121,7 +126,7 @@ func WarpAPIRelay(network *network.LocalNetwork, teleporter utils.TeleporterTest
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, rpcSignatureMetricName) {
-			log.Info("Found metric line", "metric", line)
+			log.Info("Found metric line", zap.String("metric", line))
 			parts := strings.Fields(line)
 
 			// Fetch the metric count from the last field of the line

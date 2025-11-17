@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-contracts/tests/network"
@@ -24,12 +25,11 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	. "github.com/onsi/gomega"
 )
 
-func RelayMessageAPI(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RelayMessageAPI(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	ctx := context.Background()
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
@@ -45,16 +45,18 @@ func RelayMessageAPI(network *network.LocalNetwork, teleporter utils.TeleporterT
 	log.Info("Sending teleporter message")
 	receipt, _, teleporterMessageID := testUtils.SendBasicTeleporterMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
 		fundedKey,
 		fundedAddress,
 	)
-	warpMessage := getWarpMessageFromLog(ctx, receipt, l1AInfo)
+	warpMessage := getWarpMessageFromLog(ctx, log, receipt, l1AInfo)
 
 	// Set up relayer config
 	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -64,11 +66,16 @@ func RelayMessageAPI(network *network.LocalNetwork, teleporter utils.TeleporterT
 	// Don't process missed blocks, so we can manually relay
 	relayerConfig.ProcessMissedBlocks = false
 
-	relayerConfigPath := testUtils.WriteRelayerConfig(relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath := testUtils.WriteRelayerConfig(
+		log,
+		relayerConfig,
+		testUtils.DefaultRelayerCfgFname,
+	)
 
 	log.Info("Starting the relayer")
 	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPath,
 		relayerConfig,
 	)
@@ -156,6 +163,7 @@ func RelayMessageAPI(network *network.LocalNetwork, teleporter utils.TeleporterT
 
 func getWarpMessageFromLog(
 	ctx context.Context,
+	log logging.Logger,
 	receipt *types.Receipt,
 	source interfaces.L1TestInfo,
 ) *avalancheWarp.UnsignedMessage {

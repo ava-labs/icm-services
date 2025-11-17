@@ -4,19 +4,19 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
 )
 
 const relayerCfgFnameA = "relayer-config-a.json"
 const relayerCfgFnameB = "relayer-config-b.json"
 
-func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func SharedDatabaseAccess(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -42,6 +42,7 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	//
 	// Relayer A will relay messages from Subnet A to Subnet B
 	relayerConfigA := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo},
 		[]interfaces.L1TestInfo{l1BInfo},
@@ -50,6 +51,7 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	)
 	// Relayer B will relay messages from Subnet B to Subnet A
 	relayerConfigB := testUtils.CreateDefaultRelayerConfig(
+		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1BInfo},
 		[]interfaces.L1TestInfo{l1AInfo},
@@ -59,8 +61,16 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	relayerConfigB.APIPort = 8081
 	relayerConfigB.MetricsPort = 9091
 
-	relayerConfigPathA := testUtils.WriteRelayerConfig(relayerConfigA, relayerCfgFnameA)
-	relayerConfigPathB := testUtils.WriteRelayerConfig(relayerConfigB, relayerCfgFnameB)
+	relayerConfigPathA := testUtils.WriteRelayerConfig(
+		log,
+		relayerConfigA,
+		relayerCfgFnameA,
+	)
+	relayerConfigPathB := testUtils.WriteRelayerConfig(
+		log,
+		relayerConfigB,
+		relayerCfgFnameB,
+	)
 
 	//
 	// Test Relaying from Subnet A to Subnet B
@@ -70,12 +80,14 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	log.Info("Starting the relayers")
 	relayerCleanupA, readyChanA := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPathA,
 		relayerConfigA,
 	)
 	defer relayerCleanupA()
 	relayerCleanupB, readyChanB := testUtils.RunRelayerExecutable(
 		ctx,
+		log,
 		relayerConfigPathB,
 		relayerConfigB,
 	)
@@ -96,6 +108,7 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	log.Info("Sending transaction from Subnet A to Subnet B")
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -109,6 +122,7 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	log.Info("Test Relaying from Subnet B to Subnet A")
 	testUtils.RelayBasicMessage(
 		ctx,
+		log,
 		teleporter,
 		l1BInfo,
 		l1AInfo,
@@ -122,6 +136,7 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	log.Info("Testing processing missed blocks on Subnet A")
 	testUtils.TriggerProcessMissedBlocks(
 		ctx,
+		log,
 		teleporter,
 		l1AInfo,
 		l1BInfo,
@@ -134,6 +149,7 @@ func SharedDatabaseAccess(network *network.LocalNetwork, teleporter utils.Telepo
 	log.Info("Testing processing missed blocks on Subnet B")
 	testUtils.TriggerProcessMissedBlocks(
 		ctx,
+		log,
 		teleporter,
 		l1BInfo,
 		l1AInfo,
