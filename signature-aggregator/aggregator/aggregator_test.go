@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"bytes"
-	"context"
 	"slices"
 	"testing"
 
@@ -153,7 +152,7 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			aggregator, _, _ := instantiateAggregator(t)
 			signedMsg, err := aggregator.CreateSignedMessage(
-				context.Background(),
+				t.Context(),
 				logging.NoLog{},
 				nil,
 				nil,
@@ -186,7 +185,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 		nil,
 	)
 	_, err = aggregator.CreateSignedMessage(
-		context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorContains(t, err, "no signatures")
 }
 
@@ -207,7 +206,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 		nil,
 	).AnyTimes()
 	_, err = aggregator.CreateSignedMessage(
-		context.Background(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorContains(
 		t,
 		err,
@@ -300,7 +299,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	).Times(1)
 
 	_, err = aggregator.CreateSignedMessage(
-		context.Background(), logging.NoLog{}, msg, nil, subnetID, 80, 0, false, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, subnetID, 80, 0, false, pchainapi.ProposedHeight)
 	require.ErrorIs(
 		t,
 		err,
@@ -417,7 +416,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			// This should still succeed because we have 4 out of 5 valid signatures,
 			// even though we're not able to get the quorum percentage buffer.
 			signedMessage, err := aggregator.CreateSignedMessage(
-				context.Background(),
+				t.Context(),
 				logging.NoLog{},
 				msg,
 				nil,
@@ -696,7 +695,7 @@ func TestGetExcludedValidators(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			aggregator, _, mockPClient := instantiateAggregator(t)
-			ctx := context.Background()
+			ctx := t.Context()
 			log := logging.NoLog{}
 			signingSubnet := ids.GenerateTestID()
 
@@ -761,7 +760,7 @@ func TestValidateQuorumPercentages(t *testing.T) {
 
 func TestSelectSigningSubnet(t *testing.T) {
 	aggregator, _, _ := instantiateAggregator(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	log := logging.NoLog{}
 	chainID := ids.GenerateTestID()
 	msg, err := warp.NewUnsignedMessage(0, chainID, []byte{})
