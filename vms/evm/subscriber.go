@@ -81,7 +81,7 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	if err != nil {
 		s.logger.Error(
 			"Failed to get latest block",
-			zap.String("blockchainID", s.blockchainID.String()),
+			zap.Stringer("blockchainID", s.blockchainID),
 			zap.Error(err),
 		)
 		done <- false
@@ -91,7 +91,7 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 		"Processing historical logs",
 		zap.Uint64("fromBlockHeight", height.Uint64()),
 		zap.Uint64("latestBlockHeight", latestBlockHeight),
-		zap.String("blockchainID", s.blockchainID.String()),
+		zap.Stringer("blockchainID", s.blockchainID),
 	)
 
 	bigLatestBlockHeight := big.NewInt(0).SetUint64(latestBlockHeight)
@@ -126,13 +126,13 @@ func (s *subscriber) processBlockRange(
 		"Processing block range",
 		zap.Uint64("fromBlockHeight", fromBlock.Uint64()),
 		zap.Uint64("toBlockHeight", toBlock.Uint64()),
-		zap.String("blockchainID", s.blockchainID.String()),
+		zap.Stringer("blockchainID", s.blockchainID),
 	)
 	logs, err := s.getFilterLogsByBlockRangeRetryable(fromBlock, toBlock)
 	if err != nil {
 		s.logger.Error(
 			"Failed to get header by number after max attempts",
-			zap.String("blockchainID", s.blockchainID.String()),
+			zap.Stringer("blockchainID", s.blockchainID),
 			zap.Error(err),
 		)
 		return err
@@ -177,7 +177,7 @@ func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 	if err != nil {
 		s.logger.Error(
 			"Failed to get filter logs by block range",
-			zap.String("blockchainID", s.blockchainID.String()),
+			zap.Stringer("blockchainID", s.blockchainID),
 			zap.Error(err),
 		)
 		return nil, relayerTypes.ErrFailedToProcessLogs
@@ -213,7 +213,7 @@ func (s *subscriber) subscribe(retryTimeout time.Duration) error {
 	if err != nil {
 		s.logger.Error(
 			"Failed to subscribe to node",
-			zap.String("blockchainID", s.blockchainID.String()),
+			zap.Stringer("blockchainID", s.blockchainID),
 		)
 		return err
 	}

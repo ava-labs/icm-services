@@ -42,7 +42,7 @@ func NewCheckpointManager(
 	heap.Init(h)
 	logger.Info(
 		"Creating checkpoint manager",
-		zap.String("relayerID", relayerID.ID.String()),
+		zap.Stringer("relayerID", relayerID.ID),
 		zap.Uint64("startingHeight", startingHeight),
 	)
 
@@ -51,7 +51,7 @@ func NewCheckpointManager(
 		logger.Error(
 			"Failed to get latest processed block height",
 			zap.Error(err),
-			zap.String("relayerID", relayerID.ID.String()),
+			zap.Stringer("relayerID", relayerID.ID),
 		)
 		return nil, fmt.Errorf("failed to get the latest processed block height: %w", err)
 	}
@@ -86,7 +86,7 @@ func (cm *CheckpointManager) writeToDatabase() {
 	cm.logger.Verbo(
 		"Writing height",
 		zap.Uint64("height", cm.committedHeight),
-		zap.String("relayerID", cm.relayerID.ID.String()),
+		zap.Stringer("relayerID", cm.relayerID.ID),
 	)
 	err := cm.database.Put(
 		cm.relayerID.ID,
@@ -97,7 +97,7 @@ func (cm *CheckpointManager) writeToDatabase() {
 		cm.logger.Error(
 			"Failed to write latest processed block height",
 			zap.Error(err),
-			zap.String("relayerID", cm.relayerID.ID.String()),
+			zap.Stringer("relayerID", cm.relayerID.ID),
 		)
 		return
 	}
@@ -125,7 +125,7 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 			"Attempting to commit height less than or equal to the committed height. Skipping.",
 			zap.Uint64("height", height),
 			zap.Uint64("committedHeight", cm.committedHeight),
-			zap.String("relayerID", cm.relayerID.ID.String()),
+			zap.Stringer("relayerID", cm.relayerID.ID),
 		)
 		return
 	}
@@ -137,7 +137,7 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 		"Pending committed heights",
 		zap.Any("maxPendingHeight", height),
 		zap.Uint64("maxCommittedHeight", cm.committedHeight),
-		zap.String("relayerID", cm.relayerID.ID.String()),
+		zap.Stringer("relayerID", cm.relayerID.ID),
 	)
 
 	for cm.pendingCommits.Peek() == cm.committedHeight+1 {
@@ -145,7 +145,7 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 		cm.logger.Verbo(
 			"Committing height",
 			zap.Uint64("height", height),
-			zap.String("relayerID", cm.relayerID.ID.String()),
+			zap.Stringer("relayerID", cm.relayerID.ID),
 		)
 		cm.committedHeight = h
 		cm.dirty = true
