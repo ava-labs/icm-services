@@ -4,7 +4,6 @@
 package peers
 
 import (
-	"context"
 	"sync"
 	"testing"
 
@@ -164,7 +163,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			}
 			mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfo).Times(1)
 
-			ret, err := arNetwork.GetCanonicalValidators(context.Background(), subnetID, false, uint64(pchainapi.ProposedHeight))
+			ret, err := arNetwork.GetCanonicalValidators(t.Context(), subnetID, false, uint64(pchainapi.ProposedHeight))
 			require.Equal(t, testCase.expectedConnectedWeight, ret.ConnectedWeight)
 			require.Equal(t, testCase.expectedTotalWeight, ret.ValidatorSet.TotalWeight)
 			require.NoError(t, err)
@@ -308,7 +307,7 @@ func TestGetLatestSyncedPChainHeight(t *testing.T) {
 			testCase.setupMock()
 
 			if testCase.shouldCallValidatorAPI {
-				_, err := arNetwork.GetAllValidatorSets(context.Background(), testCase.fetchedHeight)
+				_, err := arNetwork.GetAllValidatorSets(t.Context(), testCase.fetchedHeight)
 				require.NoError(t, err)
 			}
 
@@ -358,17 +357,17 @@ func TestConcurrentGetAllValidatorSetsUpdatesLatestSyncedHeight(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := arNetwork.GetAllValidatorSets(context.Background(), 10)
+			_, err := arNetwork.GetAllValidatorSets(t.Context(), 10)
 			require.NoError(t, err)
 		}()
 		go func() {
 			defer wg.Done()
-			_, err := arNetwork.GetAllValidatorSets(context.Background(), 20)
+			_, err := arNetwork.GetAllValidatorSets(t.Context(), 20)
 			require.NoError(t, err)
 		}()
 		go func() {
 			defer wg.Done()
-			_, err := arNetwork.GetAllValidatorSets(context.Background(), 30)
+			_, err := arNetwork.GetAllValidatorSets(t.Context(), 30)
 			require.NoError(t, err)
 		}()
 	}
