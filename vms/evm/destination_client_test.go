@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -263,5 +265,221 @@ func TestSendTx(t *testing.T) {
 				require.NoError(t, err)
 			}
 		})
+	}
+}
+
+// TestDestinationClient_QueryParamsForwarding verifies that query parameters are forwarded correctly
+func TestDestinationClient_QueryParamsForwarding(t *testing.T) {
+	tests := []struct {
+		name        string
+		queryParams map[string]string
+	}{
+		{
+			name: "single query param",
+			queryParams: map[string]string{
+				"token": "test-token-123",
+			},
+		},
+		{
+			name: "multiple query params",
+			queryParams: map[string]string{
+				"token":   "test-token-456",
+				"api-key": "secret-key-789",
+			},
+		},
+		{
+			name: "query params with special characters",
+			queryParams: map[string]string{
+				"token": "token-with-dashes_and_underscores",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Track received query params
+			receivedParams := make(map[string]string)
+
+			// Create test server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Capture query params
+				for key := range tt.queryParams {
+					receivedParams[key] = r.URL.Query().Get(key)
+				}
+
+				// Return a valid JSON-RPC response for ChainID call
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+			}))
+			defer server.Close()
+
+			// Create destination blockchain config with query params
+			destinationBlockchain := config.DestinationBlockchain{
+				SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+				BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+				VM:           config.EVM.String(),
+				RPCEndpoint: basecfg.APIConfig{
+					BaseURL:     server.URL,
+					QueryParams: tt.queryParams,
+				},
+				AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+			}
+
+			// Create destination client (this will make ChainID call)
+			logger := logging.NoLog{}
+			_, err := NewDestinationClient(logger, &destinationBlockchain)
+
+			// We expect an error because the mock server doesn't fully implement the EVM RPC protocol,
+			// but we're only interested in verifying that query params were sent correctly
+			_ = err
+
+			// Verify all query params were received
+			for key, expectedValue := range tt.queryParams {
+				actualValue := receivedParams[key]
+				require.Equal(t, expectedValue, actualValue,
+					"Query param %s: expected %s, got %s", key, expectedValue, actualValue)
+			}
+		})
+	}
+}
+
+// TestDestinationClient_HTTPHeadersForwarding verifies that HTTP headers are forwarded correctly
+func TestDestinationClient_HTTPHeadersForwarding(t *testing.T) {
+	tests := []struct {
+		name        string
+		httpHeaders map[string]string
+	}{
+		{
+			name: "authorization header",
+			httpHeaders: map[string]string{
+				"Authorization": "Bearer test-token",
+			},
+		},
+		{
+			name: "multiple headers",
+			httpHeaders: map[string]string{
+				"Authorization": "Bearer test-token",
+				"X-API-Key":     "secret-key",
+				"X-Custom":      "custom-value",
+			},
+		},
+		{
+			name: "headers with special values",
+			httpHeaders: map[string]string{
+				"X-Token": "token-with-dashes-123",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Track received headers
+			receivedHeaders := make(map[string]string)
+
+			// Create test server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Capture headers
+				for key := range tt.httpHeaders {
+					receivedHeaders[key] = r.Header.Get(key)
+				}
+
+				// Return a valid JSON-RPC response for ChainID call
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+			}))
+			defer server.Close()
+
+			// Create destination blockchain config with headers
+			destinationBlockchain := config.DestinationBlockchain{
+				SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+				BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+				VM:           config.EVM.String(),
+				RPCEndpoint: basecfg.APIConfig{
+					BaseURL:     server.URL,
+					HTTPHeaders: tt.httpHeaders,
+				},
+				AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+			}
+
+			// Create destination client (this will make ChainID call)
+			logger := logging.NoLog{}
+			_, err := NewDestinationClient(logger, &destinationBlockchain)
+
+			// We expect an error because the mock server doesn't fully implement the EVM RPC protocol,
+			// but we're only interested in verifying that headers were sent correctly
+			_ = err
+
+			// Verify all headers were received
+			for key, expectedValue := range tt.httpHeaders {
+				actualValue := receivedHeaders[key]
+				require.Equal(t, expectedValue, actualValue,
+					"Header %s: expected %s, got %s", key, expectedValue, actualValue)
+			}
+		})
+	}
+}
+
+// TestDestinationClient_CombinedQueryParamsAndHeaders verifies both work together
+func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
+	queryParams := map[string]string{
+		"token":   "query-token",
+		"api-key": "query-key",
+	}
+	httpHeaders := map[string]string{
+		"Authorization": "Bearer header-token",
+		"X-API-Key":     "header-key",
+	}
+
+	// Track what the server receives
+	receivedParams := make(map[string]string)
+	receivedHeaders := make(map[string]string)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture query params
+		for key := range queryParams {
+			receivedParams[key] = r.URL.Query().Get(key)
+		}
+
+		// Capture headers
+		for key := range httpHeaders {
+			receivedHeaders[key] = r.Header.Get(key)
+		}
+
+		// Return valid JSON-RPC response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+	}))
+	defer server.Close()
+
+	// Create client with both query params and headers
+	destinationBlockchain := config.DestinationBlockchain{
+		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+		VM:           config.EVM.String(),
+		RPCEndpoint: basecfg.APIConfig{
+			BaseURL:     server.URL,
+			QueryParams: queryParams,
+			HTTPHeaders: httpHeaders,
+		},
+		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+	}
+
+	logger := logging.NoLog{}
+	_, err := NewDestinationClient(logger, &destinationBlockchain)
+	_ = err
+
+	// Verify all query params were received
+	for key, expectedValue := range queryParams {
+		require.Equal(t, expectedValue, receivedParams[key],
+			"Query param %s not forwarded correctly", key)
+	}
+
+	// Verify all headers were received
+	for key, expectedValue := range httpHeaders {
+		require.Equal(t, expectedValue, receivedHeaders[key],
+			"Header %s not forwarded correctly", key)
 	}
 }
