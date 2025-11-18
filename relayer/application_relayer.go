@@ -311,7 +311,7 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 		if err == nil {
 			return txHash, nil
 		}
-		r.logger.Warn(
+		r.logger.Info(
 			"failed to process message",
 			zap.Int("attempt", i+1),
 			zap.Int64("latencyMS", time.Since(startProcessMessageTime).Milliseconds()),

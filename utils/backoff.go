@@ -21,7 +21,7 @@ func WithRetriesTimeout(
 		backoff.WithMaxElapsedTime(timeout),
 	)
 	notify := func(err error, duration time.Duration) {
-		logger.Warn("operation failed, retrying...",
+		logger.Info("operation failed, retrying...",
 			zap.String("logMessage", logMessage),
 			zap.Duration("retryIn", duration),
 			zap.Error(err),

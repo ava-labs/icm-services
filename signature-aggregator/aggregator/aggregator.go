@@ -449,7 +449,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 			}
 		}
 		if len(failedSendNodes) > 0 {
-			requestLogger.Warn(
+			requestLogger.Info(
 				"Failed to make async request to some nodes",
 				zap.Int("numSent", responsesExpected),
 				zap.Int("numFailures", len(failedSendNodes)),
