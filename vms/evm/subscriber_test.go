@@ -4,7 +4,6 @@
 package evm
 
 import (
-	"encoding/hex"
 	"math/big"
 	"testing"
 
