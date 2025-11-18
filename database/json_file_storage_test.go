@@ -6,7 +6,6 @@ package database
 import (
 	"fmt"
 	"math/big"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -125,17 +124,9 @@ func TestConcurrentWriteReadMultipleChains(t *testing.T) {
 }
 
 func setupJsonStorage(t *testing.T, relayerIDs []RelayerID) *JSONFileStorage {
-	logger := logging.NewLogger(
-		"icm-relayer-test",
-		logging.NewWrappedCore(
-			logging.Info,
-			os.Stdout,
-			logging.JSON.ConsoleEncoder(),
-		),
-	)
 	storageDir := t.TempDir()
 
-	jsonStorage, err := NewJSONFileStorage(logger, storageDir, relayerIDs)
+	jsonStorage, err := NewJSONFileStorage(logging.NoLog{}, storageDir, relayerIDs)
 	if err != nil {
 		t.Fatal(err)
 	}

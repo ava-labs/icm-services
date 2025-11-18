@@ -5,8 +5,6 @@ package evm
 
 import (
 	"encoding/hex"
-	"os"
-	"syscall"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -42,15 +40,7 @@ func createUnsignedMessage() *warp.UnsignedMessage {
 }
 
 func TestUnpack(t *testing.T) {
-	logger := logging.NewLogger(
-		"icm-relayer",
-		logging.NewWrappedCore(
-			logging.Error,
-			os.NewFile(uintptr(syscall.Stdout), "/dev/null"), // write all test logs to /dev/null
-			logging.JSON.ConsoleEncoder(),
-		),
-	)
-	m := NewContractMessage(logger, config.SourceBlockchain{})
+	m := NewContractMessage(logging.NoLog{}, config.SourceBlockchain{})
 
 	testCases := []struct {
 		name        string

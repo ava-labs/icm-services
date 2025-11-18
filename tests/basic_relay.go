@@ -5,7 +5,6 @@ package tests
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -117,16 +116,8 @@ func BasicRelay(
 	relayerConfig.ProcessMissedBlocks = true
 	relayerConfigPath = testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
 
-	logger := logging.NewLogger(
-		"icm-relayer",
-		logging.NewWrappedCore(
-			logging.Info,
-			os.Stdout,
-			logging.JSON.ConsoleEncoder(),
-		),
-	)
 	jsonDB, err := database.NewJSONFileStorage(
-		logger,
+		log,
 		relayerConfig.StorageLocation,
 		database.GetConfigRelayerIDs(&relayerConfig),
 	)
