@@ -255,27 +255,3 @@ func (s *subscriber) Err() <-chan error {
 func (s *subscriber) Cancel() {
 	// Nothing to do here, the ethclient manages both the log and err channels
 }
-
-func UnpackWarpMessage(logger logging.Logger, unsignedMsgBytes []byte) (*avalancheWarp.UnsignedMessage, error) {
-	// This function may be called with raw UnsignedMessage bytes or with ABI encoded bytes as emitted by the Warp
-	// precompile. The latter case is the steady state behavior, so check that first. The former only occurs on startup.
-	unsignedMsg, err := warp.UnpackSendWarpEventDataToMessage(unsignedMsgBytes)
-	if err != nil {
-		logger.Debug(
-			"Failed parsing unsigned message as log. Attempting to parse as standalone message",
-			zap.Error(err),
-		)
-		var standaloneErr error
-		unsignedMsg, standaloneErr = avalancheWarp.ParseUnsignedMessage(unsignedMsgBytes)
-		if standaloneErr != nil {
-			err = errors.Join(err, standaloneErr)
-			logger.Error(
-				"Failed parsing unsigned message as either log or standalone message",
-				zap.Error(err),
-			)
-			return nil, err
-		}
-	}
-
-	return unsignedMsg, nil
-}
