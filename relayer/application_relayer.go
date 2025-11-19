@@ -5,7 +5,7 @@ package relayer
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -36,9 +36,6 @@ const (
 	// it is verified to not cause the verification to fail.
 	defaultQuorumPercentageBuffer = uint64(3)
 )
-
-// Errors
-var errFailedToGetAggSig = errors.New("failed to get aggregate signature from node endpoint")
 
 // CheckpointManager stores committed heights in the database
 type CheckpointManager interface {
@@ -81,11 +78,16 @@ func NewApplicationRelayer(
 	signatureAggregator *aggregator.SignatureAggregator,
 	processMessageSemaphore chan struct{},
 ) (*ApplicationRelayer, error) {
+	logger = logger.With(
+		zap.Stringer("relayerID", relayerID.ID),
+		zap.Stringer("sourceBlockchainID", relayerID.SourceBlockchainID),
+		zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
+	)
+
 	warpConfig, err := cfg.GetWarpConfig(relayerID.DestinationBlockchainID)
 	if err != nil {
 		logger.Error(
 			"Failed to get warp config. Relayer may not be configured to deliver to the destination chain.",
-			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -95,15 +97,13 @@ func NewApplicationRelayer(
 	if sourceBlockchain.GetSubnetID() == constants.PrimaryNetworkID && !warpConfig.RequirePrimaryNetworkSigners {
 		// If the message originates from the primary network, and the primary network is validated by
 		// the destination subnet we can "self-sign" the message using the validators of the destination subnet.
-		logger.Info(
-			"Self-signing message originating from primary network",
-			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
-		)
+		logger.Info("Self-signing message originating from primary network")
 		signingSubnet = cfg.GetSubnetID(relayerID.DestinationBlockchainID)
 	} else {
 		// Otherwise, the source subnet signs the message.
 		signingSubnet = sourceBlockchain.GetSubnetID()
 	}
+	logger = logger.With(zap.Stringer("signingSubnetID", signingSubnet))
 
 	checkpointManager.Run()
 
@@ -119,10 +119,7 @@ func NewApplicationRelayer(
 			sourceBlockchain.WarpAPIEndpoint.QueryParams,
 		)
 		if err != nil {
-			logger.Error(
-				"Failed to create Warp API client",
-				zap.Error(err),
-			)
+			logger.Error("Failed to create Warp API client", zap.Error(err))
 			return nil, err
 		}
 	}
@@ -154,13 +151,12 @@ func (r *ApplicationRelayer) ProcessHeight(
 	handlers []messages.MessageHandler,
 	errChan chan error,
 ) {
-	r.logger.Verbo(
-		"Processing block",
+	logger := r.logger.With(
 		zap.Uint64("height", height),
-		zap.Stringer("relayerID", r.relayerID.ID),
-		zap.Stringer("blockchainID", r.relayerID.SourceBlockchainID),
 		zap.Int("numMessages", len(handlers)),
 	)
+	logger.Verbo("Processing block")
+
 	var eg errgroup.Group
 	for _, handler := range handlers {
 		// Acquire the semaphore to limit the number of messages being processed concurrently globally.
@@ -175,43 +171,29 @@ func (r *ApplicationRelayer) ProcessHeight(
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		r.logger.Error(
-			"Failed to process block",
-			zap.Uint64("height", height),
-			zap.Stringer("relayerID", r.relayerID.ID),
-			zap.Error(err),
-		)
+		logger.Error("Failed to process block", zap.Error(err))
 		errChan <- err
 		return
 	}
 	r.checkpointManager.StageCommittedHeight(height)
-	r.logger.Verbo(
-		"Processed block",
-		zap.Uint64("height", height),
-		zap.Stringer("sourceBlockchainID", r.relayerID.SourceBlockchainID),
-		zap.Stringer("relayerID", r.relayerID.ID),
-		zap.Int("numMessages", len(handlers)),
-	)
+	logger.Verbo("Processed block")
 }
 
 // Relays a message to the destination chain. Does not checkpoint the height.
 // returns the transaction hash if the message is successfully relayed.
-func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, skipCache bool) (common.Hash, error) {
-	r.logger.Info(
-		"Relaying message",
-		zap.Stringer("relayerID", r.relayerID.ID),
-	)
+func (r *ApplicationRelayer) processMessage(
+	logger logging.Logger,
+	handler messages.MessageHandler,
+	skipCache bool,
+) (common.Hash, error) {
+	logger.Info("Relaying message")
 	shouldSend, err := handler.ShouldSendMessage()
 	if err != nil {
-		r.logger.Error(
-			"Failed to check if message should be sent",
-			zap.Error(err),
-		)
 		r.incFailedRelayMessageCount("failed to check if message should be sent")
-		return common.Hash{}, err
+		return common.Hash{}, fmt.Errorf("failed to check if message should be sent: %w", err)
 	}
 	if !shouldSend {
-		r.logger.Info("Message should not be sent")
+		logger.Info("Message should not be sent")
 		return common.Hash{}, nil
 	}
 	unsignedMessage := handler.GetUnsignedMessage()
@@ -232,17 +214,13 @@ func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, ski
 		// Determine the appropriate P-Chain height for validator set selection
 		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx, r.network)
 		if err != nil {
-			r.logger.Error(
-				"Failed to determine P-Chain height for validator set",
-				zap.Error(err),
-			)
 			r.incFailedRelayMessageCount("failed to determine P-Chain height")
-			return common.Hash{}, err
+			return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)
 		}
 
 		signedMessage, err = r.signatureAggregator.CreateSignedMessage(
 			ctx,
-			handler.LoggerWithContext(r.logger),
+			logger,
 			unsignedMessage,
 			nil,
 			r.signingSubnetID,
@@ -253,23 +231,15 @@ func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, ski
 		)
 		r.incFetchSignatureAppRequestCount()
 		if err != nil {
-			r.logger.Error(
-				"Failed to create signed warp message via AppRequest network",
-				zap.Error(err),
-			)
 			r.incFailedRelayMessageCount("failed to create signed warp message via AppRequest network")
-			return common.Hash{}, err
+			return common.Hash{}, fmt.Errorf("failed to create signed warp messsage via AppRequest network: %w", err)
 		}
 	} else {
 		r.incFetchSignatureRPCCount()
 		signedMessage, err = r.createSignedMessage(unsignedMessage)
 		if err != nil {
-			r.logger.Error(
-				"Failed to create signed warp message via RPC",
-				zap.Error(err),
-			)
 			r.incFailedRelayMessageCount("failed to create signed warp message via RPC")
-			return common.Hash{}, err
+			return common.Hash{}, fmt.Errorf("failed to create signed warp message via RPC: %w", err)
 		}
 	}
 
@@ -278,17 +248,11 @@ func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, ski
 
 	txHash, err := handler.SendMessage(signedMessage, r.network.IsGraniteActivated())
 	if err != nil {
-		r.logger.Error(
-			"Failed to send warp message",
-			zap.Error(err),
-		)
 		r.incFailedRelayMessageCount("failed to send warp message")
-		return common.Hash{}, err
+		return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)
 	}
-	r.logger.Info(
+	logger.Info(
 		"Finished relaying message to destination chain",
-		zap.Stringer("relayerID", r.relayerID.ID),
-		zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
 		zap.Stringer("txID", txHash),
 	)
 	r.incSuccessfulRelayMessageCount()
@@ -297,6 +261,7 @@ func (r *ApplicationRelayer) processMessage(handler messages.MessageHandler, ski
 }
 
 func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (common.Hash, error) {
+	logger := handler.LoggerWithContext(r.logger)
 	var err error
 	// Retry processing the message if it fails to account for cases where the signature is successfully aggregated
 	// but the message fails to verify on the destination chain due to validator churn
@@ -307,7 +272,7 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 		var txHash common.Hash
 		startProcessMessageTime := time.Now()
 		// Skip the cache if this is not the first attempt
-		txHash, err = r.processMessage(handler, i > 0)
+		txHash, err = r.processMessage(logger, handler, i > 0)
 		if err == nil {
 			return txHash, nil
 		}
@@ -318,15 +283,8 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 			zap.Error(err),
 		)
 	}
-	r.logger.Error(
-		"failed to process message after max retries",
-		zap.Error(err),
-	)
+	r.logger.Error("failed to process message after max retries", zap.Error(err))
 	return common.Hash{}, err
-}
-
-func (r *ApplicationRelayer) RelayerID() database.RelayerID {
-	return r.relayerID
 }
 
 // createSignedMessage fetches the signed Warp message from the source chain via RPC.
@@ -337,15 +295,12 @@ func (r *ApplicationRelayer) createSignedMessage(
 ) (*avalancheWarp.Message, error) {
 	r.logger.Info("Fetching aggregate signature from the source chain validators via API")
 
-	var (
-		signedWarpMessageBytes hexutil.Bytes
-		err                    error
-	)
 	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
 	defer cancel()
 
 	// The warp_getMessageAggregateSignature method does not support the optional quorum percentage
 	// buffer, so just use the required quorum percentage here.
+	var signedWarpMessageBytes hexutil.Bytes
 	operation := func() error {
 		return r.sourceWarpSignatureClient.CallContext(
 			cctx,
@@ -356,23 +311,14 @@ func (r *ApplicationRelayer) createSignedMessage(
 			r.signingSubnetID.String(),
 		)
 	}
-	err = utils.WithRetriesTimeout(r.logger, operation, retryTimeout, "warp_getMessageAggregateSignature")
+	err := utils.WithRetriesTimeout(r.logger, operation, retryTimeout, "warp_getMessageAggregateSignature")
 	if err != nil {
-		r.logger.Error(
-			"Failed to get aggregate signature from node endpoint.",
-			zap.Stringer("sourceBlockchainID", r.sourceBlockchain.GetBlockchainID()),
-			zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
-			zap.Stringer("signingSubnetID", r.signingSubnetID),
-		)
-		return nil, errFailedToGetAggSig
+		return nil, fmt.Errorf("failed to get aggregate signature from node endpoint: %w", err)
 	}
+
 	warpMsg, err := avalancheWarp.ParseMessage(signedWarpMessageBytes)
 	if err != nil {
-		r.logger.Error(
-			"Failed to parse signed warp message",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to parse signed warp message: %w", err)
 	}
 	return warpMsg, nil
 }
@@ -386,7 +332,8 @@ func (r *ApplicationRelayer) incSuccessfulRelayMessageCount() {
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
 			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String()).Inc()
+			r.sourceBlockchain.GetSubnetID().String(),
+		).Inc()
 }
 
 func (r *ApplicationRelayer) incFailedRelayMessageCount(failureReason string) {
@@ -395,7 +342,8 @@ func (r *ApplicationRelayer) incFailedRelayMessageCount(failureReason string) {
 			r.relayerID.DestinationBlockchainID.String(),
 			r.sourceBlockchain.GetBlockchainID().String(),
 			r.sourceBlockchain.GetSubnetID().String(),
-			failureReason).Inc()
+			failureReason,
+		).Inc()
 }
 
 func (r *ApplicationRelayer) setCreateSignedMessageLatencyMS(latency float64) {
@@ -403,7 +351,8 @@ func (r *ApplicationRelayer) setCreateSignedMessageLatencyMS(latency float64) {
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
 			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String()).Set(latency)
+			r.sourceBlockchain.GetSubnetID().String(),
+		).Set(latency)
 }
 
 func (r *ApplicationRelayer) incFetchSignatureRPCCount() {
@@ -411,7 +360,8 @@ func (r *ApplicationRelayer) incFetchSignatureRPCCount() {
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
 			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String()).Inc()
+			r.sourceBlockchain.GetSubnetID().String(),
+		).Inc()
 }
 
 func (r *ApplicationRelayer) incFetchSignatureAppRequestCount() {
@@ -419,5 +369,6 @@ func (r *ApplicationRelayer) incFetchSignatureAppRequestCount() {
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
 			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String()).Inc()
+			r.sourceBlockchain.GetSubnetID().String(),
+		).Inc()
 }
