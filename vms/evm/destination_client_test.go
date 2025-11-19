@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -469,5 +470,137 @@ func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
 	for key, expectedValue := range httpHeaders {
 		require.Equal(t, expectedValue, receivedHeaders[key],
 			"Header %s not forwarded correctly", key)
+	}
+}
+
+// TestDestinationClient_AllRPCCallsForwardQueryParams verifies that ALL RPC calls
+// made by the EVM client correctly forward query parameters
+func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
+	queryParams := map[string]string{
+		"token":   "test-token-123",
+		"api-key": "secret-key-789",
+	}
+
+	var mu sync.Mutex
+	requestCount := 0
+	receivedParams := make([]map[string]string, 0)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		params := make(map[string]string)
+		for key := range queryParams {
+			params[key] = r.URL.Query().Get(key)
+		}
+		receivedParams = append(receivedParams, params)
+		requestCount++
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if requestCount == 1 {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+		} else {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x0"}`))
+		}
+	}))
+	defer server.Close()
+
+	destinationBlockchain := config.DestinationBlockchain{
+		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+		VM:           config.EVM.String(),
+		RPCEndpoint: basecfg.APIConfig{
+			BaseURL:     server.URL,
+			QueryParams: queryParams,
+		},
+		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+	}
+
+	logger := logging.NoLog{}
+	client, err := NewDestinationClient(logger, &destinationBlockchain)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	client.Client().BlockNumber(ctx)
+	client.Client().SuggestGasPrice(ctx)
+	client.Client().SuggestGasTipCap(ctx)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Greater(t, len(receivedParams), 0, "No requests were made")
+	for i, params := range receivedParams {
+		for key, expectedValue := range queryParams {
+			require.Equal(t, expectedValue, params[key],
+				"Request %d: query param %s not forwarded correctly", i, key)
+		}
+	}
+}
+
+// TestDestinationClient_AllRPCCallsForwardHTTPHeaders verifies that ALL RPC calls
+// made by the EVM client correctly forward HTTP headers
+func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
+	httpHeaders := map[string]string{
+		"Authorization": "Bearer test-token",
+		"X-API-Key":     "secret-key",
+	}
+
+	var mu sync.Mutex
+	requestCount := 0
+	receivedHeaders := make([]map[string]string, 0)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		headers := make(map[string]string)
+		for key := range httpHeaders {
+			headers[key] = r.Header.Get(key)
+		}
+		receivedHeaders = append(receivedHeaders, headers)
+		requestCount++
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if requestCount == 1 {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+		} else {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x0"}`))
+		}
+	}))
+	defer server.Close()
+
+	destinationBlockchain := config.DestinationBlockchain{
+		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+		VM:           config.EVM.String(),
+		RPCEndpoint: basecfg.APIConfig{
+			BaseURL:     server.URL,
+			HTTPHeaders: httpHeaders,
+		},
+		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+	}
+
+	logger := logging.NoLog{}
+	client, err := NewDestinationClient(logger, &destinationBlockchain)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	client.Client().BlockNumber(ctx)
+	client.Client().SuggestGasPrice(ctx)
+	client.Client().SuggestGasTipCap(ctx)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Greater(t, len(receivedHeaders), 0, "No requests were made")
+	for i, headers := range receivedHeaders {
+		for key, expectedValue := range httpHeaders {
+			require.Equal(t, expectedValue, headers[key],
+				"Request %d: header %s not forwarded correctly", i, key)
+		}
 	}
 }
