@@ -206,7 +206,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			lstnr.logger.Error("Error processing logs. Relayer goroutine exiting")
 			return fmt.Errorf("error processing logs: %w", err)
 		case subError := <-lstnr.Subscriber.SubscribeErr():
-			lstnr.logger.Error(
+			lstnr.logger.Info(
 				"Received error from subscribed node",
 				zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
 				zap.Error(subError),

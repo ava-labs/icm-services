@@ -5,7 +5,7 @@ package evm
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -195,7 +195,7 @@ func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
 
 	err := s.subscribe(retryTimeout)
 	if err != nil {
-		return errors.New("failed to subscribe to node")
+		return fmt.Errorf("failed to subscribe to node: %w", err)
 	}
 	return nil
 }

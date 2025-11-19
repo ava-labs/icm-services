@@ -124,7 +124,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 		vdrs, err = s.network.GetCanonicalValidators(ctx, signingSubnet, skipCache, pchainHeight)
 		if err != nil {
 			msg := "Failed to fetch connected canonical validators"
-			log.Error(msg, zap.Error(err))
+			log.Warn(msg, zap.Error(err))
 			s.metrics.FailuresToGetValidatorSet.Inc()
 			return fmt.Errorf("%s: %w", msg, err)
 		}
@@ -151,7 +151,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 					)
 				}
 			}
-			log.Warn(
+			log.Info(
 				"Failed to connect to a threshold of stake",
 				zap.Stringer("signingSubnet", signingSubnet),
 				zap.Uint64("connectedWeight", vdrs.ConnectedWeight),
@@ -373,10 +373,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		)
 		if err != nil {
 			msg := "Failed to create app request message"
-			log.Error(
-				msg,
-				zap.Error(err),
-			)
+			log.Warn(msg, zap.Error(err))
 			return fmt.Errorf("%s: %w", msg, err)
 		}
 
@@ -480,10 +477,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 				if err != nil {
 					// don't increase node failures metric here, because we did
 					// it in handleResponse
-					return backoff.Permanent(fmt.Errorf(
-						"failed to handle response: %w",
-						err,
-					))
+					return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
 				}
 				if relevant {
 					responseCount++
