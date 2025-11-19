@@ -73,7 +73,7 @@ func main() {
 		),
 	)
 
-	cfg, err := buildConfig(logger)
+	cfg, err := buildConfig()
 	if err != nil {
 		logger.Fatal("couldn't build config", zap.Error(err))
 		os.Exit(1)
@@ -235,10 +235,7 @@ func main() {
 
 	deciderConnection, err := createDeciderConnection(cfg.DeciderURL)
 	if err != nil {
-		logger.Fatal(
-			"Failed to instantiate decider connection",
-			zap.Error(err),
-		)
+		logger.Fatal("Failed to instantiate decider connection", zap.Error(err))
 		os.Exit(1)
 	}
 	if deciderConnection != nil {
@@ -372,23 +369,18 @@ func main() {
 // buildConfig parses the flags and builds the config
 // Errors here should call log.Fatalf to exit the program
 // since these errors are prior to building the logger struct
-func buildConfig(log logging.Logger) (*config.Config, error) {
+func buildConfig() (*config.Config, error) {
 	fs := config.BuildFlagSet()
 	// Parse the flags
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		config.DisplayUsageText()
-		log.Error("couldn't parse flags", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't parse flags: %w", err)
 	}
 
 	// If the version flag is set, display the version then exit
 	displayVersion, err := fs.GetBool(config.VersionKey)
 	if err != nil {
-		log.Error("error reading flag value",
-			zap.String("versionKey", config.VersionKey),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("error reading flag value: %s: %w", config.VersionKey, err)
 	}
 	if displayVersion {
 		fmt.Printf("%s\n", version)
@@ -398,11 +390,7 @@ func buildConfig(log logging.Logger) (*config.Config, error) {
 	// If the help flag is set, output the usage text then exit
 	help, err := fs.GetBool(config.HelpKey)
 	if err != nil {
-		log.Error("error reading flag value",
-			zap.String("versionKey", config.HelpKey),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("error reading flag value: %s: %w", config.HelpKey, err)
 	}
 	if help {
 		config.DisplayUsageText()
@@ -411,14 +399,12 @@ func buildConfig(log logging.Logger) (*config.Config, error) {
 
 	v, err := config.BuildViper(fs)
 	if err != nil {
-		log.Error("couldn't build viper", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't build viper: %w", err)
 	}
 
 	cfg, err := config.NewConfig(v)
 	if err != nil {
-		log.Error("couldn't build config", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't build config: %w", err)
 	}
 	return &cfg, nil
 }
@@ -448,16 +434,12 @@ func createMessageHandlerFactories(
 					deciderConnection,
 				)
 			case config.OFF_CHAIN_REGISTRY:
-				m, err = offchainregistry.NewMessageHandlerFactory(
-					logger,
-					cfg,
-				)
+				m, err = offchainregistry.NewMessageHandlerFactory(logger, cfg)
 			default:
 				m, err = nil, fmt.Errorf("invalid message format %s", format)
 			}
 			if err != nil {
-				logger.Error("Failed to create message handler factory", zap.Error(err))
-				return nil, err
+				return nil, fmt.Errorf("failed to create message handler factory: %w", err)
 			}
 			messageHandlerFactoriesForSource[address] = m
 		}
