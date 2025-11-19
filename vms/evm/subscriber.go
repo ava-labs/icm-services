@@ -27,8 +27,7 @@ const (
 	MaxBlocksPerRequest         = 200
 )
 
-// subscriber implements Subscriber
-type subscriber struct {
+type Subscriber struct {
 	wsClient     ethclient.Client
 	rpcClient    ethclient.Client
 	blockchainID ids.ID
@@ -41,14 +40,14 @@ type subscriber struct {
 	logger logging.Logger
 }
 
-// NewSubscriber returns a subscriber
+// NewSubscriber returns a Subscriber
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
 	wsClient ethclient.Client,
 	rpcClient ethclient.Client,
-) *subscriber {
-	subscriber := &subscriber{
+) *Subscriber {
+	Subscriber := &Subscriber{
 		blockchainID: blockchainID,
 		wsClient:     wsClient,
 		rpcClient:    rpcClient,
@@ -57,8 +56,8 @@ func NewSubscriber(
 		headers:      make(chan *types.Header, maxClientSubscriptionBuffer),
 		errChan:      make(chan error),
 	}
-	go subscriber.blocksInfoFromHeaders()
-	return subscriber
+	go Subscriber.blocksInfoFromHeaders()
+	return Subscriber
 }
 
 // Process logs from the given block height to the latest block. Limits the
@@ -66,7 +65,7 @@ func NewSubscriber(
 // `MaxBlocksPerRequest`; if processing more than that, multiple eth_getLogs
 // requests will be made.
 // Writes true to the done channel when finished, or false if an error occurs
-func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
+func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	defer close(done)
 	if height == nil {
 		s.logger.Error("Cannot process logs from nil height")
@@ -119,7 +118,7 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 }
 
 // Process Warp messages from the block range [fromBlock, toBlock], inclusive
-func (s *subscriber) processBlockRange(
+func (s *Subscriber) processBlockRange(
 	fromBlock, toBlock *big.Int,
 ) error {
 	s.logger.Info(
@@ -157,7 +156,7 @@ func (s *subscriber) processBlockRange(
 	return nil
 }
 
-func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.Int) ([]types.Log, error) {
+func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.Int) ([]types.Log, error) {
 	var (
 		err  error
 		logs []types.Log
@@ -186,7 +185,7 @@ func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 }
 
 // Loops forever iff maxResubscribeAttempts == 0
-func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
+func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 	// Unsubscribe before resubscribing
 	// s.sub should only be nil on the first call to Subscribe
 	if s.sub != nil {
@@ -201,7 +200,7 @@ func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
 }
 
 // subscribe until it succeeds or reached timeout.
-func (s *subscriber) subscribe(retryTimeout time.Duration) error {
+func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	var sub ethereum.Subscription
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
@@ -224,7 +223,7 @@ func (s *subscriber) subscribe(retryTimeout time.Duration) error {
 
 // blocksInfoFromHeaders listens to the header channel and converts the headers to [relayerTypes.WarpBlockInfo]
 // and writes them to the blocks channel consumed by the listener
-func (s *subscriber) blocksInfoFromHeaders() {
+func (s *Subscriber) blocksInfoFromHeaders() {
 	for header := range s.headers {
 		block, err := relayerTypes.NewWarpBlockInfo(s.logger, header, s.rpcClient)
 		if err != nil {
@@ -236,21 +235,21 @@ func (s *subscriber) blocksInfoFromHeaders() {
 	}
 }
 
-func (s *subscriber) ICMBlocks() <-chan *relayerTypes.WarpBlockInfo {
+func (s *Subscriber) ICMBlocks() <-chan *relayerTypes.WarpBlockInfo {
 	return s.icmBlocks
 }
 
 // SubscribeErr returns the error channel for the underlying subscription
-func (s *subscriber) SubscribeErr() <-chan error {
+func (s *Subscriber) SubscribeErr() <-chan error {
 	return s.sub.Err()
 }
 
 // Err returns the error channel for miscellaneous errors not recoverable from
 // by resubscribing.
-func (s *subscriber) Err() <-chan error {
+func (s *Subscriber) Err() <-chan error {
 	return s.errChan
 }
 
-func (s *subscriber) Cancel() {
+func (s *Subscriber) Cancel() {
 	// Nothing to do here, the ethclient manages both the log and err channels
 }

@@ -107,12 +107,6 @@ func (s *DestinationBlockchain) Validate() error {
 	s.AccountPrivateKeys = uniquePks.List()
 	s.KMSKeys = uniqueKmsKeys.List()
 
-	// Validate the VM specific settings
-	vm := ParseVM(s.VM)
-	if vm == UNKNOWN_VM {
-		return fmt.Errorf("unsupported VM type for source subnet: %s", s.VM)
-	}
-
 	// Validate and store the subnet and blockchain IDs for future use
 	blockchainID, err := utils.HexOrCB58ToID(s.BlockchainID)
 	if err != nil {

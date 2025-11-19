@@ -49,7 +49,6 @@ var (
 				},
 				BlockchainID: testBlockchainID,
 				SubnetID:     testSubnetID,
-				VM:           "evm",
 				MessageContracts: map[string]MessageProtocolConfig{
 					testAddress: {
 						MessageFormat: TELEPORTER.String(),
@@ -80,7 +79,6 @@ var (
 		},
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
-		VM:           "evm",
 		MessageContracts: map[string]MessageProtocolConfig{
 			"0xd81545385803bCD83bd59f58Ba2d2c0562387F83": {
 				MessageFormat: TELEPORTER.String(),
