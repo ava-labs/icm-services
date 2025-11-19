@@ -47,7 +47,7 @@ func NewSubscriber(
 	wsClient ethclient.Client,
 	rpcClient ethclient.Client,
 ) *Subscriber {
-	Subscriber := &Subscriber{
+	subscriber := &Subscriber{
 		blockchainID: blockchainID,
 		wsClient:     wsClient,
 		rpcClient:    rpcClient,
@@ -56,8 +56,8 @@ func NewSubscriber(
 		headers:      make(chan *types.Header, maxClientSubscriptionBuffer),
 		errChan:      make(chan error),
 	}
-	go Subscriber.blocksInfoFromHeaders()
-	return Subscriber
+	go subscriber.blocksInfoFromHeaders()
+	return subscriber
 }
 
 // Process logs from the given block height to the latest block. Limits the
