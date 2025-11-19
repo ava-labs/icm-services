@@ -158,10 +158,7 @@ func (s *subscriber) processBlockRange(
 }
 
 func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.Int) ([]types.Log, error) {
-	var (
-		err  error
-		logs []types.Log
-	)
+	var logs []types.Log
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
@@ -173,7 +170,7 @@ func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 		})
 		return err
 	}
-	err = utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout, "get filter logs by block range")
+	err := utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout, "get filter logs by block range")
 	if err != nil {
 		s.logger.Error(
 			"Failed to get filter logs by block range",
