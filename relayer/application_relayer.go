@@ -78,12 +78,6 @@ func NewApplicationRelayer(
 	signatureAggregator *aggregator.SignatureAggregator,
 	processMessageSemaphore chan struct{},
 ) (*ApplicationRelayer, error) {
-	logger = logger.With(
-		zap.Stringer("relayerID", relayerID.ID),
-		zap.Stringer("sourceBlockchainID", relayerID.SourceBlockchainID),
-		zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
-	)
-
 	warpConfig, err := cfg.GetWarpConfig(relayerID.DestinationBlockchainID)
 	if err != nil {
 		logger.Error(
