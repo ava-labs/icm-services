@@ -31,7 +31,6 @@ const (
 type Listener struct {
 	Subscriber         vms.Subscriber
 	currentRequestID   uint32
-	contractMessage    vms.ContractMessage
 	logger             logging.Logger
 	sourceBlockchain   config.SourceBlockchain
 	catchUpResultChan  chan bool
@@ -131,7 +130,6 @@ func newListener(
 	lstnr := Listener{
 		Subscriber:         sub,
 		currentRequestID:   rand.Uint32(), // Initialize to a random value to mitigate requestID collision
-		contractMessage:    vms.NewContractMessage(logger, sourceBlockchain),
 		logger:             logger,
 		sourceBlockchain:   sourceBlockchain,
 		catchUpResultChan:  catchUpResultChan,
