@@ -38,9 +38,6 @@ type Subscriber interface {
 	// Err returns the channel that the subscriber writes miscellaneous errors to
 	// that are not recoverable from by resubscribing.
 	Err() <-chan error
-
-	// Cancel cancels the subscription
-	Cancel()
 }
 
 // NewSubscriber returns a concrete Subscriber according to the VM specified by [subnetInfo]
