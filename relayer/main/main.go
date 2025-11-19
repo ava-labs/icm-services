@@ -442,16 +442,12 @@ func createMessageHandlerFactories(
 			switch config.ParseMessageProtocol(format) {
 			case config.TELEPORTER:
 				m, err = teleporter.NewMessageHandlerFactory(
-					logger,
 					address,
 					cfg,
 					deciderConnection,
 				)
 			case config.OFF_CHAIN_REGISTRY:
-				m, err = offchainregistry.NewMessageHandlerFactory(
-					logger,
-					cfg,
-				)
+				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
 			default:
 				m, err = nil, fmt.Errorf("invalid message format %s", format)
 			}

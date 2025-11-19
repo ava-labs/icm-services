@@ -96,6 +96,7 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	}
 
 	messageHandler, err := messageHandlerFactory.NewMessageHandler(
+		mc.logger,
 		warpMessageInfo.UnsignedMessage,
 		appRelayer.destinationClient,
 	)
