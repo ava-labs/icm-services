@@ -60,7 +60,6 @@ func TestBuildConfig(t *testing.T) {
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL: "https://subnets.avax.network/dispatch/testnet/rpc",
 		},
-		VM:                "evm",
 		AccountPrivateKey: "0x7493...",
 	}, cfg.DestinationBlockchains[0])
 }
