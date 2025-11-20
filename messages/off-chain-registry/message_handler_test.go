@@ -125,14 +125,10 @@ func TestShouldSendMessage(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			logger := logging.NoLog{}
 
 			mockClient := mock_vms.NewMockDestinationClient(ctrl)
 
-			factory, err := NewMessageHandlerFactory(
-				logger,
-				messageProtocolConfig,
-			)
+			factory, err := NewMessageHandlerFactory(messageProtocolConfig)
 			require.NoError(t, err)
 			ethClient := mock_evm.NewMockClient(ctrl)
 			mockClient.EXPECT().
@@ -166,7 +162,7 @@ func TestShouldSendMessage(t *testing.T) {
 					test.destinationBlockchainID,
 				)
 			}
-			messageHandler, err := factory.NewMessageHandler(unsignedMessage, mockClient)
+			messageHandler, err := factory.NewMessageHandler(logging.NoLog{}, unsignedMessage, mockClient)
 			require.NoError(t, err)
 			result, err := messageHandler.ShouldSendMessage()
 			if test.expectedError {
