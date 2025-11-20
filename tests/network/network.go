@@ -60,16 +60,12 @@ type LocalNetwork struct {
 	logger                          logging.Logger
 	deployedL1Specs                 map[string]L1Spec
 	graniteEpochDuration            time.Duration
-	graniteActivated                bool
-}
-
-func (n *LocalNetwork) IsGraniteActivated() bool {
-	return n.graniteActivated
 }
 
 const (
-	fundedKeyStr = "56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"
-	timeout      = 120 * time.Second
+	fundedKeyStr         = "56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"
+	timeout              = 120 * time.Second
+	defaultEpochDuration = 4 * time.Second
 )
 
 type L1Spec struct {
@@ -218,23 +214,17 @@ func NewLocalNetwork(
 		primaryNetworkValidators = append(primaryNetworkValidators, network.Nodes...)
 	}
 
-	goLog.Println("flagVars.ActivateGranite()", flagVars.ActivateGranite())
 	upgrades := upgrade.Default
-	if flagVars.ActivateGranite() {
-		upgrades.GraniteTime = upgrade.InitiallyActiveTime
-		graniteEpochDuration := 4 * time.Second
-		if envDuration := os.Getenv("GRANITE_EPOCH_DURATION"); envDuration != "" {
-			if parsed, err := time.ParseDuration(envDuration); err == nil {
-				graniteEpochDuration = parsed
-				goLog.Printf("Using Granite epoch duration from environment: %v", graniteEpochDuration)
-			} else {
-				goLog.Printf("Invalid GRANITE_EPOCH_DURATION '%s', using default: %v", envDuration, graniteEpochDuration)
-			}
+	graniteEpochDuration := defaultEpochDuration
+	if envDuration := os.Getenv("GRANITE_EPOCH_DURATION"); envDuration != "" {
+		if parsed, err := time.ParseDuration(envDuration); err == nil {
+			graniteEpochDuration = parsed
+			goLog.Printf("Using Granite epoch duration from environment: %v", graniteEpochDuration)
+		} else {
+			goLog.Printf("Invalid GRANITE_EPOCH_DURATION '%s', using default: %v", envDuration, graniteEpochDuration)
 		}
-		upgrades.GraniteEpochDuration = graniteEpochDuration
-	} else {
-		upgrades.GraniteTime = upgrade.UnscheduledActivationTime
 	}
+	upgrades.GraniteEpochDuration = graniteEpochDuration
 
 	upgradeJSON, err := json.Marshal(upgrades)
 	Expect(err).Should(BeNil())
@@ -274,7 +264,6 @@ func NewLocalNetwork(
 		logger:                          logger,
 		deployedL1Specs:                 deployedL1Specs,
 		graniteEpochDuration:            upgrades.GraniteEpochDuration,
-		graniteActivated:                flagVars.ActivateGranite(),
 	}
 
 	return localNetwork
@@ -389,12 +378,10 @@ func (n *LocalNetwork) ConvertSubnet(
 
 	l1 = n.AddSubnetValidators(tmpnetNodes, l1, true)
 
-	if n.graniteActivated {
-		// Wait for P-Chain to finalize and propagate transactions
-		utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
-		goLog.Println("Waiting for Granite epoch to complete for ", n.graniteEpochDuration)
-		time.Sleep(n.graniteEpochDuration)
-	}
+	// Wait for P-Chain to finalize and propagate transactions
+	utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
+	goLog.Println("Waiting for Granite epoch to complete for ", n.graniteEpochDuration)
+	time.Sleep(n.graniteEpochDuration)
 
 	aggregator := n.GetSignatureAggregator()
 	defer aggregator.Shutdown()
