@@ -20,6 +20,7 @@ import (
 	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -523,9 +524,10 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	client.Client().BlockNumber(ctx)
-	client.Client().SuggestGasPrice(ctx)
-	client.Client().SuggestGasTipCap(ctx)
+	ethClient := client.Client().(ethclient.Client)
+	ethClient.BlockNumber(ctx)
+	ethClient.SuggestGasPrice(ctx)
+	ethClient.SuggestGasTipCap(ctx)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -589,9 +591,10 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	client.Client().BlockNumber(ctx)
-	client.Client().SuggestGasPrice(ctx)
-	client.Client().SuggestGasTipCap(ctx)
+	ethClient := client.Client().(ethclient.Client)
+	ethClient.BlockNumber(ctx)
+	ethClient.SuggestGasPrice(ctx)
+	ethClient.SuggestGasTipCap(ctx)
 
 	mu.Lock()
 	defer mu.Unlock()
