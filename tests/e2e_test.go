@@ -73,9 +73,8 @@ func TestE2E(t *testing.T) {
 }
 
 // Define the Relayer before and after suite functions.
-var _ = ginkgo.BeforeSuite(func() {
-	var ctx context.Context
-	ctx, cancelFn = context.WithCancel(context.Background())
+var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
+	ctx, cancelFn = context.WithCancel(ctx)
 
 	log = logging.NewLogger(
 		"signature-aggregator",
@@ -171,10 +170,10 @@ var _ = ginkgo.BeforeSuite(func() {
 	}
 
 	// Restart the network to attempt to refresh TLS connections
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(60*len(localNetworkInstance.Nodes))*time.Second)
+	networkRestartCtx, cancel := context.WithTimeout(ctx, time.Duration(60*len(localNetworkInstance.Nodes))*time.Second)
 	defer cancel()
 
-	err = localNetworkInstance.Restart(ctx)
+	err = localNetworkInstance.Restart(networkRestartCtx)
 	Expect(err).Should(BeNil())
 
 	decider = exec.CommandContext(ctx, "./tests/cmd/decider/decider")
@@ -212,34 +211,34 @@ func cleanup() {
 var _ = ginkgo.AfterSuite(cleanup)
 
 var _ = ginkgo.Describe("[ICM Relayer Integration Tests", func() {
-	ginkgo.It("Basic Relay", func() {
-		BasicRelay(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Basic Relay", func(ctx context.Context) {
+		BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Manually Provided Message", func() {
-		ManualMessage(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Manually Provided Message", func(ctx context.Context) {
+		ManualMessage(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Shared Database", func() {
-		SharedDatabaseAccess(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Shared Database", func(ctx context.Context) {
+		SharedDatabaseAccess(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Allowed Addresses", func() {
-		AllowedAddresses(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Allowed Addresses", func(ctx context.Context) {
+		AllowedAddresses(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Batch Message", func() {
-		BatchRelay(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Batch Message", func(ctx context.Context) {
+		BatchRelay(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Relay Message API", func() {
-		RelayMessageAPI(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Relay Message API", func(ctx context.Context) {
+		RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Warp API", func() {
-		WarpAPIRelay(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Warp API", func(ctx context.Context) {
+		WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Signature Aggregator", func() {
-		SignatureAggregatorAPI(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Signature Aggregator", func(ctx context.Context) {
+		SignatureAggregatorAPI(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Signature Aggregator Epoch Validators", func() {
-		SignatureAggregatorEpochAPI(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Signature Aggregator Epoch Validators", func(ctx context.Context) {
+		SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
 	})
-	ginkgo.It("Validators Only Network", func() {
-		ValidatorsOnlyNetwork(log, localNetworkInstance, teleporterInfo)
+	ginkgo.It("Validators Only Network", func(ctx context.Context) {
+		ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 })

@@ -98,7 +98,7 @@ func (f *factory) NewMessageHandler(
 	if err != nil {
 		f.logger.Error(
 			"Failed to parse teleporter message.",
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
+			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 		)
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (
 	if err != nil {
 		f.logger.Error(
 			"Failed to parse teleporter message.",
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
+			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 		)
 		return messages.MessageRoutingInfo{}, err
 	}
@@ -374,7 +374,7 @@ func (f *factory) parseTeleporterMessage(
 	if err != nil {
 		f.logger.Error(
 			"Failed unpacking teleporter message.",
-			zap.String("warpMessageID", unsignedMessage.ID().String()),
+			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 			zap.Error(err),
 		)
 		return nil, err

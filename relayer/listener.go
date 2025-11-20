@@ -31,7 +31,6 @@ const (
 type Listener struct {
 	Subscriber         vms.Subscriber
 	currentRequestID   uint32
-	contractMessage    vms.ContractMessage
 	logger             logging.Logger
 	sourceBlockchain   config.SourceBlockchain
 	catchUpResultChan  chan bool
@@ -106,7 +105,7 @@ func newListener(
 	if err != nil {
 		logger.Error(
 			"Failed to connect to node via WS",
-			zap.String("blockchainID", blockchainID.String()),
+			zap.Stringer("blockchainID", blockchainID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -123,15 +122,14 @@ func newListener(
 
 	logger.Info(
 		"Creating relayer",
-		zap.String("subnetID", sourceBlockchain.GetSubnetID().String()),
+		zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
 		zap.String("subnetIDHex", sourceBlockchain.GetSubnetID().Hex()),
-		zap.String("blockchainID", sourceBlockchain.GetBlockchainID().String()),
+		zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
 		zap.String("blockchainIDHex", sourceBlockchain.GetBlockchainID().Hex()),
 	)
 	lstnr := Listener{
 		Subscriber:         sub,
 		currentRequestID:   rand.Uint32(), // Initialize to a random value to mitigate requestID collision
-		contractMessage:    vms.NewContractMessage(logger, sourceBlockchain),
 		logger:             logger,
 		sourceBlockchain:   sourceBlockchain,
 		catchUpResultChan:  catchUpResultChan,
@@ -185,7 +183,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				lstnr.healthStatus.Store(false)
 				lstnr.logger.Error(
 					"Catch-up channel unexpectedly closed. Exiting listener goroutine.",
-					zap.String("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID().String()),
+					zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
 				)
 				return fmt.Errorf("catch-up channel unexpectedly closed")
 			}
@@ -193,7 +191,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				lstnr.healthStatus.Store(false)
 				lstnr.logger.Error(
 					"Failed to catch up on historical blocks. Exiting listener goroutine.",
-					zap.String("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID().String()),
+					zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
 				)
 				return fmt.Errorf("failed to catch up on historical blocks")
 			}
@@ -210,7 +208,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 		case subError := <-lstnr.Subscriber.SubscribeErr():
 			lstnr.logger.Error(
 				"Received error from subscribed node",
-				zap.String("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID().String()),
+				zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
 				zap.Error(subError),
 			)
 			subError = lstnr.reconnectToSubscriber()
@@ -218,7 +216,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				lstnr.healthStatus.Store(false)
 				lstnr.logger.Error(
 					"Relayer goroutine exiting.",
-					zap.String("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID().String()),
+					zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
 					zap.Error(subError),
 				)
 				return fmt.Errorf("listener goroutine exiting: %w", subError)
@@ -227,7 +225,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			lstnr.healthStatus.Store(false)
 			lstnr.logger.Info(
 				"Exiting listener because context cancelled",
-				zap.String("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID().String()),
+				zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
 			)
 			return nil
 		}

@@ -49,10 +49,13 @@ const (
 // now populated TLS cert and key and result in same nodeID
 // - Requests an aggregated signature from the signature aggregator API which
 // will only be returned successfully if the nodeID is explicitly allowed by the subnet
-func ValidatorsOnlyNetwork(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ValidatorsOnlyNetwork(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	// Begin Setup step
-	ctx := context.Background()
-
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	_, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()

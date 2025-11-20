@@ -90,7 +90,7 @@ func CreateDestinationClients(
 		if _, ok := destinationClients[blockchainID]; ok {
 			logger.Info(
 				"Destination client already found for blockchainID. Continuing",
-				zap.String("blockchainID", blockchainID.String()),
+				zap.Stringer("blockchainID", blockchainID),
 			)
 			continue
 		}
@@ -99,7 +99,7 @@ func CreateDestinationClients(
 		if err != nil {
 			logger.Error(
 				"Could not create destination client",
-				zap.String("blockchainID", blockchainID.String()),
+				zap.Stringer("blockchainID", blockchainID),
 				zap.Error(err),
 			)
 			return nil, err

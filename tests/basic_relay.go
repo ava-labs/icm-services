@@ -5,7 +5,6 @@ package tests
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -24,7 +23,12 @@ import (
 // - Relaying from Subnet B to Subnet A
 // - Relaying an already delivered message
 // - Setting ProcessHistoricalBlocksFromHeight in config
-func BasicRelay(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func BasicRelay(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -34,7 +38,6 @@ func BasicRelay(log logging.Logger, network *network.LocalNetwork, teleporter ut
 	//
 	// Fund the relayer address on all subnets
 	//
-	ctx := context.Background()
 
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
@@ -113,16 +116,8 @@ func BasicRelay(log logging.Logger, network *network.LocalNetwork, teleporter ut
 	relayerConfig.ProcessMissedBlocks = true
 	relayerConfigPath = testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
 
-	logger := logging.NewLogger(
-		"icm-relayer",
-		logging.NewWrappedCore(
-			logging.Info,
-			os.Stdout,
-			logging.JSON.ConsoleEncoder(),
-		),
-	)
 	jsonDB, err := database.NewJSONFileStorage(
-		logger,
+		log,
 		relayerConfig.StorageLocation,
 		database.GetConfigRelayerIDs(&relayerConfig),
 	)

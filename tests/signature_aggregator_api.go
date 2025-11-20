@@ -33,10 +33,13 @@ import (
 // - Reads the warp message unsigned bytes from the log
 // - Sends the unsigned message to the signature aggregator API
 // - Confirms that the signed message is returned and matches the originally sent message
-func SignatureAggregatorAPI(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func SignatureAggregatorAPI(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	// Begin Setup step
-	ctx := context.Background()
-
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()

@@ -47,7 +47,7 @@ func CalculateStartingBlockHeight(
 		// Otherwise, we've encountered an unknown database error
 		logger.Error(
 			"Failed to get latest block from database",
-			zap.String("relayerID", relayerID.ID.String()),
+			zap.Stringer("relayerID", relayerID.ID),
 			zap.Error(err),
 		)
 		return 0, err
@@ -58,7 +58,7 @@ func CalculateStartingBlockHeight(
 	if latestProcessedBlock > processHistoricalBlocksFromHeight {
 		logger.Info(
 			"Processing historical blocks from the latest processed block in the DB",
-			zap.String("relayerID", relayerID.ID.String()),
+			zap.Stringer("relayerID", relayerID.ID),
 			zap.Uint64("latestProcessedBlock", latestProcessedBlock),
 		)
 		return latestProcessedBlock, nil
@@ -66,7 +66,7 @@ func CalculateStartingBlockHeight(
 	// Otherwise, return the configured start block height
 	logger.Info(
 		"Processing historical blocks from the configured start block height",
-		zap.String("relayerID", relayerID.ID.String()),
+		zap.Stringer("relayerID", relayerID.ID),
 		zap.Uint64("processHistoricalBlocksFromHeight", processHistoricalBlocksFromHeight),
 	)
 	return processHistoricalBlocksFromHeight, nil

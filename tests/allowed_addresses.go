@@ -37,7 +37,12 @@ const numKeys = 4
 // -  Deliver from a specific source address to a specific destination address
 // Then, checks that each relayer instance is able to properly catch up on missed messages that
 // match its particular configuration.
-func AllowedAddresses(log logging.Logger, network *network.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func AllowedAddresses(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -47,7 +52,6 @@ func AllowedAddresses(log logging.Logger, network *network.LocalNetwork, telepor
 	//
 	// Fund the relayer address on all subnets
 	//
-	ctx := context.Background()
 
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()

@@ -70,7 +70,7 @@ func (v *CanonicalValidatorClient) GetProposedValidators(
 	if err != nil {
 		v.logger.Debug(
 			"Error fetching proposed validators",
-			zap.String("subnetID", subnetID.String()),
+			zap.Stringer("subnetID", subnetID),
 			zap.Error(err),
 		)
 		return validators.WarpSet{}, err

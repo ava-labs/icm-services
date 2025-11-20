@@ -85,7 +85,7 @@ func NewApplicationRelayer(
 	if err != nil {
 		logger.Error(
 			"Failed to get warp config. Relayer may not be configured to deliver to the destination chain.",
-			zap.String("destinationBlockchainID", relayerID.DestinationBlockchainID.String()),
+			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -97,7 +97,7 @@ func NewApplicationRelayer(
 		// the destination subnet we can "self-sign" the message using the validators of the destination subnet.
 		logger.Info(
 			"Self-signing message originating from primary network",
-			zap.String("destinationBlockchainID", relayerID.DestinationBlockchainID.String()),
+			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
 		)
 		signingSubnet = cfg.GetSubnetID(relayerID.DestinationBlockchainID)
 	} else {
@@ -178,7 +178,7 @@ func (r *ApplicationRelayer) ProcessHeight(
 		r.logger.Error(
 			"Failed to process block",
 			zap.Uint64("height", height),
-			zap.String("relayerID", r.relayerID.ID.String()),
+			zap.Stringer("relayerID", r.relayerID.ID),
 			zap.Error(err),
 		)
 		errChan <- err
@@ -188,8 +188,8 @@ func (r *ApplicationRelayer) ProcessHeight(
 	r.logger.Verbo(
 		"Processed block",
 		zap.Uint64("height", height),
-		zap.String("sourceBlockchainID", r.relayerID.SourceBlockchainID.String()),
-		zap.String("relayerID", r.relayerID.ID.String()),
+		zap.Stringer("sourceBlockchainID", r.relayerID.SourceBlockchainID),
+		zap.Stringer("relayerID", r.relayerID.ID),
 		zap.Int("numMessages", len(handlers)),
 	)
 }
@@ -360,9 +360,9 @@ func (r *ApplicationRelayer) createSignedMessage(
 	if err != nil {
 		r.logger.Error(
 			"Failed to get aggregate signature from node endpoint.",
-			zap.String("sourceBlockchainID", r.sourceBlockchain.GetBlockchainID().String()),
-			zap.String("destinationBlockchainID", r.relayerID.DestinationBlockchainID.String()),
-			zap.String("signingSubnetID", r.signingSubnetID.String()),
+			zap.Stringer("sourceBlockchainID", r.sourceBlockchain.GetBlockchainID()),
+			zap.Stringer("destinationBlockchainID", r.relayerID.DestinationBlockchainID),
+			zap.Stringer("signingSubnetID", r.signingSubnetID),
 		)
 		return nil, errFailedToGetAggSig
 	}
