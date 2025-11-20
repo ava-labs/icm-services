@@ -57,7 +57,7 @@ func main() {
 		),
 	)
 
-	cfg, err := buildConfig(logger)
+	cfg, err := buildConfig()
 	if err != nil {
 		logger.Fatal("couldn't build config", zap.Error(err))
 		os.Exit(1)
@@ -234,18 +234,16 @@ func main() {
 // buildConfig parses the flags and builds the config
 // Errors here should call log.Fatalf to exit the program
 // since these errors are prior to building the logger struct
-func buildConfig(log logging.Logger) (*config.Config, error) {
+func buildConfig() (*config.Config, error) {
 	fs := config.BuildFlagSet()
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		config.DisplayUsageText()
-		log.Fatal("Failed to parse flags", zap.Error(err))
 		return nil, fmt.Errorf("Failed to parse flags: %w", err)
 	}
 
 	displayVersion, err := fs.GetBool(config.VersionKey)
 	if err != nil {
-		log.Fatal("error reading flag", zap.String("key", config.VersionKey), zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("error reading flag: %s: %w", config.VersionKey, err)
 	}
 	if displayVersion {
 		fmt.Printf("%s\n", version)
@@ -254,8 +252,7 @@ func buildConfig(log logging.Logger) (*config.Config, error) {
 
 	help, err := fs.GetBool(config.HelpKey)
 	if err != nil {
-		log.Fatal("error reading flag", zap.String("key", config.HelpKey), zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("error reading flag: %s: %w", config.HelpKey, err)
 	}
 	if help {
 		config.DisplayUsageText()
@@ -263,14 +260,12 @@ func buildConfig(log logging.Logger) (*config.Config, error) {
 	}
 	v, err := config.BuildViper(fs)
 	if err != nil {
-		log.Fatal("couldn't configure flags", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't configure flags: %w", err)
 	}
 
 	cfg, err := config.NewConfig(v)
 	if err != nil {
-		log.Fatal("couldn't build config", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't build config: %w", err)
 	}
 	return &cfg, nil
 }
