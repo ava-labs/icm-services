@@ -67,30 +67,22 @@ func CreateDestinationClients(
 ) (map[ids.ID]DestinationClient, error) {
 	destinationClients := make(map[ids.ID]DestinationClient)
 	for _, subnetInfo := range relayerConfig.DestinationBlockchains {
+		log := logger.With(
+			zap.String("blockchainID", subnetInfo.BlockchainID),
+		)
 		blockchainID, err := ids.FromString(subnetInfo.BlockchainID)
 		if err != nil {
-			logger.Error(
-				"Failed to decode base-58 encoded source chain ID",
-				zap.String("blockchainID", subnetInfo.BlockchainID),
-				zap.Error(err),
-			)
+			log.Error("Failed to decode base-58 encoded source chain ID", zap.Error(err))
 			return nil, err
 		}
 		if _, ok := destinationClients[blockchainID]; ok {
-			logger.Info(
-				"Destination client already found for blockchainID. Continuing",
-				zap.Stringer("blockchainID", blockchainID),
-			)
+			log.Info("Destination client already found for blockchainID. Continuing")
 			continue
 		}
 
-		destinationClient, err := evm.NewDestinationClient(logger, subnetInfo)
+		destinationClient, err := evm.NewDestinationClient(log, subnetInfo)
 		if err != nil {
-			logger.Error(
-				"Could not create destination client",
-				zap.Stringer("blockchainID", blockchainID),
-				zap.Error(err),
-			)
+			log.Error("Could not create destination client", zap.Error(err))
 			return nil, err
 		}
 

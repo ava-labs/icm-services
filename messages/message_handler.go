@@ -18,6 +18,7 @@ import (
 type MessageHandlerFactory interface {
 	// Create a message handler to relay the Warp message
 	NewMessageHandler(
+		logger logging.Logger,
 		unsignedMessage *warp.UnsignedMessage,
 		destinationClient vms.DestinationClient,
 	) (MessageHandler, error)

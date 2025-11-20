@@ -27,7 +27,6 @@ const (
 )
 
 type factory struct {
-	logger          logging.Logger
 	registryAddress common.Address
 }
 
@@ -40,35 +39,28 @@ type messageHandler struct {
 }
 
 func NewMessageHandlerFactory(
-	logger logging.Logger,
 	messageProtocolConfig config.MessageProtocolConfig,
 ) (messages.MessageHandlerFactory, error) {
 	// Marshal the map and unmarshal into the off-chain registry config
 	data, err := json.Marshal(messageProtocolConfig.Settings)
 	if err != nil {
-		logger.Error("Failed to marshal off-chain registry config")
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal off-chain registry config: %w", err)
 	}
 	var messageConfig Config
 	if err := json.Unmarshal(data, &messageConfig); err != nil {
-		logger.Error("Failed to unmarshal off-chain registry config")
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal off-chain registry config: %w", err)
 	}
 
 	if err := messageConfig.Validate(); err != nil {
-		logger.Error(
-			"Invalid off-chain registry config.",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("invalid off-chain registry config: %w", err)
 	}
 	return &factory{
-		logger:          logger,
 		registryAddress: common.HexToAddress(messageConfig.TeleporterRegistryAddress),
 	}, nil
 }
 
 func (f *factory) NewMessageHandler(
+	logger logging.Logger,
 	unsignedMessage *warp.UnsignedMessage,
 	destinationClient vms.DestinationClient,
 ) (messages.MessageHandler, error) {
@@ -77,7 +69,7 @@ func (f *factory) NewMessageHandler(
 		zap.Stringer("destinationBlockchainID", destinationClient.DestinationBlockchainID()),
 	}
 	return &messageHandler{
-		logger:            f.logger.With(logFields...),
+		logger:            logger.With(logFields...),
 		unsignedMessage:   unsignedMessage,
 		destinationClient: destinationClient,
 		registryAddress:   f.registryAddress,
@@ -91,11 +83,7 @@ func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (
 ) {
 	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)
 	if err != nil {
-		f.logger.Error(
-			"Failed parsing addressed payload",
-			zap.Error(err),
-		)
-		return messages.MessageRoutingInfo{}, err
+		return messages.MessageRoutingInfo{}, fmt.Errorf("failed parsing addressed payload: %w", err)
 	}
 	return messages.MessageRoutingInfo{
 			SourceChainID:      unsignedMessage.SourceChainID,
