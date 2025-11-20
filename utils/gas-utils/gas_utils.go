@@ -6,9 +6,7 @@ package utils
 import (
 	"errors"
 	"math/big"
-	"time"
 
-	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/math"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/precompile/precompileconfig"
@@ -23,14 +21,15 @@ const (
 	MaxPriorityFeePerGas = 2500000000 // 2.5 gwei
 )
 
-var _ precompileconfig.Rules = &UpgradeRules{}
+var _ precompileconfig.Rules = &graniteActivatedRules{}
 
-type UpgradeRules struct {
-	UpgradeConfig upgrade.Config
-}
+// Since mainnet granite activation all new networks should have granite initially activated.
+// This rules implementation that always returns true is the only way to fetch granite gas config
+// as long as the underlying struct on subnet-evm is private.
+type graniteActivatedRules struct{}
 
-func (u *UpgradeRules) IsGraniteActivated() bool {
-	return u.UpgradeConfig.IsGraniteActivated(time.Now())
+func (u *graniteActivatedRules) IsGraniteActivated() bool {
+	return true
 }
 
 // CalculateReceiveMessageGasLimit calculates the estimated gas amount used by a single call
@@ -45,7 +44,6 @@ func (u *UpgradeRules) IsGraniteActivated() bool {
 // TODO: Benchmark to confirm that gas limits estimates are accurate.
 // specifically confirm that numTeleporterMessageBytes and TeleporterOverheadGasCost are correct.
 func CalculateReceiveMessageGasLimit(
-	rules precompileconfig.Rules,
 	numSigners int,
 	executionRequiredGasLimit *big.Int,
 	numPredicateChunks int,
@@ -56,7 +54,7 @@ func CalculateReceiveMessageGasLimit(
 		return 0, errors.New("required gas limit too high")
 	}
 
-	gasConfig := warp.CurrentGasConfig(rules)
+	gasConfig := warp.CurrentGasConfig(&graniteActivatedRules{})
 
 	gasAmounts := []uint64{
 		executionRequiredGasLimit.Uint64(),

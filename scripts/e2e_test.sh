@@ -25,8 +25,7 @@ Arguments:
                                                   If the directory does not exist or is empty, it will be used as the root network directory for a new network.
                                                   If the directory exists and is non-empty, the network will be reused.
                                                   If not set, a new network will be created at the default root network directory.
-    --epoch-duration duration                      Set the epoch duration for Granite testing
-    --activate-granite                            Activate Granite upgrade for testing
+    --epoch-duration duration                     Set to override the default test epoch duration.
 Options:
     --help                                        Print this help message
 EOF
@@ -39,7 +38,6 @@ root_dir=
 network_dir=
 reuse_network=false
 epoch_duration=
-activate_granite=
 while [ $# -gt 0 ]; do
     case "$1" in
         --components)  
@@ -65,8 +63,6 @@ while [ $# -gt 0 ]; do
             shift;;
         --help) 
             printHelp && exit 0 ;;
-        --activate-granite)
-            activate_granite=true;;
         *) 
             echo "Invalid option: $1" && printHelp && exit 1;;
     esac
@@ -144,7 +140,6 @@ for component in $(echo $components | tr ',' ' '); do
     echo "Running e2e tests for $component"
 
     RUN_E2E=true SIG_AGG_PATH=$ICM_SERVICES_BUILD_PATH/signature-aggregator ./tests/suites/$component/$component.test \
-    --activate-granite=${activate_granite:-"false"} \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
     --network-dir=${network_dir} \
