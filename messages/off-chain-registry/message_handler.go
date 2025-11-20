@@ -5,6 +5,7 @@ package offchainregistry
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
