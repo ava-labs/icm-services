@@ -6,11 +6,12 @@
 package database
 
 import (
+	"fmt"
+
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 var (
@@ -45,21 +46,13 @@ func NewDatabase(logger logging.Logger, cfg *config.Config) (RelayerDatabase, er
 	if cfg.RedisURL != "" {
 		db, err := NewRedisDatabase(logger, cfg.RedisURL, GetConfigRelayerIDs(cfg))
 		if err != nil {
-			logger.Error(
-				"Failed to create Redis database",
-				zap.Error(err),
-			)
-			return nil, err
+			return nil, fmt.Errorf("failed to create redis database: %w", err)
 		}
 		return db, nil
 	} else {
 		db, err := NewJSONFileStorage(logger, cfg.StorageLocation, GetConfigRelayerIDs(cfg))
 		if err != nil {
-			logger.Error(
-				"Failed to create JSON database",
-				zap.Error(err),
-			)
-			return nil, err
+			return nil, fmt.Errorf("failed to create json database: %w", err)
 		}
 		return db, nil
 	}

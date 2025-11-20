@@ -279,7 +279,7 @@ func getUnderfundedNodeIndexes(
 
 	// Get the canonical validator set to find the underfunded nodes index
 	underfundedNodesIndex := set.NewSet[int](0)
-	validatorClient := validators.NewCanonicalValidatorClient(logging.NoLog{}, &config.APIConfig{
+	validatorClient := validators.NewCanonicalValidatorClient(&config.APIConfig{
 		BaseURL: primaryNetworkURI,
 	})
 	canonicalSet, err := validatorClient.GetProposedValidators(ctx, subnetID)
