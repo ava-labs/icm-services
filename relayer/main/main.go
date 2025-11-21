@@ -322,15 +322,14 @@ func main() {
 	})
 
 	// Create listeners for each of the subnets configured as a source
-	for _, s := range cfg.SourceBlockchains {
-		sourceBlockchain := s
-
+	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		// errgroup will cancel the context when the first goroutine returns an error
 		errGroup.Go(func() error {
+			log := logger.With(zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()))
 			// runListener runs until it errors or the context is canceled by another goroutine
-			return relayer.RunListener(
+			err := relayer.RunListener(
 				ctx,
-				logger,
+				log,
 				*sourceBlockchain,
 				sourceClients[sourceBlockchain.GetBlockchainID()],
 				relayerHealth[sourceBlockchain.GetBlockchainID()],
@@ -338,6 +337,10 @@ func main() {
 				messageCoordinator,
 				cfg.MaxConcurrentMessages,
 			)
+			if err != nil {
+				log.Error("error running listener", zap.Error(err))
+			}
+			return err
 		})
 	}
 

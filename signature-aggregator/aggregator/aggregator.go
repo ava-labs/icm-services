@@ -350,7 +350,7 @@ func (s *SignatureAggregator) getCachedSignaturesForMessage(
 
 func (s *SignatureAggregator) collectSignaturesWithRetries(
 	ctx context.Context,
-	log logging.Logger,
+	logger logging.Logger,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	reqBytes []byte,
 	sourceSubnet, signingSubnet ids.ID,
@@ -365,6 +365,13 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 	operation := func() error {
 		// Construct the AppRequest
 		requestID := s.currentRequestID.Add(2)
+
+		log := logger.With(
+			zap.Int("requestID", int(requestID)),
+			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
+			zap.Stringer("signingSubnetID", signingSubnet),
+		)
+
 		outMsg, err := s.messageCreator.AppRequest(
 			unsignedMessage.SourceChainID,
 			requestID,
@@ -377,14 +384,8 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 			return fmt.Errorf("%s: %w", msg, err)
 		}
 
-		requestLogger := log.With(
-			zap.Int("requestID", int(requestID)),
-			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
-			zap.Stringer("signingSubnetID", signingSubnet),
-		)
-
 		responsesExpected := len(vdrs.ValidatorSet.Validators) - len(signatureMap)
-		requestLogger.Debug(
+		log.Debug(
 			"Aggregator collecting signatures from peers.",
 			zap.Int("validatorSetSize", len(vdrs.ValidatorSet.Validators)),
 			zap.Int("signatureMapSize", len(signatureMap)),
@@ -402,7 +403,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 			for _, nodeID := range vdr.NodeIDs {
 				if vdrs.ConnectedNodes.Contains(nodeID) && !vdrSet.Contains(nodeID) {
 					vdrSet.Add(nodeID)
-					requestLogger.Debug(
+					log.Debug(
 						"Added node ID to query.",
 						zap.Stringer("nodeID", nodeID),
 					)
@@ -431,7 +432,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 
 		sentTo := s.network.Send(outMsg, vdrSet, sourceSubnet, subnets.NoOpAllower)
 		s.metrics.AppRequestCount.Inc()
-		requestLogger.Debug(
+		log.Debug(
 			"Sent signature request to network",
 			zap.Any("sentTo", sentTo),
 			zap.Stringer("sourceSubnetID", sourceSubnet),
@@ -446,7 +447,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 			}
 		}
 		if len(failedSendNodes) > 0 {
-			requestLogger.Info(
+			log.Info(
 				"Failed to make async request to some nodes",
 				zap.Int("numSent", responsesExpected),
 				zap.Int("numFailures", len(failedSendNodes)),
@@ -457,7 +458,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		responseCount := 0
 		if responsesExpected > 0 {
 			for response := range responseChan {
-				requestLogger.Debug(
+				log.Debug(
 					"Processing response from node",
 					zap.Stringer("nodeID", response.NodeID()),
 				)
@@ -484,7 +485,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 				}
 				// If we have sufficient signatures, return here.
 				if signedMsg != nil {
-					requestLogger.Info(
+					log.Info(
 						"Created signed message.",
 						zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
 						zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
@@ -525,9 +526,9 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		return errNotEnoughSignatures
 	}
 
-	err := utils.WithRetriesTimeout(log, operation, signatureRequestTimeout, "request signatures")
+	err := utils.WithRetriesTimeout(logger, operation, signatureRequestTimeout, "request signatures")
 	if err != nil {
-		log.Warn(
+		logger.Warn(
 			"Failed to collect a threshold of signatures",
 			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
 			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),

@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
+	"go.uber.org/zap"
 )
 
 var (
@@ -57,6 +58,13 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 				FromBlock: header.Number,
 				ToBlock:   header.Number,
 			})
+			if err != nil {
+				logger.Info(
+					"failed to fetch warp logs from block",
+					zap.Uint64("blockNumber", header.Number.Uint64()),
+					zap.Error(err),
+				)
+			}
 			return err
 		}
 

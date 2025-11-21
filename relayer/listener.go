@@ -67,10 +67,7 @@ func RunListener(
 		return fmt.Errorf("failed to create listener instance: %w", err)
 	}
 
-	logger.Info(
-		"Listener initialized. Listening for messages to relay.",
-		zap.String("originBlockchainID", sourceBlockchain.BlockchainID),
-	)
+	logger.Info("Listener initialized. Listening for messages to relay.")
 
 	// Wait for logs from the subscribed node
 	// Will only return on error or context cancellation
@@ -89,11 +86,7 @@ func newListener(
 ) (*Listener, error) {
 	blockchainID, err := ids.FromString(sourceBlockchain.BlockchainID)
 	if err != nil {
-		logger.Error(
-			"Invalid blockchainID provided to subscriber",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("invalid blockchainID provided to subscriber: %w", err)
 	}
 
 	ethWSClient, err := utils.NewEthClientWithConfig(
@@ -103,12 +96,7 @@ func newListener(
 		sourceBlockchain.WSEndpoint.QueryParams,
 	)
 	if err != nil {
-		logger.Error(
-			"Failed to connect to node via WS",
-			zap.Stringer("blockchainID", blockchainID),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to node via WS: %w", err)
 	}
 	sub := evm.NewSubscriber(logger, blockchainID, ethWSClient, ethRPCClient)
 
@@ -143,11 +131,7 @@ func newListener(
 	// miss an incoming message in between fetching the latest block and subscribing.
 	err = lstnr.Subscriber.Subscribe(retrySubscribeTimeout)
 	if err != nil {
-		logger.Error(
-			"Failed to subscribe to node",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to subscribe to node: %w", err)
 	}
 
 	// Process historical blocks in a separate goroutine so that the main processing loop can
@@ -168,10 +152,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 		select {
 		case err := <-errChan:
 			lstnr.healthStatus.Store(false)
-			lstnr.logger.Error(
-				"Received error from application relayer",
-				zap.Error(err),
-			)
+			lstnr.logger.Error("Received error from application relayer", zap.Error(err))
 		case catchUpResult, ok := <-lstnr.catchUpResultChan:
 			// As soon as we've received anything on the channel, there are no more values expected.
 			// The expected case is that the channel is closed by the subscriber after writing a value to it,
@@ -181,18 +162,12 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			// Mark the relayer as unhealthy if the catch-up process fails or if the catch-up channel is unexpectedly closed.
 			if !ok {
 				lstnr.healthStatus.Store(false)
-				lstnr.logger.Error(
-					"Catch-up channel unexpectedly closed. Exiting listener goroutine.",
-					zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
-				)
+				lstnr.logger.Error("Catch-up channel unexpectedly closed. Exiting listener goroutine.")
 				return fmt.Errorf("catch-up channel unexpectedly closed")
 			}
 			if !catchUpResult {
 				lstnr.healthStatus.Store(false)
-				lstnr.logger.Error(
-					"Failed to catch up on historical blocks. Exiting listener goroutine.",
-					zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
-				)
+				lstnr.logger.Error("Failed to catch up on historical blocks. Exiting listener goroutine.")
 				return fmt.Errorf("failed to catch up on historical blocks")
 			}
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
@@ -203,30 +178,19 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			)
 		case err := <-lstnr.Subscriber.Err():
 			lstnr.healthStatus.Store(false)
-			lstnr.logger.Error("Error processing logs. Relayer goroutine exiting")
+			lstnr.logger.Error("Error processing logs. Relayer goroutine exiting", zap.Error(err))
 			return fmt.Errorf("error processing logs: %w", err)
 		case subError := <-lstnr.Subscriber.SubscribeErr():
-			lstnr.logger.Info(
-				"Received error from subscribed node",
-				zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
-				zap.Error(subError),
-			)
+			lstnr.logger.Info("Received error from subscribed node", zap.Error(subError))
 			subError = lstnr.reconnectToSubscriber()
 			if subError != nil {
 				lstnr.healthStatus.Store(false)
-				lstnr.logger.Error(
-					"Relayer goroutine exiting.",
-					zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
-					zap.Error(subError),
-				)
+				lstnr.logger.Error("Relayer goroutine exiting.", zap.Error(subError))
 				return fmt.Errorf("listener goroutine exiting: %w", subError)
 			}
 		case <-ctx.Done():
 			lstnr.healthStatus.Store(false)
-			lstnr.logger.Info(
-				"Exiting listener because context cancelled",
-				zap.Stringer("sourceBlockchainID", lstnr.sourceBlockchain.GetBlockchainID()),
-			)
+			lstnr.logger.Info("Exiting listener because context cancelled")
 			return nil
 		}
 	}

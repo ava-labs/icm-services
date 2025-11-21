@@ -12,6 +12,7 @@ import (
 // WithRetriesTimeout uses an exponential backoff to run the operation until it
 // succeeds or timeout limit has been reached. It is the caller's responsibility
 // to ensure {operation} returns. It is safe for {operation} to take longer than {timeout}.
+// {operation} should log any errors itself at an appropriate level.
 func WithRetriesTimeout(
 	logger logging.Logger,
 	operation backoff.Operation,
@@ -22,7 +23,7 @@ func WithRetriesTimeout(
 		backoff.WithMaxElapsedTime(timeout),
 	)
 	notify := func(err error, duration time.Duration) {
-		logger.Info(
+		logger.Debug(
 			fmt.Sprintf("%s failed, retrying...", logMessage),
 			zap.Duration("retryIn", duration),
 			zap.Error(err),

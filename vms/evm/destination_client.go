@@ -474,17 +474,20 @@ func (s *concurrentSigner) waitForReceipt(
 		callCtx, callCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer callCtxCancel()
 		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
+		if err != nil {
+			s.logger.Info(
+				"Transaction receipt not yet available, retrying...",
+				zap.Stringer("txID", txHash),
+				zap.Error(err),
+			)
+		}
 		return err
 	}
 	err := utils.WithRetriesTimeout(s.logger, operation, s.destinationClient.txInclusionTimeout, "waitForReceipt")
 	if err != nil {
-		s.logger.Error(
-			"Failed to get transaction receipt",
-			zap.Error(err),
-		)
 		resultChan <- txResult{
 			receipt: nil,
-			err:     err,
+			err:     fmt.Errorf("failed to get transaction receipt: %w", err),
 		}
 		return
 	}

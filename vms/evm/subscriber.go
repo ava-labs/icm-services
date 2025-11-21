@@ -125,16 +125,10 @@ func (s *Subscriber) processBlockRange(
 		"Processing block range",
 		zap.Uint64("fromBlockHeight", fromBlock.Uint64()),
 		zap.Uint64("toBlockHeight", toBlock.Uint64()),
-		zap.Stringer("blockchainID", s.blockchainID),
 	)
 	logs, err := s.getFilterLogsByBlockRangeRetryable(fromBlock, toBlock)
 	if err != nil {
-		s.logger.Error(
-			"Failed to get header by number after max attempts",
-			zap.Stringer("blockchainID", s.blockchainID),
-			zap.Error(err),
-		)
-		return err
+		return fmt.Errorf("faile dto get header by number after max attempts: %w", err)
 	}
 
 	blocksWithICMMessages, err := relayerTypes.LogsToBlocks(logs)
@@ -167,16 +161,14 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 			FromBlock: fromBlock,
 			ToBlock:   toBlock,
 		})
+		if err != nil {
+			s.logger.Info("Failed to get filter logs by block range, retrying...", zap.Error(err))
+		}
 		return err
 	}
 	err := utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout, "get filter logs by block range")
 	if err != nil {
-		s.logger.Error(
-			"Failed to get filter logs by block range",
-			zap.Stringer("blockchainID", s.blockchainID),
-			zap.Error(err),
-		)
-		return nil, relayerTypes.ErrFailedToProcessLogs
+		return nil, fmt.Errorf("failed to get filter logs by block range: %w", err)
 	}
 	return logs, nil
 }
@@ -203,15 +195,14 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
 		sub, err = s.wsClient.SubscribeNewHead(cctx, s.headers)
+		if err != nil {
+			s.logger.Info("Failed to subscribe, retrying...", zap.Error(err))
+		}
 		return err
 	}
 	err := utils.WithRetriesTimeout(s.logger, operation, retryTimeout, "subscribe")
 	if err != nil {
-		s.logger.Error(
-			"Failed to subscribe to node",
-			zap.Stringer("blockchainID", s.blockchainID),
-		)
-		return err
+		return fmt.Errorf("failed to subscribe to node: %w", err)
 	}
 	s.sub = sub
 
