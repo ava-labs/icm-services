@@ -243,10 +243,6 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   - cb58-encoded or "0x" prefixed hex-encoded blockchain ID.
 
-  `"vm": string`
-
-  - The VM type of the source blockchain.
-
   `"rpc-endpoint": APIConfig`
 
   - The RPC endpoint configuration of the source blockchain's API node. An `APIConfig` has the following fields:
@@ -322,10 +318,6 @@ The relayer is configured via a JSON file, the path to which is passed in via th
   `"blockchain-id": string`
 
   - cb58-encoded or "0x" prefixed hex-encoded blockchain ID.
-
-  `"vm": string`
-
-  - The VM type of the source blockchain.
 
   `"rpc-endpoint": APIConfig`
 

@@ -17,11 +17,10 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func makeSubscriberWithMockEthClient(t *testing.T) (*subscriber, *mock_ethclient.MockClient) {
+func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient.MockClient) {
 	sourceSubnet := config.SourceBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-		VM:           config.EVM.String(),
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL: "https://subnets.avax.network/mysubnet/rpc",
 		},

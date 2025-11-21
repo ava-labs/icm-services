@@ -14,7 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -29,7 +29,7 @@ const (
 
 // Listener handles all messages sent from a given source chain
 type Listener struct {
-	Subscriber         vms.Subscriber
+	Subscriber         *evm.Subscriber
 	currentRequestID   uint32
 	logger             logging.Logger
 	sourceBlockchain   config.SourceBlockchain
@@ -110,7 +110,7 @@ func newListener(
 		)
 		return nil, err
 	}
-	sub := vms.NewSubscriber(logger, config.ParseVM(sourceBlockchain.VM), blockchainID, ethWSClient, ethRPCClient)
+	sub := evm.NewSubscriber(logger, blockchainID, ethWSClient, ethRPCClient)
 
 	// Marks when the listener has finished the catch-up process on startup.
 	// Until that time, we do not know the order in which messages are processed,

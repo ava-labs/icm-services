@@ -7,7 +7,6 @@ package vms
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -18,6 +17,7 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/zap"
 )
 
@@ -37,7 +37,7 @@ type DestinationClient interface {
 	) (*types.Receipt, error)
 
 	// Client returns the underlying client for the destination chain
-	Client() interface{}
+	Client() ethclient.Client
 
 	// SenderAddresses returns the addresses of the relayer on the destination chain
 	SenderAddresses() []common.Address
@@ -60,17 +60,6 @@ type DestinationClient interface {
 	) (uint64, error)
 }
 
-func NewDestinationClient(
-	logger logging.Logger, subnetInfo *config.DestinationBlockchain,
-) (DestinationClient, error) {
-	switch config.ParseVM(subnetInfo.VM) {
-	case config.EVM:
-		return evm.NewDestinationClient(logger, subnetInfo)
-	default:
-		return nil, fmt.Errorf("invalid vm")
-	}
-}
-
 // CreateDestinationClients creates destination clients for all subnets configured as destinations
 func CreateDestinationClients(
 	logger logging.Logger,
@@ -91,7 +80,7 @@ func CreateDestinationClients(
 			continue
 		}
 
-		destinationClient, err := NewDestinationClient(log, subnetInfo)
+		destinationClient, err := evm.NewDestinationClient(log, subnetInfo)
 		if err != nil {
 			log.Error("Could not create destination client", zap.Error(err))
 			return nil, err

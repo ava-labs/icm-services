@@ -9,7 +9,6 @@
     {
       "subnet-id": "11111111111111111111111111111111LpoYY",
       "blockchain-id": "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
-      "vm": "evm",
       "rpc-endpoint": {
         "base-url": "https://api.avax-test.network/ext/bc/C/rpc"
       },
@@ -30,7 +29,6 @@
     {
       "subnet-id": "7WtoAMPhrmh5KosDUsFL9yTcvw7YSxiKHPpdfs4JsgW47oZT5",
       "blockchain-id": "2D8RG4UpSXbPbvPCAWppNJyqTG2i2CAXSkTgmTBBvs7GKNZjsY",
-      "vm": "evm",
       "rpc-endpoint": {
         "base-url": "https://subnets.avax.network/dispatch/testnet/rpc"
       },
