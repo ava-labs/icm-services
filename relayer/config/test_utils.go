@@ -49,7 +49,6 @@ var (
 				},
 				BlockchainID: testBlockchainID,
 				SubnetID:     testSubnetID,
-				VM:           "evm",
 				MessageContracts: map[string]MessageProtocolConfig{
 					testAddress: {
 						MessageFormat: TELEPORTER.String(),
@@ -64,7 +63,6 @@ var (
 				},
 				BlockchainID:      testBlockchainID,
 				SubnetID:          testSubnetID,
-				VM:                "evm",
 				AccountPrivateKey: "0x56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027",
 			},
 		},
@@ -80,7 +78,6 @@ var (
 		},
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
-		VM:           "evm",
 		MessageContracts: map[string]MessageProtocolConfig{
 			"0xd81545385803bCD83bd59f58Ba2d2c0562387F83": {
 				MessageFormat: TELEPORTER.String(),
@@ -90,7 +87,6 @@ var (
 	TestValidDestinationBlockchainConfig = DestinationBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-		VM:           "evm",
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL: "http://test.avax.network/ext/bc/C/rpc",
 		},

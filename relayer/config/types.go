@@ -3,33 +3,6 @@
 
 package config
 
-// Supported VMs
-type VM int
-
-const (
-	UNKNOWN_VM VM = iota
-	EVM
-)
-
-func (vm VM) String() string {
-	switch vm {
-	case EVM:
-		return "evm"
-	default:
-		return "unknown"
-	}
-}
-
-// ParseVM returns the VM corresponding to [vm]
-func ParseVM(vm string) VM {
-	switch vm {
-	case "evm":
-		return EVM
-	default:
-		return UNKNOWN_VM
-	}
-}
-
 // Supported Message Protocols
 type MessageProtocol int
 

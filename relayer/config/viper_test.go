@@ -37,7 +37,6 @@ func TestBuildConfig(t *testing.T) {
 	require.Equal(t, &SourceBlockchain{
 		SubnetID:     "11111111111111111111111111111111LpoYY",
 		BlockchainID: "yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp",
-		VM:           "evm",
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL: "https://api.avax-test.network/ext/bc/C/rpc",
 		},
@@ -61,7 +60,6 @@ func TestBuildConfig(t *testing.T) {
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL: "https://subnets.avax.network/dispatch/testnet/rpc",
 		},
-		VM:                "evm",
 		AccountPrivateKey: "0x7493...",
 	}, cfg.DestinationBlockchains[0])
 }
