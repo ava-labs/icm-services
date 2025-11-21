@@ -17,8 +17,7 @@ import (
 // Specifies the height from which to start processing historical blocks.
 type SourceBlockchain struct {
 	SubnetID                          string                           `mapstructure:"subnet-id" json:"subnet-id"`
-	BlockchainID                      string                           `mapstructure:"blockchain-id" json:"blockchain-id"` //nolint:lll
-	VM                                string                           `mapstructure:"vm" json:"vm"`
+	BlockchainID                      string                           `mapstructure:"blockchain-id" json:"blockchain-id"`                                                 //nolint:lll
 	RPCEndpoint                       basecfg.APIConfig                `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`                                                   //nolint:lll
 	WSEndpoint                        basecfg.APIConfig                `mapstructure:"ws-endpoint" json:"ws-endpoint"`                                                     //nolint:lll
 	MessageContracts                  map[string]MessageProtocolConfig `mapstructure:"message-contracts" json:"message-contracts"`                                         //nolint:lll
@@ -54,16 +53,11 @@ func (s *SourceBlockchain) Validate(destinationBlockchainIDs *set.Set[string]) e
 		s.useAppRequestNetwork = true
 	}
 
-	// Validate the VM specific settings
-	switch ParseVM(s.VM) {
-	case EVM:
-		for messageContractAddress := range s.MessageContracts {
-			if !common.IsHexAddress(messageContractAddress) {
-				return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
-			}
+	// Validate the EVM settings
+	for messageContractAddress := range s.MessageContracts {
+		if !common.IsHexAddress(messageContractAddress) {
+			return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
 		}
-	default:
-		return fmt.Errorf("unsupported VM type for source subnet: %s", s.VM)
 	}
 
 	// Validate message settings correspond to a supported message protocol
