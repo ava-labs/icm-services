@@ -688,7 +688,6 @@ func TestValidateSourceBlockchain(t *testing.T) {
 			BaseURL: fmt.Sprintf("ws://test.avax.network/ext/bc/%s/ws", testBlockchainID),
 		},
 		SubnetID: testSubnetID,
-		VM:       "evm",
 		SupportedDestinations: []*SupportedDestination{
 			{
 				BlockchainID: testBlockchainID,
