@@ -52,6 +52,12 @@ func RunListener(
 	messageCoordinator *MessageCoordinator,
 	maxConcurrentMsg uint64,
 ) error {
+	logger = logger.With(
+		zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
+		zap.String("subnetIDHex", sourceBlockchain.GetSubnetID().Hex()),
+		zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
+		zap.String("blockchainIDHex", sourceBlockchain.GetBlockchainID().Hex()),
+	)
 	// Create the Listener
 	listener, err := newListener(
 		ctx,
@@ -108,13 +114,7 @@ func newListener(
 	// scenario.
 	catchUpResultChan := make(chan bool, 1)
 
-	logger.Info(
-		"Creating relayer",
-		zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
-		zap.String("subnetIDHex", sourceBlockchain.GetSubnetID().Hex()),
-		zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
-		zap.String("blockchainIDHex", sourceBlockchain.GetBlockchainID().Hex()),
-	)
+	logger.Info("Creating relayer")
 	lstnr := Listener{
 		Subscriber:         sub,
 		currentRequestID:   rand.Uint32(), // Initialize to a random value to mitigate requestID collision

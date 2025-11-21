@@ -78,11 +78,7 @@ func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	defer latestBlockHeightCtxCancel()
 	latestBlockHeight, err := s.rpcClient.BlockNumber(latestBlockHeightCtx)
 	if err != nil {
-		s.logger.Error(
-			"Failed to get latest block",
-			zap.Stringer("blockchainID", s.blockchainID),
-			zap.Error(err),
-		)
+		s.logger.Error("Failed to get latest block", zap.Error(err))
 		done <- false
 		return
 	}
@@ -90,7 +86,6 @@ func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 		"Processing historical logs",
 		zap.Uint64("fromBlockHeight", height.Uint64()),
 		zap.Uint64("latestBlockHeight", latestBlockHeight),
-		zap.Stringer("blockchainID", s.blockchainID),
 	)
 
 	bigLatestBlockHeight := big.NewInt(0).SetUint64(latestBlockHeight)
@@ -215,8 +210,7 @@ func (s *Subscriber) blocksInfoFromHeaders() {
 	for header := range s.headers {
 		block, err := relayerTypes.NewWarpBlockInfo(s.logger, header, s.rpcClient)
 		if err != nil {
-			s.logger.Error("Failed to create Warp block info", zap.Error(err))
-			s.errChan <- err
+			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return
 		}
 		s.icmBlocks <- block
@@ -236,8 +230,4 @@ func (s *Subscriber) SubscribeErr() <-chan error {
 // by resubscribing.
 func (s *Subscriber) Err() <-chan error {
 	return s.errChan
-}
-
-func (s *Subscriber) Cancel() {
-	// Nothing to do here, the ethclient manages both the log and err channels
 }
