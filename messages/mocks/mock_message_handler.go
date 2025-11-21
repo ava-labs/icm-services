@@ -60,18 +60,18 @@ func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(unsignedM
 }
 
 // NewMessageHandler mocks base method.
-func (m *MockMessageHandlerFactory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
+func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewMessageHandler", unsignedMessage, destinationClient)
+	ret := m.ctrl.Call(m, "NewMessageHandler", logger, unsignedMessage, destinationClient)
 	ret0, _ := ret[0].(messages.MessageHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NewMessageHandler indicates an expected call of NewMessageHandler.
-func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(unsignedMessage, destinationClient any) *gomock.Call {
+func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, unsignedMessage, destinationClient any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), unsignedMessage, destinationClient)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, unsignedMessage, destinationClient)
 }
 
 // MockMessageHandler is a mock of MessageHandler interface.

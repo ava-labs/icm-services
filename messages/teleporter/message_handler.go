@@ -25,7 +25,6 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -33,7 +32,6 @@ import (
 type factory struct {
 	messageConfig   *Config
 	protocolAddress common.Address
-	logger          logging.Logger
 	deciderClient   pbDecider.DeciderServiceClient
 }
 
@@ -61,18 +59,13 @@ func (s *emptyDeciderClient) ShouldSendMessage(
 }
 
 func NewMessageHandlerFactory(
-	logger logging.Logger,
 	messageProtocolAddress common.Address,
 	messageProtocolConfig config.MessageProtocolConfig,
 	deciderClientConn *grpc.ClientConn,
 ) (messages.MessageHandlerFactory, error) {
 	messageConfig, err := ConfigFromMap(messageProtocolConfig.Settings)
 	if err != nil {
-		logger.Error(
-			"Invalid Teleporter config.",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("invalid teleporter config: %w", err)
 	}
 
 	var deciderClient pbDecider.DeciderServiceClient
@@ -85,18 +78,18 @@ func NewMessageHandlerFactory(
 	return &factory{
 		messageConfig:   messageConfig,
 		protocolAddress: messageProtocolAddress,
-		logger:          logger,
 		deciderClient:   deciderClient,
 	}, nil
 }
 
 func (f *factory) NewMessageHandler(
+	logger logging.Logger,
 	unsignedMessage *warp.UnsignedMessage,
 	destinationClient vms.DestinationClient,
 ) (messages.MessageHandler, error) {
 	teleporterMessage, err := f.parseTeleporterMessage(unsignedMessage)
 	if err != nil {
-		f.logger.Error(
+		logger.Error(
 			"Failed to parse teleporter message.",
 			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 		)
@@ -110,7 +103,7 @@ func (f *factory) NewMessageHandler(
 		teleporterMessage.MessageNonce,
 	)
 	if err != nil {
-		f.logger.Error(
+		logger.Error(
 			"Failed to calculate Teleporter message ID.",
 			zap.Stringer("warpMessageID", unsignedMessage.ID()),
 			zap.Error(err),
@@ -124,7 +117,7 @@ func (f *factory) NewMessageHandler(
 		zap.Stringer("destinationBlockchainID", destinationBlockChainID),
 	}
 	return &messageHandler{
-		logger:            f.logger.With(logFields...),
+		logger:            logger.With(logFields...),
 		teleporterMessage: teleporterMessage,
 
 		unsignedMessage:     unsignedMessage,
@@ -141,11 +134,7 @@ func (f *factory) NewMessageHandler(
 func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (messages.MessageRoutingInfo, error) {
 	teleporterMessage, err := f.parseTeleporterMessage(unsignedMessage)
 	if err != nil {
-		f.logger.Error(
-			"Failed to parse teleporter message.",
-			zap.Stringer("warpMessageID", unsignedMessage.ID()),
-		)
-		return messages.MessageRoutingInfo{}, err
+		return messages.MessageRoutingInfo{}, fmt.Errorf("failed to parse teleporter message: %w", err)
 	}
 	return messages.MessageRoutingInfo{
 		SourceChainID:      unsignedMessage.SourceChainID,
@@ -353,21 +342,12 @@ func (f *factory) parseTeleporterMessage(
 ) (*teleportermessenger.TeleporterMessage, error) {
 	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)
 	if err != nil {
-		f.logger.Error(
-			"Failed parsing addressed payload",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed parsing addressed payload: %w", err)
 	}
 	var teleporterMessage teleportermessenger.TeleporterMessage
 	err = teleporterMessage.Unpack(addressedPayload.Payload)
 	if err != nil {
-		f.logger.Error(
-			"Failed unpacking teleporter message.",
-			zap.Stringer("warpMessageID", unsignedMessage.ID()),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed unpacking teleporter message: %w", err)
 	}
 
 	return &teleporterMessage, nil
@@ -377,16 +357,8 @@ func (f *factory) parseTeleporterMessage(
 // Panic instead of returning errors because this should never happen, and if it does, we do not
 // want to log and swallow the error, since operations after this will fail too.
 func (m *messageHandler) getTeleporterMessenger() *teleportermessenger.TeleporterMessenger {
-	client, ok := m.destinationClient.Client().(ethclient.Client)
-	if !ok {
-		panic(fmt.Sprintf(
-			"Destination client for chain %s is not an Ethereum client",
-			m.destinationClient.DestinationBlockchainID().String()),
-		)
-	}
-
 	// Get the teleporter messenger contract
-	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, client)
+	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(m.protocolAddress, m.destinationClient.Client())
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get teleporter messenger contract: %s", err.Error()))
 	}
