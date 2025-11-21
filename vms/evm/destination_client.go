@@ -474,7 +474,7 @@ func (s *concurrentSigner) waitForReceipt(
 		callCtx, callCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer callCtxCancel()
 		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
-		return fmt.Errorf("transaction receipt not yet available \"%s\": %w", txHash.String(), err)
+		return err
 	}
 	notify := func(err error, duration time.Duration) {
 		s.logger.Info(
