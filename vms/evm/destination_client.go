@@ -554,26 +554,11 @@ func (c *destinationClient) GetRPCEndpointURL() string {
 }
 
 // GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
-// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated.
 // The epoch is cached per destination blockchain to avoid per-message fetches.
 func (c *destinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
 	network peers.AppRequestNetwork,
 ) (uint64, error) {
-	if !network.IsGraniteActivated() {
-		c.logger.Debug("Granite is not activated, using ProposedHeight")
-		// Get the proposed height from the ProposerVM API to be able to cache the validator sets for this height
-		height, err := c.proposerClient.GetProposedHeight(ctx)
-		if err != nil {
-			c.logger.Warn("Failed to get proposed height using ProposerVM API, using ProposedHeight constant",
-				zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
-				zap.Error(err),
-			)
-			return pchainapi.ProposedHeight, nil
-		}
-		return height, nil
-	}
-
 	// Use singleflight to deduplicate concurrent fetches and serialize cache access
 	result, err, _ := c.epochSingleFlight.Do(epochCacheKey, func() (interface{}, error) {
 		// Check if cached epoch is still valid

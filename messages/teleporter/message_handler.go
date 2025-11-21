@@ -264,20 +264,11 @@ func (m *messageHandler) getShouldSendMessageFromDecider() (bool, error) {
 	return response.ShouldSendMessage, nil
 }
 
-type isGraniteActivated struct {
-	isGraniteActivated bool
-}
-
-func (g *isGraniteActivated) IsGraniteActivated() bool {
-	return g.isGraniteActivated
-}
-
 // SendMessage extracts the gasLimit and packs the call data to call the receiveCrossChainMessage
 // method of the Teleporter contract, and dispatches transaction construction and broadcast to the
 // destination client.
 func (m *messageHandler) SendMessage(
 	signedMessage *warp.Message,
-	isGraniteActive bool,
 ) (common.Hash, error) {
 	m.logger.Info("Sending message to destination chain")
 	numSigners, err := signedMessage.Signature.NumSigners()
@@ -287,7 +278,6 @@ func (m *messageHandler) SendMessage(
 	}
 
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
-		&isGraniteActivated{isGraniteActivated: isGraniteActive},
 		numSigners,
 		m.teleporterMessage.RequiredGasLimit,
 		len(predicate.New(signedMessage.Bytes())),
