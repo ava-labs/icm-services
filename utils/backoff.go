@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -21,8 +22,8 @@ func WithRetriesTimeout(
 		backoff.WithMaxElapsedTime(timeout),
 	)
 	notify := func(err error, duration time.Duration) {
-		logger.Debug("operation failed, retrying...",
-			zap.String("logMessage", logMessage),
+		logger.Info(
+			fmt.Sprintf("%s failed, retrying...", logMessage),
 			zap.Duration("retryIn", duration),
 			zap.Error(err),
 		)
