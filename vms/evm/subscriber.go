@@ -123,7 +123,7 @@ func (s *Subscriber) processBlockRange(
 	)
 	logs, err := s.getFilterLogsByBlockRangeRetryable(fromBlock, toBlock)
 	if err != nil {
-		return fmt.Errorf("faile dto get header by number after max attempts: %w", err)
+		return fmt.Errorf("failed to get header by number after max attempts: %w", err)
 	}
 
 	blocksWithICMMessages, err := relayerTypes.LogsToBlocks(logs)
