@@ -6,6 +6,8 @@ package types
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -58,14 +60,14 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 				FromBlock: header.Number,
 				ToBlock:   header.Number,
 			})
-			if err != nil {
-				logger.Info(
-					"failed to fetch warp logs from block",
-					zap.Uint64("blockNumber", header.Number.Uint64()),
-					zap.Error(err),
-				)
-			}
 			return err
+		}
+		notify := func(err error, duration time.Duration) {
+			logger.Info(
+				"getting warp block from logs failed, retrying...",
+				zap.Duration("retryIn", duration),
+				zap.Error(err),
+			)
 		}
 
 		// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
@@ -73,9 +75,9 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 		// logs are available via RPC. This is a known behavior in EVM nodes due to
 		// asynchronous log/index processing after a block becomes canonical.
 		timeout := utils.DefaultRPCTimeout * 6
-		err = utils.WithRetriesTimeout(logger, operation, timeout, "get warp logs from block")
+		err = utils.WithRetriesTimeout(operation, notify, timeout)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get logs for block: %w", err)
 		}
 	}
 	messages := make([]*WarpMessageInfo, len(logs))

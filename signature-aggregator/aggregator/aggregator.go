@@ -110,7 +110,7 @@ func NewSignatureAggregator(
 
 func (s *SignatureAggregator) connectToQuorumValidators(
 	ctx context.Context,
-	log logging.Logger,
+	logger logging.Logger,
 	signingSubnet ids.ID,
 	quorumPercentage uint64,
 	skipCache bool,
@@ -124,7 +124,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 		vdrs, err = s.network.GetCanonicalValidators(ctx, signingSubnet, skipCache, pchainHeight)
 		if err != nil {
 			msg := "Failed to fetch connected canonical validators"
-			log.Warn(msg, zap.Error(err))
+			logger.Warn(msg, zap.Error(err))
 			s.metrics.FailuresToGetValidatorSet.Inc()
 			return fmt.Errorf("%s: %w", msg, err)
 		}
@@ -140,10 +140,10 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 			quorumPercentage,
 		) {
 			// Log details of each connected validator for troubleshooting
-			if log.Enabled(logging.Debug) {
+			if logger.Enabled(logging.Debug) {
 				for _, nodeID := range vdrs.ConnectedNodes.List() {
 					vdr, _ := vdrs.GetValidator(nodeID)
-					log.Debug(
+					logger.Debug(
 						"Connected validator details",
 						zap.Stringer("signingSubnet", signingSubnet),
 						zap.Stringer("nodeID", nodeID),
@@ -151,7 +151,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 					)
 				}
 			}
-			log.Info(
+			logger.Info(
 				"Failed to connect to a threshold of stake",
 				zap.Stringer("signingSubnet", signingSubnet),
 				zap.Uint64("connectedWeight", vdrs.ConnectedWeight),
@@ -164,7 +164,14 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 		}
 		return nil
 	}
-	err = utils.WithRetriesTimeout(log, connectOp, connectToValidatorsTimeout, "connect to validators")
+	notify := func(err error, duration time.Duration) {
+		logger.Debug(
+			"connect to validators failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
+	err = utils.WithRetriesTimeout(connectOp, notify, connectToValidatorsTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -525,8 +532,15 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 
 		return errNotEnoughSignatures
 	}
+	notify := func(err error, duration time.Duration) {
+		logger.Debug(
+			"request signatures failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
 
-	err := utils.WithRetriesTimeout(logger, operation, signatureRequestTimeout, "request signatures")
+	err := utils.WithRetriesTimeout(operation, notify, signatureRequestTimeout)
 	if err != nil {
 		logger.Warn(
 			"Failed to collect a threshold of signatures",

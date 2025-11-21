@@ -296,7 +296,7 @@ func (r *ApplicationRelayer) createSignedMessage(
 	// buffer, so just use the required quorum percentage here.
 	var signedWarpMessageBytes hexutil.Bytes
 	operation := func() error {
-		err := r.sourceWarpSignatureClient.CallContext(
+		return r.sourceWarpSignatureClient.CallContext(
 			cctx,
 			&signedWarpMessageBytes,
 			"warp_getMessageAggregateSignature",
@@ -304,15 +304,15 @@ func (r *ApplicationRelayer) createSignedMessage(
 			r.warpConfig.QuorumNumerator,
 			r.signingSubnetID.String(),
 		)
-		if err != nil {
-			r.logger.Warn(
-				"Failed to fetch aggregate signature from node endpoint, retrying...",
-				zap.Error(err),
-			)
-		}
-		return err
 	}
-	err := utils.WithRetriesTimeout(r.logger, operation, retryTimeout, "warp_getMessageAggregateSignature")
+	notify := func(err error, duration time.Duration) {
+		r.logger.Warn(
+			"warp_getMessageAggregateSignature failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
+	err := utils.WithRetriesTimeout(operation, notify, retryTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get aggregate signature from node endpoint: %w", err)
 	}

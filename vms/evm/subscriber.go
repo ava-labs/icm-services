@@ -156,12 +156,17 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 			FromBlock: fromBlock,
 			ToBlock:   toBlock,
 		})
-		if err != nil {
-			s.logger.Info("Failed to get filter logs by block range, retrying...", zap.Error(err))
-		}
 		return err
 	}
-	err := utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout, "get filter logs by block range")
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"get filter logs by block range failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
+
+	err := utils.WithRetriesTimeout(operation, notify, utils.DefaultRPCTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get filter logs by block range: %w", err)
 	}
@@ -190,12 +195,17 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
 		sub, err = s.wsClient.SubscribeNewHead(cctx, s.headers)
-		if err != nil {
-			s.logger.Info("Failed to subscribe, retrying...", zap.Error(err))
-		}
 		return err
 	}
-	err := utils.WithRetriesTimeout(s.logger, operation, retryTimeout, "subscribe")
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"subscribe failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
+
+	err := utils.WithRetriesTimeout(operation, notify, retryTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to node: %w", err)
 	}
