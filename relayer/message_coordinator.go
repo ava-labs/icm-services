@@ -183,8 +183,8 @@ func (mc *MessageCoordinator) ProcessWarpMessage(warpMessage *relayerTypes.WarpM
 	if err != nil {
 		mc.logger.Error(
 			"Failed to parse Warp message.",
-			zap.Error(err),
 			zap.Stringer("warpMessageID", warpMessage.UnsignedMessage.ID()),
+			zap.Error(err),
 		)
 		return common.Hash{}, err
 	}
