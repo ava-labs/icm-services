@@ -542,7 +542,7 @@ func (c *CanonicalValidators) GetValidator(nodeID ids.NodeID) (*snowVdrs.Warp, i
 	return c.ValidatorSet.Validators[c.NodeValidatorIndexMap[nodeID]], c.NodeValidatorIndexMap[nodeID]
 }
 
-func (n *appRequestNetwork) getValidatorSetGranite(
+func (n *appRequestNetwork) getValidatorSet(
 	ctx context.Context,
 	subnetID ids.ID,
 	pchainHeight uint64,
@@ -621,16 +621,7 @@ func (n *appRequestNetwork) GetCanonicalValidators(
 		zap.Bool("isProposedHeight", pchainHeight == pchainapi.ProposedHeight),
 	)
 
-	var validatorSet snowVdrs.WarpSet
-	var err error
-
-	if pchainHeight == pchainapi.ProposedHeight {
-		startPChainAPICall := time.Now()
-		validatorSet, err = n.validatorClient.GetProposedValidators(ctx, subnetID)
-		n.setPChainAPICallLatencyMS(time.Since(startPChainAPICall).Milliseconds())
-	} else {
-		validatorSet, err = n.getValidatorSetGranite(ctx, subnetID, pchainHeight)
-	}
+	validatorSet, err := n.getValidatorSet(ctx, subnetID, pchainHeight)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validator set at P-Chain height %d: %w", pchainHeight, err)
 	}

@@ -41,17 +41,57 @@ func InitializeConnectionsAndCheckStake(
 	)
 	defer cancel()
 
+	allValidators, err := network.GetAllValidatorSets(cctx, pchainapi.ProposedHeight)
+	if err != nil {
+		return fmt.Errorf("failed to get all canonical validators: %w", err)
+	}
+
 	eg, ectx := errgroup.WithContext(cctx)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
+		vdrs := network.BuildCanonicalValidators(allValidators[sourceBlockchain.GetBlockchainID()])
+		log := logger.With(
+			zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
+			zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
+			zap.Uint64("connectedWeight", vdrs.ConnectedWeight),
+			zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
+			zap.Int("numConnectedPeers", vdrs.ConnectedNodes.Len()),
+		)
+		// Loop over destination blockchains here to confirm connections to a threshold of stake
+		// which is determined by the Warp Quorum configs of the destination blockchains.
+		maxQuorumNumerator, err := getMaxQuorumNumerator(logger, cfg, sourceBlockchain)
+		if err != nil {
+			return fmt.Errorf("failed to calculate max quorum numerator: %w", err)
+		}
+		log = log.With(zap.Uint64("maxQuorumNumerator", maxQuorumNumerator))
+
 		eg.Go(func() error {
-			logger.Info("Checking sufficient stake for source blockchain",
-				zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
-				zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
+			log.Info("Checking sufficient stake for source blockchain")
+			return checkSufficientConnectedStake(
+				ectx,
+				log,
+				vdrs,
+				maxQuorumNumerator,
 			)
-			return checkSufficientConnectedStake(ectx, logger, network, cfg, sourceBlockchain)
 		})
 	}
 	return eg.Wait()
+}
+
+func getMaxQuorumNumerator(
+	logger logging.Logger,
+	cfg *config.Config,
+	sourceBlockchain *config.SourceBlockchain,
+) (uint64, error) {
+	var maxQuorumNumerator uint64
+	for _, destination := range sourceBlockchain.SupportedDestinations {
+		destinationBlockchainID := destination.GetBlockchainID()
+		warpConfig, err := cfg.GetWarpConfig(destinationBlockchainID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get warp config for destination %s: %w", destinationBlockchainID, err)
+		}
+		maxQuorumNumerator = max(maxQuorumNumerator, warpConfig.QuorumNumerator)
+	}
+	return maxQuorumNumerator, nil
 }
 
 // Returns when connected to sufficient stake for all supported destinations of the source blockchain or
@@ -59,51 +99,15 @@ func InitializeConnectionsAndCheckStake(
 func checkSufficientConnectedStake(
 	ctx context.Context,
 	logger logging.Logger,
-	network peers.AppRequestNetwork,
-	cfg *config.Config,
-	sourceBlockchain *config.SourceBlockchain,
+	vdrs *peers.CanonicalValidators,
+	maxQuorumNumerator uint64,
 ) error {
-	subnetID := sourceBlockchain.GetSubnetID()
-	// Loop over destination blockchains here to confirm connections to a threshold of stake
-	// which is determined by the Warp Quorum configs of the destination blockchains.
-	var maxQuorumNumerator uint64
-
-	for _, destination := range sourceBlockchain.SupportedDestinations {
-		destinationBlockchainID := destination.GetBlockchainID()
-		warpConfig, err := cfg.GetWarpConfig(destinationBlockchainID)
-		logger.Debug("Fetched warp config for destination",
-			zap.Stringer("destinationBlockchainID", destinationBlockchainID),
-			zap.Any("warpConfig", warpConfig),
-			zap.Error(err),
-		)
-		if err != nil {
-			logger.Error(
-				"Failed to get warp config from chain config",
-				zap.Stringer("destinationBlockchainID", destinationBlockchainID),
-				zap.Error(err),
-			)
-			return err
-		}
-		maxQuorumNumerator = max(maxQuorumNumerator, warpConfig.QuorumNumerator)
-	}
-
 	checkConns := func() error {
-		vdrs, err := network.GetCanonicalValidators(ctx, subnetID, uint64(pchainapi.ProposedHeight))
-		if err != nil {
-			logger.Error(
-				"Failed to retrieve currently connected validators",
-				zap.Stringer("subnetID", subnetID),
-				zap.Error(err),
-			)
-			return err
-		}
-
 		// Log details of each connected validator (nodeID and weight).
 		for _, nodeID := range vdrs.ConnectedNodes.List() {
 			vdr, _ := vdrs.GetValidator(nodeID)
 			logger.Debug(
 				"Connected validator details",
-				zap.Stringer("subnetID", subnetID),
 				zap.Stringer("nodeID", nodeID),
 				zap.Uint64("weight", vdr.Weight),
 			)
@@ -114,25 +118,11 @@ func checkSufficientConnectedStake(
 			vdrs.ValidatorSet.TotalWeight,
 			maxQuorumNumerator,
 		) {
-			logger.Info(
-				"Failed to connect to a threshold of stake, retrying...",
-				zap.Stringer("subnetID", subnetID),
-				zap.Uint64("quorumNumerator", maxQuorumNumerator),
-				zap.Uint64("connectedWeight", vdrs.ConnectedWeight),
-				zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-				zap.Int("numConnectedPeers", vdrs.ConnectedNodes.Len()),
-			)
+			logger.Info("Failed to connect to a threshold of stake, retrying...")
 			return fmt.Errorf("failed to connect to sufficient stake")
 		}
 
-		logger.Info(
-			"Connected to sufficient stake",
-			zap.Stringer("subnetID", subnetID),
-			zap.Uint64("quorumNumerator", maxQuorumNumerator),
-			zap.Uint64("connectedWeight", vdrs.ConnectedWeight),
-			zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-			zap.Int("numConnectedPeers", vdrs.ConnectedNodes.Len()),
-		)
+		logger.Info("Connected to sufficient stake")
 		return nil
 	}
 
