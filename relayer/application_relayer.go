@@ -178,7 +178,6 @@ func (r *ApplicationRelayer) ProcessHeight(
 func (r *ApplicationRelayer) processMessage(
 	logger logging.Logger,
 	handler messages.MessageHandler,
-	skipCache bool,
 ) (common.Hash, error) {
 	logger.Info("Relaying message")
 	shouldSend, err := handler.ShouldSendMessage()
@@ -220,7 +219,6 @@ func (r *ApplicationRelayer) processMessage(
 			r.signingSubnetID,
 			r.warpConfig.QuorumNumerator,
 			quorumPercentageBuffer,
-			skipCache,
 			pchainHeight,
 		)
 		r.incFetchSignatureAppRequestCount()
@@ -266,7 +264,7 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 		var txHash common.Hash
 		startProcessMessageTime := time.Now()
 		// Skip the cache if this is not the first attempt
-		txHash, err = r.processMessage(logger, handler, i > 0)
+		txHash, err = r.processMessage(logger, handler)
 		if err == nil {
 			return txHash, nil
 		}

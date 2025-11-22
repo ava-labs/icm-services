@@ -133,14 +133,12 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			mockNetwork := avago_mocks.NewMockNetwork(ctrl)
 			mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
-			vdrsCache := cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL)
 			arNetwork := appRequestNetwork{
-				network:                    mockNetwork,
-				validatorClient:            mockValidatorClient,
-				metrics:                    metrics,
-				logger:                     logging.NoLog{},
-				canonicalValidatorSetCache: vdrsCache,
-				epochedValidatorSetCache:   cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
+				network:                  mockNetwork,
+				validatorClient:          mockValidatorClient,
+				metrics:                  metrics,
+				logger:                   logging.NoLog{},
+				epochedValidatorSetCache: cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
 			}
 			var totalWeight uint64
 			for _, vdr := range testCase.validators {
@@ -163,7 +161,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			}
 			mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfo).Times(1)
 
-			ret, err := arNetwork.GetCanonicalValidators(t.Context(), subnetID, false, uint64(pchainapi.ProposedHeight))
+			ret, err := arNetwork.GetCanonicalValidators(t.Context(), subnetID, uint64(pchainapi.ProposedHeight))
 			require.Equal(t, testCase.expectedConnectedWeight, ret.ConnectedWeight)
 			require.Equal(t, testCase.expectedTotalWeight, ret.ValidatorSet.TotalWeight)
 			require.NoError(t, err)

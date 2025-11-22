@@ -54,9 +54,6 @@ const (
 	// This value is defined in avalanchego peers package
 	// TODO: use the avalanchego constant when it is exported
 	maxNumSubnets = 16
-
-	// The amount of time to cache canonical validator sets
-	canonicalValidatorSetCacheTTL = 2 * time.Second
 )
 
 var _ AppRequestNetwork = (*appRequestNetwork)(nil)
@@ -70,7 +67,6 @@ type AppRequestNetwork interface {
 	GetCanonicalValidators(
 		ctx context.Context,
 		subnetID ids.ID,
-		skipCache bool,
 		pchainHeight uint64,
 	) (*CanonicalValidators, error)
 	GetAllValidatorSets(
@@ -119,9 +115,8 @@ type appRequestNetwork struct {
 	// Used by the signature aggregator to limit how far back in P-Chain history it will look
 	maxPChainLookback int64
 
-	manager                    snowVdrs.Manager
-	canonicalValidatorSetCache *cache.TTLCache[ids.ID, snowVdrs.WarpSet]
-	epochedValidatorSetCache   *cache.FIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet]
+	manager                  snowVdrs.Manager
+	epochedValidatorSetCache *cache.FIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet]
 
 	networkUpgradeConfig *upgrade.Config
 }
@@ -276,7 +271,6 @@ func NewNetwork(
 	for _, subnetID := range trackedSubnets.List() {
 		lruSubnets.Put(subnetID, nil)
 	}
-	vdrsCache := cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL)
 	epochedVdrsCache := cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](int(validatorSetsCacheSize))
 
 	localTrackedSubnets := set.NewSet[ids.ID](maxNumSubnets)
@@ -286,21 +280,20 @@ func NewNetwork(
 	}
 
 	arNetwork := &appRequestNetwork{
-		network:                    testNetwork,
-		handler:                    handler,
-		infoAPI:                    infoAPI,
-		logger:                     logger,
-		validatorSetLock:           new(sync.Mutex),
-		validatorClient:            validatorClient,
-		metrics:                    metrics,
-		trackedSubnets:             localTrackedSubnets,
-		trackedSubnetsLock:         trackedSubnetsLock,
-		manager:                    manager,
-		lruSubnets:                 lruSubnets,
-		canonicalValidatorSetCache: vdrsCache,
-		epochedValidatorSetCache:   epochedVdrsCache,
-		maxPChainLookback:          cfg.GetMaxPChainLookback(),
-		networkUpgradeConfig:       upgradeConfig,
+		network:                  testNetwork,
+		handler:                  handler,
+		infoAPI:                  infoAPI,
+		logger:                   logger,
+		validatorSetLock:         new(sync.Mutex),
+		validatorClient:          validatorClient,
+		metrics:                  metrics,
+		trackedSubnets:           localTrackedSubnets,
+		trackedSubnetsLock:       trackedSubnetsLock,
+		manager:                  manager,
+		lruSubnets:               lruSubnets,
+		epochedValidatorSetCache: epochedVdrsCache,
+		maxPChainLookback:        cfg.GetMaxPChainLookback(),
+		networkUpgradeConfig:     upgradeConfig,
 		// latestSyncedPChainHeight is initialized to 0 by default (atomic.Uint64 zero value)
 	}
 
@@ -620,7 +613,6 @@ func (n *appRequestNetwork) GetAllValidatorSets(
 func (n *appRequestNetwork) GetCanonicalValidators(
 	ctx context.Context,
 	subnetID ids.ID,
-	skipCache bool,
 	pchainHeight uint64,
 ) (*CanonicalValidators, error) {
 	n.logger.Debug("Getting validator set at P-Chain height",
@@ -633,17 +625,9 @@ func (n *appRequestNetwork) GetCanonicalValidators(
 	var err error
 
 	if pchainHeight == pchainapi.ProposedHeight {
-		// Get the subnet's current canonical validator set
-		fetchVdrsFunc := func(subnetID ids.ID) (snowVdrs.WarpSet, error) {
-			startPChainAPICall := time.Now()
-			validatorSet, err := n.validatorClient.GetProposedValidators(ctx, subnetID)
-			n.setPChainAPICallLatencyMS(time.Since(startPChainAPICall).Milliseconds())
-			if err != nil {
-				return snowVdrs.WarpSet{}, err
-			}
-			return validatorSet, nil
-		}
-		validatorSet, err = n.canonicalValidatorSetCache.Get(subnetID, fetchVdrsFunc, skipCache)
+		startPChainAPICall := time.Now()
+		validatorSet, err = n.validatorClient.GetProposedValidators(ctx, subnetID)
+		n.setPChainAPICallLatencyMS(time.Since(startPChainAPICall).Milliseconds())
 	} else {
 		validatorSet, err = n.getValidatorSetGranite(ctx, subnetID, pchainHeight)
 	}
