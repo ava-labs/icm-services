@@ -134,20 +134,6 @@ func (mr *MockAppRequestNetworkMockRecorder) GetSubnetID(ctx, blockchainID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnetID", reflect.TypeOf((*MockAppRequestNetwork)(nil).GetSubnetID), ctx, blockchainID)
 }
 
-// IsGraniteActivated mocks base method.
-func (m *MockAppRequestNetwork) IsGraniteActivated() bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsGraniteActivated")
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// IsGraniteActivated indicates an expected call of IsGraniteActivated.
-func (mr *MockAppRequestNetworkMockRecorder) IsGraniteActivated() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsGraniteActivated", reflect.TypeOf((*MockAppRequestNetwork)(nil).IsGraniteActivated))
-}
-
 // RegisterAppRequest mocks base method.
 func (m *MockAppRequestNetwork) RegisterAppRequest(requestID ids.RequestID) {
 	m.ctrl.T.Helper()

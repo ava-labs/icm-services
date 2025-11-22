@@ -107,7 +107,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	Expect(err).Should(BeNil())
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
-	fmt.Println("granite activated", e2eFlags.ActivateGranite())
 	localNetworkInstance = network.NewLocalNetwork(
 		networkStartCtx,
 		"icm-off-chain-services-e2e-test",
