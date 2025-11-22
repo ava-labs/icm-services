@@ -289,7 +289,6 @@ func main() {
 		os.Exit(1)
 	}
 	messageCoordinator := relayer.NewMessageCoordinator(
-		logger,
 		messageHandlerFactories,
 		applicationRelayers,
 		sourceClients,

@@ -74,12 +74,14 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 			SourceAddress:   address,
 			UnsignedMessage: unsignedMessage,
 		}
-		logger.Info(
-			"Processing manual warp message",
+		logger = logger.With(
 			zap.Stringer("sourceAddress", address),
 			zap.Stringer("messageID", unsignedMessage.ID()),
+			zap.Stringer("originTxID", warpMessageInfo.SourceTxID),
+			zap.Stringer("protocolAddress", warpMessageInfo.SourceAddress),
 		)
-		txHash, err := messageCoordinator.ProcessWarpMessage(warpMessageInfo)
+		logger.Info("Processing manual warp message")
+		txHash, err := messageCoordinator.ProcessWarpMessage(logger, warpMessageInfo)
 		if err != nil {
 			logger.Error("Error processing message", zap.Error(err))
 			http.Error(w, "error processing message: "+err.Error(), http.StatusInternalServerError)
@@ -127,7 +129,18 @@ func relayAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageC
 			return
 		}
 
-		txHash, err := messageCoordinator.ProcessMessageID(blockchainID, messageID, new(big.Int).SetUint64(req.BlockNum))
+		logger = logger.With(
+			zap.Stringer("blockchainID", blockchainID),
+			zap.Stringer("messageID", messageID),
+			zap.Uint64("blockNum", req.BlockNum),
+		)
+
+		txHash, err := messageCoordinator.ProcessMessageID(
+			logger,
+			blockchainID,
+			messageID,
+			new(big.Int).SetUint64(req.BlockNum),
+		)
 		if err != nil {
 			logger.Error("Error processing message", zap.Error(err))
 			http.Error(w, "error processing message: "+err.Error(), http.StatusInternalServerError)

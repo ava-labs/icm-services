@@ -172,6 +172,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			}
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
 			go lstnr.messageCoordinator.ProcessBlock(
+				lstnr.logger,
 				icmBlockInfo,
 				lstnr.sourceBlockchain.GetBlockchainID(),
 				errChan,
