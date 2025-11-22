@@ -356,7 +356,13 @@ func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) bool {
 func (n *appRequestNetwork) TrackSubnet(ctx context.Context, subnetID ids.ID) {
 	// Track the subnet. Update the validator set if we weren't already tracking it.
 	if !n.trackSubnet(subnetID) {
-		n.updateTrackedValidatorSet(ctx, subnetID)
+		err := n.updateTrackedValidatorSet(ctx, subnetID)
+		if err != nil {
+			n.logger.Warn("Failed to update tracked validator set for new subnet",
+				zap.Stringer("subnetID", subnetID),
+				zap.Error(err),
+			)
+		}
 	}
 }
 
@@ -447,10 +453,10 @@ func (n *appRequestNetwork) updateTrackedValidatorSets(ctx context.Context) {
 
 	// Update the validators for each tracked subnet for the most recent height
 	for _, subnetID := range subnets {
+		log := n.logger.With(zap.Stringer("subnetID", subnetID))
 		vdrs, ok := allValidators[subnetID]
 		if !ok {
-			n.logger.Warn("No validator set found for tracked subnet",
-				zap.Stringer("subnetID", subnetID),
+			log.Warn("No validator set found for tracked subnet",
 				zap.Uint64("pchainHeight", n.latestSyncedPChainHeight.Load()),
 			)
 			continue
@@ -458,10 +464,7 @@ func (n *appRequestNetwork) updateTrackedValidatorSets(ctx context.Context) {
 		// If we fail to get the validator sets for this subnet, log and continue to the next subnet
 		err := n.updatedTrackedValidators(subnetID, vdrs)
 		if err != nil {
-			n.logger.Error("Failed to update tracked validators",
-				zap.Stringer("subnetID", subnetID),
-				zap.Error(err),
-			)
+			log.Error("Failed to update tracked validators", zap.Error(err))
 		}
 	}
 }
@@ -750,9 +753,10 @@ func GetNetworkHealthFunc(
 		}
 
 		for _, subnetID := range subnetIDs {
+			log := logger.With(zap.Stringer("subnetID", subnetID))
 			vdrs, ok := allValidatorSets[subnetID]
 			if !ok {
-				logger.Error("No validators for subnet", zap.Stringer("subnetID", subnetID))
+				log.Error("No validators for subnet")
 				return fmt.Errorf("no validators for subnet %s", subnetID)
 			}
 			canonicalSet := network.BuildCanonicalValidators(vdrs)
@@ -762,8 +766,7 @@ func GetNetworkHealthFunc(
 				canonicalSet.ValidatorSet.TotalWeight,
 				warp.WarpDefaultQuorumNumerator,
 			) {
-				logger.Error("Not enough connected stake for subnet",
-					zap.Stringer("subnetID", subnetID),
+				log.Error("Not enough connected stake for subnet",
 					zap.Uint64("connectedWeight", canonicalSet.ConnectedWeight),
 					zap.Uint64("totalWeight", canonicalSet.ValidatorSet.TotalWeight),
 				)

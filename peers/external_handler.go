@@ -5,6 +5,7 @@ package peers
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -58,11 +59,7 @@ func NewRelayerExternalHandler(
 
 	timeoutManager, err := timer.NewAdaptiveTimeoutManager(&cfg, timeoutManagerRegistry)
 	if err != nil {
-		logger.Error(
-			"Failed to create timeout manager",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to create timeout manager: %w", err)
 	}
 
 	go timeoutManager.Dispatch()
@@ -115,10 +112,7 @@ func (h *RelayerExternalHandler) Connected(nodeID ids.NodeID, version *version.A
 }
 
 func (h *RelayerExternalHandler) Disconnected(nodeID ids.NodeID) {
-	h.log.Debug(
-		"Disconnected",
-		zap.Stringer("nodeID", nodeID),
-	)
+	h.log.Debug("Disconnected", zap.Stringer("nodeID", nodeID))
 	h.metrics.disconnects.Inc()
 }
 

@@ -38,11 +38,11 @@ func NewCheckpointManager(
 	relayerID database.RelayerID,
 	startingHeight uint64,
 ) (*CheckpointManager, error) {
+	logger = logger.With(zap.Stringer("relayerID", relayerID.ID))
 	h := &utils.UInt64Heap{}
 	heap.Init(h)
 	logger.Info(
 		"Creating checkpoint manager",
-		zap.Stringer("relayerID", relayerID.ID),
 		zap.Uint64("startingHeight", startingHeight),
 	)
 
@@ -83,22 +83,14 @@ func (cm *CheckpointManager) writeToDatabase() {
 		return
 	}
 
-	cm.logger.Verbo(
-		"Writing height",
-		zap.Uint64("height", cm.committedHeight),
-		zap.Stringer("relayerID", cm.relayerID.ID),
-	)
+	cm.logger.Verbo("Writing height", zap.Uint64("height", cm.committedHeight))
 	err := cm.database.Put(
 		cm.relayerID.ID,
 		database.LatestProcessedBlockKey,
 		[]byte(strconv.FormatUint(cm.committedHeight, 10)),
 	)
 	if err != nil {
-		cm.logger.Error(
-			"Failed to write latest processed block height",
-			zap.Error(err),
-			zap.Stringer("relayerID", cm.relayerID.ID),
-		)
+		cm.logger.Error("Failed to write latest processed block height", zap.Error(err))
 		return
 	}
 
@@ -125,7 +117,6 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 			"Attempting to commit height less than or equal to the committed height. Skipping.",
 			zap.Uint64("height", height),
 			zap.Uint64("committedHeight", cm.committedHeight),
-			zap.Stringer("relayerID", cm.relayerID.ID),
 		)
 		return
 	}
@@ -137,16 +128,11 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 		"Pending committed heights",
 		zap.Any("maxPendingHeight", height),
 		zap.Uint64("maxCommittedHeight", cm.committedHeight),
-		zap.Stringer("relayerID", cm.relayerID.ID),
 	)
 
 	for cm.pendingCommits.Peek() == cm.committedHeight+1 {
 		h := heap.Pop(cm.pendingCommits).(uint64)
-		cm.logger.Verbo(
-			"Committing height",
-			zap.Uint64("height", height),
-			zap.Stringer("relayerID", cm.relayerID.ID),
-		)
+		cm.logger.Verbo("Committing height", zap.Uint64("height", height))
 		cm.committedHeight = h
 		cm.dirty = true
 		if cm.pendingCommits.Len() == 0 {
