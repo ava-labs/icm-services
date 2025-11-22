@@ -476,15 +476,19 @@ func (s *concurrentSigner) waitForReceipt(
 		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
 		return err
 	}
-	err := utils.WithRetriesTimeout(s.logger, operation, s.destinationClient.txInclusionTimeout, "waitForReceipt")
-	if err != nil {
-		s.logger.Error(
-			"Failed to get transaction receipt",
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"waiting for receipt failed, retrying...",
+			zap.Duration("retryIn", duration),
 			zap.Error(err),
 		)
+	}
+
+	err := utils.WithRetriesTimeout(operation, notify, s.destinationClient.txInclusionTimeout)
+	if err != nil {
 		resultChan <- txResult{
 			receipt: nil,
-			err:     err,
+			err:     fmt.Errorf("failed to get transaction receipt: %w", err),
 		}
 		return
 	}
