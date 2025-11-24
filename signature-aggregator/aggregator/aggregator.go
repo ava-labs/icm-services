@@ -30,6 +30,7 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/cache"
 	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/cenkalti/backoff/v4"
@@ -68,7 +69,7 @@ type SignatureAggregator struct {
 	currentRequestID       atomic.Uint32
 	metrics                *metrics.SignatureAggregatorMetrics
 	signatureCache         *SignatureCache
-	pChainClient           peers.PChainClient
+	pChainClient           clients.PChainClient
 	pChainClientOptions    []rpc.Option
 	underfundedL1NodeCache *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 
@@ -84,7 +85,7 @@ func NewSignatureAggregator(
 	messageCreator message.Creator,
 	signatureCacheSize uint64,
 	metrics *metrics.SignatureAggregatorMetrics,
-	pChainClient peers.PChainClient,
+	pChainClient clients.PChainClient,
 	pChainClientOptions []rpc.Option,
 ) (*SignatureAggregator, error) {
 	signatureCache, err := NewSignatureCache(signatureCacheSize)
