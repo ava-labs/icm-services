@@ -134,7 +134,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			mockNetwork := avago_mocks.NewMockNetwork(ctrl)
 			mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
 			vdrsCache := cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL)
-			arNetwork := appRequestNetwork{
+			arNetwork := AppRequestNetwork{
 				network:                    mockNetwork,
 				validatorClient:            mockValidatorClient,
 				metrics:                    metrics,
@@ -175,7 +175,7 @@ func TestTrackSubnets(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockNetwork := avago_mocks.NewMockNetwork(ctrl)
 	mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
-	arNetwork := appRequestNetwork{
+	arNetwork := AppRequestNetwork{
 		network:            mockNetwork,
 		logger:             logging.NoLog{},
 		validatorClient:    mockValidatorClient,
@@ -293,7 +293,7 @@ func TestGetLatestSyncedPChainHeight(t *testing.T) {
 		},
 	}
 
-	arNetwork := appRequestNetwork{
+	arNetwork := AppRequestNetwork{
 		network:                  mockNetwork,
 		validatorClient:          mockValidatorClient,
 		metrics:                  metrics,
@@ -321,7 +321,7 @@ func TestConcurrentGetAllValidatorSetsUpdatesLatestSyncedHeight(t *testing.T) {
 	mockNetwork := avago_mocks.NewMockNetwork(ctrl)
 	mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
 
-	arNetwork := appRequestNetwork{
+	arNetwork := AppRequestNetwork{
 		network:                  mockNetwork,
 		validatorClient:          mockValidatorClient,
 		metrics:                  metrics,

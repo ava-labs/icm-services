@@ -90,7 +90,7 @@ func (mr *MockDestinationClientMockRecorder) DestinationBlockchainID() *gomock.C
 }
 
 // GetPChainHeightForDestination mocks base method.
-func (m *MockDestinationClient) GetPChainHeightForDestination(ctx context.Context, network peers.AppRequestNetwork) (uint64, error) {
+func (m *MockDestinationClient) GetPChainHeightForDestination(ctx context.Context, network *peers.AppRequestNetwork) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPChainHeightForDestination", ctx, network)
 	ret0, _ := ret[0].(uint64)

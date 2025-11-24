@@ -1,7 +1,6 @@
 // Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-//go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=./mocks/mock_app_request_network.go -package=mocks
 //go:generate go run go.uber.org/mock/mockgen -destination=./avago_mocks/mock_network.go -package=avago_mocks github.com/ava-labs/avalanchego/network Network
 
 package peers
@@ -40,8 +39,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ava-labs/icm-services/cache"
-	"github.com/ava-labs/icm-services/peers/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
+	"github.com/ava-labs/icm-services/peers/utils"
 	sharedUtils "github.com/ava-labs/icm-services/utils"
 )
 
@@ -59,46 +58,12 @@ const (
 	canonicalValidatorSetCacheTTL = 2 * time.Second
 )
 
-var _ AppRequestNetwork = (*appRequestNetwork)(nil)
-
 var (
 	ErrNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
 	errTrackingTooManySubnets  = fmt.Errorf("cannot track more than %d subnets", maxNumSubnets)
 )
 
-type AppRequestNetwork interface {
-	GetCanonicalValidators(
-		ctx context.Context,
-		subnetID ids.ID,
-		skipCache bool,
-		pchainHeight uint64,
-	) (*CanonicalValidators, error)
-	GetAllValidatorSets(
-		ctx context.Context,
-		pchainHeight uint64,
-	) (map[ids.ID]snowVdrs.WarpSet, error)
-	GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error)
-	RegisterAppRequest(requestID ids.RequestID)
-	RegisterRequestID(
-		requestID uint32,
-		requestedNodes set.Set[ids.NodeID],
-	) chan message.InboundMessage
-	Send(
-		msg message.OutboundMessage,
-		nodeIDs set.Set[ids.NodeID],
-		subnetID ids.ID,
-		allower subnets.Allower,
-	) set.Set[ids.NodeID]
-	Shutdown()
-	TrackSubnet(ctx context.Context, subnetID ids.ID)
-	StartCacheValidatorSets(ctx context.Context)
-	BuildCanonicalValidators(validatorSet snowVdrs.WarpSet) *CanonicalValidators
-	IsGraniteActivated() bool
-	GetLatestSyncedPChainHeight() uint64
-	GetGraniteEpochDuration() time.Duration
-}
-
-type appRequestNetwork struct {
+type AppRequestNetwork struct {
 	network          network.Network
 	handler          *RelayerExternalHandler
 	infoAPI          *clients.InfoAPI
@@ -137,7 +102,7 @@ func NewNetwork(
 	manuallyTrackedPeers []info.Peer,
 	cfg Config,
 	validatorSetsCacheSize uint64,
-) (AppRequestNetwork, error) {
+) (*AppRequestNetwork, error) {
 	metrics := newAppRequestNetworkMetrics(relayerRegistry)
 
 	// Create the handler for handling inbound app responses
@@ -285,7 +250,7 @@ func NewNetwork(
 		localTrackedSubnets.Add(subnetID)
 	}
 
-	arNetwork := &appRequestNetwork{
+	arNetwork := &AppRequestNetwork{
 		network:                    testNetwork,
 		handler:                    handler,
 		infoAPI:                    infoAPI,
@@ -309,18 +274,18 @@ func NewNetwork(
 	return arNetwork, nil
 }
 
-func (n *appRequestNetwork) IsGraniteActivated() bool {
+func (n *AppRequestNetwork) IsGraniteActivated() bool {
 	return n.networkUpgradeConfig.IsGraniteActivated(time.Now())
 }
 
 // GetLatestSyncedPChainHeight returns the highest P-Chain height that has been successfully cached.
-func (n *appRequestNetwork) GetLatestSyncedPChainHeight() uint64 {
+func (n *AppRequestNetwork) GetLatestSyncedPChainHeight() uint64 {
 	return n.latestSyncedPChainHeight.Load()
 }
 
 // GetGraniteEpochDuration returns the Granite epoch duration from the network upgrade config.
 // Returns 0 if Granite is not activated or epoch duration is not configured.
-func (n *appRequestNetwork) GetGraniteEpochDuration() time.Duration {
+func (n *AppRequestNetwork) GetGraniteEpochDuration() time.Duration {
 	if n.networkUpgradeConfig == nil {
 		return 0
 	}
@@ -328,7 +293,7 @@ func (n *appRequestNetwork) GetGraniteEpochDuration() time.Duration {
 }
 
 // trackSubnet adds the subnetID to the set of tracked subnets. Returns true iff the subnet was already being tracked.
-func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) bool {
+func (n *AppRequestNetwork) trackSubnet(subnetID ids.ID) bool {
 	n.trackedSubnetsLock.Lock()
 	defer n.trackedSubnetsLock.Unlock()
 	if n.trackedSubnets.Contains(subnetID) {
@@ -353,14 +318,14 @@ func (n *appRequestNetwork) trackSubnet(subnetID ids.ID) bool {
 
 // TrackSubnet adds the subnet to the list of tracked subnets
 // and initiates the connections to the subnet's validators asynchronously
-func (n *appRequestNetwork) TrackSubnet(ctx context.Context, subnetID ids.ID) {
+func (n *AppRequestNetwork) TrackSubnet(ctx context.Context, subnetID ids.ID) {
 	// Track the subnet. Update the validator set if we weren't already tracking it.
 	if !n.trackSubnet(subnetID) {
 		n.updateTrackedValidatorSet(ctx, subnetID)
 	}
 }
 
-func (n *appRequestNetwork) startUpdateTrackedValidators(ctx context.Context) {
+func (n *AppRequestNetwork) startUpdateTrackedValidators(ctx context.Context) {
 	// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
 	ticker := time.NewTicker(ValidatorRefreshPeriod)
 	n.updateTrackedValidatorSets(ctx)
@@ -376,7 +341,7 @@ func (n *appRequestNetwork) startUpdateTrackedValidators(ctx context.Context) {
 	}
 }
 
-func (n *appRequestNetwork) StartCacheValidatorSets(ctx context.Context) {
+func (n *AppRequestNetwork) StartCacheValidatorSets(ctx context.Context) {
 	// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
 	ticker := time.NewTicker(ValidatorPreFetchPeriod)
 	n.cacheMostRecentValidatorSets(ctx)
@@ -392,7 +357,7 @@ func (n *appRequestNetwork) StartCacheValidatorSets(ctx context.Context) {
 	}
 }
 
-func (n *appRequestNetwork) cacheMostRecentValidatorSets(ctx context.Context) {
+func (n *AppRequestNetwork) cacheMostRecentValidatorSets(ctx context.Context) {
 	latestPChainHeight, err := n.validatorClient.GetLatestHeight(ctx)
 	if err != nil {
 		// This is not a critical error, just log and return
@@ -424,7 +389,7 @@ func (n *appRequestNetwork) cacheMostRecentValidatorSets(ctx context.Context) {
 	}
 }
 
-func (n *appRequestNetwork) updateTrackedValidatorSets(ctx context.Context) {
+func (n *AppRequestNetwork) updateTrackedValidatorSets(ctx context.Context) {
 	cctx, cancel := context.WithTimeout(ctx, sharedUtils.DefaultRPCTimeout)
 	defer cancel()
 	latestPChainHeight, err := n.validatorClient.GetLatestHeight(cctx)
@@ -467,7 +432,7 @@ func (n *appRequestNetwork) updateTrackedValidatorSets(ctx context.Context) {
 }
 
 // Update the tracked validators for a single subnet. This is used when tracking a new subnet for the first time.
-func (n *appRequestNetwork) updateTrackedValidatorSet(
+func (n *AppRequestNetwork) updateTrackedValidatorSet(
 	ctx context.Context,
 	subnetID ids.ID,
 ) error {
@@ -481,7 +446,7 @@ func (n *appRequestNetwork) updateTrackedValidatorSet(
 	return n.updatedTrackedValidators(subnetID, vdrs)
 }
 
-func (n *appRequestNetwork) updatedTrackedValidators(
+func (n *AppRequestNetwork) updatedTrackedValidators(
 	subnetID ids.ID,
 	vdrs snowVdrs.WarpSet,
 ) error {
@@ -528,7 +493,7 @@ func (n *appRequestNetwork) updatedTrackedValidators(
 	return nil
 }
 
-func (n *appRequestNetwork) Shutdown() {
+func (n *AppRequestNetwork) Shutdown() {
 	n.network.StartClose()
 }
 
@@ -549,7 +514,7 @@ func (c *CanonicalValidators) GetValidator(nodeID ids.NodeID) (*snowVdrs.Warp, i
 	return c.ValidatorSet.Validators[c.NodeValidatorIndexMap[nodeID]], c.NodeValidatorIndexMap[nodeID]
 }
 
-func (n *appRequestNetwork) getValidatorSetGranite(
+func (n *AppRequestNetwork) getValidatorSetGranite(
 	ctx context.Context,
 	subnetID ids.ID,
 	pchainHeight uint64,
@@ -566,7 +531,7 @@ func (n *appRequestNetwork) getValidatorSetGranite(
 	return validatorSet, nil
 }
 
-func (n *appRequestNetwork) GetAllValidatorSets(
+func (n *AppRequestNetwork) GetAllValidatorSets(
 	ctx context.Context,
 	pchainHeight uint64,
 ) (map[ids.ID]snowVdrs.WarpSet, error) {
@@ -617,7 +582,7 @@ func (n *appRequestNetwork) GetAllValidatorSets(
 // GetCanonicalValidators returns the validator information in canonical ordering for the given subnet
 // at the specified P-Chain height, as well as the total weight of the validators that this network is connected to
 // The caller determines the appropriate P-Chain height (ProposedHeight for current, specific height for epoched)
-func (n *appRequestNetwork) GetCanonicalValidators(
+func (n *AppRequestNetwork) GetCanonicalValidators(
 	ctx context.Context,
 	subnetID ids.ID,
 	skipCache bool,
@@ -655,7 +620,7 @@ func (n *appRequestNetwork) GetCanonicalValidators(
 }
 
 // BuildCanonicalValidators builds the CanonicalValidators struct from a validator set
-func (n *appRequestNetwork) BuildCanonicalValidators(
+func (n *AppRequestNetwork) BuildCanonicalValidators(
 	validatorSet snowVdrs.WarpSet,
 ) *CanonicalValidators {
 	// We make queries to node IDs, not unique validators as represented by a BLS pubkey, so we need this map to track
@@ -693,7 +658,7 @@ func (n *appRequestNetwork) BuildCanonicalValidators(
 	}
 }
 
-func (n *appRequestNetwork) Send(
+func (n *AppRequestNetwork) Send(
 	msg message.OutboundMessage,
 	nodeIDs set.Set[ids.NodeID],
 	subnetID ids.ID,
@@ -702,18 +667,18 @@ func (n *appRequestNetwork) Send(
 	return n.network.Send(msg, common.SendConfig{NodeIDs: nodeIDs}, subnetID, allower)
 }
 
-func (n *appRequestNetwork) RegisterAppRequest(requestID ids.RequestID) {
+func (n *AppRequestNetwork) RegisterAppRequest(requestID ids.RequestID) {
 	n.handler.RegisterAppRequest(requestID)
 }
 
-func (n *appRequestNetwork) RegisterRequestID(
+func (n *AppRequestNetwork) RegisterRequestID(
 	requestID uint32,
 	requestedNodes set.Set[ids.NodeID],
 ) chan message.InboundMessage {
 	return n.handler.RegisterRequestID(requestID, requestedNodes)
 }
 
-func (n *appRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
+func (n *AppRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
 	return n.validatorClient.GetSubnetID(ctx, blockchainID)
 }
 
@@ -721,7 +686,7 @@ func (n *appRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID
 // Metrics
 //
 
-func (n *appRequestNetwork) setPChainAPICallLatencyMS(latency int64) {
+func (n *AppRequestNetwork) setPChainAPICallLatencyMS(latency int64) {
 	n.metrics.pChainAPICallLatencyMS.Observe(float64(latency))
 }
 
@@ -729,7 +694,7 @@ func (n *appRequestNetwork) setPChainAPICallLatencyMS(latency int64) {
 
 func GetNetworkHealthFunc(
 	logger logging.Logger,
-	network AppRequestNetwork,
+	network *AppRequestNetwork,
 	subnetIDs []ids.ID,
 ) func(context.Context) error {
 	return func(ctx context.Context) error {
