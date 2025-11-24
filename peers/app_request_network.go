@@ -40,8 +40,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ava-labs/icm-services/cache"
-	"github.com/ava-labs/icm-services/peers/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
+	"github.com/ava-labs/icm-services/peers/utils"
 	sharedUtils "github.com/ava-labs/icm-services/utils"
 )
 
