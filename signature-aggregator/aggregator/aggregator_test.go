@@ -22,6 +22,7 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers"
+	client_mocks "github.com/ava-labs/icm-services/peers/clients/mocks"
 	"github.com/ava-labs/icm-services/peers/mocks"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -42,7 +43,7 @@ const (
 func instantiateAggregator(t *testing.T) (
 	*SignatureAggregator,
 	*mocks.MockAppRequestNetwork,
-	*mocks.MockPChainClient,
+	*client_mocks.MockPChainClient,
 ) {
 	mockController := gomock.NewController(t)
 	mockNetwork := mocks.NewMockAppRequestNetwork(mockController)
@@ -58,7 +59,7 @@ func instantiateAggregator(t *testing.T) (
 		)
 		require.NoError(t, err)
 	}
-	mockPClient := mocks.NewMockPChainClient(mockController)
+	mockPClient := client_mocks.NewMockPChainClient(mockController)
 	aggregator, err := NewSignatureAggregator(
 		mockNetwork,
 		messageCreator,

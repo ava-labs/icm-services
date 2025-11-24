@@ -22,6 +22,7 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
@@ -71,7 +72,7 @@ type destinationClient struct {
 	epochValue        block.Epoch
 	epochExpiration   time.Time
 	epochSingleFlight singleflight.Group
-	proposerClient    *peers.ProposerVMAPI
+	proposerClient    *clients.ProposerVMAPI
 }
 
 // Type alias for the destinationClient to have access to the fields but not the methods of the concurrentSigner.
@@ -202,7 +203,7 @@ func NewDestinationClient(
 
 	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
 	blockchainID := destinationBlockchain.BlockchainID
-	proposerClient := peers.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
+	proposerClient := clients.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
 
 	destClient = destinationClient{
 		client:                     client,
