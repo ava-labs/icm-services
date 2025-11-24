@@ -18,7 +18,7 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/cache"
 	"github.com/ava-labs/icm-services/peers/avago_mocks"
-	validator_mocks "github.com/ava-labs/icm-services/peers/validators/mocks"
+	validator_mocks "github.com/ava-labs/icm-services/peers/clients/mocks"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

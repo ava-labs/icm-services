@@ -26,7 +26,7 @@ import (
 	"github.com/ava-labs/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/peers/validators"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	testUtils "github.com/ava-labs/icm-services/tests/utils"
 	. "github.com/onsi/gomega"
@@ -279,7 +279,7 @@ func getUnderfundedNodeIndexes(
 
 	// Get the canonical validator set to find the underfunded nodes index
 	underfundedNodesIndex := set.NewSet[int](0)
-	validatorClient := validators.NewCanonicalValidatorClient(&config.APIConfig{
+	validatorClient := clients.NewCanonicalValidatorClient(&config.APIConfig{
 		BaseURL: primaryNetworkURI,
 	})
 	canonicalSet, err := validatorClient.GetProposedValidators(ctx, subnetID)

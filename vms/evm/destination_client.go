@@ -22,6 +22,7 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
@@ -71,7 +72,7 @@ type destinationClient struct {
 	epochValue        block.Epoch
 	epochExpiration   time.Time
 	epochSingleFlight singleflight.Group
-	proposerClient    *peers.ProposerVMAPI
+	proposerClient    *clients.ProposerVMAPI
 }
 
 // Type alias for the destinationClient to have access to the fields but not the methods of the concurrentSigner.
@@ -202,7 +203,7 @@ func NewDestinationClient(
 
 	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
 	blockchainID := destinationBlockchain.BlockchainID
-	proposerClient := peers.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
+	proposerClient := clients.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
 
 	destClient = destinationClient{
 		client:                     client,
@@ -476,15 +477,19 @@ func (s *concurrentSigner) waitForReceipt(
 		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
 		return err
 	}
-	err := utils.WithRetriesTimeout(s.logger, operation, s.destinationClient.txInclusionTimeout, "waitForReceipt")
-	if err != nil {
-		s.logger.Error(
-			"Failed to get transaction receipt",
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"waiting for receipt failed, retrying...",
+			zap.Duration("retryIn", duration),
 			zap.Error(err),
 		)
+	}
+
+	err := utils.WithRetriesTimeout(operation, notify, s.destinationClient.txInclusionTimeout)
+	if err != nil {
 		resultChan <- txResult{
 			receipt: nil,
-			err:     err,
+			err:     fmt.Errorf("failed to get transaction receipt: %w", err),
 		}
 		return
 	}

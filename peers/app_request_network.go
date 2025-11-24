@@ -40,8 +40,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ava-labs/icm-services/cache"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/peers/utils"
-	"github.com/ava-labs/icm-services/peers/validators"
 	sharedUtils "github.com/ava-labs/icm-services/utils"
 )
 
@@ -100,10 +100,10 @@ type AppRequestNetwork interface {
 type appRequestNetwork struct {
 	network          network.Network
 	handler          *RelayerExternalHandler
-	infoAPI          *InfoAPI
+	infoAPI          *clients.InfoAPI
 	logger           logging.Logger
 	validatorSetLock *sync.Mutex
-	validatorClient  validators.CanonicalValidatorState
+	validatorClient  clients.CanonicalValidatorState
 	metrics          *AppRequestNetworkMetrics
 
 	// The set of subnetIDs to track. Shared with the underlying Network object, so access
@@ -145,7 +145,7 @@ func NewNetwork(
 		return nil, fmt.Errorf("failed to create p2p network handler: %w", err)
 	}
 
-	infoAPI, err := NewInfoAPI(cfg.GetInfoAPI())
+	infoAPI, err := clients.NewInfoAPI(cfg.GetInfoAPI())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create info API: %w", err)
 	}
@@ -159,7 +159,7 @@ func NewNetwork(
 		return nil, fmt.Errorf("failed to get upgrades: %w", err)
 	}
 
-	validatorClient := validators.NewCanonicalValidatorClient(cfg.GetPChainAPI())
+	validatorClient := clients.NewCanonicalValidatorClient(cfg.GetPChainAPI())
 	manager := snowVdrs.NewManager()
 
 	// Primary network must not be explicitly tracked so removing it prior to creating TestNetworkConfig
@@ -483,7 +483,7 @@ func (n *appRequestNetwork) updatedTrackedValidators(
 	n.validatorSetLock.Lock()
 	defer n.validatorSetLock.Unlock()
 
-	nodeIDs := validators.NodeIDs(vdrs)
+	nodeIDs := clients.NodeIDs(vdrs)
 
 	// Remove any elements from the manager that are not in the new validator set
 	currentVdrs := n.manager.GetValidatorIDs(subnetID)
