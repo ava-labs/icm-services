@@ -1,6 +1,6 @@
-# Teleporter CLI
+# ICM Contracts CLI
 
-This directory contains the source code for the Teleporter CLI. The CLI is a command line interface for interacting with the Teleporter contracts. It is written with [cobra](https://github.com/spf13/cobra) commands as a Go application.
+This directory contains the source code for the ICM Contracts CLI. The CLI is a command line interface for interacting with the ICM contracts. It is written with [cobra](https://github.com/spf13/cobra) commands as a Go application.
 
 ## Build
 
@@ -12,6 +12,6 @@ The CLI has a number of subcommands. To see the list of subcommands, run `./tele
 
 The supported subcommands include:
 
-- `event`: given a log event's topics and data, attempts to decode into a Teleporter event in a more readable format.
-- `message`: given a Teleporter message encoded as a hex string, attempts to decode into a Teleporter message in a more readable format.
+- `event`: given a log event's topics and data, attempts to decode into an ICM event in a more readable format.
+- `message`: given a ICM message encoded as a hex string, attempts to decode into a ICM message in a more readable format.
 - `transaction`: given a transaction hash, attempts to decode all relevant TeleporterMessenger and ICM log events in a more readable format.

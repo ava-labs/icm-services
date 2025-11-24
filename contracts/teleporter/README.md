@@ -83,7 +83,7 @@ Note that due to [EIP-150](https://eips.ethereum.org/EIPS/eip-150), the lesser o
 
 If the sending Avalanche L1's validator set changes, then it's possible for the receiving Avalanche L1 to reject the underlying ICM message due to insufficient signing stake. For example, suppose L1 A has 5 validators with equal stake weight who all sign a `TeleporterMessenger` message sent to L1 B. 100% of L1 A's stake has signed the message. Also suppose L1 B requires 67% of the sending L1's stake to have signed a given ICM message in order for it to be accepted. Before the message can be delivered, however, 5 _more_ validators are added to L1 A's validator set (all with the same stake weight as the original validators), meaning that the `TeleporterMessenger` message was signed by _only 50%_ of L1 A's stake. L1 B will reject this message.
 
-Once sent on chain, ICM messages cannot be re-signed by a new validator set in such a scenario. Teleporter, however, does support re-signing via the function `retrySendCrossChainMessage`, which can be called for any message that has not been acknowledged as delivered to its destination. Under the hood, this packages the `TeleporterMessenger` message into a brand new ICM message that is re-signed by the current validator set. 
+Once sent on chain, ICM messages cannot be re-signed by a new validator set in such a scenario. ICM Contracts, however, do support re-signing via the function `retrySendCrossChainMessage`, which can be called for any message that has not been acknowledged as delivered to its destination. Under the hood, this packages the `TeleporterMessenger` message into a brand new ICM message that is re-signed by the current validator set. 
 
 ## TeleporterMessenger Contract Deployment
 
@@ -151,7 +151,7 @@ Options:
 
 - `--private-key <private_key>` Funds the deployer address with the account held by `<private_key>`
 
-To ensure that `TeleporterMessenger` can be deployed to the same address on every EVM based chain, it uses [Nick's Method](https://yamenmerhi.medium.com/nicks-method-ethereum-keyless-execution-168a6659479c) to deploy from a static deployer address. Teleporter costs exactly `10eth` in the Avalanche L1's native gas token to deploy, which must be sent to the deployer address.
+To ensure that `TeleporterMessenger` can be deployed to the same address on every EVM based chain, it uses [Nick's Method](https://yamenmerhi.medium.com/nicks-method-ethereum-keyless-execution-168a6659479c) to deploy from a static deployer address. ICM Contracts costs exactly `10eth` in the Avalanche L1's native gas token to deploy, which must be sent to the deployer address.
 
 `deploy_teleporter.sh` will send the necessary native tokens to the deployer address if it is provided with a private key for an account with sufficient funds. Alternatively, the deployer address can be funded externally. The deployer address for each version can be found by looking up the appropriate version at https://github.com/ava-labs/icm-contracts/releases and downloading `TeleporterMessenger_Deployer_Address_<VERSION>.txt`.
 
