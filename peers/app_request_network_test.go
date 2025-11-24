@@ -136,7 +136,6 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 
 			// Create ValidatorManager
 			validatorManager := ValidatorManager{
-				network:                    mockNetwork,
 				validatorClient:            mockValidatorClient,
 				metrics:                    metrics,
 				logger:                     logging.NoLog{},
