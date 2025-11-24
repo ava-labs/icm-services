@@ -93,7 +93,6 @@ type AppRequestNetwork interface {
 	TrackSubnet(ctx context.Context, subnetID ids.ID)
 	StartCacheValidatorSets(ctx context.Context)
 	BuildCanonicalValidators(validatorSet snowVdrs.WarpSet) *CanonicalValidators
-	IsGraniteActivated() bool
 	GetLatestSyncedPChainHeight() uint64
 	GetGraniteEpochDuration() time.Duration
 }
@@ -307,10 +306,6 @@ func NewNetwork(
 	go arNetwork.startUpdateTrackedValidators(ctx)
 
 	return arNetwork, nil
-}
-
-func (n *appRequestNetwork) IsGraniteActivated() bool {
-	return n.networkUpgradeConfig.IsGraniteActivated(time.Now())
 }
 
 // GetLatestSyncedPChainHeight returns the highest P-Chain height that has been successfully cached.

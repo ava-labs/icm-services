@@ -52,7 +52,6 @@ type DestinationClient interface {
 	GetRPCEndpointURL() string
 
 	// GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
-	// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated.
 	// The epoch is cached per destination blockchain to avoid per-message fetches.
 	GetPChainHeightForDestination(
 		ctx context.Context,

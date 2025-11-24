@@ -240,7 +240,7 @@ func (r *ApplicationRelayer) processMessage(
 	// create signed message latency (ms)
 	r.setCreateSignedMessageLatencyMS(float64(time.Since(startCreateSignedMessageTime).Milliseconds()))
 
-	txHash, err := handler.SendMessage(signedMessage, r.network.IsGraniteActivated())
+	txHash, err := handler.SendMessage(signedMessage)
 	if err != nil {
 		r.incFailedRelayMessageCount("failed to send warp message")
 		return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)
