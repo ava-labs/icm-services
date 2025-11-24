@@ -64,6 +64,7 @@ type ApplicationRelayer struct {
 	sourceWarpSignatureClient *rpc.Client // nil if configured to fetch signatures via AppRequest
 	signatureAggregator       *aggregator.SignatureAggregator
 	processMessageSemaphore   chan struct{}
+	networkInfo               *peers.NetworkInfo
 }
 
 func NewApplicationRelayer(
@@ -118,6 +119,11 @@ func NewApplicationRelayer(
 		}
 	}
 
+	networkInfo, err := peers.NewNetworkInfo(context.Background(), cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create network info: %w", err)
+	}
+
 	ar := ApplicationRelayer{
 		logger:                    logger,
 		metrics:                   metrics,
@@ -131,6 +137,7 @@ func NewApplicationRelayer(
 		sourceWarpSignatureClient: warpClient,
 		signatureAggregator:       signatureAggregator,
 		processMessageSemaphore:   processMessageSemaphore,
+		networkInfo:               networkInfo,
 	}
 
 	return &ar, nil
@@ -206,7 +213,7 @@ func (r *ApplicationRelayer) processMessage(
 			defaultQuorumPercentageBuffer,
 		)
 		// Determine the appropriate P-Chain height for validator set selection
-		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx, r.network)
+		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx, r.networkInfo)
 		if err != nil {
 			r.incFailedRelayMessageCount("failed to determine P-Chain height")
 			return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)
@@ -240,7 +247,7 @@ func (r *ApplicationRelayer) processMessage(
 	// create signed message latency (ms)
 	r.setCreateSignedMessageLatencyMS(float64(time.Since(startCreateSignedMessageTime).Milliseconds()))
 
-	txHash, err := handler.SendMessage(signedMessage, r.network.IsGraniteActivated())
+	txHash, err := handler.SendMessage(signedMessage, r.networkInfo.IsGraniteActivated())
 	if err != nil {
 		r.incFailedRelayMessageCount("failed to send warp message")
 		return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)

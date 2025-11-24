@@ -532,9 +532,9 @@ func (c *destinationClient) GetRPCEndpointURL() string {
 // The epoch is cached per destination blockchain to avoid per-message fetches.
 func (c *destinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
-	network *peers.AppRequestNetwork,
+	networkInfo *peers.NetworkInfo,
 ) (uint64, error) {
-	if !network.IsGraniteActivated() {
+	if !networkInfo.IsGraniteActivated() {
 		c.logger.Debug("Granite is not activated, using ProposedHeight")
 		// Get the proposed height from the ProposerVM API to be able to cache the validator sets for this height
 		height, err := c.proposerClient.GetProposedHeight(ctx)
@@ -561,7 +561,7 @@ func (c *destinationClient) GetPChainHeightForDestination(
 			return block.Epoch{}, fetchErr
 		}
 
-		epochDuration := network.GetGraniteEpochDuration()
+		epochDuration := networkInfo.GetGraniteEpochDuration()
 
 		c.logger.Info("Successfully retrieved epoch from ProposerVM",
 			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),

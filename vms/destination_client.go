@@ -56,7 +56,7 @@ type DestinationClient interface {
 	// The epoch is cached per destination blockchain to avoid per-message fetches.
 	GetPChainHeightForDestination(
 		ctx context.Context,
-		network *peers.AppRequestNetwork,
+		networkInfo *peers.NetworkInfo,
 	) (uint64, error)
 }
 

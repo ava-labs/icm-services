@@ -26,7 +26,6 @@ import (
 	snowVdrs "github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/subnets"
-	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/linked"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -64,10 +63,12 @@ var (
 )
 
 type AppRequestNetwork struct {
-	network          network.Network
-	handler          *RelayerExternalHandler
-	infoAPI          *clients.InfoAPI
-	logger           logging.Logger
+	network network.Network
+	handler *RelayerExternalHandler
+	logger  logging.Logger
+
+	networkInfo *NetworkInfo
+
 	validatorSetLock *sync.Mutex
 	validatorClient  clients.CanonicalValidatorState
 	metrics          *AppRequestNetworkMetrics
@@ -87,8 +88,6 @@ type AppRequestNetwork struct {
 	manager                    snowVdrs.Manager
 	canonicalValidatorSetCache *cache.TTLCache[ids.ID, snowVdrs.WarpSet]
 	epochedValidatorSetCache   *cache.FIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet]
-
-	networkUpgradeConfig *upgrade.Config
 }
 
 // NewNetwork creates a P2P network client for interacting with validators
@@ -118,11 +117,6 @@ func NewNetwork(
 	networkID, err := infoAPI.GetNetworkID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get network ID: %w", err)
-	}
-
-	upgradeConfig, err := infoAPI.Upgrades(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get upgrades: %w", err)
 	}
 
 	validatorClient := clients.NewCanonicalValidatorClient(cfg.GetPChainAPI())
@@ -253,7 +247,6 @@ func NewNetwork(
 	arNetwork := &AppRequestNetwork{
 		network:                    testNetwork,
 		handler:                    handler,
-		infoAPI:                    infoAPI,
 		logger:                     logger,
 		validatorSetLock:           new(sync.Mutex),
 		validatorClient:            validatorClient,
@@ -265,7 +258,6 @@ func NewNetwork(
 		canonicalValidatorSetCache: vdrsCache,
 		epochedValidatorSetCache:   epochedVdrsCache,
 		maxPChainLookback:          cfg.GetMaxPChainLookback(),
-		networkUpgradeConfig:       upgradeConfig,
 		// latestSyncedPChainHeight is initialized to 0 by default (atomic.Uint64 zero value)
 	}
 
@@ -274,22 +266,9 @@ func NewNetwork(
 	return arNetwork, nil
 }
 
-func (n *AppRequestNetwork) IsGraniteActivated() bool {
-	return n.networkUpgradeConfig.IsGraniteActivated(time.Now())
-}
-
 // GetLatestSyncedPChainHeight returns the highest P-Chain height that has been successfully cached.
 func (n *AppRequestNetwork) GetLatestSyncedPChainHeight() uint64 {
 	return n.latestSyncedPChainHeight.Load()
-}
-
-// GetGraniteEpochDuration returns the Granite epoch duration from the network upgrade config.
-// Returns 0 if Granite is not activated or epoch duration is not configured.
-func (n *AppRequestNetwork) GetGraniteEpochDuration() time.Duration {
-	if n.networkUpgradeConfig == nil {
-		return 0
-	}
-	return n.networkUpgradeConfig.GraniteEpochDuration
 }
 
 // trackSubnet adds the subnetID to the set of tracked subnets. Returns true iff the subnet was already being tracked.

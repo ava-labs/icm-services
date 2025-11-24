@@ -90,18 +90,18 @@ func (mr *MockDestinationClientMockRecorder) DestinationBlockchainID() *gomock.C
 }
 
 // GetPChainHeightForDestination mocks base method.
-func (m *MockDestinationClient) GetPChainHeightForDestination(ctx context.Context, network *peers.AppRequestNetwork) (uint64, error) {
+func (m *MockDestinationClient) GetPChainHeightForDestination(ctx context.Context, networkInfo *peers.NetworkInfo) (uint64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPChainHeightForDestination", ctx, network)
+	ret := m.ctrl.Call(m, "GetPChainHeightForDestination", ctx, networkInfo)
 	ret0, _ := ret[0].(uint64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetPChainHeightForDestination indicates an expected call of GetPChainHeightForDestination.
-func (mr *MockDestinationClientMockRecorder) GetPChainHeightForDestination(ctx, network any) *gomock.Call {
+func (mr *MockDestinationClientMockRecorder) GetPChainHeightForDestination(ctx, networkInfo any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPChainHeightForDestination", reflect.TypeOf((*MockDestinationClient)(nil).GetPChainHeightForDestination), ctx, network)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPChainHeightForDestination", reflect.TypeOf((*MockDestinationClient)(nil).GetPChainHeightForDestination), ctx, networkInfo)
 }
 
 // GetRPCEndpointURL mocks base method.
