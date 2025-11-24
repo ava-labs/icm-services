@@ -311,7 +311,7 @@ func TestGetLatestSyncedPChainHeight(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			require.Equal(t, testCase.expectedSyncedHeight, arNetwork.GetLatestSyncedPChainHeight())
+			require.Equal(t, testCase.expectedSyncedHeight, arNetwork.latestSyncedPChainHeight.Load())
 		})
 	}
 }
@@ -375,7 +375,7 @@ func TestConcurrentGetAllValidatorSetsUpdatesLatestSyncedHeight(t *testing.T) {
 	wg.Wait()
 
 	// After all concurrent calls, latestSyncedPChainHeight should be 30 (the highest)
-	require.Equal(t, uint64(30), arNetwork.GetLatestSyncedPChainHeight())
+	require.Equal(t, uint64(30), arNetwork.latestSyncedPChainHeight.Load())
 }
 
 func makeValidator(t *testing.T, weight uint64, numNodeIDs int) snowVdrs.Warp {

@@ -67,8 +67,6 @@ type AppRequestNetwork struct {
 	handler *RelayerExternalHandler
 	logger  logging.Logger
 
-	networkInfo *NetworkInfo
-
 	validatorSetLock *sync.Mutex
 	validatorClient  clients.CanonicalValidatorState
 	metrics          *AppRequestNetworkMetrics
@@ -264,11 +262,6 @@ func NewNetwork(
 	go arNetwork.startUpdateTrackedValidators(ctx)
 
 	return arNetwork, nil
-}
-
-// GetLatestSyncedPChainHeight returns the highest P-Chain height that has been successfully cached.
-func (n *AppRequestNetwork) GetLatestSyncedPChainHeight() uint64 {
-	return n.latestSyncedPChainHeight.Load()
 }
 
 // trackSubnet adds the subnetID to the set of tracked subnets. Returns true iff the subnet was already being tracked.
@@ -669,44 +662,39 @@ func (n *AppRequestNetwork) setPChainAPICallLatencyMS(latency int64) {
 	n.metrics.pChainAPICallLatencyMS.Observe(float64(latency))
 }
 
-// Non-receiver util functions
-
-func GetNetworkHealthFunc(
-	logger logging.Logger,
-	network *AppRequestNetwork,
-	subnetIDs []ids.ID,
-) func(context.Context) error {
+// GetNetworkHealthFunc returns a health check function for the network
+func (n *AppRequestNetwork) GetNetworkHealthFunc(subnetIDs []ids.ID) func(context.Context) error {
 	return func(ctx context.Context) error {
-		cachedHeight := network.GetLatestSyncedPChainHeight()
+		cachedHeight := n.latestSyncedPChainHeight.Load()
 		if cachedHeight == 0 {
 			// This should only happen at startup when the cache is not yet initialized.
-			logger.Info("No cached P-Chain height, skipping network health check")
+			n.logger.Info("No cached P-Chain height, skipping network health check")
 			return nil
 		}
 
-		allValidatorSets, err := network.GetAllValidatorSets(
+		allValidatorSets, err := n.GetAllValidatorSets(
 			ctx,
 			cachedHeight,
 		)
 		if err != nil {
-			logger.Error("Failed to get all validator sets", zap.Error(err))
+			n.logger.Error("Failed to get all validator sets", zap.Error(err))
 			return fmt.Errorf("failed to get all validator sets: %w", err)
 		}
 
 		for _, subnetID := range subnetIDs {
 			vdrs, ok := allValidatorSets[subnetID]
 			if !ok {
-				logger.Error("No validators for subnet", zap.Stringer("subnetID", subnetID))
+				n.logger.Error("No validators for subnet", zap.Stringer("subnetID", subnetID))
 				return fmt.Errorf("no validators for subnet %s", subnetID)
 			}
-			canonicalSet := network.BuildCanonicalValidators(vdrs)
+			canonicalSet := n.BuildCanonicalValidators(vdrs)
 
 			if !sharedUtils.CheckStakeWeightExceedsThreshold(
 				big.NewInt(0).SetUint64(canonicalSet.ConnectedWeight),
 				canonicalSet.ValidatorSet.TotalWeight,
 				warp.WarpDefaultQuorumNumerator,
 			) {
-				logger.Error("Not enough connected stake for subnet",
+				n.logger.Error("Not enough connected stake for subnet",
 					zap.Stringer("subnetID", subnetID),
 					zap.Uint64("connectedWeight", canonicalSet.ConnectedWeight),
 					zap.Uint64("totalWeight", canonicalSet.ValidatorSet.TotalWeight),
@@ -717,6 +705,8 @@ func GetNetworkHealthFunc(
 		return nil
 	}
 }
+
+// Non-receiver util functions
 
 func calculateConnectedWeight(
 	validatorSet []*snowVdrs.Warp,
