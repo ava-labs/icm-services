@@ -13,5 +13,5 @@ The CLI has a number of subcommands. To see the list of subcommands, run `./tele
 The supported subcommands include:
 
 - `event`: given a log event's topics and data, attempts to decode into an ICM event in a more readable format.
-- `message`: given a ICM message encoded as a hex string, attempts to decode into a ICM message in a more readable format.
+- `message`: given an ICM message encoded as a hex string, attempts to decode into an ICM message in a more readable format.
 - `transaction`: given a transaction hash, attempts to decode all relevant TeleporterMessenger and ICM log events in a more readable format.
