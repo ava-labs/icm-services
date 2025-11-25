@@ -22,6 +22,7 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
@@ -71,7 +72,7 @@ type destinationClient struct {
 	epochValue        block.Epoch
 	epochExpiration   time.Time
 	epochSingleFlight singleflight.Group
-	proposerClient    *peers.ProposerVMAPI
+	proposerClient    *clients.ProposerVMAPI
 }
 
 // Type alias for the destinationClient to have access to the fields but not the methods of the concurrentSigner.
@@ -108,24 +109,14 @@ func NewDestinationClient(
 	logger logging.Logger,
 	destinationBlockchain *config.DestinationBlockchain,
 ) (*destinationClient, error) {
-	logger = logger.With(zap.String("blockchainID", destinationBlockchain.BlockchainID))
-
 	destinationID, err := ids.FromString(destinationBlockchain.BlockchainID)
 	if err != nil {
-		logger.Error(
-			"Could not decode destination chain ID from string",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("could not decode destination chain ID from string: %w", err)
 	}
 
 	signers, err := signer.NewSigners(destinationBlockchain)
 	if err != nil {
-		logger.Error(
-			"Failed to create signer",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to create signer: %w", err)
 	}
 
 	// Dial the destination RPC endpoint
@@ -136,20 +127,12 @@ func NewDestinationClient(
 		destinationBlockchain.RPCEndpoint.QueryParams,
 	)
 	if err != nil {
-		logger.Error(
-			"Failed to dial rpc endpoint",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to dial rpc endpoint: %w", err)
 	}
 
 	evmChainID, err := client.ChainID(context.Background())
 	if err != nil {
-		logger.Error(
-			"Failed to get chain ID from destination chain endpoint",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to get chain ID from destination chain endpoint: %w", err)
 	}
 
 	var (
@@ -162,44 +145,35 @@ func NewDestinationClient(
 	ticker := time.NewTicker(pendingTxRefreshInterval)
 	defer ticker.Stop()
 	for i, signer := range signers {
+		log := logger.With(
+			zap.Stringer("senderAddress", signer.Address()),
+		)
 		for {
 			pendingNonce, err = client.NonceAt(context.Background(), signer.Address(), big.NewInt(int64(rpc.PendingBlockNumber)))
 			if err != nil {
-				logger.Error(
-					"Failed to get pending nonce",
-					zap.Error(err),
-				)
-				return nil, err
+				return nil, fmt.Errorf("failed to get pending nonce: %w", err)
 			}
 
 			currentNonce, err = client.NonceAt(context.Background(), signer.Address(), nil)
 			if err != nil {
-				logger.Error(
-					"Failed to get current nonce",
-					zap.Error(err),
-				)
-				return nil, err
+				return nil, fmt.Errorf("failed to get current nonce: %w", err)
 			}
 
 			// If the pending nonce is not equal to the current nonce, wait and check again
 			if pendingNonce != currentNonce {
-				logger.Info(
+				log.Info(
 					"Waiting for pending txs to be accepted",
 					zap.Uint64("pendingNonce", pendingNonce),
 					zap.Uint64("currentNonce", currentNonce),
-					zap.Stringer("address", signer.Address()),
 				)
 				<-ticker.C
 				continue
 			}
 
-			logger.Debug(
-				"Pending txs accepted",
-				zap.Stringer("address", signer.Address()),
-			)
+			log.Debug("Pending txs accepted")
 
 			concurrentSigner := &concurrentSigner{
-				logger:            logger.With(zap.Stringer("senderAddress", signer.Address())),
+				logger:            log,
 				signer:            signer,
 				currentNonce:      currentNonce,
 				messageChan:       make(chan txData),
@@ -224,16 +198,12 @@ func NewDestinationClient(
 	// Create ProposerVM client for destination chain
 	endpoint, err := url.Parse(destinationBlockchain.RPCEndpoint.BaseURL)
 	if err != nil {
-		logger.Error("Failed to parse rpc endpoint for ProposerVM client",
-			zap.Stringer("destinationBlockchainID", destinationID),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to parse rpc endpoint for ProposerVM client: %w", err)
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
 	blockchainID := destinationBlockchain.BlockchainID
-	proposerClient := peers.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
+	proposerClient := clients.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
 
 	destClient = destinationClient{
 		client:                     client,
@@ -507,15 +477,19 @@ func (s *concurrentSigner) waitForReceipt(
 		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
 		return err
 	}
-	err := utils.WithRetriesTimeout(s.logger, operation, s.destinationClient.txInclusionTimeout, "waitForReceipt")
-	if err != nil {
-		s.logger.Error(
-			"Failed to get transaction receipt",
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"waiting for receipt failed, retrying...",
+			zap.Duration("retryIn", duration),
 			zap.Error(err),
 		)
+	}
+
+	err := utils.WithRetriesTimeout(operation, notify, s.destinationClient.txInclusionTimeout)
+	if err != nil {
 		resultChan <- txResult{
 			receipt: nil,
-			err:     err,
+			err:     fmt.Errorf("failed to get transaction receipt: %w", err),
 		}
 		return
 	}
@@ -529,7 +503,7 @@ func (s *concurrentSigner) waitForReceipt(
 	}
 }
 
-func (c *destinationClient) Client() interface{} {
+func (c *destinationClient) Client() ethclient.Client {
 	return c.client
 }
 
@@ -554,26 +528,11 @@ func (c *destinationClient) GetRPCEndpointURL() string {
 }
 
 // GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
-// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated.
 // The epoch is cached per destination blockchain to avoid per-message fetches.
 func (c *destinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
 	network peers.AppRequestNetwork,
 ) (uint64, error) {
-	if !network.IsGraniteActivated() {
-		c.logger.Debug("Granite is not activated, using ProposedHeight")
-		// Get the proposed height from the ProposerVM API to be able to cache the validator sets for this height
-		height, err := c.proposerClient.GetProposedHeight(ctx)
-		if err != nil {
-			c.logger.Warn("Failed to get proposed height using ProposerVM API, using ProposedHeight constant",
-				zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
-				zap.Error(err),
-			)
-			return pchainapi.ProposedHeight, nil
-		}
-		return height, nil
-	}
-
 	// Use singleflight to deduplicate concurrent fetches and serialize cache access
 	result, err, _ := c.epochSingleFlight.Do(epochCacheKey, func() (interface{}, error) {
 		// Check if cached epoch is still valid

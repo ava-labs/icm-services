@@ -7,7 +7,6 @@ package vms
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -18,6 +17,7 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/zap"
 )
 
@@ -37,7 +37,7 @@ type DestinationClient interface {
 	) (*types.Receipt, error)
 
 	// Client returns the underlying client for the destination chain
-	Client() interface{}
+	Client() ethclient.Client
 
 	// SenderAddresses returns the addresses of the relayer on the destination chain
 	SenderAddresses() []common.Address
@@ -52,23 +52,11 @@ type DestinationClient interface {
 	GetRPCEndpointURL() string
 
 	// GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
-	// Returns ProposedHeight for current validators if Granite is not activated, or the epoch P-Chain height if activated.
 	// The epoch is cached per destination blockchain to avoid per-message fetches.
 	GetPChainHeightForDestination(
 		ctx context.Context,
 		network peers.AppRequestNetwork,
 	) (uint64, error)
-}
-
-func NewDestinationClient(
-	logger logging.Logger, subnetInfo *config.DestinationBlockchain,
-) (DestinationClient, error) {
-	switch config.ParseVM(subnetInfo.VM) {
-	case config.EVM:
-		return evm.NewDestinationClient(logger, subnetInfo)
-	default:
-		return nil, fmt.Errorf("invalid vm")
-	}
 }
 
 // CreateDestinationClients creates destination clients for all subnets configured as destinations
@@ -78,30 +66,22 @@ func CreateDestinationClients(
 ) (map[ids.ID]DestinationClient, error) {
 	destinationClients := make(map[ids.ID]DestinationClient)
 	for _, subnetInfo := range relayerConfig.DestinationBlockchains {
+		log := logger.With(
+			zap.String("blockchainID", subnetInfo.BlockchainID),
+		)
 		blockchainID, err := ids.FromString(subnetInfo.BlockchainID)
 		if err != nil {
-			logger.Error(
-				"Failed to decode base-58 encoded source chain ID",
-				zap.String("blockchainID", subnetInfo.BlockchainID),
-				zap.Error(err),
-			)
+			log.Error("Failed to decode base-58 encoded source chain ID", zap.Error(err))
 			return nil, err
 		}
 		if _, ok := destinationClients[blockchainID]; ok {
-			logger.Info(
-				"Destination client already found for blockchainID. Continuing",
-				zap.Stringer("blockchainID", blockchainID),
-			)
+			log.Info("Destination client already found for blockchainID. Continuing")
 			continue
 		}
 
-		destinationClient, err := NewDestinationClient(logger, subnetInfo)
+		destinationClient, err := evm.NewDestinationClient(log, subnetInfo)
 		if err != nil {
-			logger.Error(
-				"Could not create destination client",
-				zap.Stringer("blockchainID", blockchainID),
-				zap.Error(err),
-			)
+			log.Error("Could not create destination client", zap.Error(err))
 			return nil, err
 		}
 

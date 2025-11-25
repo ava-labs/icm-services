@@ -137,7 +137,6 @@ func CreateDefaultRelayerConfig(
 		sources[i] = &relayercfg.SourceBlockchain{
 			SubnetID:     l1Info.SubnetID.String(),
 			BlockchainID: l1Info.BlockchainID.String(),
-			VM:           relayercfg.EVM.String(),
 			RPCEndpoint: config.APIConfig{
 				BaseURL: fmt.Sprintf("http://%s:%d/ext/bc/%s/rpc", host, port, l1Info.BlockchainID.String()),
 			},
@@ -177,7 +176,6 @@ func CreateDefaultRelayerConfig(
 		destinations[i] = &relayercfg.DestinationBlockchain{
 			SubnetID:     l1Info.SubnetID.String(),
 			BlockchainID: l1Info.BlockchainID.String(),
-			VM:           relayercfg.EVM.String(),
 			RPCEndpoint: config.APIConfig{
 				BaseURL: fmt.Sprintf("http://%s:%d/ext/bc/%s/rpc", host, port, l1Info.BlockchainID.String()),
 			},

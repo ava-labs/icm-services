@@ -32,7 +32,6 @@ type KMSKey struct {
 type DestinationBlockchain struct {
 	SubnetID                   string            `mapstructure:"subnet-id" json:"subnet-id"`
 	BlockchainID               string            `mapstructure:"blockchain-id" json:"blockchain-id"`
-	VM                         string            `mapstructure:"vm" json:"vm"`
 	RPCEndpoint                basecfg.APIConfig `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
 	KMSKeyID                   string            `mapstructure:"kms-key-id" json:"kms-key-id"`
 	KMSAWSRegion               string            `mapstructure:"kms-aws-region" json:"kms-aws-region"`
@@ -106,12 +105,6 @@ func (s *DestinationBlockchain) Validate() error {
 
 	s.AccountPrivateKeys = uniquePks.List()
 	s.KMSKeys = uniqueKmsKeys.List()
-
-	// Validate the VM specific settings
-	vm := ParseVM(s.VM)
-	if vm == UNKNOWN_VM {
-		return fmt.Errorf("unsupported VM type for source subnet: %s", s.VM)
-	}
 
 	// Validate and store the subnet and blockchain IDs for future use
 	blockchainID, err := utils.HexOrCB58ToID(s.BlockchainID)

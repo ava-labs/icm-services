@@ -209,19 +209,21 @@ func TestShouldSendMessage(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Set up mocks and the object under test
 			ctrl := gomock.NewController(t)
-			logger := logging.NoLog{}
 
 			mockClient := mock_vms.NewMockDestinationClient(ctrl)
 
 			factory, err := NewMessageHandlerFactory(
-				logger,
 				messageProtocolAddress,
 				messageProtocolConfig,
 				nil,
 			)
 			require.NoError(t, err)
 			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-			messageHandler, err := factory.NewMessageHandler(test.warpUnsignedMessage, mockClient)
+			messageHandler, err := factory.NewMessageHandler(
+				logging.NoLog{},
+				test.warpUnsignedMessage,
+				mockClient,
+			)
 			if test.expectedParseError {
 				// If we expect an error parsing the Warp message, we should not call ShouldSendMessage
 				require.Error(t, err)
@@ -262,7 +264,6 @@ func TestShouldSendMessage(t *testing.T) {
 func TestSendMessageAlreadyDelivered(t *testing.T) {
 	// Set up test constants
 	ctrl := gomock.NewController(t)
-	logger := logging.NoLog{}
 
 	validMessageBytes, err := validTeleporterMessage.Pack()
 	require.NoError(t, err)
@@ -311,14 +312,17 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	mockClient := mock_vms.NewMockDestinationClient(ctrl)
 
 	factory, err := NewMessageHandlerFactory(
-		logger,
 		messageProtocolAddress,
 		messageProtocolConfig,
 		nil,
 	)
 	require.NoError(t, err)
 	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-	messageHandler, err := factory.NewMessageHandler(warpUnsignedMessage, mockClient)
+	messageHandler, err := factory.NewMessageHandler(
+		logging.NoLog{},
+		warpUnsignedMessage,
+		mockClient,
+	)
 	require.NoError(t, err)
 
 	mockEthClient := mock_evm.NewMockClient(ctrl)
@@ -342,6 +346,6 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 		Times(1)
 
 	// Call the method under test
-	_, err = messageHandler.SendMessage(signedMessage, false)
+	_, err = messageHandler.SendMessage(signedMessage)
 	require.NoError(t, err)
 }

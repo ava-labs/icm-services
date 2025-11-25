@@ -40,8 +40,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ava-labs/icm-services/cache"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/peers/utils"
-	"github.com/ava-labs/icm-services/peers/validators"
 	sharedUtils "github.com/ava-labs/icm-services/utils"
 )
 
@@ -93,7 +93,6 @@ type AppRequestNetwork interface {
 	TrackSubnet(ctx context.Context, subnetID ids.ID)
 	StartCacheValidatorSets(ctx context.Context)
 	BuildCanonicalValidators(validatorSet snowVdrs.WarpSet) *CanonicalValidators
-	IsGraniteActivated() bool
 	GetLatestSyncedPChainHeight() uint64
 	GetGraniteEpochDuration() time.Duration
 }
@@ -101,10 +100,10 @@ type AppRequestNetwork interface {
 type appRequestNetwork struct {
 	network          network.Network
 	handler          *RelayerExternalHandler
-	infoAPI          *InfoAPI
+	infoAPI          *clients.InfoAPI
 	logger           logging.Logger
 	validatorSetLock *sync.Mutex
-	validatorClient  validators.CanonicalValidatorState
+	validatorClient  clients.CanonicalValidatorState
 	metrics          *AppRequestNetworkMetrics
 
 	// The set of subnetIDs to track. Shared with the underlying Network object, so access
@@ -143,36 +142,24 @@ func NewNetwork(
 	// Create the handler for handling inbound app responses
 	handler, err := NewRelayerExternalHandler(logger, metrics, timeoutManagerRegistry)
 	if err != nil {
-		logger.Error(
-			"Failed to create p2p network handler",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to create p2p network handler: %w", err)
 	}
 
-	infoAPI, err := NewInfoAPI(cfg.GetInfoAPI())
+	infoAPI, err := clients.NewInfoAPI(cfg.GetInfoAPI())
 	if err != nil {
-		logger.Error(
-			"Failed to create info API",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to create info API: %w", err)
 	}
 	networkID, err := infoAPI.GetNetworkID(ctx)
 	if err != nil {
-		logger.Error(
-			"Failed to get network ID",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to get network ID: %w", err)
 	}
 
 	upgradeConfig, err := infoAPI.Upgrades(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get upgrades: %w", err)
 	}
 
-	validatorClient := validators.NewCanonicalValidatorClient(logger, cfg.GetPChainAPI())
+	validatorClient := clients.NewCanonicalValidatorClient(cfg.GetPChainAPI())
 	manager := snowVdrs.NewManager()
 
 	// Primary network must not be explicitly tracked so removing it prior to creating TestNetworkConfig
@@ -188,11 +175,7 @@ func NewNetwork(
 		trackedSubnets,
 	)
 	if err != nil {
-		logger.Error(
-			"Failed to create test network config",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to create test network config: %w", err)
 	}
 	testNetworkConfig.AllowPrivateIPs = cfg.GetAllowPrivateIPs()
 	testNetworkConfig.ConnectToAllValidators = true
@@ -206,7 +189,7 @@ func NewNetwork(
 	}
 	parsedCert, err := staking.ParseCertificate(cert.Leaf.Raw)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse cert: %w", err)
 	}
 	nodeID := ids.NodeIDFromCert(parsedCert)
 	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeID))
@@ -218,11 +201,7 @@ func NewNetwork(
 		handler,
 	)
 	if err != nil {
-		logger.Error(
-			"Failed to create test network",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to create test network: %w", err)
 	}
 
 	for _, peer := range manuallyTrackedPeers {
@@ -238,11 +217,7 @@ func NewNetwork(
 	// info pulled from the info API
 	peers, err := infoAPI.Peers(ctx, nil)
 	if err != nil {
-		logger.Error(
-			"Failed to get peers",
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to get peers: %w", err)
 	}
 	peersMap := make(map[ids.NodeID]info.Peer)
 	for _, peer := range peers {
@@ -259,8 +234,7 @@ func NewNetwork(
 		options...,
 	)
 	if err != nil {
-		logger.Error("Failed to get current validators", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("failed to get current validators: %w", err)
 	}
 
 	// Sample until we've connected to the target number of bootstrap nodes
@@ -332,10 +306,6 @@ func NewNetwork(
 	go arNetwork.startUpdateTrackedValidators(ctx)
 
 	return arNetwork, nil
-}
-
-func (n *appRequestNetwork) IsGraniteActivated() bool {
-	return n.networkUpgradeConfig.IsGraniteActivated(time.Now())
 }
 
 // GetLatestSyncedPChainHeight returns the highest P-Chain height that has been successfully cached.
@@ -513,7 +483,7 @@ func (n *appRequestNetwork) updatedTrackedValidators(
 	n.validatorSetLock.Lock()
 	defer n.validatorSetLock.Unlock()
 
-	nodeIDs := validators.NodeIDs(vdrs)
+	nodeIDs := clients.NodeIDs(vdrs)
 
 	// Remove any elements from the manager that are not in the new validator set
 	currentVdrs := n.manager.GetValidatorIDs(subnetID)

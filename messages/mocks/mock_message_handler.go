@@ -60,18 +60,18 @@ func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(unsignedM
 }
 
 // NewMessageHandler mocks base method.
-func (m *MockMessageHandlerFactory) NewMessageHandler(unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
+func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewMessageHandler", unsignedMessage, destinationClient)
+	ret := m.ctrl.Call(m, "NewMessageHandler", logger, unsignedMessage, destinationClient)
 	ret0, _ := ret[0].(messages.MessageHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NewMessageHandler indicates an expected call of NewMessageHandler.
-func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(unsignedMessage, destinationClient any) *gomock.Call {
+func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, unsignedMessage, destinationClient any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), unsignedMessage, destinationClient)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, unsignedMessage, destinationClient)
 }
 
 // MockMessageHandler is a mock of MessageHandler interface.
@@ -127,18 +127,18 @@ func (mr *MockMessageHandlerMockRecorder) LoggerWithContext(arg0 any) *gomock.Ca
 }
 
 // SendMessage mocks base method.
-func (m *MockMessageHandler) SendMessage(signedMessage *warp.Message, isGraniteActivated bool) (common.Hash, error) {
+func (m *MockMessageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendMessage", signedMessage, isGraniteActivated)
+	ret := m.ctrl.Call(m, "SendMessage", signedMessage)
 	ret0, _ := ret[0].(common.Hash)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SendMessage indicates an expected call of SendMessage.
-func (mr *MockMessageHandlerMockRecorder) SendMessage(signedMessage, isGraniteActivated any) *gomock.Call {
+func (mr *MockMessageHandlerMockRecorder) SendMessage(signedMessage any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockMessageHandler)(nil).SendMessage), signedMessage, isGraniteActivated)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockMessageHandler)(nil).SendMessage), signedMessage)
 }
 
 // ShouldSendMessage mocks base method.

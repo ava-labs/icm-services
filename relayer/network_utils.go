@@ -114,7 +114,7 @@ func checkSufficientConnectedStake(
 			vdrs.ValidatorSet.TotalWeight,
 			maxQuorumNumerator,
 		) {
-			logger.Warn(
+			logger.Info(
 				"Failed to connect to a threshold of stake, retrying...",
 				zap.Stringer("subnetID", subnetID),
 				zap.Uint64("quorumNumerator", maxQuorumNumerator),

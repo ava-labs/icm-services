@@ -73,7 +73,7 @@ func main() {
 		),
 	)
 
-	cfg, err := buildConfig(logger)
+	cfg, err := buildConfig()
 	if err != nil {
 		logger.Fatal("couldn't build config", zap.Error(err))
 		os.Exit(1)
@@ -235,10 +235,7 @@ func main() {
 
 	deciderConnection, err := createDeciderConnection(cfg.DeciderURL)
 	if err != nil {
-		logger.Fatal(
-			"Failed to instantiate decider connection",
-			zap.Error(err),
-		)
+		logger.Fatal("Failed to instantiate decider connection", zap.Error(err))
 		os.Exit(1)
 	}
 	if deciderConnection != nil {
@@ -325,15 +322,14 @@ func main() {
 	})
 
 	// Create listeners for each of the subnets configured as a source
-	for _, s := range cfg.SourceBlockchains {
-		sourceBlockchain := s
-
+	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		// errgroup will cancel the context when the first goroutine returns an error
 		errGroup.Go(func() error {
+			log := logger.With(zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()))
 			// runListener runs until it errors or the context is canceled by another goroutine
-			return relayer.RunListener(
+			err := relayer.RunListener(
 				ctx,
-				logger,
+				log,
 				*sourceBlockchain,
 				sourceClients[sourceBlockchain.GetBlockchainID()],
 				relayerHealth[sourceBlockchain.GetBlockchainID()],
@@ -341,6 +337,10 @@ func main() {
 				messageCoordinator,
 				cfg.MaxConcurrentMessages,
 			)
+			if err != nil {
+				log.Error("error running listener", zap.Error(err))
+			}
+			return err
 		})
 	}
 
@@ -372,23 +372,18 @@ func main() {
 // buildConfig parses the flags and builds the config
 // Errors here should call log.Fatalf to exit the program
 // since these errors are prior to building the logger struct
-func buildConfig(log logging.Logger) (*config.Config, error) {
+func buildConfig() (*config.Config, error) {
 	fs := config.BuildFlagSet()
 	// Parse the flags
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		config.DisplayUsageText()
-		log.Error("couldn't parse flags", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't parse flags: %w", err)
 	}
 
 	// If the version flag is set, display the version then exit
 	displayVersion, err := fs.GetBool(config.VersionKey)
 	if err != nil {
-		log.Error("error reading flag value",
-			zap.String("versionKey", config.VersionKey),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("error reading flag value: %s: %w", config.VersionKey, err)
 	}
 	if displayVersion {
 		fmt.Printf("%s\n", version)
@@ -398,11 +393,7 @@ func buildConfig(log logging.Logger) (*config.Config, error) {
 	// If the help flag is set, output the usage text then exit
 	help, err := fs.GetBool(config.HelpKey)
 	if err != nil {
-		log.Error("error reading flag value",
-			zap.String("versionKey", config.HelpKey),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("error reading flag value: %s: %w", config.HelpKey, err)
 	}
 	if help {
 		config.DisplayUsageText()
@@ -411,14 +402,12 @@ func buildConfig(log logging.Logger) (*config.Config, error) {
 
 	v, err := config.BuildViper(fs)
 	if err != nil {
-		log.Error("couldn't build viper", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't build viper: %w", err)
 	}
 
 	cfg, err := config.NewConfig(v)
 	if err != nil {
-		log.Error("couldn't build config", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("couldn't build config: %w", err)
 	}
 	return &cfg, nil
 }
@@ -442,22 +431,17 @@ func createMessageHandlerFactories(
 			switch config.ParseMessageProtocol(format) {
 			case config.TELEPORTER:
 				m, err = teleporter.NewMessageHandlerFactory(
-					logger,
 					address,
 					cfg,
 					deciderConnection,
 				)
 			case config.OFF_CHAIN_REGISTRY:
-				m, err = offchainregistry.NewMessageHandlerFactory(
-					logger,
-					cfg,
-				)
+				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
 			default:
 				m, err = nil, fmt.Errorf("invalid message format %s", format)
 			}
 			if err != nil {
-				logger.Error("Failed to create message handler factory", zap.Error(err))
-				return nil, err
+				return nil, fmt.Errorf("failed to create message handler factory: %w", err)
 			}
 			messageHandlerFactoriesForSource[address] = m
 		}
@@ -510,6 +494,9 @@ func createApplicationRelayers(
 	applicationRelayers := make(map[common.Hash]*relayer.ApplicationRelayer)
 	minHeights := make(map[ids.ID]uint64)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
+		logger = logger.With(
+			zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
+		)
 		currentHeight, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)
 		if err != nil {
 			logger.Error("Failed to get current block height", zap.Error(err))
@@ -532,12 +519,7 @@ func createApplicationRelayers(
 			processMessagesSemaphore,
 		)
 		if err != nil {
-			logger.Error(
-				"Failed to create application relayers",
-				zap.String("blockchainID", sourceBlockchain.BlockchainID),
-				zap.Error(err),
-			)
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("failed to create application relayers: %w", err)
 		}
 
 		for relayerID, applicationRelayer := range applicationRelayersForSource {
@@ -545,10 +527,7 @@ func createApplicationRelayers(
 		}
 		minHeights[sourceBlockchain.GetBlockchainID()] = minHeight
 
-		logger.Info(
-			"Created application relayers",
-			zap.String("blockchainID", sourceBlockchain.BlockchainID),
-		)
+		logger.Info("Created application relayers")
 	}
 	return applicationRelayers, minHeights, nil
 }
@@ -569,10 +548,7 @@ func createApplicationRelayersForSourceChain(
 	processMessageSemaphore chan struct{},
 ) (map[common.Hash]*relayer.ApplicationRelayer, uint64, error) {
 	// Create the ApplicationRelayers
-	logger.Info(
-		"Creating application relayers",
-		zap.String("originBlockchainID", sourceBlockchain.BlockchainID),
-	)
+	logger.Info("Creating application relayers")
 	applicationRelayers := make(map[common.Hash]*relayer.ApplicationRelayer)
 
 	// Each ApplicationRelayer determines its starting height based on the configuration and database state.
@@ -580,15 +556,18 @@ func createApplicationRelayersForSourceChain(
 	// If catch up is disabled, the first block the ApplicationRelayer processes is the next block after the current height
 	var height, minHeight uint64
 	if !cfg.ProcessMissedBlocks {
-		logger.Info(
-			"processed-missed-blocks set to false, starting processing from chain head",
-			zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
-		)
+		logger.Info("processed-missed-blocks set to false, starting processing from chain head")
 		height = currentHeight + 1
 		minHeight = height
 	}
 
 	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(&sourceBlockchain) {
+		logger = logger.With(
+			zap.Stringer("relayerID", relayerID.ID),
+			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
+			zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
+			zap.Stringer("destinationAddress", relayerID.DestinationAddress),
+		)
 		// Calculate the catch-up starting block height, and update the min height if necessary
 		if cfg.ProcessMissedBlocks {
 			var err error
@@ -600,11 +579,7 @@ func createApplicationRelayersForSourceChain(
 				currentHeight,
 			)
 			if err != nil {
-				logger.Error(
-					"Failed to calculate starting block height",
-					zap.Stringer("relayerID", relayerID.ID),
-					zap.Error(err),
-				)
+				logger.Error("Failed to calculate starting block height", zap.Error(err))
 				return nil, 0, err
 			}
 
@@ -622,11 +597,7 @@ func createApplicationRelayersForSourceChain(
 			height,
 		)
 		if err != nil {
-			logger.Error(
-				"Failed to create checkpoint manager",
-				zap.Stringer("relayerID", relayerID.ID),
-				zap.Error(err),
-			)
+			logger.Error("Failed to create checkpoint manager", zap.Error(err))
 			return nil, 0, err
 		}
 
@@ -643,23 +614,12 @@ func createApplicationRelayersForSourceChain(
 			processMessageSemaphore,
 		)
 		if err != nil {
-			logger.Error(
-				"Failed to create application relayer",
-				zap.Stringer("relayerID", relayerID.ID),
-				zap.Error(err),
-			)
+			logger.Error("Failed to create application relayer", zap.Error(err))
 			return nil, 0, err
 		}
 		applicationRelayers[relayerID.ID] = applicationRelayer
 
-		logger.Info(
-			"Created application relayer",
-			zap.Stringer("relayerID", relayerID.ID),
-			zap.Stringer("sourceBlockchainID", relayerID.SourceBlockchainID),
-			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
-			zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
-			zap.Stringer("destinationAddress", relayerID.DestinationAddress),
-		)
+		logger.Info("Created application relayer")
 	}
 	return applicationRelayers, minHeight, nil
 }

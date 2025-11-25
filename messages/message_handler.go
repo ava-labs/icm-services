@@ -18,6 +18,7 @@ import (
 type MessageHandlerFactory interface {
 	// Create a message handler to relay the Warp message
 	NewMessageHandler(
+		logger logging.Logger,
 		unsignedMessage *warp.UnsignedMessage,
 		destinationClient vms.DestinationClient,
 	) (MessageHandler, error)
@@ -43,7 +44,7 @@ type MessageHandler interface {
 	// SendMessage sends the signed message to the destination chain. The payload parsed according to
 	// the VM rules is also passed in, since MessageManager does not assume any particular VM
 	// returns the transaction hash if the transaction is successful.
-	SendMessage(signedMessage *warp.Message, isGraniteActivated bool) (common.Hash, error)
+	SendMessage(signedMessage *warp.Message) (common.Hash, error)
 
 	// LoggerWithContext returns a logger with the message context
 	LoggerWithContext(logging.Logger) logging.Logger

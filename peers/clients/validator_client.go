@@ -1,21 +1,20 @@
 // Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package validators
+package clients
 
-//go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=./mocks/mock_canonical_validator_client.go -package=mocks
+//go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=mocks/mock_validator_client.go -package=mocks
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/validators"
-	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
-	"go.uber.org/zap"
 
 	"github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/peers/utils"
@@ -34,16 +33,14 @@ type CanonicalValidatorState interface {
 
 // CanonicalValidatorClient wraps [platformvm.Client] and implements [CanonicalValidatorState]
 type CanonicalValidatorClient struct {
-	logger  logging.Logger
 	client  *platformvm.Client
 	options []rpc.Option
 }
 
-func NewCanonicalValidatorClient(logger logging.Logger, apiConfig *config.APIConfig) *CanonicalValidatorClient {
+func NewCanonicalValidatorClient(apiConfig *config.APIConfig) *CanonicalValidatorClient {
 	client := platformvm.NewClient(apiConfig.BaseURL)
 	options := utils.InitializeOptions(apiConfig)
 	return &CanonicalValidatorClient{
-		logger:  logger,
 		client:  client,
 		options: options,
 	}
@@ -52,8 +49,7 @@ func NewCanonicalValidatorClient(logger logging.Logger, apiConfig *config.APICon
 func (v *CanonicalValidatorClient) GetLatestHeight(ctx context.Context) (uint64, error) {
 	height, err := v.client.GetHeight(ctx, v.options...)
 	if err != nil {
-		v.logger.Error("Failed to get latest height", zap.Error(err))
-		return 0, err
+		return 0, fmt.Errorf("failed to get latest height: %w", err)
 	}
 	return height, nil
 }
@@ -68,12 +64,7 @@ func (v *CanonicalValidatorClient) GetProposedValidators(
 ) (validators.WarpSet, error) {
 	res, err := v.client.GetValidatorsAt(ctx, subnetID, pchainapi.ProposedHeight, v.options...)
 	if err != nil {
-		v.logger.Debug(
-			"Error fetching proposed validators",
-			zap.Stringer("subnetID", subnetID),
-			zap.Error(err),
-		)
-		return validators.WarpSet{}, err
+		return validators.WarpSet{}, fmt.Errorf("failed to get proposed validators: %w", err)
 	}
 	return validators.FlattenValidatorSet(res)
 }
@@ -86,12 +77,7 @@ func (v *CanonicalValidatorClient) GetAllValidatorSets(
 ) (map[ids.ID]validators.WarpSet, error) {
 	res, err := v.client.GetAllValidatorsAt(ctx, pchainapi.Height(height), v.options...)
 	if err != nil {
-		v.logger.Debug(
-			"Error fetching validators at height",
-			zap.Uint64("pChainHeight", height),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to get all validators at height %d: %w", height, err)
 	}
 	return res, nil
 }

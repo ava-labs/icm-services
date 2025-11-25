@@ -5,7 +5,7 @@ package evm
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -27,8 +27,7 @@ const (
 	MaxBlocksPerRequest         = 200
 )
 
-// subscriber implements Subscriber
-type subscriber struct {
+type Subscriber struct {
 	wsClient     ethclient.Client
 	rpcClient    ethclient.Client
 	blockchainID ids.ID
@@ -41,14 +40,14 @@ type subscriber struct {
 	logger logging.Logger
 }
 
-// NewSubscriber returns a subscriber
+// NewSubscriber returns a Subscriber
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
 	wsClient ethclient.Client,
 	rpcClient ethclient.Client,
-) *subscriber {
-	subscriber := &subscriber{
+) *Subscriber {
+	subscriber := &Subscriber{
 		blockchainID: blockchainID,
 		wsClient:     wsClient,
 		rpcClient:    rpcClient,
@@ -66,7 +65,7 @@ func NewSubscriber(
 // `MaxBlocksPerRequest`; if processing more than that, multiple eth_getLogs
 // requests will be made.
 // Writes true to the done channel when finished, or false if an error occurs
-func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
+func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	defer close(done)
 	if height == nil {
 		s.logger.Error("Cannot process logs from nil height")
@@ -79,11 +78,7 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	defer latestBlockHeightCtxCancel()
 	latestBlockHeight, err := s.rpcClient.BlockNumber(latestBlockHeightCtx)
 	if err != nil {
-		s.logger.Error(
-			"Failed to get latest block",
-			zap.Stringer("blockchainID", s.blockchainID),
-			zap.Error(err),
-		)
+		s.logger.Error("Failed to get latest block", zap.Error(err))
 		done <- false
 		return
 	}
@@ -91,7 +86,6 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 		"Processing historical logs",
 		zap.Uint64("fromBlockHeight", height.Uint64()),
 		zap.Uint64("latestBlockHeight", latestBlockHeight),
-		zap.Stringer("blockchainID", s.blockchainID),
 	)
 
 	bigLatestBlockHeight := big.NewInt(0).SetUint64(latestBlockHeight)
@@ -119,23 +113,17 @@ func (s *subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 }
 
 // Process Warp messages from the block range [fromBlock, toBlock], inclusive
-func (s *subscriber) processBlockRange(
+func (s *Subscriber) processBlockRange(
 	fromBlock, toBlock *big.Int,
 ) error {
 	s.logger.Info(
 		"Processing block range",
 		zap.Uint64("fromBlockHeight", fromBlock.Uint64()),
 		zap.Uint64("toBlockHeight", toBlock.Uint64()),
-		zap.Stringer("blockchainID", s.blockchainID),
 	)
 	logs, err := s.getFilterLogsByBlockRangeRetryable(fromBlock, toBlock)
 	if err != nil {
-		s.logger.Error(
-			"Failed to get header by number after max attempts",
-			zap.Stringer("blockchainID", s.blockchainID),
-			zap.Error(err),
-		)
-		return err
+		return fmt.Errorf("failed to get header by number after max attempts: %w", err)
 	}
 
 	blocksWithICMMessages, err := relayerTypes.LogsToBlocks(logs)
@@ -157,11 +145,8 @@ func (s *subscriber) processBlockRange(
 	return nil
 }
 
-func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.Int) ([]types.Log, error) {
-	var (
-		err  error
-		logs []types.Log
-	)
+func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.Int) ([]types.Log, error) {
+	var logs []types.Log
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
@@ -173,20 +158,23 @@ func (s *subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 		})
 		return err
 	}
-	err = utils.WithRetriesTimeout(s.logger, operation, utils.DefaultRPCTimeout, "get filter logs by block range")
-	if err != nil {
-		s.logger.Error(
-			"Failed to get filter logs by block range",
-			zap.Stringer("blockchainID", s.blockchainID),
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"get filter logs by block range failed, retrying...",
+			zap.Duration("retryIn", duration),
 			zap.Error(err),
 		)
-		return nil, relayerTypes.ErrFailedToProcessLogs
+	}
+
+	err := utils.WithRetriesTimeout(operation, notify, utils.DefaultRPCTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get filter logs by block range: %w", err)
 	}
 	return logs, nil
 }
 
 // Loops forever iff maxResubscribeAttempts == 0
-func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
+func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 	// Unsubscribe before resubscribing
 	// s.sub should only be nil on the first call to Subscribe
 	if s.sub != nil {
@@ -195,13 +183,13 @@ func (s *subscriber) Subscribe(retryTimeout time.Duration) error {
 
 	err := s.subscribe(retryTimeout)
 	if err != nil {
-		return errors.New("failed to subscribe to node")
+		return fmt.Errorf("failed to subscribe to node: %w", err)
 	}
 	return nil
 }
 
 // subscribe until it succeeds or reached timeout.
-func (s *subscriber) subscribe(retryTimeout time.Duration) error {
+func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	var sub ethereum.Subscription
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
@@ -209,13 +197,17 @@ func (s *subscriber) subscribe(retryTimeout time.Duration) error {
 		sub, err = s.wsClient.SubscribeNewHead(cctx, s.headers)
 		return err
 	}
-	err := utils.WithRetriesTimeout(s.logger, operation, retryTimeout, "subscribe")
-	if err != nil {
-		s.logger.Error(
-			"Failed to subscribe to node",
-			zap.Stringer("blockchainID", s.blockchainID),
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"subscribe failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
 		)
-		return err
+	}
+
+	err := utils.WithRetriesTimeout(operation, notify, retryTimeout)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to node: %w", err)
 	}
 	s.sub = sub
 
@@ -224,33 +216,28 @@ func (s *subscriber) subscribe(retryTimeout time.Duration) error {
 
 // blocksInfoFromHeaders listens to the header channel and converts the headers to [relayerTypes.WarpBlockInfo]
 // and writes them to the blocks channel consumed by the listener
-func (s *subscriber) blocksInfoFromHeaders() {
+func (s *Subscriber) blocksInfoFromHeaders() {
 	for header := range s.headers {
 		block, err := relayerTypes.NewWarpBlockInfo(s.logger, header, s.rpcClient)
 		if err != nil {
-			s.logger.Error("Failed to create Warp block info", zap.Error(err))
-			s.errChan <- err
+			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return
 		}
 		s.icmBlocks <- block
 	}
 }
 
-func (s *subscriber) ICMBlocks() <-chan *relayerTypes.WarpBlockInfo {
+func (s *Subscriber) ICMBlocks() <-chan *relayerTypes.WarpBlockInfo {
 	return s.icmBlocks
 }
 
 // SubscribeErr returns the error channel for the underlying subscription
-func (s *subscriber) SubscribeErr() <-chan error {
+func (s *Subscriber) SubscribeErr() <-chan error {
 	return s.sub.Err()
 }
 
 // Err returns the error channel for miscellaneous errors not recoverable from
 // by resubscribing.
-func (s *subscriber) Err() <-chan error {
+func (s *Subscriber) Err() <-chan error {
 	return s.errChan
-}
-
-func (s *subscriber) Cancel() {
-	// Nothing to do here, the ethclient manages both the log and err channels
 }
