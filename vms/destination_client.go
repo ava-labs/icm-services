@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
@@ -55,7 +54,6 @@ type DestinationClient interface {
 	// The epoch is cached per destination blockchain to avoid per-message fetches.
 	GetPChainHeightForDestination(
 		ctx context.Context,
-		networkInfo *peers.NetworkInfo,
 	) (uint64, error)
 }
 
@@ -79,7 +77,7 @@ func CreateDestinationClients(
 			continue
 		}
 
-		destinationClient, err := evm.NewDestinationClient(log, subnetInfo)
+		destinationClient, err := evm.NewDestinationClient(log, subnetInfo, relayerConfig.GetInfoAPI())
 		if err != nil {
 			log.Error("Could not create destination client", zap.Error(err))
 			return nil, err

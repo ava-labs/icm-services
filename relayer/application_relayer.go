@@ -64,7 +64,6 @@ type ApplicationRelayer struct {
 	sourceWarpSignatureClient *rpc.Client // nil if configured to fetch signatures via AppRequest
 	signatureAggregator       *aggregator.SignatureAggregator
 	processMessageSemaphore   chan struct{}
-	networkInfo               *peers.NetworkInfo
 }
 
 func NewApplicationRelayer(
@@ -119,11 +118,6 @@ func NewApplicationRelayer(
 		}
 	}
 
-	networkInfo, err := peers.NewNetworkInfo(context.Background(), cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network info: %w", err)
-	}
-
 	ar := ApplicationRelayer{
 		logger:                    logger,
 		metrics:                   metrics,
@@ -137,7 +131,6 @@ func NewApplicationRelayer(
 		sourceWarpSignatureClient: warpClient,
 		signatureAggregator:       signatureAggregator,
 		processMessageSemaphore:   processMessageSemaphore,
-		networkInfo:               networkInfo,
 	}
 
 	return &ar, nil
@@ -213,7 +206,7 @@ func (r *ApplicationRelayer) processMessage(
 			defaultQuorumPercentageBuffer,
 		)
 		// Determine the appropriate P-Chain height for validator set selection
-		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx, r.networkInfo)
+		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx)
 		if err != nil {
 			r.incFailedRelayMessageCount("failed to determine P-Chain height")
 			return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)
