@@ -76,17 +76,6 @@ func TestGetLatestSyncedPChainHeight(t *testing.T) {
 				).Return(validatorSet, nil).Times(1)
 			},
 		},
-		{
-			name:                   "does not cache when fetching proposed height",
-			fetchedHeight:          pchainapi.ProposedHeight,
-			expectedSyncedHeight:   200,
-			shouldCallValidatorAPI: true,
-			setupMock: func() {
-				mockValidatorClient.EXPECT().GetAllValidatorSets(
-					gomock.Any(), gomock.Any(),
-				).Return(validatorSet, nil).Times(1)
-			},
-		},
 	}
 
 	validatorManager := ValidatorManager{
@@ -171,4 +160,35 @@ func TestConcurrentGetAllValidatorSetsUpdatesLatestSyncedHeight(t *testing.T) {
 
 	// After all concurrent calls, latestSyncedPChainHeight should be 30 (the highest)
 	require.Equal(t, uint64(30), validatorManager.GetLatestSyncedPChainHeight())
+}
+
+func TestGetAllValidatorSetsHandlesProposedHeight(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
+
+	subnetID := ids.GenerateTestID()
+	validatorSet := map[ids.ID]snowVdrs.WarpSet{
+		subnetID: {
+			Validators:  []*snowVdrs.Warp{},
+			TotalWeight: 0,
+		},
+	}
+
+	validatorManager := ValidatorManager{
+		validatorClient:            mockValidatorClient,
+		metrics:                    metrics,
+		logger:                     logging.NoLog{},
+		canonicalValidatorSetCache: cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL),
+		epochedValidatorSetCache:   cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
+		maxPChainLookback:          -1,
+	}
+
+	// When ProposedHeight is passed, it should internally call GetLatestHeight and then fetch that height
+	mockValidatorClient.EXPECT().GetLatestHeight(gomock.Any()).Return(uint64(100), nil).Times(1)
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), uint64(100)).Return(validatorSet, nil).Times(1)
+
+	result, err := validatorManager.GetAllValidatorSets(t.Context(), pchainapi.ProposedHeight)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, uint64(100), validatorManager.GetLatestSyncedPChainHeight())
 }
