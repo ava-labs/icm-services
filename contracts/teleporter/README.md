@@ -151,7 +151,7 @@ Options:
 
 - `--private-key <private_key>` Funds the deployer address with the account held by `<private_key>`
 
-To ensure that `TeleporterMessenger` can be deployed to the same address on every EVM based chain, it uses [Nick's Method](https://yamenmerhi.medium.com/nicks-method-ethereum-keyless-execution-168a6659479c) to deploy from a static deployer address. ICM Contracts costs exactly `10eth` in the Avalanche L1's native gas token to deploy, which must be sent to the deployer address.
+To ensure that `TeleporterMessenger` can be deployed to the same address on every EVM based chain, it uses [Nick's Method](https://yamenmerhi.medium.com/nicks-method-ethereum-keyless-execution-168a6659479c) to deploy from a static deployer address. ICM Contracts cost exactly `10eth` in the Avalanche L1's native gas token to deploy, which must be sent to the deployer address.
 
 `deploy_teleporter.sh` will send the necessary native tokens to the deployer address if it is provided with a private key for an account with sufficient funds. Alternatively, the deployer address can be funded externally. The deployer address for each version can be found by looking up the appropriate version at https://github.com/ava-labs/icm-contracts/releases and downloading `TeleporterMessenger_Deployer_Address_<VERSION>.txt`.
 
