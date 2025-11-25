@@ -93,12 +93,10 @@ func (v *ValidatorManager) GetAllValidatorSets(
 	ctx context.Context,
 	pchainHeight uint64,
 ) (map[ids.ID]snowVdrs.WarpSet, error) {
-	// ProposedHeight is not supported because it's not cacheable and returns an unknown height.
-	// Callers should use GetLatestValidatorSets() instead, which fetches the latest height
-	// and then gets validators for that specific height.
+	// If we're getting the proposed height, bypass the cache and get the latest data
+	// We can't cache this call because we don't know the actual P-Chain height being returned.
 	if pchainHeight == pchainapi.ProposedHeight {
-		v.logger.Warn("ProposedHeight passed to GetAllValidatorSets - Calling GetLatestValidatorSets() instead.")
-		return v.GetLatestValidatorSets(ctx)
+		return v.validatorClient.GetAllValidatorSets(ctx, pchainHeight)
 	}
 
 	// Use FIFO cache for epoched validators (specific heights) - immutable historical data
