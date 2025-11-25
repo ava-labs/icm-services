@@ -160,10 +160,7 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	return false, nil
 }
 
-func (m *messageHandler) SendMessage(
-	signedMessage *warp.Message,
-	isGraniteActivated bool,
-) (common.Hash, error) {
+func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, error) {
 	// Construct the transaction call data to call the TeleporterRegistry contract.
 	// Only one off-chain registry Warp message is sent at a time, so we hardcode the index to 0 in the call.
 	callData, err := teleporterregistry.PackAddProtocolVersion(0)
