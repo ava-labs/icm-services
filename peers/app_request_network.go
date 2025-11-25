@@ -49,9 +49,6 @@ const (
 	// This value is defined in avalanchego peers package
 	// TODO: use the avalanchego constant when it is exported
 	maxNumSubnets = 16
-
-	// The amount of time to cache canonical validator sets
-	canonicalValidatorSetCacheTTL = 2 * time.Second
 )
 
 var (
@@ -359,15 +356,19 @@ func (c *CanonicalValidators) GetValidator(nodeID ids.NodeID) (*snowVdrs.Warp, i
 func (n *AppRequestNetwork) GetCanonicalValidators(
 	ctx context.Context,
 	subnetID ids.ID,
-	skipCache bool,
 	pchainHeight uint64,
 ) (*CanonicalValidators, error) {
-	validatorSet, err := n.validatorManager.GetValidatorSet(ctx, subnetID, skipCache, pchainHeight)
+	allValidators, err := n.validatorManager.GetAllValidatorSets(ctx, pchainHeight)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get validator set: %w", err)
+		return nil, fmt.Errorf("failed to get all validators at P-Chain height %d: %w", pchainHeight, err)
 	}
 
-	return n.buildCanonicalValidators(*validatorSet), nil
+	validatorSet, ok := allValidators[subnetID]
+	if !ok {
+		return nil, fmt.Errorf("no validators for subnet %s at P-Chain height %d", subnetID, pchainHeight)
+	}
+
+	return n.buildCanonicalValidators(validatorSet), nil
 }
 
 // buildCanonicalValidators builds the CanonicalValidators struct from a validator set

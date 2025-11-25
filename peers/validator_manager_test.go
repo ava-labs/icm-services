@@ -90,12 +90,11 @@ func TestGetLatestSyncedPChainHeight(t *testing.T) {
 	}
 
 	validatorManager := ValidatorManager{
-		validatorClient:            mockValidatorClient,
-		metrics:                    metrics,
-		logger:                     logging.NoLog{},
-		canonicalValidatorSetCache: cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL),
-		epochedValidatorSetCache:   cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
-		maxPChainLookback:          -1, // Disable lookback check for testing
+		validatorClient:          mockValidatorClient,
+		metrics:                  metrics,
+		logger:                   logging.NoLog{},
+		epochedValidatorSetCache: cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
+		maxPChainLookback:        -1, // Disable lookback check for testing
 	}
 
 	for _, testCase := range testCases {
@@ -117,12 +116,11 @@ func TestConcurrentGetAllValidatorSetsUpdatesLatestSyncedHeight(t *testing.T) {
 	mockValidatorClient := validator_mocks.NewMockCanonicalValidatorState(ctrl)
 
 	validatorManager := ValidatorManager{
-		validatorClient:            mockValidatorClient,
-		metrics:                    metrics,
-		logger:                     logging.NoLog{},
-		canonicalValidatorSetCache: cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL),
-		epochedValidatorSetCache:   cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
-		maxPChainLookback:          -1, // Disable lookback check for testing
+		validatorClient:          mockValidatorClient,
+		metrics:                  metrics,
+		logger:                   logging.NoLog{},
+		epochedValidatorSetCache: cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
+		maxPChainLookback:        -1, // Disable lookback check for testing
 	}
 
 	subnetID := ids.GenerateTestID()

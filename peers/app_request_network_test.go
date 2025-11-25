@@ -136,11 +136,10 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 
 			// Create ValidatorManager
 			validatorManager := ValidatorManager{
-				validatorClient:            mockValidatorClient,
-				metrics:                    metrics,
-				logger:                     logging.NoLog{},
-				canonicalValidatorSetCache: cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL),
-				epochedValidatorSetCache:   cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
+				validatorClient:          mockValidatorClient,
+				metrics:                  metrics,
+				logger:                   logging.NoLog{},
+				epochedValidatorSetCache: cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](100),
 			}
 
 			arNetwork := AppRequestNetwork{
@@ -154,14 +153,15 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			for _, vdr := range testCase.validators {
 				totalWeight += vdr.Weight
 			}
-			mockValidatorClient.EXPECT().GetProposedValidators(
-				gomock.Any(), subnetID).Return(
-				snowVdrs.WarpSet{
-					Validators:  testCase.validators,
-					TotalWeight: testCase.expectedTotalWeight,
+			mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+				map[ids.ID]snowVdrs.WarpSet{
+					subnetID: snowVdrs.WarpSet{
+						Validators:  testCase.validators,
+						TotalWeight: testCase.expectedTotalWeight,
+					},
 				},
 				nil,
-			).Times(1)
+			).AnyTimes()
 
 			peerInfo := make([]peer.Info, len(testCase.validators))
 			for _, node := range testCase.connectedNodes {
@@ -171,7 +171,7 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			}
 			mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfo).Times(1)
 
-			ret, err := arNetwork.GetCanonicalValidators(t.Context(), subnetID, false, uint64(pchainapi.ProposedHeight))
+			ret, err := arNetwork.GetCanonicalValidators(t.Context(), subnetID, uint64(pchainapi.ProposedHeight))
 			require.Equal(t, testCase.expectedConnectedWeight, ret.ConnectedWeight)
 			require.Equal(t, testCase.expectedTotalWeight, ret.ValidatorSet.TotalWeight)
 			require.NoError(t, err)

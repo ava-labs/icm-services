@@ -27,8 +27,7 @@ type ValidatorManager struct {
 	maxPChainLookback        int64
 	manager                  snowVdrs.Manager
 
-	canonicalValidatorSetCache *cache.TTLCache[ids.ID, snowVdrs.WarpSet]
-	epochedValidatorSetCache   *cache.FIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet]
+	epochedValidatorSetCache *cache.FIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet]
 }
 
 func NewValidatorManager(
@@ -39,17 +38,15 @@ func NewValidatorManager(
 	manager snowVdrs.Manager,
 ) *ValidatorManager {
 	validatorClient := clients.NewCanonicalValidatorClient(cfg.GetPChainAPI())
-	canonicalValidatorSetCache := cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL)
 	epochedValidatorSetCache := cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](validatorSetsCacheSize)
 	return &ValidatorManager{
-		logger:                     logger,
-		validatorClient:            validatorClient,
-		metrics:                    metrics,
-		maxPChainLookback:          cfg.GetMaxPChainLookback(),
-		canonicalValidatorSetCache: canonicalValidatorSetCache,
-		epochedValidatorSetCache:   epochedValidatorSetCache,
-		manager:                    manager,
-		validatorSetLock:           new(sync.Mutex),
+		logger:                   logger,
+		validatorClient:          validatorClient,
+		metrics:                  metrics,
+		maxPChainLookback:        cfg.GetMaxPChainLookback(),
+		epochedValidatorSetCache: epochedValidatorSetCache,
+		manager:                  manager,
+		validatorSetLock:         new(sync.Mutex),
 	}
 }
 
@@ -135,46 +132,6 @@ func (v *ValidatorManager) GetAllValidatorSets(
 	}
 
 	return validatorSets, nil
-}
-
-// GetCanonicalValidators returns the validator information in canonical ordering for the given subnet
-// at the specified P-Chain height, as well as the total weight of the validators that this network is connected to
-// The caller determines the appropriate P-Chain height (ProposedHeight for current, specific height for epoched)
-func (v *ValidatorManager) GetValidatorSet(
-	ctx context.Context,
-	subnetID ids.ID,
-	skipCache bool,
-	pchainHeight uint64,
-) (*snowVdrs.WarpSet, error) {
-	v.logger.Debug("Getting validator set at P-Chain height",
-		zap.Stringer("subnetID", subnetID),
-		zap.Uint64("pchainHeight", pchainHeight),
-		zap.Bool("isProposedHeight", pchainHeight == pchainapi.ProposedHeight),
-	)
-
-	var validatorSet snowVdrs.WarpSet
-	var err error
-
-	if pchainHeight == pchainapi.ProposedHeight {
-		// Get the subnet's current canonical validator set
-		fetchVdrsFunc := func(subnetID ids.ID) (snowVdrs.WarpSet, error) {
-			startPChainAPICall := time.Now()
-			validatorSet, err := v.validatorClient.GetProposedValidators(ctx, subnetID)
-			v.metrics.pChainAPICallLatencyMS.Observe(float64(time.Since(startPChainAPICall).Milliseconds()))
-			if err != nil {
-				return snowVdrs.WarpSet{}, err
-			}
-			return validatorSet, nil
-		}
-		validatorSet, err = v.canonicalValidatorSetCache.Get(subnetID, fetchVdrsFunc, skipCache)
-	} else {
-		validatorSet, err = v.getValidatorSetGranite(ctx, subnetID, pchainHeight)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get validator set at P-Chain height %d: %w", pchainHeight, err)
-	}
-
-	return &validatorSet, nil
 }
 
 // Update the tracked validators for a single subnet. This is used when tracking a new subnet for the first time.
@@ -269,21 +226,4 @@ func (v *ValidatorManager) cacheMostRecentValidatorSets(ctx context.Context) {
 			continue
 		}
 	}
-}
-
-func (v *ValidatorManager) getValidatorSetGranite(
-	ctx context.Context,
-	subnetID ids.ID,
-	pchainHeight uint64,
-) (snowVdrs.WarpSet, error) {
-	allValidators, err := v.GetAllValidatorSets(ctx, pchainHeight)
-	if err != nil {
-		return snowVdrs.WarpSet{}, fmt.Errorf("failed to get all validators at P-Chain height %d: %w", pchainHeight, err)
-	}
-
-	validatorSet, ok := allValidators[subnetID]
-	if !ok {
-		return snowVdrs.WarpSet{}, fmt.Errorf("no validators for subnet %s at P-Chain height %d", subnetID, pchainHeight)
-	}
-	return validatorSet, nil
 }
