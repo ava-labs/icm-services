@@ -24,7 +24,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-var metrics = newAppRequestNetworkMetrics(prometheus.DefaultRegisterer)
+var metrics = NewAppRequestNetworkMetrics(prometheus.DefaultRegisterer)
 
 func TestCalculateConnectedWeight(t *testing.T) {
 	vdr1 := makeValidator(t, 10, 1)

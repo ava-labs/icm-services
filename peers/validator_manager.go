@@ -97,6 +97,7 @@ func (v *ValidatorManager) GetAllValidatorSets(
 	// Callers should use GetLatestValidatorSets() instead, which fetches the latest height
 	// and then gets validators for that specific height.
 	if pchainHeight == pchainapi.ProposedHeight {
+		v.logger.Warn("ProposedHeight passed to GetAllValidatorSets - Calling GetLatestValidatorSets() instead.")
 		return v.GetLatestValidatorSets(ctx)
 	}
 

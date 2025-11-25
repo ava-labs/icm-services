@@ -89,7 +89,7 @@ func NewNetwork(
 	cfg Config,
 	validatorSetsCacheSize uint64,
 ) (*AppRequestNetwork, error) {
-	metrics := newAppRequestNetworkMetrics(relayerRegistry)
+	metrics := NewAppRequestNetworkMetrics(relayerRegistry)
 
 	// Create the handler for handling inbound app responses
 	handler, err := NewRelayerExternalHandler(logger, metrics, timeoutManagerRegistry)

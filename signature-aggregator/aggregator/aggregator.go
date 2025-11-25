@@ -64,7 +64,7 @@ var (
 )
 
 type SignatureAggregator struct {
-	network                peers.AppRequestNetworkTestHelper
+	network                *peers.AppRequestNetwork
 	messageCreator         message.Creator
 	currentRequestID       atomic.Uint32
 	metrics                *metrics.SignatureAggregatorMetrics
@@ -81,7 +81,7 @@ type SignatureAggregator struct {
 }
 
 func NewSignatureAggregator(
-	network peers.AppRequestNetworkTestHelper,
+	network *peers.AppRequestNetwork,
 	messageCreator message.Creator,
 	signatureCacheSize uint64,
 	metrics *metrics.SignatureAggregatorMetrics,
