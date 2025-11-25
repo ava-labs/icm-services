@@ -1,7 +1,7 @@
-// Copyright (C) 2025, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package peers
+package clients
 
 import (
 	"context"
@@ -11,13 +11,16 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/icm-services/config"
 	"github.com/stretchr/testify/require"
 )
 
-// TestProposerVMAPI_AllMethodsForwardQueryParams uses reflection to verify that ALL methods
-// on ProposerVMAPI correctly forward query parameters
-func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
+const contextContextType = "context.Context"
+
+// TestInfoAPI_AllMethodsForwardQueryParams uses reflection to verify that ALL methods
+// on InfoAPI correctly forward query parameters
+func TestInfoAPI_AllMethodsForwardQueryParams(t *testing.T) {
 	queryParams := map[string]string{
 		"token":   "test-token-123",
 		"api-key": "secret-key-789",
@@ -31,7 +34,6 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		// Track that this method was called and capture its query params
 		methodsCalled[r.URL.Path] = true
 		params := make(map[string]string)
 		for key := range queryParams {
@@ -39,10 +41,10 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 		}
 		receivedParams[r.URL.Path] = params
 
-		// Return a generic valid JSON-RPC response
+		// Return a generic valid JSON-RPC response that works for most Info API methods
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Number":1,"PChainHeight":100,"StartTime":1234567890}}`))
+		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"test-result"}`))
 	}))
 	defer server.Close()
 
@@ -50,9 +52,9 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 		BaseURL:     server.URL,
 		QueryParams: queryParams,
 	}
-	client := NewProposerVMAPI(server.URL, "test-chain", apiConfig)
+	client, err := NewInfoAPI(apiConfig)
+	require.NoError(t, err)
 
-	// Use reflection to call all methods
 	clientValue := reflect.ValueOf(client)
 	clientType := clientValue.Type()
 
@@ -62,31 +64,42 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 		method := clientType.Method(i)
 		methodName := method.Name
 
-		// Skip unexported methods
 		if method.PkgPath != "" {
 			continue
 		}
 
 		t.Run(methodName, func(t *testing.T) {
-			// Prepare arguments for the method
 			args := []reflect.Value{clientValue}
 
-			// Add context as first argument if the method takes one
 			methodType := method.Type
-			if methodType.NumIn() > 1 && methodType.In(1).String() == "context.Context" {
-				args = append(args, reflect.ValueOf(ctx))
+			// Build arguments for the method based on its signature
+			for argIdx := 1; argIdx < methodType.NumIn(); argIdx++ {
+				argType := methodType.In(argIdx)
+
+				switch argType.String() {
+				case contextContextType:
+					args = append(args, reflect.ValueOf(ctx))
+				case "string":
+					args = append(args, reflect.ValueOf("test-string"))
+				case "ids.ID":
+					testID := ids.GenerateTestID()
+					args = append(args, reflect.ValueOf(testID))
+				case "[]ids.NodeID":
+					args = append(args, reflect.ValueOf([]ids.NodeID{}))
+				default:
+					// For other types, use zero value
+					args = append(args, reflect.Zero(argType))
+				}
 			}
 
-			// Call the method (may fail due to mock response format, but we only care about HTTP request)
+			// Call the method
 			method.Func.Call(args)
 
-			// Verify query params were forwarded for this method
 			mu.Lock()
 			defer mu.Unlock()
 
 			var foundParams map[string]string
 			for _, params := range receivedParams {
-				// Check if all expected query params are present
 				allPresent := true
 				for key, expectedValue := range queryParams {
 					if params[key] != expectedValue {
@@ -109,9 +122,9 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 	}
 }
 
-// TestProposerVMAPI_AllMethodsForwardHTTPHeaders uses reflection to verify that ALL methods
-// on ProposerVMAPI correctly forward HTTP headers
-func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
+// TestInfoAPI_AllMethodsForwardHTTPHeaders uses reflection to verify that ALL methods
+// on InfoAPI correctly forward HTTP headers
+func TestInfoAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 	httpHeaders := map[string]string{
 		"Authorization": "Bearer test-token",
 		"X-API-Key":     "secret-key",
@@ -134,7 +147,7 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Number":1,"PChainHeight":100,"StartTime":1234567890}}`))
+		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"test-result"}`))
 	}))
 	defer server.Close()
 
@@ -142,7 +155,8 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 		BaseURL:     server.URL,
 		HTTPHeaders: httpHeaders,
 	}
-	client := NewProposerVMAPI(server.URL, "test-chain", apiConfig)
+	client, err := NewInfoAPI(apiConfig)
+	require.NoError(t, err)
 
 	clientValue := reflect.ValueOf(client)
 	clientType := clientValue.Type()
@@ -161,8 +175,22 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 			args := []reflect.Value{clientValue}
 
 			methodType := method.Type
-			if methodType.NumIn() > 1 && methodType.In(1).String() == "context.Context" {
-				args = append(args, reflect.ValueOf(ctx))
+			for argIdx := 1; argIdx < methodType.NumIn(); argIdx++ {
+				argType := methodType.In(argIdx)
+
+				switch argType.String() {
+				case contextContextType:
+					args = append(args, reflect.ValueOf(ctx))
+				case "string":
+					args = append(args, reflect.ValueOf("test-string"))
+				case "ids.ID":
+					testID := ids.GenerateTestID()
+					args = append(args, reflect.ValueOf(testID))
+				case "[]ids.NodeID":
+					args = append(args, reflect.ValueOf([]ids.NodeID{}))
+				default:
+					args = append(args, reflect.Zero(argType))
+				}
 			}
 
 			method.Func.Call(args)

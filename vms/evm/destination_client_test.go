@@ -20,7 +20,6 @@ import (
 	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -319,7 +318,6 @@ func TestDestinationClient_QueryParamsForwarding(t *testing.T) {
 			destinationBlockchain := config.DestinationBlockchain{
 				SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 				BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-				VM:           config.EVM.String(),
 				RPCEndpoint: basecfg.APIConfig{
 					BaseURL:     server.URL,
 					QueryParams: tt.queryParams,
@@ -393,7 +391,6 @@ func TestDestinationClient_HTTPHeadersForwarding(t *testing.T) {
 			destinationBlockchain := config.DestinationBlockchain{
 				SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 				BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-				VM:           config.EVM.String(),
 				RPCEndpoint: basecfg.APIConfig{
 					BaseURL:     server.URL,
 					HTTPHeaders: tt.httpHeaders,
@@ -449,7 +446,6 @@ func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
 	destinationBlockchain := config.DestinationBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-		VM:           config.EVM.String(),
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL:     server.URL,
 			QueryParams: queryParams,
@@ -510,7 +506,6 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 	destinationBlockchain := config.DestinationBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-		VM:           config.EVM.String(),
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL:     server.URL,
 			QueryParams: queryParams,
@@ -523,7 +518,7 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	ethClient := client.Client().(ethclient.Client)
+	ethClient := client.Client()
 	ethClient.BlockNumber(ctx)
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
@@ -577,7 +572,6 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	destinationBlockchain := config.DestinationBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-		VM:           config.EVM.String(),
 		RPCEndpoint: basecfg.APIConfig{
 			BaseURL:     server.URL,
 			HTTPHeaders: httpHeaders,
@@ -590,7 +584,7 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	ethClient := client.Client().(ethclient.Client)
+	ethClient := client.Client()
 	ethClient.BlockNumber(ctx)
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
