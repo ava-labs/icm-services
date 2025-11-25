@@ -182,7 +182,6 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 				ids.Empty,
 				tc.requiredQuorumPercentage,
 				tc.quorumPercentageBuffer,
-				false,
 				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
 			)
 			require.Nil(t, signedMsg)
@@ -204,9 +203,18 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 		},
 		nil,
 	).AnyTimes()
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{
+			ids.Empty: validators.WarpSet{
+				Validators:  []*validators.Warp{},
+				TotalWeight: 0,
+			},
+		},
+		nil,
+	).AnyTimes()
 	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return([]peer.Info{}).AnyTimes()
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, pchainapi.ProposedHeight)
 	require.ErrorContains(t, err, "no signatures")
 }
 
@@ -216,6 +224,15 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	require.NoError(t, err)
 	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
 	// TrackSubnet is on AppRequestNetwork - no mock needed
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{
+			ids.Empty: validators.WarpSet{
+				Validators:  []*validators.Warp{},
+				TotalWeight: 1,
+			},
+		},
+		nil,
+	).AnyTimes()
 	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), ids.Empty).Return(
 		validators.WarpSet{
 			Validators:  []*validators.Warp{},
@@ -225,7 +242,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	).AnyTimes()
 	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return([]peer.Info{}).AnyTimes()
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, false, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, pchainapi.ProposedHeight)
 	require.ErrorContains(
 		t,
 		err,
@@ -284,6 +301,13 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		nil,
 	).AnyTimes()
 
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{
+			subnetID: connectedValidators.ValidatorSet,
+		},
+		nil,
+	).AnyTimes()
+
 	// Mock PeerInfo to return connected peers
 	var peerInfos []peer.Info
 	for nodeID := range connectedValidators.ConnectedNodes {
@@ -310,7 +334,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	).Times(1)
 
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, subnetID, 80, 0, false, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, subnetID, 80, 0, pchainapi.ProposedHeight)
 	require.ErrorIs(
 		t,
 		err,
@@ -365,6 +389,13 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			// TrackSubnet is on AppRequestNetwork - no mock needed
 			mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), subnetID).Return(
 				connectedValidators.ValidatorSet,
+				nil,
+			).AnyTimes()
+
+			mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+				map[ids.ID]validators.WarpSet{
+					subnetID: connectedValidators.ValidatorSet,
+				},
 				nil,
 			).AnyTimes()
 
@@ -462,7 +493,6 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				subnetID,
 				tc.requiredQuorumPercentage,
 				tc.quorumPercentageBuffer,
-				false,
 				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
 			)
 			require.NoError(t, err)
@@ -742,7 +772,7 @@ func TestGetExcludedValidators(t *testing.T) {
 				GetCurrentValidators(gomock.Any(), signingSubnet, gomock.Nil(), gomock.Any()).
 				Return(tc.l1Validators, nil)
 
-			excluded, err := aggregator.getExcludedValidators(ctx, log, signingSubnet, tc.connected, true)
+			excluded, err := aggregator.getExcludedValidators(ctx, log, signingSubnet, tc.connected)
 			require.NoError(t, err)
 			for idx := range tc.connected.ValidatorSet.Validators {
 				shouldBeExcluded := slices.Contains(tc.excludedIdx, idx)
