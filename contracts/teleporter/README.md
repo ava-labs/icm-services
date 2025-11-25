@@ -16,6 +16,8 @@
 - [Deploy TeleporterRegistry to an L1](#deploy-teleporterregistry-to-an-avalanche-l1)
 - [Verify a Deployment of TeleporterMessenger](#verify-a-deployment-of-teleportermessenger)
 
+> **Note on Terminology:** In this documentation, **ICM Contract** refers to any smart contract that interfaces with Avalanche's native Interchain Messaging (ICM) protocol. **Teleporter** (specifically `TeleporterMessenger`) is one such implementation—a production-ready, developer-friendly ICM Contract provided in this repository. The underlying ICM protocol is extensible, and developers are free to build their own custom ICM Contracts tailored to specific use cases. Teleporter serves as a reference implementation and a convenient abstraction layer for most cross-chain communication needs.
+
 ## Overview
 
 `TeleporterMessenger` is a smart contract that serves as the interface for ICM contracts to [Avalanche Interchain Messaging (ICM)](https://build.avax.network/academy/interchain-messaging/04-icm-basics/01-icm-basics). It provides a mechanism to asynchronously invoke smart contract functions on other EVM L1s within Avalanche. `TeleporterMessenger` provides a handful of useful features to ICM, such as specifying relayer incentives for message delivery, replay protection, message delivery and execution retries, and a standard interface for sending and receiving messages within a dApp deployed across multiple Avalanche L1s.
