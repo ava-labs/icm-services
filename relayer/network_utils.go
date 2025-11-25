@@ -88,7 +88,7 @@ func checkSufficientConnectedStake(
 	}
 
 	checkConns := func() error {
-		vdrs, err := network.GetCanonicalValidators(ctx, subnetID, false, uint64(pchainapi.ProposedHeight))
+		vdrs, err := network.GetCanonicalValidators(ctx, subnetID, uint64(pchainapi.ProposedHeight))
 		if err != nil {
 			logger.Error(
 				"Failed to retrieve currently connected validators",

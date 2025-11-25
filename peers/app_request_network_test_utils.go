@@ -23,19 +23,17 @@ func NewAppRequestNetworkForTesting(
 	mockValidatorClient clients.CanonicalValidatorState,
 	manager snowVdrs.Manager,
 ) *AppRequestNetwork {
-	// Initialize caches for testing
-	canonicalValidatorSetCache := cache.NewTTLCache[ids.ID, snowVdrs.WarpSet](canonicalValidatorSetCacheTTL)
+	// Initialize cache for testing
 	epochedValidatorSetCache := cache.NewFIFOCache[uint64, map[ids.ID]snowVdrs.WarpSet](10)
 
 	validatorManager := &ValidatorManager{
-		logger:                     logger,
-		validatorClient:            mockValidatorClient,
-		metrics:                    metrics,
-		maxPChainLookback:          -1, // No lookback limit for tests
-		canonicalValidatorSetCache: canonicalValidatorSetCache,
-		epochedValidatorSetCache:   epochedValidatorSetCache,
-		manager:                    manager,
-		validatorSetLock:           new(sync.Mutex),
+		logger:                   logger,
+		validatorClient:          mockValidatorClient,
+		metrics:                  metrics,
+		maxPChainLookback:        -1, // No lookback limit for tests
+		epochedValidatorSetCache: epochedValidatorSetCache,
+		manager:                  manager,
+		validatorSetLock:         new(sync.Mutex),
 	}
 
 	return &AppRequestNetwork{
