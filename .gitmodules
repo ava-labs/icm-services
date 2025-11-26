@@ -1,6 +1,3 @@
-[submodule "tests/contracts/lib/icm-contracts"]
-	path = tests/contracts/lib/icm-contracts
-	url = https://github.com/ava-labs/icm-contracts
 [submodule "tests/contracts/lib/forge-std"]
 	path = tests/contracts/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
