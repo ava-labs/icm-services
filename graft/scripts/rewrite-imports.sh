@@ -7,15 +7,15 @@ set -euo pipefail
 #
 # Usage: rewrite-imports.sh <original-module-import-path>
 # Example: rewrite-imports.sh github.com/ava-labs/icm-contracts
-#   Will rewrite: github.com/ava-labs/icm-contracts -> github.com/ava-labs/avalanchego/graft/icm-contracts
-# Example: rewrite-imports.sh github.com/ava-labs/icm-contracts github.com/ava-labs/avalanchego/icm-contracts
-#   Will rewrite: github.com/ava-labs/icm-contracts -> github.com/ava-labs/avalanchego/icm-contracts
+#   Will rewrite: github.com/ava-labs/icm-contracts -> github.com/ava-labs/icm-services/graft/icm-contracts
+# Example: rewrite-imports.sh github.com/ava-labs/icm-contracts github.com/ava-labs/icm-services/icm-contracts
+#   Will rewrite: github.com/ava-labs/icm-contracts -> github.com/ava-labs/icm-services/icm-contracts
 #
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
   echo "Error: one or two arguments required"
   echo "Usage: $0 <original-module-import-path> [new-module-import-path]"
   echo "Example: $0 github.com/ava-labs/icm-contracts"
-  echo "Example: $0 github.com/ava-labs/icm-contracts github.com/ava-labs/avalanchego/icm-contracts"
+  echo "Example: $0 github.com/ava-labs/icm-contracts github.com/ava-labs/icm-services/icm-contracts"
   exit 1
 fi
 
@@ -29,7 +29,7 @@ PACKAGE_NAME="${ORIGINAL_IMPORT##*/}"
 if [ $# -eq 2 ]; then
   TARGET_IMPORT="$2"
 else
-  TARGET_IMPORT="github.com/ava-labs/avalanchego/graft/${PACKAGE_NAME}"
+  TARGET_IMPORT="github.com/ava-labs/icm-services/graft/${PACKAGE_NAME}"
 fi
 
 REPO_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )"; cd ../.. && pwd )
