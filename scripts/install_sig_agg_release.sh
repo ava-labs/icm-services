@@ -5,12 +5,12 @@
 set -e
 
 # Load the versions
-ICM_CONTRACTS_PATH=$(
+REPO_PATH=$(
   cd "$(dirname "${BASH_SOURCE[0]}")"
   cd .. && pwd
 )
-source "$ICM_CONTRACTS_PATH"/scripts/versions.sh
-source "$ICM_CONTRACTS_PATH"/scripts/constants.sh
+source "$REPO_PATH"/scripts/versions.sh
+source "$REPO_PATH"/scripts/constants.sh
 
 ############################
 # download icm-services

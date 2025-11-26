@@ -1,7 +1,7 @@
 [profile.default]
 src = 'icm-contracts/contracts'
 out = 'out'
-libs = ['lib']
+libs = ['icm-contracts/lib']
 solc_version = '0.8.25'
 evm_version = 'shanghai'
 test = 'tests'
