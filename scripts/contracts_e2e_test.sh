@@ -4,13 +4,15 @@
 
 set -e
 
-ICM_CONTRACTS_PATH=$(
+REPO_PATH=$(
   cd "$(dirname "${BASH_SOURCE[0]}")"
-  cd ../ && pwd
+  cd .. && pwd
 )
 
+ICM_CONTRACTS_PATH=$REPO_PATH/icm-contracts
+
 function printHelp() {
-    echo "Usage: ./scripts/e2e_test.sh [--components component]"
+    echo "Usage: ./scripts/contracts_e2e_test.sh [--components component]"
     echo ""
     printUsage
 }
@@ -98,16 +100,16 @@ if [ -n "$epoch_duration" ]; then
     echo "GRANITE_EPOCH_DURATION: $GRANITE_EPOCH_DURATION"
 fi
 
-source "$ICM_CONTRACTS_PATH"/scripts/constants.sh
-source "$ICM_CONTRACTS_PATH"/scripts/versions.sh
+source "$REPO_PATH"/scripts/constants.sh
+source "$REPO_PATH"/scripts/versions.sh
 
 BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 
 cwd=$(pwd)
 # Install the avalanchego and subnet-evm binaries
 rm -rf $BASEDIR/avalanchego
-BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${ICM_CONTRACTS_PATH}/scripts/install_avalanchego_release.sh"
-BASEDIR=$BASEDIR "${ICM_CONTRACTS_PATH}/scripts/install_subnetevm_release.sh"
+BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
+BASEDIR=$BASEDIR "${REPO_PATH}/scripts/install_subnetevm_release.sh"
 
 cp ${BASEDIR}/subnet-evm/subnet-evm ${BASEDIR}/avalanchego/plugins/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
 echo "Copied ${BASEDIR}/subnet-evm/subnet-evm binary to ${BASEDIR}/avalanchego/plugins/"
@@ -118,12 +120,12 @@ export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
 
 ICM_SERVICES_BUILD_PATH=$BASEDIR/icm-services
 
-cd $ICM_CONTRACTS_PATH
+cd $REPO_PATH
 # Install signature-aggregator binary
-BASEDIR=$BASEDIR ICM_SERVICES_BUILD_PATH=$ICM_SERVICES_BUILD_PATH "${ICM_CONTRACTS_PATH}/scripts/install_sig_agg_release.sh"
+BASEDIR=$BASEDIR ICM_SERVICES_BUILD_PATH=$ICM_SERVICES_BUILD_PATH "${REPO_PATH}/scripts/install_sig_agg_release.sh"
 echo "Installed signature-aggregator from icm-services release ${ICM_SERVICES_VERSION}"
 
-cd $ICM_CONTRACTS_PATH
+cd $REPO_PATH
 if command -v forge &> /dev/null; then
   forge build --skip test
 else
@@ -131,15 +133,15 @@ else
   $HOME/.foundry/bin/forge build
 fi
 
-cd "$ICM_CONTRACTS_PATH"
+cd "$REPO_PATH"
 
 for component in $(echo $components | tr ',' ' '); do
     echo "Building e2e tests for $component"
-    go run github.com/onsi/ginkgo/v2/ginkgo build ./tests/suites/$component
+    go run github.com/onsi/ginkgo/v2/ginkgo build ./icm-contracts/tests/suites/$component
 
     echo "Running e2e tests for $component"
 
-    RUN_E2E=true SIG_AGG_PATH=$ICM_SERVICES_BUILD_PATH/signature-aggregator ./tests/suites/$component/$component.test \
+    RUN_E2E=true SIG_AGG_PATH=$ICM_SERVICES_BUILD_PATH/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
     --network-dir=${network_dir} \

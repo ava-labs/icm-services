@@ -21,8 +21,10 @@ import {TeleporterRegistryOwnableAppUpgradeable} from
 /**
  * @dev BatchCrossChainMessenger batches multiple Teleporter messages into a single transaction
  */
-contract BatchCrossChainMessenger is ReentrancyGuardUpgradeable,
-    TeleporterRegistryOwnableAppUpgradeable {
+contract BatchCrossChainMessenger is
+    ReentrancyGuardUpgradeable,
+    TeleporterRegistryOwnableAppUpgradeable
+{
     using SafeERC20 for IERC20;
 
     // Messages sent to this contract.
