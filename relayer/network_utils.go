@@ -29,7 +29,7 @@ const retryPeriodSeconds = 5
 func InitializeConnectionsAndCheckStake(
 	ctx context.Context,
 	logger logging.Logger,
-	network peers.AppRequestNetwork,
+	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 ) error {
 	for _, subnet := range cfg.GetTrackedSubnets().List() {
@@ -59,7 +59,7 @@ func InitializeConnectionsAndCheckStake(
 func checkSufficientConnectedStake(
 	ctx context.Context,
 	logger logging.Logger,
-	network peers.AppRequestNetwork,
+	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 	sourceBlockchain *config.SourceBlockchain,
 ) error {

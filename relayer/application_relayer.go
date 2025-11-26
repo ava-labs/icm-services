@@ -54,7 +54,7 @@ type CheckpointManager interface {
 type ApplicationRelayer struct {
 	logger                    logging.Logger
 	metrics                   *ApplicationRelayerMetrics
-	network                   peers.AppRequestNetwork
+	network                   *peers.AppRequestNetwork
 	sourceBlockchain          config.SourceBlockchain
 	signingSubnetID           ids.ID
 	destinationClient         vms.DestinationClient
@@ -69,7 +69,7 @@ type ApplicationRelayer struct {
 func NewApplicationRelayer(
 	logger logging.Logger,
 	metrics *ApplicationRelayerMetrics,
-	network peers.AppRequestNetwork,
+	network *peers.AppRequestNetwork,
 	relayerID database.RelayerID,
 	destinationClient vms.DestinationClient,
 	sourceBlockchain config.SourceBlockchain,
@@ -206,7 +206,7 @@ func (r *ApplicationRelayer) processMessage(
 			defaultQuorumPercentageBuffer,
 		)
 		// Determine the appropriate P-Chain height for validator set selection
-		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx, r.network)
+		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx)
 		if err != nil {
 			r.incFailedRelayMessageCount("failed to determine P-Chain height")
 			return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)

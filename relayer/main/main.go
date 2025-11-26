@@ -295,7 +295,7 @@ func main() {
 		sourceClients,
 	)
 
-	networkHealthFunc := peers.GetNetworkHealthFunc(logger, network, cfg.GetTrackedSubnets().List())
+	networkHealthFunc := network.GetNetworkHealthFunc(cfg.GetTrackedSubnets().List())
 
 	// Each Listener goroutine will have an atomic bool that it can set to false to indicate an unrecoverable error
 	api.HandleHealthCheck(logger, relayerHealth, networkHealthFunc)
@@ -484,7 +484,7 @@ func createApplicationRelayers(
 	relayerMetrics *relayer.ApplicationRelayerMetrics,
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
-	network peers.AppRequestNetwork,
+	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 	sourceClients map[ids.ID]ethclient.Client,
 	destinationClients map[ids.ID]vms.DestinationClient,
@@ -540,7 +540,7 @@ func createApplicationRelayersForSourceChain(
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
 	sourceBlockchain config.SourceBlockchain,
-	network peers.AppRequestNetwork,
+	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 	currentHeight uint64,
 	destinationClients map[ids.ID]vms.DestinationClient,

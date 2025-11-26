@@ -21,7 +21,6 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
-	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -73,6 +72,7 @@ type destinationClient struct {
 	epochExpiration   time.Time
 	epochSingleFlight singleflight.Group
 	proposerClient    *clients.ProposerVMAPI
+	epochDuration     time.Duration
 }
 
 // Type alias for the destinationClient to have access to the fields but not the methods of the concurrentSigner.
@@ -108,6 +108,7 @@ type txResult struct {
 func NewDestinationClient(
 	logger logging.Logger,
 	destinationBlockchain *config.DestinationBlockchain,
+	epochDuration time.Duration,
 ) (*destinationClient, error) {
 	destinationID, err := ids.FromString(destinationBlockchain.BlockchainID)
 	if err != nil {
@@ -218,6 +219,7 @@ func NewDestinationClient(
 		maxPriorityFeePerGas:       new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
 		txInclusionTimeout:         time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
 		proposerClient:             proposerClient,
+		epochDuration:              epochDuration,
 	}
 
 	return &destClient, nil
@@ -531,7 +533,6 @@ func (c *destinationClient) GetRPCEndpointURL() string {
 // The epoch is cached per destination blockchain to avoid per-message fetches.
 func (c *destinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
-	network peers.AppRequestNetwork,
 ) (uint64, error) {
 	// Use singleflight to deduplicate concurrent fetches and serialize cache access
 	result, err, _ := c.epochSingleFlight.Do(epochCacheKey, func() (interface{}, error) {
@@ -546,19 +547,17 @@ func (c *destinationClient) GetPChainHeightForDestination(
 			return block.Epoch{}, fetchErr
 		}
 
-		epochDuration := network.GetGraniteEpochDuration()
-
 		c.logger.Info("Successfully retrieved epoch from ProposerVM",
 			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
 			zap.Any("epoch", epoch),
-			zap.Duration("epochDuration", epochDuration),
+			zap.Duration("epochDuration", c.epochDuration),
 		)
 
 		// Calculate expiration time based on epoch.StartTime + epochDuration
 		// epoch.StartTime is in nanoseconds (Unix timestamp)
 		// Update cache
 		c.epochValue = epoch
-		c.epochExpiration = time.Unix(0, epoch.StartTime).Add(epochDuration)
+		c.epochExpiration = time.Unix(0, epoch.StartTime).Add(c.epochDuration)
 
 		c.logger.Debug("Calculated epoch expiration",
 			zap.Stringer("destinationBlockchainID", c.destinationBlockchainID),
