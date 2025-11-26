@@ -5,7 +5,7 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
-	exampleerc20 "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/mocks/ExampleERC20"
+	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"

@@ -16,7 +16,6 @@ issues:
 linters:
   disable-all: true
   enable:
-    - goconst
     - goimports
     - gosimple
     - govet

@@ -11,10 +11,12 @@ issues:
     - "abi-bindings/go"
   exclude-files:
     - ".*mock.*"
+    - ".*.pb.go"
 
 linters:
   disable-all: true
   enable:
+    - goconst
     - goimports
     - gosimple
     - govet
