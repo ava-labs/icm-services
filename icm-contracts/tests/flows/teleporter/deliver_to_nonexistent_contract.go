@@ -4,7 +4,7 @@ import (
 	"context"
 	"math/big"
 
-	testmessenger "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/tests/TestMessenger"
+	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/common"

@@ -11,7 +11,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
-	teleportermessenger "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
+	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/relayer/config"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
