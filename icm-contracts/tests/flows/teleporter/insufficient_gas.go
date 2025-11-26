@@ -4,8 +4,8 @@ import (
 	"context"
 	"math/big"
 
-	localnetwork "github.com/ava-labs/icm-contracts/tests/network"
-	"github.com/ava-labs/icm-contracts/tests/utils"
+	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
