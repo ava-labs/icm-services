@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/units"
-	teleportermessenger "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
-	poamanager "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/validator-manager/PoAManager"
+	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
+	poamanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/PoAManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/common"

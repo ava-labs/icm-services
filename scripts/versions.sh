@@ -2,6 +2,8 @@
 # Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 # See the file LICENSE for licensing terms.
 
+set -eo pipefail
+
 BASE_PATH=$(
   cd "$(dirname "${BASH_SOURCE[0]}")"
   cd .. && pwd
@@ -26,6 +28,11 @@ function extract_commit() {
   echo "$version"
 }
 
+# ICM_SERVICES_VERSION is currently needed for the contracts E2E tests but is not a direct dependency
+# since that would create a circular dependency. We should refactor the code until this is no longer the case.
+# ICM_SERVICES_VERSION=${ICM_SERVICES_VERSION:-'signature-aggregator-v1.0.0-rc.0'}
+ICM_SERVICES_VERSION=${ICM_SERVICES_VERSION:-'9564f00d296c7daeffbf26c4cc4866b3b6e98185'}
+
 # This needs to be exported to be picked up by the dockerfile.
 export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 # Don't export them as they're used in the context of other calls
@@ -33,3 +40,7 @@ export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'8ebe57a20bba73840804778d44f714aa821b4131'}
 #SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/subnet-evm)")}
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-'7fc05124d976a3247dc1c32f87c5e4003ed6fb6b'}
+
+# Extract the Solidity version from foundry.toml
+SOLIDITY_VERSION=$(awk -F"'" '/^solc_version/ {print $2}' $BASE_PATH/foundry.toml)
+EVM_VERSION=$(awk -F"'" '/^evm_version/ {print $2}' $BASE_PATH/foundry.toml)

@@ -20,7 +20,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	nativeMinter "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/INativeMinter"
+	nativeMinter "github.com/ava-labs/icm-services/abi-bindings/go/subnet-evm/INativeMinter"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	ethereum "github.com/ava-labs/libevm"
