@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"sync"
 	"testing"
 
 	"github.com/ava-labs/icm-services/config"
@@ -22,13 +21,9 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 		"api-key": "secret-key-789",
 	}
 
-	var mu sync.Mutex
 	var lastReceivedParams map[string]string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-
 		// Capture query params from this request
 		params := make(map[string]string)
 		for key := range queryParams {
@@ -76,13 +71,9 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 			method.Func.Call(args)
 
 			// Verify query params were forwarded for this method
-			mu.Lock()
-			receivedParams := lastReceivedParams
-			mu.Unlock()
-
-			require.NotNil(t, receivedParams, "Method %s did not forward query parameters", methodName)
+			require.NotNil(t, lastReceivedParams, "Method %s did not forward query parameters", methodName)
 			for key, expectedValue := range queryParams {
-				require.Equal(t, expectedValue, receivedParams[key],
+				require.Equal(t, expectedValue, lastReceivedParams[key],
 					"Method %s: query param %s not forwarded correctly", methodName, key)
 			}
 		})
@@ -97,13 +88,9 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 		"X-API-Key":     "secret-key",
 	}
 
-	var mu sync.Mutex
 	var lastReceivedHeaders map[string]string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-
 		headers := make(map[string]string)
 		for key := range httpHeaders {
 			headers[key] = r.Header.Get(key)
@@ -143,13 +130,9 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 
 			method.Func.Call(args)
 
-			mu.Lock()
-			receivedHeaders := lastReceivedHeaders
-			mu.Unlock()
-
-			require.NotNil(t, receivedHeaders, "Method %s did not forward HTTP headers", methodName)
+			require.NotNil(t, lastReceivedHeaders, "Method %s did not forward HTTP headers", methodName)
 			for key, expectedValue := range httpHeaders {
-				require.Equal(t, expectedValue, receivedHeaders[key],
+				require.Equal(t, expectedValue, lastReceivedHeaders[key],
 					"Method %s: header %s not forwarded correctly", methodName, key)
 			}
 		})
