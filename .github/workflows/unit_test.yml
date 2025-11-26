@@ -30,11 +30,12 @@ jobs:
           export PATH=$PATH:$HOME/.foundry/bin
           forge test -vvv
 
-  go-unit-tests:
+  unit_tests:
+    name: Unit tests
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repositories and submodules
+      - name: Checkout icm-relayer repository
         uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -42,12 +43,10 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: "go.mod"
+          go-version-file: 'go.mod'
 
-      - name: Run Go unit tests
-        run: |
-          source scripts/constants.sh
-          go test ./...
+      - name: Run Golang Unit Tests
+        run: ./scripts/test.sh
 
   teleporter_e2e:
     name: teleporter-e2e-tests
