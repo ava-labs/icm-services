@@ -4,7 +4,6 @@
 package clients
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -24,20 +23,18 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 	}
 
 	var mu sync.Mutex
-	methodsCalled := make(map[string]bool)
-	receivedParams := make(map[string]map[string]string)
+	var lastReceivedParams map[string]string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		// Track that this method was called and capture its query params
-		methodsCalled[r.URL.Path] = true
+		// Capture query params from this request
 		params := make(map[string]string)
 		for key := range queryParams {
 			params[key] = r.URL.Query().Get(key)
 		}
-		receivedParams[r.URL.Path] = params
+		lastReceivedParams = params
 
 		// Return a generic valid JSON-RPC response
 		w.Header().Set("Content-Type", "application/json")
@@ -56,8 +53,6 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 	clientValue := reflect.ValueOf(client)
 	clientType := clientValue.Type()
 
-	ctx := context.Background()
-
 	for i := 0; i < clientType.NumMethod(); i++ {
 		method := clientType.Method(i)
 		methodName := method.Name
@@ -74,7 +69,7 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 			// Add context as first argument if the method takes one
 			methodType := method.Type
 			if methodType.NumIn() > 1 && methodType.In(1).String() == "context.Context" {
-				args = append(args, reflect.ValueOf(ctx))
+				args = append(args, reflect.ValueOf(t.Context()))
 			}
 
 			// Call the method (may fail due to mock response format, but we only care about HTTP request)
@@ -82,27 +77,12 @@ func TestProposerVMAPI_AllMethodsForwardQueryParams(t *testing.T) {
 
 			// Verify query params were forwarded for this method
 			mu.Lock()
-			defer mu.Unlock()
+			receivedParams := lastReceivedParams
+			mu.Unlock()
 
-			var foundParams map[string]string
-			for _, params := range receivedParams {
-				// Check if all expected query params are present
-				allPresent := true
-				for key, expectedValue := range queryParams {
-					if params[key] != expectedValue {
-						allPresent = false
-						break
-					}
-				}
-				if allPresent {
-					foundParams = params
-					break
-				}
-			}
-
-			require.NotNil(t, foundParams, "Method %s did not forward query parameters", methodName)
+			require.NotNil(t, receivedParams, "Method %s did not forward query parameters", methodName)
 			for key, expectedValue := range queryParams {
-				require.Equal(t, expectedValue, foundParams[key],
+				require.Equal(t, expectedValue, receivedParams[key],
 					"Method %s: query param %s not forwarded correctly", methodName, key)
 			}
 		})
@@ -118,19 +98,17 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 	}
 
 	var mu sync.Mutex
-	methodsCalled := make(map[string]bool)
-	receivedHeaders := make(map[string]map[string]string)
+	var lastReceivedHeaders map[string]string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		methodsCalled[r.URL.Path] = true
 		headers := make(map[string]string)
 		for key := range httpHeaders {
 			headers[key] = r.Header.Get(key)
 		}
-		receivedHeaders[r.URL.Path] = headers
+		lastReceivedHeaders = headers
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -147,8 +125,6 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 	clientValue := reflect.ValueOf(client)
 	clientType := clientValue.Type()
 
-	ctx := context.Background()
-
 	for i := 0; i < clientType.NumMethod(); i++ {
 		method := clientType.Method(i)
 		methodName := method.Name
@@ -162,32 +138,18 @@ func TestProposerVMAPI_AllMethodsForwardHTTPHeaders(t *testing.T) {
 
 			methodType := method.Type
 			if methodType.NumIn() > 1 && methodType.In(1).String() == "context.Context" {
-				args = append(args, reflect.ValueOf(ctx))
+				args = append(args, reflect.ValueOf(t.Context()))
 			}
 
 			method.Func.Call(args)
 
 			mu.Lock()
-			defer mu.Unlock()
+			receivedHeaders := lastReceivedHeaders
+			mu.Unlock()
 
-			var foundHeaders map[string]string
-			for _, headers := range receivedHeaders {
-				allPresent := true
-				for key, expectedValue := range httpHeaders {
-					if headers[key] != expectedValue {
-						allPresent = false
-						break
-					}
-				}
-				if allPresent {
-					foundHeaders = headers
-					break
-				}
-			}
-
-			require.NotNil(t, foundHeaders, "Method %s did not forward HTTP headers", methodName)
+			require.NotNil(t, receivedHeaders, "Method %s did not forward HTTP headers", methodName)
 			for key, expectedValue := range httpHeaders {
-				require.Equal(t, expectedValue, foundHeaders[key],
+				require.Equal(t, expectedValue, receivedHeaders[key],
 					"Method %s: header %s not forwarded correctly", methodName, key)
 			}
 		})
