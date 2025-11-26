@@ -21,7 +21,6 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
-	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -109,23 +108,12 @@ type txResult struct {
 func NewDestinationClient(
 	logger logging.Logger,
 	destinationBlockchain *config.DestinationBlockchain,
-	infoAPIConfig *basecfg.APIConfig,
+	epochDuration time.Duration,
 ) (*destinationClient, error) {
 	destinationID, err := ids.FromString(destinationBlockchain.BlockchainID)
 	if err != nil {
 		return nil, fmt.Errorf("could not decode destination chain ID from string: %w", err)
 	}
-
-	// Fetch epoch duration from InfoAPI for P-Chain height determination
-	infoAPI, err := clients.NewInfoAPI(infoAPIConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create info API: %w", err)
-	}
-	upgradeConfig, err := infoAPI.Upgrades(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get upgrade config: %w", err)
-	}
-	epochDuration := upgradeConfig.GraniteEpochDuration
 
 	signers, err := signer.NewSigners(destinationBlockchain)
 	if err != nil {
