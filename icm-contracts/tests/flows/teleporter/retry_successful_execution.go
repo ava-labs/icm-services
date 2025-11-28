@@ -39,7 +39,6 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	//
 	// Call the test messenger contract on L1 A
 	//
-	message := "Hello, world!"
 	optsA, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1AInfo.EVMChainID)
 	Expect(err).Should(BeNil())
 	tx, err := l1ATestMessenger.SendMessage(
@@ -49,7 +48,7 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 		fundedAddress,
 		big.NewInt(0),
 		testmessenger.SendMessageRequiredGas,
-		message,
+		HELLO_WORLD,
 	)
 	Expect(err).Should(BeNil())
 
@@ -100,7 +99,7 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	//
 	_, currMessage, err := l1BTestMessenger.GetCurrentMessage(&bind.CallOpts{}, l1AInfo.BlockchainID)
 	Expect(err).Should(BeNil())
-	Expect(currMessage).Should(Equal(message))
+	Expect(currMessage).Should(Equal(HELLO_WORLD))
 
 	//
 	// Attempt to retry message execution, which should fail
