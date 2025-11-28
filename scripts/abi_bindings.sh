@@ -86,7 +86,7 @@ while read -r filepath; do
     # so that each remapping is of the form @token=lib/path/to/remapping
     transformed_lines=$(sed -n "s|^\(@[^=]*=\)\(.*\)|\1$dir_path/\2|p" "$filepath")
     remappings+=" $transformed_lines "
-done < <(find "$REPO_PATH/icm-contracts/lib" -type f -name "remappings.txt" )
+done < <(find "$REPO_PATH/lib" -type f -name "remappings.txt" )
 
 function convertToLower() {
     if [ "$ARCH" = 'arm64' ]; then
