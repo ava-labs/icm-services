@@ -20,7 +20,7 @@ jobs:
     name: teleporter-e2e-tests
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout repositories and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -44,7 +44,7 @@ jobs:
     name: governance-e2e-tests
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout repositories and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -68,7 +68,7 @@ jobs:
     name: validator-manager-e2e-tests
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout repositories and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -92,7 +92,7 @@ jobs:
     name: ictt-e2e-tests
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout repositories and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout icm-relayer repository
+      - name: Checkout repository
         uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -144,7 +144,7 @@ jobs:
       - name: Build Subnet-EVM Plugin Binary
         run: ./scripts/build.sh /tmp/e2e-test/avalanchego/plugins/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
 
-      - name: Checkout icm-relayer repository
+      - name: Checkout repository
         uses: actions/checkout@v6
         with:
           submodules: recursive

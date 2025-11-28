@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout icm-relayer repository
+      - name: Checkout repository
         uses: actions/checkout@v6
         with:
           submodules: recursive
