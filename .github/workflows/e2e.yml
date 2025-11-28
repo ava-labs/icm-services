@@ -38,7 +38,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/e2e_test.sh --components teleporter
+          ./scripts/contracts_e2e_test.sh --components teleporter
 
   governance_e2e:
     name: governance-e2e-tests
@@ -62,7 +62,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/e2e_test.sh --components governance
+          ./scripts/contracts_e2e_test.sh --components governance
 
   validator_manager_e2e:
     name: validator-manager-e2e-tests
@@ -86,7 +86,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/e2e_test.sh --components validator-manager
+          ./scripts/contracts_e2e_test.sh --components validator-manager
 
   ictt_e2e:
     name: ictt-e2e-tests
@@ -110,7 +110,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/e2e_test.sh --components ictt
+          ./scripts/contracts_e2e_test.sh --components ictt
 
   services_e2e:
     name: ICM Services E2E Tests
