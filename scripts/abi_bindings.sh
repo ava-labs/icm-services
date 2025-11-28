@@ -86,7 +86,7 @@ while read -r filepath; do
     # so that each remapping is of the form @token=lib/path/to/remapping
     transformed_lines=$(sed -n "s|^\(@[^=]*=\)\(.*\)|\1$dir_path/\2|p" "$filepath")
     remappings+=" $transformed_lines "
-done < <(find "$REPO_PATH/icm-contracts/lib" -type f -name "remappings.txt" )
+done < <(find "$REPO_PATH/lib" -type f -name "remappings.txt" )
 
 function convertToLower() {
     if [ "$ARCH" = 'arm64' ]; then
@@ -181,11 +181,11 @@ cd $ICM_CONTRACTS_PATH/contracts
 generate_bindings "${contract_names[@]}"
 
 contract_names=($PROXY_LIST)
-cd $ICM_CONTRACTS_PATH/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/transparent
+cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/transparent
 generate_bindings "${contract_names[@]}"
 
 contract_names=($ACCESS_LIST)
-cd $ICM_CONTRACTS_PATH/lib/openzeppelin-contracts-upgradeable/contracts/access
+cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/contracts/access
 generate_bindings "${contract_names[@]}"
 
 exit 0
