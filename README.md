@@ -8,6 +8,8 @@ Currently implemented applications are
     - Full-service cross-chain message delivery application that is configurable to listen to specific source and destination chain pairs and relay messages according to its configured rules.
 2. [Signature Aggregator](signature-aggregator/README.md)
     - Lightweight API that requests and aggregates signatures from validators for any ICM message, and returns a valid signed message that the user can then self-deliver to the intended destination chain.
+3. [ICM Contracts](icm-contracts/README.md)
+    - Solidity contracts for ICM implementation and integration with ICM.
 
 ## Updating dependencies and E2E testing
 
@@ -17,15 +19,12 @@ Currently implemented applications are
 Applications in this repository depend on the following upstream repositories, both directly in terms of code imports defined in the `go.mod` file as well as indirectly for E2E tests where binary versions are used to spin up the test network via `tmpnet`:
 
 1. [avalanchego](https://github.com/ava-labs/avalanchego/)
-2. [coreth](https://github.com/ava-labs/coreth) (indirectly)
-3. [subnet-evm](https://github.com/ava-labs/subnet-evm)
+2. [subnet-evm](https://github.com/ava-labs/subnet-evm)
 
 > [!NOTE]
 > We require any commits referenced in our `main` branch to be present in the default branches of the repositories above, but during active development it might be useful to work against changes in progress that are still on feature branches.
 
 When developing such features that require updates to one or more of the above, care must be taken to understand where the relevant code comes from. The binaries of applications built in this repo are built against versions referenced in the `go.mod` file. The E2E tests run against a simulated network running locally that is started by calling a separately compiled `avalanchego` binary as well as its plugins. These are compiled based on the values of `AVALANCHEGO_VERSION` in this repository's `./scripts/versions.sh`.
-
-`avalanchego` and `coreth` have a direct circular dependency and this repository is only indirectly dependent on `coreth` but directly dependent on `avalanchego`. Therefore, if any updates are required from the `coreth` side, a corresponding `avalanchego` commit referencing those changes is required. On the other hand `subnet-evm` just depends directly on `avalanchego`.
 
 > [!NOTE]
 > It's possible that a `subnet-evm` version is compatible with multiple different `avalanchego` versions and not limited to the one listed in `subnet-evm`'s `/scripts/versions.sh`

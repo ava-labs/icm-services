@@ -28,11 +28,6 @@ function extract_commit() {
   echo "$version"
 }
 
-# ICM_SERVICES_VERSION is currently needed for the contracts E2E tests but is not a direct dependency
-# since that would create a circular dependency. We should refactor the code until this is no longer the case.
-# ICM_SERVICES_VERSION=${ICM_SERVICES_VERSION:-'signature-aggregator-v1.0.0-rc.0'}
-ICM_SERVICES_VERSION=${ICM_SERVICES_VERSION:-'9564f00d296c7daeffbf26c4cc4866b3b6e98185'}
-
 # This needs to be exported to be picked up by the dockerfile.
 export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 # Don't export them as they're used in the context of other calls
