@@ -181,11 +181,11 @@ cd $ICM_CONTRACTS_PATH/contracts
 generate_bindings "${contract_names[@]}"
 
 contract_names=($PROXY_LIST)
-cd $ICM_CONTRACTS_PATH/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/transparent
+cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/transparent
 generate_bindings "${contract_names[@]}"
 
 contract_names=($ACCESS_LIST)
-cd $ICM_CONTRACTS_PATH/lib/openzeppelin-contracts-upgradeable/contracts/access
+cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/contracts/access
 generate_bindings "${contract_names[@]}"
 
 exit 0
