@@ -14,6 +14,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const HELLO_WORLD = "Hello, world!"
+
 func DeliverToNonExistentContract(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
@@ -57,7 +59,6 @@ func DeliverToNonExistentContract(network *localnetwork.LocalNetwork, teleporter
 	// Call the example messenger contract on L1 A
 	//
 	log.Info("Calling ExampleMessenger on L1 A")
-	message := "Hello, world!"
 	optsA, err := bind.NewKeyedTransactorWithChainID(
 		fundedKey, l1AInfo.EVMChainID)
 	Expect(err).Should(BeNil())
@@ -68,7 +69,7 @@ func DeliverToNonExistentContract(network *localnetwork.LocalNetwork, teleporter
 		common.BigToAddress(common.Big0),
 		big.NewInt(0),
 		testmessenger.SendMessageRequiredGas,
-		message,
+		HELLO_WORLD,
 	)
 	Expect(err).Should(BeNil())
 
@@ -169,5 +170,5 @@ func DeliverToNonExistentContract(network *localnetwork.LocalNetwork, teleporter
 	log.Info("Verifying we received the expected string")
 	_, currMessage, err := L1BExampleMessenger.GetCurrentMessage(&bind.CallOpts{}, l1AInfo.BlockchainID)
 	Expect(err).Should(BeNil())
-	Expect(currMessage).Should(Equal(message))
+	Expect(currMessage).Should(Equal(HELLO_WORLD))
 }
