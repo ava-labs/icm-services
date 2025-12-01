@@ -10,7 +10,8 @@ type AppRequestNetworkMetrics struct {
 	disconnects            prometheus.Counter
 }
 
-func newAppRequestNetworkMetrics(registerer prometheus.Registerer) *AppRequestNetworkMetrics {
+// NewAppRequestNetworkMetrics creates a new AppRequestNetworkMetrics instance
+func NewAppRequestNetworkMetrics(registerer prometheus.Registerer) *AppRequestNetworkMetrics {
 	m := AppRequestNetworkMetrics{
 		pChainAPICallLatencyMS: prometheus.NewHistogram(
 			prometheus.HistogramOpts{
