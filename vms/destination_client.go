@@ -7,12 +7,14 @@ package vms
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
@@ -55,7 +57,6 @@ type DestinationClient interface {
 	// The epoch is cached per destination blockchain to avoid per-message fetches.
 	GetPChainHeightForDestination(
 		ctx context.Context,
-		network peers.AppRequestNetwork,
 	) (uint64, error)
 }
 
@@ -64,6 +65,24 @@ func CreateDestinationClients(
 	logger logging.Logger,
 	relayerConfig *config.Config,
 ) (map[ids.ID]DestinationClient, error) {
+	// Fetch epoch duration once since it's global across all blockchains
+	var epochDuration time.Duration
+	infoAPIConfig := relayerConfig.GetInfoAPI()
+	infoAPI, err := clients.NewInfoAPI(infoAPIConfig)
+	if err != nil {
+		logger.Error("Failed to create info API for epoch duration", zap.Error(err))
+		return nil, fmt.Errorf("failed to create info API: %w", err)
+	}
+	upgradeConfig, err := infoAPI.Upgrades(context.Background())
+	if err != nil {
+		logger.Error("Failed to get upgrade config for epoch duration", zap.Error(err))
+		return nil, fmt.Errorf("failed to get upgrade config: %w", err)
+	}
+	epochDuration = upgradeConfig.GraniteEpochDuration
+	logger.Info("Fetched Granite epoch duration",
+		zap.Duration("epochDuration", epochDuration),
+	)
+
 	destinationClients := make(map[ids.ID]DestinationClient)
 	for _, subnetInfo := range relayerConfig.DestinationBlockchains {
 		log := logger.With(
@@ -79,7 +98,7 @@ func CreateDestinationClients(
 			continue
 		}
 
-		destinationClient, err := evm.NewDestinationClient(log, subnetInfo)
+		destinationClient, err := evm.NewDestinationClient(log, subnetInfo, epochDuration)
 		if err != nil {
 			log.Error("Could not create destination client", zap.Error(err))
 			return nil, err
