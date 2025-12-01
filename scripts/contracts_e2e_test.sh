@@ -118,12 +118,10 @@ export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
 export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
 export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
 
-ICM_SERVICES_BUILD_PATH=$BASEDIR/icm-services
-
 cd $REPO_PATH
 # Install signature-aggregator binary
-BASEDIR=$BASEDIR ICM_SERVICES_BUILD_PATH=$ICM_SERVICES_BUILD_PATH "${REPO_PATH}/scripts/install_sig_agg_release.sh"
-echo "Installed signature-aggregator from icm-services release ${ICM_SERVICES_VERSION}"
+./scripts/build_signature_aggregator.sh
+
 
 cd $REPO_PATH
 if command -v forge &> /dev/null; then
@@ -141,7 +139,7 @@ for component in $(echo $components | tr ',' ' '); do
 
     echo "Running e2e tests for $component"
 
-    RUN_E2E=true SIG_AGG_PATH=$ICM_SERVICES_BUILD_PATH/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
+    RUN_E2E=true SIG_AGG_PATH=./build/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
     --network-dir=${network_dir} \

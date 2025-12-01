@@ -16,8 +16,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # JOB to run change detection
+  changes:
+    runs-on: ubuntu-22.04
+    # Required permissions
+    permissions:
+      pull-requests: read
+    # Set job outputs to values from filter step
+    outputs:
+      contracts: ${{ steps.filter.outputs.contracts }}
+      services: ${{ steps.filter.outputs.services }}
+    steps:
+    # For pull requests it's not necessary to checkout the code
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          contracts:
+            - '.github/workflows/e2e.yml'
+            - 'go.mod'
+            - 'icm-contracts/contracts/**'
+            - 'icm-contracts/tests/**'
+            - 'icm-contracts/utils/**'
+            - 'scripts/**'
+          services:
+            - '.github/workflows/e2e.yml'
+            - 'go.mod'
+            - 'icm-contracts/utils/**'
+            - 'config/**'
+            - 'database/**'
+            - 'messages/**'
+            - 'peers/**'
+            - 'relayer/**'
+            - 'signature-aggregator/**'
+            - 'tests/**'
+            - 'scripts/**'
+            - 'types/**'
+            - 'utils/**'
+            - 'vms/**'
+
   teleporter_e2e:
     name: teleporter-e2e-tests
+    needs: changes
+    if: ${{ needs.changes.outputs.contracts == 'true' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository and submodules
@@ -42,6 +83,8 @@ jobs:
 
   governance_e2e:
     name: governance-e2e-tests
+    needs: changes
+    if: ${{ needs.changes.outputs.contracts == 'true' || github.ref == 'refs/heads/main'  }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository and submodules
@@ -66,6 +109,8 @@ jobs:
 
   validator_manager_e2e:
     name: validator-manager-e2e-tests
+    needs: changes
+    if: ${{ needs.changes.outputs.contracts == 'true' || github.ref == 'refs/heads/main'  }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository and submodules
@@ -90,6 +135,8 @@ jobs:
 
   ictt_e2e:
     name: ictt-e2e-tests
+    needs: changes
+    if: ${{ needs.changes.outputs.contracts == 'true' || github.ref == 'refs/heads/main'  }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository and submodules
@@ -114,6 +161,8 @@ jobs:
 
   services_e2e:
     name: ICM Services E2E Tests
+    needs: changes
+    if: ${{ needs.changes.outputs.services == 'true' || github.ref == 'refs/heads/main'  }}
     runs-on: ubuntu-22.04
 
     steps:
