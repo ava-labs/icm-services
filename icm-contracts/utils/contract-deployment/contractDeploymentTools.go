@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	deploymentUtils "github.com/ava-labs/icm-contracts/utils/deployment-utils"
+	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
 )

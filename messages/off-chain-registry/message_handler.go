@@ -11,7 +11,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
-	teleporterregistry "github.com/ava-labs/icm-contracts/abi-bindings/go/teleporter/registry/TeleporterRegistry"
+	teleporterregistry "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/registry/TeleporterRegistry"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/vms"
