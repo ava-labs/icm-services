@@ -1,0 +1,48 @@
+name: ABI Go Bindings Checker
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+
+jobs:
+  abi_binding:
+    name: abi_binding
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Teleporter repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Install solc
+        run: |
+          source ./scripts/versions.sh
+          wget https://github.com/ethereum/solidity/releases/download/v$SOLIDITY_VERSION/solc-static-linux
+          chmod +x solc-static-linux
+          sudo mv solc-static-linux /usr/local/bin/solc
+
+      - name: Generate ABI Go bindings
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          export GOPATH=$HOME/go
+          export PATH="$PATH:$GOPATH/bin"
+          ./scripts/abi_bindings.sh
+
+      - name: Print diff
+        run: git --no-pager diff -- abi-bindings/**.go
+
+      - name: Fail if diff exists
+        run: git --no-pager diff --quiet -- abi-bindings/**.go

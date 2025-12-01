@@ -1,0 +1,29 @@
+name: Semgrep
+on:
+  push:
+    branches-ignore:
+      - "dependabot/**"
+  pull_request:
+    branches:
+      - "dependabot/**"
+jobs:
+  semgrep:
+    name: semgrep/ci
+    runs-on: ubuntu-latest
+
+    container:
+      image: semgrep/semgrep
+
+    if: (github.actor != 'dependabot[bot]')
+
+    steps:
+      - uses: actions/checkout@v6
+      - run: semgrep ci --dry-run --sarif > semgrep.sarif
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN_PUB }}
+
+      - name: Upload SARIF file for GitHub Advanced Security Dashboard
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+        if: always()
