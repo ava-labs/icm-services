@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
-	teleportermessenger "github.com/ava-labs/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
+	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/eth/tracers"

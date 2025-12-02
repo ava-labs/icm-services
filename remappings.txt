@@ -1,0 +1,7 @@
+@openzeppelin/contracts@5.0.2=lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts
+@openzeppelin/contracts-upgradeable@5.0.2=lib/openzeppelin-contracts-upgradeable/contracts
+@forge-std=lib/forge-std/src
+@teleporter=icm-contracts/contracts/teleporter
+@subnet-evm=icm-contracts/contracts/subnet-evm
+@mocks=icm-contracts/contracts/mocks
+@utilities=icm-contracts/contracts/utilities
