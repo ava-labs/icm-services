@@ -19,41 +19,43 @@ jobs:
   # JOB to run change detection
   changes:
     runs-on: ubuntu-22.04
-    # Required permissions
-    permissions:
-      pull-requests: read
     # Set job outputs to values from filter step
     outputs:
       contracts: ${{ steps.filter.outputs.contracts }}
       services: ${{ steps.filter.outputs.services }}
     steps:
-    # For pull requests it's not necessary to checkout the code
-    - uses: dorny/paths-filter@v3
-      id: filter
-      with:
-        filters: |
-          contracts:
-            - '.github/workflows/e2e.yml'
-            - 'go.mod'
-            - 'icm-contracts/contracts/**'
-            - 'icm-contracts/tests/**'
-            - 'icm-contracts/utils/**'
-            - 'scripts/**'
-          services:
-            - '.github/workflows/e2e.yml'
-            - 'go.mod'
-            - 'icm-contracts/utils/**'
-            - 'config/**'
-            - 'database/**'
-            - 'messages/**'
-            - 'peers/**'
-            - 'relayer/**'
-            - 'signature-aggregator/**'
-            - 'tests/**'
-            - 'scripts/**'
-            - 'types/**'
-            - 'utils/**'
-            - 'vms/**'
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Detect changed components
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            contracts:
+              - '.github/workflows/e2e.yml'
+              - 'go.mod'
+              - 'icm-contracts/contracts/**'
+              - 'icm-contracts/tests/**'
+              - 'icm-contracts/utils/**'
+              - 'scripts/**'
+            services:
+              - '.github/workflows/e2e.yml'
+              - 'go.mod'
+              - 'icm-contracts/utils/**'
+              - 'config/**'
+              - 'database/**'
+              - 'messages/**'
+              - 'peers/**'
+              - 'relayer/**'
+              - 'signature-aggregator/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - 'types/**'
+              - 'utils/**'
+              - 'vms/**'
 
   teleporter_e2e:
     name: teleporter-e2e-tests
