@@ -114,7 +114,6 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 	logger logging.Logger,
 	signingSubnet ids.ID,
 	quorumPercentage uint64,
-	skipCache bool,
 	pchainHeight uint64,
 ) (*peers.CanonicalValidators, error) {
 	s.network.TrackSubnet(ctx, signingSubnet)
@@ -122,7 +121,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 	var vdrs *peers.CanonicalValidators
 	var err error
 	connectOp := func() error {
-		vdrs, err = s.network.GetCanonicalValidators(ctx, signingSubnet, skipCache, pchainHeight)
+		vdrs, err = s.network.GetCanonicalValidators(ctx, signingSubnet, pchainHeight)
 		if err != nil {
 			msg := "Failed to fetch connected canonical validators"
 			logger.Warn(msg, zap.Error(err))
@@ -185,7 +184,6 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	ctx context.Context,
 	log logging.Logger,
 	signingSubnet ids.ID,
-	skipCache bool,
 ) (set.Set[ids.NodeID], error) {
 	fetchUnderfundedL1Nodes := func(subnetID ids.ID) (set.Set[ids.NodeID], error) {
 		validators, err := s.pChainClient.GetCurrentValidators(
@@ -241,7 +239,7 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	underfundedL1Nodes, err := s.underfundedL1NodeCache.Get(
 		signingSubnet,
 		fetchUnderfundedL1Nodes,
-		skipCache,
+		false,
 	)
 	if err != nil {
 		log.Error(
@@ -260,9 +258,8 @@ func (s *SignatureAggregator) getExcludedValidators(
 	log logging.Logger,
 	signingSubnet ids.ID,
 	vdrs *peers.CanonicalValidators,
-	skipCache bool,
 ) (set.Set[int], error) {
-	underfundedL1Nodes, err := s.getUnderfundedL1Nodes(ctx, log, signingSubnet, skipCache)
+	underfundedL1Nodes, err := s.getUnderfundedL1Nodes(ctx, log, signingSubnet)
 	if err != nil {
 		log.Error(
 			"Failed to fetch underfunded L1 nodes",
@@ -563,7 +560,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	inputSigningSubnet ids.ID,
 	requiredQuorumPercentage uint64,
 	quorumPercentageBuffer uint64,
-	skipCache bool,
 	pchainHeight uint64,
 ) (*avalancheWarp.Message, error) {
 	log.Info("Creating signed message",
@@ -596,7 +592,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		log,
 		signingSubnet,
 		requiredQuorumPercentage,
-		skipCache,
 		pchainHeight,
 	)
 	if err != nil {
@@ -627,7 +622,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	// if ALL of the node IDs for a validator have Balance < minimumL1ValidatorBalance
 	if isL1 {
 		log.Debug("Checking L1 validators for zero balance nodes")
-		excludedValidators, err = s.getExcludedValidators(ctx, log, signingSubnet, vdrs, skipCache)
+		excludedValidators, err = s.getExcludedValidators(ctx, log, signingSubnet, vdrs)
 		if err != nil {
 			log.Error(
 				"Failed to get excluded validators",
