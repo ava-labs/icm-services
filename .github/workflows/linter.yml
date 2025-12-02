@@ -1,7 +1,7 @@
 # Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 # See the file LICENSE for licensing terms.
 
-name: Run Golang Linter
+name: Linting
 
 on:
   push:
@@ -13,6 +13,22 @@ on:
 
 jobs:
   golangci:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+          go-version-file: 'go.mod'
+
+    - name: Run Lint
+      run: ./scripts/lint.sh --go-lint
+
+  protobuf-check:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
 
@@ -27,12 +43,95 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
-    - name: Run Lint
-      run: ./scripts/lint.sh --go-lint
-
     - name: Ensure protobuf changes are checked in
       run: |
         scripts/protobuf_codegen.sh
         git update-index --really-refresh >> /dev/null
         git diff-index HEAD # to show the differences
         git diff-index --quiet HEAD || (echo 'protobuf generated code changes have not all been checked in' && exit 1)
+
+  solhint:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+
+    - name: Install solhint
+      run: |
+        npm install solhint -g
+        solhint --version
+
+    - name: Run Lint
+      run: ./scripts/lint.sh --sol-lint
+
+  format-solidity:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+      
+      - name: Check Solidity Formatting
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          ./scripts/lint.sh --sol-format-check
+        
+  gomod_check:
+    name: Check go.mod
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - run: go mod tidy
+      - run: git --no-pager diff -- go.mod go.sum  # This prints the diff
+      - run: git --no-pager diff --quiet -- go.mod go.sum  # This errors if there is a diff
+
+  abi_binding:
+    name: abi_binding
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Install solc
+        run: |
+          source ./scripts/versions.sh
+          wget https://github.com/ethereum/solidity/releases/download/v$SOLIDITY_VERSION/solc-static-linux
+          chmod +x solc-static-linux
+          sudo mv solc-static-linux /usr/local/bin/solc
+
+      - name: Generate ABI Go bindings
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          export GOPATH=$HOME/go
+          export PATH="$PATH:$GOPATH/bin"
+          ./scripts/abi_bindings.sh
+
+      - name: Print diff
+        run: git --no-pager diff -- abi-bindings/**.go
+
+      - name: Fail if diff exists
+        run: git --no-pager diff --quiet -- abi-bindings/**.go
