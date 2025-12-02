@@ -327,7 +327,7 @@ func TestDestinationClient_QueryParamsForwarding(t *testing.T) {
 
 			// Create destination client (this will make ChainID call)
 			logger := logging.NoLog{}
-			_, err := NewDestinationClient(logger, &destinationBlockchain)
+			_, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
 			require.NoError(t, err)
 
 			// Verify all query params were received
@@ -400,7 +400,7 @@ func TestDestinationClient_HTTPHeadersForwarding(t *testing.T) {
 
 			// Create destination client (this will make ChainID call)
 			logger := logging.NoLog{}
-			_, err := NewDestinationClient(logger, &destinationBlockchain)
+			_, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
 			require.NoError(t, err)
 
 			// Verify all headers were received
@@ -455,7 +455,7 @@ func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
 	}
 
 	logger := logging.NoLog{}
-	_, err := NewDestinationClient(logger, &destinationBlockchain)
+	_, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
 	for key, expectedValue := range queryParams {
@@ -514,7 +514,7 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 	}
 
 	logger := logging.NoLog{}
-	client, err := NewDestinationClient(logger, &destinationBlockchain)
+	client, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -580,7 +580,7 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	}
 
 	logger := logging.NoLog{}
-	client, err := NewDestinationClient(logger, &destinationBlockchain)
+	client, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
 	ctx := context.Background()
