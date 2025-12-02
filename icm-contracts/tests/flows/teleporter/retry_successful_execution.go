@@ -4,7 +4,7 @@ import (
 	"context"
 	"math/big"
 
-	testmessenger "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/tests/TestMessenger"
+	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -39,7 +39,6 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	//
 	// Call the test messenger contract on L1 A
 	//
-	message := "Hello, world!"
 	optsA, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1AInfo.EVMChainID)
 	Expect(err).Should(BeNil())
 	tx, err := l1ATestMessenger.SendMessage(
@@ -49,7 +48,7 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 		fundedAddress,
 		big.NewInt(0),
 		testmessenger.SendMessageRequiredGas,
-		message,
+		HELLO_WORLD,
 	)
 	Expect(err).Should(BeNil())
 
@@ -100,7 +99,7 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	//
 	_, currMessage, err := l1BTestMessenger.GetCurrentMessage(&bind.CallOpts{}, l1AInfo.BlockchainID)
 	Expect(err).Should(BeNil())
-	Expect(currMessage).Should(Equal(message))
+	Expect(currMessage).Should(Equal(HELLO_WORLD))
 
 	//
 	// Attempt to retry message execution, which should fail

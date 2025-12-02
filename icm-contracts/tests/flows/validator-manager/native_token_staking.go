@@ -8,8 +8,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/units"
-	nativetokenstakingmanager "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/validator-manager/NativeTokenStakingManager"
-	istakingmanager "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/validator-manager/interfaces/IStakingManager"
+	nativetokenstakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/NativeTokenStakingManager"
+	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"

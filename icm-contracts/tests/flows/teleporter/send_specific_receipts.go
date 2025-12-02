@@ -7,7 +7,7 @@ import (
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
-	teleportermessenger "github.com/ava-labs/icm-services/icm-contracts/abi-bindings/go/teleporter/TeleporterMessenger"
+	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
