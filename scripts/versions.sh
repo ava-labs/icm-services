@@ -2,6 +2,8 @@
 # Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 # See the file LICENSE for licensing terms.
 
+set -eo pipefail
+
 BASE_PATH=$(
   cd "$(dirname "${BASH_SOURCE[0]}")"
   cd .. && pwd
@@ -33,3 +35,7 @@ export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'8ebe57a20bba73840804778d44f714aa821b4131'}
 #SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/subnet-evm)")}
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-'7fc05124d976a3247dc1c32f87c5e4003ed6fb6b'}
+
+# Extract the Solidity version from foundry.toml
+SOLIDITY_VERSION=$(awk -F"'" '/^solc_version/ {print $2}' $BASE_PATH/foundry.toml)
+EVM_VERSION=$(awk -F"'" '/^evm_version/ {print $2}' $BASE_PATH/foundry.toml)

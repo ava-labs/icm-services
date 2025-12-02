@@ -2,7 +2,7 @@
 
 ## Setup
 
-To start developing on ICM Services, you'll need Golang v1.22.10.
+To start developing on with ICM Contracts, you'll need Solidity >= v0.8.25. [Foundry](https://book.getfoundry.sh/getting-started/installation) is the recommended development toolkit for working with Teleporter, and it comes bundled with the required Solidity version. To run the tests and linter locally, you'll need the dependencies described in [Setup](./README.md#setup), as well as [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
 ## Issues
 
@@ -31,12 +31,22 @@ To start developing on ICM Services, you'll need Golang v1.22.10.
 
 ### Testing
 
+See [E2E Tests](./README.md#e2e-tests)
+
 #### Local
 
 - Run the unit tests
 
 ```sh
 ./scripts/test.sh
+```
+
+### Linting
+
+- Run the Solidity and Golang linters
+
+```sh
+./scripts/lint.sh
 ```
 
 ### Continuous Integration (CI)
@@ -47,4 +57,4 @@ To start developing on ICM Services, you'll need Golang v1.22.10.
 
 ### Do you have questions about the source code?
 
-- Ask any question about ICM Services under GitHub [discussions](https://github.com/ava-labs/icm-services/discussions/categories/q-a).
+- Ask any question about ICM Services or ICM contracts under GitHub [discussions](https://github.com/ava-labs/icm-services/discussions/categories/q-a).
