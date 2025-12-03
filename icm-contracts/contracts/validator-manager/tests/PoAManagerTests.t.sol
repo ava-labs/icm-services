@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Ecosystem
-pragma solidity 0.8.25;
+pragma solidity ^0.8.25.0;
 
 import {ValidatorManagerTest} from "./ValidatorManagerTests.t.sol";
 import {PoAManager} from "../PoAManager.sol";
@@ -158,8 +158,10 @@ contract PoAManagerTest is ValidatorManagerTest {
     function _beforeRegisterValidator(
         bytes32 validationID,
         address rewardRecipient
-    ) internal virtual override 
-    // solhint-disable-next-line no-empty-blocks
+    )
+        internal
+        virtual
+        override // solhint-disable-next-line no-empty-blocks
     {}
 
     // Override helper functions to call PoAManager instead of ValidatorManager

@@ -3,7 +3,7 @@
   "rules": {
     "compiler-version": [
       "error",
-      "0.8.25"
+      "0.8.30"
     ],
     "no-unused-vars": "error",
     "func-visibility": [

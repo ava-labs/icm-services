@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity ^0.8.25.0;
 
 import {TokenHomeTest} from "./TokenHomeTests.t.sol";
 import {NativeTokenTransferrerTest} from "./NativeTokenTransferrerTests.t.sol";
@@ -156,8 +156,10 @@ contract NativeTokenHomeTest is NativeTokenTransferrerTest, TokenHomeTest {
 
     function _setUpDeposit(
         uint256 amount
-    ) internal virtual override 
-    // solhint-disable-next-line no-empty-blocks
+    )
+        internal
+        virtual
+        override // solhint-disable-next-line no-empty-blocks
     {}
 
     function _setUpExpectedZeroAmountRevert() internal override {

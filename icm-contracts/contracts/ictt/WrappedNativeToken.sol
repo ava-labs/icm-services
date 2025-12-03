@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity ^0.8.25.0;
 
 import {IWrappedNativeToken} from "./interfaces/IWrappedNativeToken.sol";
 import {ERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/ERC20.sol";

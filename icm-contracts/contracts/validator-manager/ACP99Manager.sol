@@ -3,15 +3,15 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity ^0.8.25.0;
 
 import {IACP99Manager, PChainOwner} from "./interfaces/IACP99Manager.sol";
 
 /*
  * @title ACP99Manager
  * @notice The ACP99Manager interface represents the functionality for sovereign L1
- * validator management, as specified in ACP-77. 
- * 
+ * validator management, as specified in ACP-77.
+ *
  * @dev ACP99Manager defines the private functions specified in ACP-99.
  * The counterpart to this contract is IACP99Manager, which defines the public functions specified in ACP-99.
  * https://github.com/avalanche-foundation/ACPs/tree/main/ACPs/99-validatorsetmanager-contract

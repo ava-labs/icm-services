@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity ^0.8.25.0;
 
 import {NativeTokenHomeUpgradeable} from "./NativeTokenHomeUpgradeable.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";

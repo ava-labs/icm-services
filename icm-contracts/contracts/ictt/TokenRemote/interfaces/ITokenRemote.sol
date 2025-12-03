@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity ^0.8.25.0;
 
 import {ITokenTransferrer} from "../../interfaces/ITokenTransferrer.sol";
 import {TeleporterFeeInfo} from "@teleporter/ITeleporterMessenger.sol";

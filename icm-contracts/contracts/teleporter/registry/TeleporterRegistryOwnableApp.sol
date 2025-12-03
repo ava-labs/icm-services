@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity ^0.8.25.0;
 
 import {TeleporterRegistryApp} from "./TeleporterRegistryApp.sol";
 import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
