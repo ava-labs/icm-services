@@ -223,7 +223,6 @@ func signatureAggregationAPIHandler(
 			signingSubnetID,
 			quorumPercentage,
 			req.QuorumPercentageBuffer,
-			false,
 			pchainHeight, // ACP-181: Use determined P-Chain height for validator set selection
 		)
 		if err != nil {
