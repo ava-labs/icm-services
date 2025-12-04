@@ -1,13 +1,16 @@
 [profile.default]
-src = 'icm-contracts/contracts'
+src = 'src'
 out = 'out'
 libs = ['lib']
-solc_version = '0.8.30'
-evm_version = 'shanghai'
 test = 'tests'
 bytecode_hash = "none"
 optimizer = true
 optimizer_runs = 200
+
+[profile.avalanche]
+src = 'icm-contracts/avalanche/'
+solc_version = '0.8.30'
+evm_version = 'shanghai'
 
 [fmt]
 line_length = 100
