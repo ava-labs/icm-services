@@ -23,8 +23,6 @@ import (
 	batchcrosschainmessenger "github.com/ava-labs/icm-services/abi-bindings/go/utilities/BatchCrossChainMessenger"
 	"github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	teleporterTestUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
 	signatureaggregatorcfg "github.com/ava-labs/icm-services/signature-aggregator/config"
@@ -115,7 +113,7 @@ func ReadHexTextFile(filename string) string {
 // Constructs a relayer config with all subnets as sources and destinations
 func CreateDefaultRelayerConfig(
 	log logging.Logger,
-	teleporter teleporterTestUtils.TeleporterTestInfo,
+	teleporter TeleporterTestInfo,
 	sourceL1sInfo []interfaces.L1TestInfo,
 	destinationL1sInfo []interfaces.L1TestInfo,
 	fundedAddress common.Address,
@@ -131,7 +129,7 @@ func CreateDefaultRelayerConfig(
 	sources := make([]*relayercfg.SourceBlockchain, len(sourceL1sInfo))
 	destinations := make([]*relayercfg.DestinationBlockchain, len(destinationL1sInfo))
 	for i, l1Info := range sourceL1sInfo {
-		host, port, err := teleporterTestUtils.GetURIHostAndPort(l1Info.NodeURIs[0])
+		host, port, err := GetURIHostAndPort(l1Info.NodeURIs[0])
 		Expect(err).Should(BeNil())
 
 		sources[i] = &relayercfg.SourceBlockchain{
@@ -170,7 +168,7 @@ func CreateDefaultRelayerConfig(
 	}
 
 	for i, l1Info := range destinationL1sInfo {
-		host, port, err := teleporterTestUtils.GetURIHostAndPort(l1Info.NodeURIs[0])
+		host, port, err := GetURIHostAndPort(l1Info.NodeURIs[0])
 		Expect(err).Should(BeNil())
 
 		destinations[i] = &relayercfg.DestinationBlockchain{
@@ -261,17 +259,17 @@ func FundRelayers(
 	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(10)) // 10eth
 
 	for _, subnetInfo := range subnetsInfo {
-		fundRelayerTx := utils.CreateNativeTransferTransaction(
+		fundRelayerTx := CreateNativeTransferTransaction(
 			ctx, subnetInfo, fundedKey, relayerAddress, fundAmount,
 		)
-		utils.SendTransactionAndWaitForSuccess(ctx, subnetInfo, fundRelayerTx)
+		SendTransactionAndWaitForSuccess(ctx, subnetInfo, fundRelayerTx)
 	}
 }
 
 func SendBasicTeleporterMessageAsync(
 	ctx context.Context,
 	log logging.Logger,
-	teleporter teleporterTestUtils.TeleporterTestInfo,
+	teleporter TeleporterTestInfo,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
@@ -296,7 +294,7 @@ func SendBasicTeleporterMessageAsync(
 		zap.Stringer("sourceBlockchainID", source.BlockchainID),
 		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
 	)
-	_, teleporterMessageID := teleporterTestUtils.SendCrossChainMessageAndWaitForAcceptance(
+	_, teleporterMessageID := SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
 		teleporter.TeleporterMessenger(source),
 		source,
@@ -310,7 +308,7 @@ func SendBasicTeleporterMessageAsync(
 func SendBasicTeleporterMessage(
 	ctx context.Context,
 	log logging.Logger,
-	teleporter teleporterTestUtils.TeleporterTestInfo,
+	teleporter TeleporterTestInfo,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
@@ -333,7 +331,7 @@ func SendBasicTeleporterMessage(
 		zap.Stringer("sourceBlockchainID", source.BlockchainID),
 		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
 	)
-	receipt, teleporterMessageID := teleporterTestUtils.SendCrossChainMessageAndWaitForAcceptance(
+	receipt, teleporterMessageID := SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
 		teleporter.TeleporterMessenger(source),
 		source,
@@ -341,7 +339,7 @@ func SendBasicTeleporterMessage(
 		input,
 		fundedKey,
 	)
-	sendEvent, err := teleporterTestUtils.GetEventFromLogs(
+	sendEvent, err := GetEventFromLogs(
 		receipt.Logs,
 		teleporter.TeleporterMessenger(source).ParseSendCrossChainMessage,
 	)
@@ -353,7 +351,7 @@ func SendBasicTeleporterMessage(
 func RelayBasicMessage(
 	ctx context.Context,
 	log logging.Logger,
-	teleporter teleporterTestUtils.TeleporterTestInfo,
+	teleporter TeleporterTestInfo,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
@@ -460,7 +458,7 @@ func WriteSignatureAggregatorConfig(
 func TriggerProcessMissedBlocks(
 	ctx context.Context,
 	log logging.Logger,
-	teleporter teleporterTestUtils.TeleporterTestInfo,
+	teleporter TeleporterTestInfo,
 	sourceL1Info interfaces.L1TestInfo,
 	destinationSubnetInfo interfaces.L1TestInfo,
 	currRelayerCleanup context.CancelFunc,
@@ -561,7 +559,7 @@ func TriggerProcessMissedBlocks(
 func DeployBatchCrossChainMessenger(
 	ctx context.Context,
 	senderKey *ecdsa.PrivateKey,
-	teleporter teleporterTestUtils.TeleporterTestInfo,
+	teleporter TeleporterTestInfo,
 	teleporterManager common.Address,
 	l1 interfaces.L1TestInfo,
 ) (common.Address, *batchcrosschainmessenger.BatchCrossChainMessenger) {
@@ -578,7 +576,7 @@ func DeployBatchCrossChainMessenger(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	utils.WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1, tx.Hash())
 
 	return address, exampleMessenger
 }
