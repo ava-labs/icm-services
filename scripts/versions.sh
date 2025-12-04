@@ -37,5 +37,7 @@ AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'8ebe57a20bba73840804778d44f714aa821b
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-'7fc05124d976a3247dc1c32f87c5e4003ed6fb6b'}
 
 # Extract the Solidity version from foundry.toml
-SOLIDITY_VERSION=$(awk -F"'" '/^solc_version/ {print $2}' $BASE_PATH/foundry.toml)
-EVM_VERSION=$(awk -F"'" '/^evm_version/ {print $2}' $BASE_PATH/foundry.toml)
+AVALANCHE_ICM_PATH=${BASE_PATH}/icm-contracts/avalanche
+AVALANCHE_SOLIDITY_VERSION=$(FOUNDRY_PROFILE=avalanche forge config | awk -F"=" '/^solc/ {print $2}' | tr -d \")
+AVALANCHE_EVM_VERSION=$(FOUNDRY_PROFILE=avalanche forge config | awk -F"=" '/^evm_version/ {print $2}' | tr -d \")
+
