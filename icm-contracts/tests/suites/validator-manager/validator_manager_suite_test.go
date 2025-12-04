@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	validatorManagerFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/validator-manager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
-	"github.com/ava-labs/libevm/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -23,6 +23,7 @@ const (
 var (
 	LocalNetworkInstance *localnetwork.LocalNetwork
 	e2eFlags             *e2e.FlagVars
+	log                  logging.Logger
 )
 
 func TestMain(m *testing.M) {
@@ -41,12 +42,22 @@ func TestValidatorManager(t *testing.T) {
 }
 
 // Define the before and after suite functions.
-var _ = ginkgo.BeforeEach(func() {
+var _ = ginkgo.BeforeEach(func(ctx context.Context) {
+	log = logging.NewLogger(
+		"validator-manager",
+		logging.NewWrappedCore(
+			logging.Info,
+			os.Stdout,
+			logging.JSON.ConsoleEncoder(),
+		),
+	)
+
 	// Create the local network instance
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
 	LocalNetworkInstance = localnetwork.NewLocalNetwork(
 		ctx,
+		log,
 		"validator-manager-test-local-network",
 		warpGenesisTemplateFile,
 		[]localnetwork.L1Spec{
@@ -79,22 +90,22 @@ var _ = ginkgo.Describe("[Validator manager integration tests]", func() {
 	// Validator Manager tests
 	ginkgo.It("Native token staking manager",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.NativeTokenStakingManager(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.NativeTokenStakingManager(ctx, log, LocalNetworkInstance)
 		})
 	ginkgo.It("ERC20 token staking manager",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.ERC20TokenStakingManager(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.ERC20TokenStakingManager(ctx, log, LocalNetworkInstance)
 		})
 	ginkgo.It("PoA migration to PoS",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.PoAMigrationToPoS(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.PoAMigrationToPoS(ctx, log, LocalNetworkInstance)
 		})
 	ginkgo.It("Delegate disable validator",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.RemoveDelegatorInactiveValidator(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.RemoveDelegatorInactiveValidator(ctx, log, LocalNetworkInstance)
 		})
 })

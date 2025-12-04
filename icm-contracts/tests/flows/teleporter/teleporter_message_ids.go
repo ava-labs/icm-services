@@ -4,10 +4,12 @@
 package teleporter
 
 import (
+	"context"
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	teleporterutils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/libevm/common"
@@ -16,7 +18,12 @@ import (
 )
 
 // Tests Teleporter message ID calculation
-func CalculateMessageID(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func CalculateMessageID(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1Info := network.GetPrimaryNetworkInfo()
 	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1Info)
 

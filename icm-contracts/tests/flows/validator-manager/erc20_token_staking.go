@@ -2,16 +2,16 @@ package staking
 
 import (
 	"context"
-	"log"
 	"math/big"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
 	erc20tokenstakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/ERC20TokenStakingManager"
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
@@ -33,14 +33,16 @@ import (
  * - Deliver the Warp message to the L1
  * - Verify that the validator is delisted from the staking contract
  */
-func ERC20TokenStakingManager(network *localnetwork.LocalNetwork) {
+func ERC20TokenStakingManager(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+) {
 	// Get the L1s info
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
 	pChainInfo := utils.GetPChainInfo(cChainInfo)
-
-	ctx := context.Background()
 
 	balance := 100 * units.Avax
 	nodes, initialValidationIDs := network.ConvertSubnet(
@@ -117,7 +119,7 @@ func ERC20TokenStakingManager(network *localnetwork.LocalNetwork) {
 	//
 	var delegationID ids.ID
 	{
-		log.Println("Registering delegator")
+		log.Info("Registering delegator")
 		delegatorStake, err := erc20StakingManager.WeightToValue(
 			&bind.CallOpts{},
 			nodes[0].Weight,
@@ -199,7 +201,7 @@ func ERC20TokenStakingManager(network *localnetwork.LocalNetwork) {
 	// Delist the delegator
 	//
 	{
-		log.Println("Delisting delegator")
+		log.Info("Delisting delegator")
 		nonce := uint64(2)
 		receipt := utils.InitiateDelegatorRemoval(
 			ctx,

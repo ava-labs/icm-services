@@ -3,7 +3,8 @@ package registry
 import (
 	"context"
 
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -14,7 +15,12 @@ const (
 	teleporterByteCodeFile = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
 )
 
-func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func TeleporterRegistry(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	// Deploy dApp on both chains that use Teleporter Registry
 	// Deploy version 2 of Teleporter to both chains
 	// Construct AddProtocolVersion txs for both chains
@@ -29,8 +35,6 @@ func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.Tel
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy a test cross chain messenger to both chains
 	testMessengerContractC, testMessengerC := utils.DeployTestMessenger(

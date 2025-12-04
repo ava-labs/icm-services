@@ -4,8 +4,9 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	erc20tokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/ERC20TokenHome"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -19,16 +20,20 @@ import (
  * Transfer tokens from L1 A to L1 B through multi-hop
  * Transfer back tokens from L1 B to L1 A through multi-hop
  */
-func ERC20TokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ERC20TokenHomeERC20TokenRemoteMultiHop(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
-	ctx := context.Background()
-
 	// Deploy an ExampleERC20 on L1 A as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(
 		ctx,
+		log,
 		fundedKey,
 		cChainInfo,
 		erc20TokenHomeDecimals,
@@ -92,6 +97,7 @@ func ERC20TokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork, 
 	// Register both ERC20TokenRemote instances on the ERC20TokenHome
 	utils.RegisterERC20TokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		erc20TokenHomeAddress,
@@ -102,6 +108,7 @@ func ERC20TokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork, 
 	)
 	utils.RegisterERC20TokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		erc20TokenHomeAddress,
@@ -130,6 +137,7 @@ func ERC20TokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork, 
 
 	receipt, transferredAmount := utils.SendERC20TokenHome(
 		ctx,
+		log,
 		cChainInfo,
 		erc20TokenHome,
 		erc20TokenHomeAddress,

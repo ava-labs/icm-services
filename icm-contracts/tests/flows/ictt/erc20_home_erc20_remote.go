@@ -4,9 +4,10 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	erc20tokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/ERC20TokenHome"
 	erc20tokenremote "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenRemote/ERC20TokenRemote"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -19,16 +20,20 @@ import (
  * Transfers C-Chain example ERC20 tokens to L1 A
  * Transfer tokens from L1 A to C-Chain
  */
-func ERC20TokenHomeERC20TokenRemote(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ERC20TokenHomeERC20TokenRemote(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
-	ctx := context.Background()
-
 	// Deploy an ExampleERC20 on the primary network as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(
 		ctx,
+		log,
 		fundedKey,
 		cChainInfo,
 		erc20TokenHomeDecimals,
@@ -76,6 +81,7 @@ func ERC20TokenHomeERC20TokenRemote(network *localnetwork.LocalNetwork, teleport
 
 	utils.RegisterERC20TokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		erc20TokenHomeAddress,
@@ -104,6 +110,7 @@ func ERC20TokenHomeERC20TokenRemote(network *localnetwork.LocalNetwork, teleport
 
 	receipt, transferredAmount := utils.SendERC20TokenHome(
 		ctx,
+		log,
 		cChainInfo,
 		erc20TokenHome,
 		erc20TokenHomeAddress,

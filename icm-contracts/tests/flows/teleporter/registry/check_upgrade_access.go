@@ -4,8 +4,9 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/flows"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -13,14 +14,18 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func CheckUpgradeAccess(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func CheckUpgradeAccess(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1Info := network.GetPrimaryNetworkInfo()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	//
 	// Deploy TestMessenger to the L1
 	//
-	ctx := context.Background()
 	teleporterAddress := teleporter.TeleporterMessengerAddress(l1Info)
 	_, testMessenger := utils.DeployTestMessenger(
 		ctx,

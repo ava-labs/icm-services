@@ -10,6 +10,7 @@ import (
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	erc20tokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/ERC20TokenHome"
 	nativetokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/NativeTokenHome"
 	tokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/TokenHome"
@@ -19,13 +20,12 @@ import (
 	wrappednativetoken "github.com/ava-labs/icm-services/abi-bindings/go/ictt/WrappedNativeToken"
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/ExampleERC20Decimals"
 	mockERC20SACR "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/MockERC20SendAndCallReceiver"
-	mockNSACR "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/MockNativeSendAndCallReceiver"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"go.uber.org/zap"
 
 	. "github.com/onsi/gomega"
 )
@@ -235,27 +235,9 @@ func DeployWrappedNativeToken(
 	return address, token
 }
 
-func DeployMockNativeSendAndCallReceiver(
-	ctx context.Context,
-	senderKey *ecdsa.PrivateKey,
-	l1 interfaces.L1TestInfo,
-) (common.Address, *mockNSACR.MockNativeSendAndCallReceiver) {
-	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
-	Expect(err).Should(BeNil())
-
-	// Deploy MockNativeSendAndCallReceiver contract
-	address, tx, contract, err := mockNSACR.DeployMockNativeSendAndCallReceiver(opts, l1.RPCClient)
-	Expect(err).Should(BeNil())
-	log.Info("Deployed MockNativeSendAndCallReceiver contract", "address", address.Hex(), "txHash", tx.Hash().Hex())
-
-	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
-
-	return address, contract
-}
-
 func DeployMockERC20SendAndCallReceiver(
 	ctx context.Context,
+	log logging.Logger,
 	senderKey *ecdsa.PrivateKey,
 	l1 interfaces.L1TestInfo,
 ) (common.Address, *mockERC20SACR.MockERC20SendAndCallReceiver) {
@@ -265,7 +247,10 @@ func DeployMockERC20SendAndCallReceiver(
 	// Deploy MockERC20SendAndCallReceiver contract
 	address, tx, contract, err := mockERC20SACR.DeployMockERC20SendAndCallReceiver(opts, l1.RPCClient)
 	Expect(err).Should(BeNil())
-	log.Info("Deployed MockERC20SendAndCallReceiver contract", "address", address.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Deployed MockERC20SendAndCallReceiver contract",
+		zap.String("address", address.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	// Wait for the transaction to be mined
 	WaitForTransactionSuccess(ctx, l1, tx.Hash())
@@ -275,6 +260,7 @@ func DeployMockERC20SendAndCallReceiver(
 
 func DeployExampleERC20Decimals(
 	ctx context.Context,
+	log logging.Logger,
 	senderKey *ecdsa.PrivateKey,
 	l1 interfaces.L1TestInfo,
 	tokenDecimals uint8,
@@ -285,7 +271,10 @@ func DeployExampleERC20Decimals(
 	// Deploy Mock ERC20 contract
 	address, tx, token, err := exampleerc20.DeployExampleERC20Decimals(opts, l1.RPCClient, tokenDecimals)
 	Expect(err).Should(BeNil())
-	log.Info("Deployed Mock ERC20 contract", "address", address.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Deployed Mock ERC20 contract",
+		zap.String("address", address.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	// Wait for the transaction to be mined
 	WaitForTransactionSuccess(ctx, l1, tx.Hash())
@@ -301,6 +290,7 @@ func DeployExampleERC20Decimals(
 
 func RegisterERC20TokenRemoteOnHome(
 	ctx context.Context,
+	log logging.Logger,
 	teleporter TeleporterTestInfo,
 	homeL1 interfaces.L1TestInfo,
 	homeAddress common.Address,
@@ -311,6 +301,7 @@ func RegisterERC20TokenRemoteOnHome(
 ) {
 	RegisterTokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		homeL1,
 		homeAddress,
@@ -326,6 +317,7 @@ func RegisterERC20TokenRemoteOnHome(
 
 func RegisterTokenRemoteOnHome(
 	ctx context.Context,
+	log logging.Logger,
 	teleporter TeleporterTestInfo,
 	homeL1 interfaces.L1TestInfo,
 	homeAddress common.Address,
@@ -347,6 +339,7 @@ func RegisterTokenRemoteOnHome(
 	// Deploy a new ERC20 token for testing registering with fees
 	feeTokenAddress, feeToken := DeployExampleERC20Decimals(
 		ctx,
+		log,
 		fundedKey,
 		remoteL1,
 		18,
@@ -356,6 +349,7 @@ func RegisterTokenRemoteOnHome(
 	feeAmount := big.NewInt(1e18)
 	ERC20DecimalsApprove(
 		ctx,
+		log,
 		feeToken,
 		remoteAddress,
 		feeAmount,
@@ -420,6 +414,7 @@ func RegisterTokenRemoteOnHome(
 // is returned to the caller.
 func AddCollateralToERC20TokenHome(
 	ctx context.Context,
+	log logging.Logger,
 	l1 interfaces.L1TestInfo,
 	erc20TokenHome *erc20tokenhome.ERC20TokenHome,
 	erc20TokenHomeAddress common.Address,
@@ -432,6 +427,7 @@ func AddCollateralToERC20TokenHome(
 	// Approve the ERC20TokenHome to spend the collateral
 	ERC20DecimalsApprove(
 		ctx,
+		log,
 		exampleERC20,
 		erc20TokenHomeAddress,
 		collateralAmount,
@@ -510,6 +506,7 @@ func AddCollateralToNativeTokenHome(
 
 func SendERC20TokenHome(
 	ctx context.Context,
+	log logging.Logger,
 	l1 interfaces.L1TestInfo,
 	erc20TokenHome *erc20tokenhome.ERC20TokenHome,
 	erc20TokenHomeAddress common.Address,
@@ -521,6 +518,7 @@ func SendERC20TokenHome(
 	// Approve the ERC20TokenHome to spend the tokens
 	ERC20DecimalsApprove(
 		ctx,
+		log,
 		token,
 		erc20TokenHomeAddress,
 		big.NewInt(0).Add(amount, input.PrimaryFee),
@@ -677,6 +675,7 @@ func SendERC20TokenRemote(
 
 func SendAndCallERC20TokenHome(
 	ctx context.Context,
+	log logging.Logger,
 	l1 interfaces.L1TestInfo,
 	erc20TokenHome *erc20tokenhome.ERC20TokenHome,
 	erc20TokenHomeAddress common.Address,
@@ -688,6 +687,7 @@ func SendAndCallERC20TokenHome(
 	// Approve the ERC20TokenHome to spend the tokens
 	ERC20DecimalsApprove(
 		ctx,
+		log,
 		exampleToken,
 		erc20TokenHomeAddress,
 		big.NewInt(0).Add(amount, input.PrimaryFee),
@@ -1097,6 +1097,7 @@ func DepositAndApproveWrappedTokenForFees(
 
 func ERC20DecimalsApprove(
 	ctx context.Context,
+	log logging.Logger,
 	token *exampleerc20.ExampleERC20Decimals,
 	spender common.Address,
 	amount *big.Int,
@@ -1107,7 +1108,10 @@ func ERC20DecimalsApprove(
 	Expect(err).Should(BeNil())
 	tx, err := token.Approve(opts, spender, amount)
 	Expect(err).Should(BeNil())
-	log.Info("Approved ERC20", "spender", spender.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Approved ERC20",
+		zap.String("spender", spender.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	WaitForTransactionSuccess(ctx, l1, tx.Hash())
 }

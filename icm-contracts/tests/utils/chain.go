@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	goLog "log"
 	"math/big"
 	"os"
 	"slices"
@@ -324,7 +323,7 @@ func WaitMined(ctx context.Context, rpcClient ethclient.Client, txHash common.Ha
 		return nil, err
 	}
 	since := time.Since(now)
-	goLog.Println("Transaction mined", "txHash", txHash.Hex(), "duration", since)
+	log.Info("Transaction mined", "txHash", txHash.Hex(), "duration", since)
 
 	// Check that the block height endpoint returns a block height as high as the block number that the transaction was
 	// included in. This is to workaround the issue where multiple nodes behind a public RPC endpoint see

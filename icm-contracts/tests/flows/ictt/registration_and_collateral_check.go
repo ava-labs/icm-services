@@ -4,8 +4,9 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	erc20tokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/ERC20TokenHome"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -21,16 +22,20 @@ import (
  * Collateralize the remote
  * Check sending to collateralized remote succeeds and withdraws with correct scale.
  */
-func RegistrationAndCollateralCheck(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RegistrationAndCollateralCheck(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
-	ctx := context.Background()
-
 	// Deploy an ExampleERC20 on L1 A as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(
 		ctx,
+		log,
 		fundedKey,
 		cChainInfo,
 		erc20TokenHomeDecimals,
@@ -104,6 +109,7 @@ func RegistrationAndCollateralCheck(network *localnetwork.LocalNetwork, teleport
 	// Register the NativeTokenRemote to the ERC20TokenHome
 	collateralNeeded := utils.RegisterTokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		erc20TokenHomeAddress,
@@ -133,6 +139,7 @@ func RegistrationAndCollateralCheck(network *localnetwork.LocalNetwork, teleport
 	// Add collateral to the ERC20TokenHome
 	utils.AddCollateralToERC20TokenHome(
 		ctx,
+		log,
 		cChainInfo,
 		erc20TokenHome,
 		erc20TokenHomeAddress,
@@ -152,6 +159,7 @@ func RegistrationAndCollateralCheck(network *localnetwork.LocalNetwork, teleport
 	// Send the tokens and expect success now that collateral is added
 	utils.ERC20DecimalsApprove(
 		ctx,
+		log,
 		exampleERC20,
 		erc20TokenHomeAddress,
 		big.NewInt(0).Add(amount, input.PrimaryFee),

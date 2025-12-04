@@ -4,9 +4,10 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	erc20tokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/ERC20TokenHome"
 	erc20tokenremote "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenRemote/ERC20TokenRemote"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -21,18 +22,19 @@ import (
  * C-Chain and calls contract on the C-Chain using sendAndCall
  */
 func ERC20TokenHomeERC20TokenRemoteSendAndCall(
-	network *localnetwork.LocalNetwork,
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
-	ctx := context.Background()
-
 	// Deploy an ExampleERC20 on the primary network as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(
 		ctx,
+		log,
 		fundedKey,
 		cChainInfo,
 		erc20TokenHomeDecimals,
@@ -54,12 +56,14 @@ func ERC20TokenHomeERC20TokenRemoteSendAndCall(
 
 	homeMockERC20SACRAddress, homeMockERC20SACR := utils.DeployMockERC20SendAndCallReceiver(
 		ctx,
+		log,
 		fundedKey,
 		cChainInfo,
 	)
 
 	remoteMockERC20SACRAddress, remoteMockERC20SACR := utils.DeployMockERC20SendAndCallReceiver(
 		ctx,
+		log,
 		fundedKey,
 		l1AInfo,
 	)
@@ -92,6 +96,7 @@ func ERC20TokenHomeERC20TokenRemoteSendAndCall(
 
 	utils.RegisterERC20TokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		erc20TokenHomeAddress,
@@ -132,6 +137,7 @@ func ERC20TokenHomeERC20TokenRemoteSendAndCall(
 
 		receipt, transferredAmount := utils.SendAndCallERC20TokenHome(
 			ctx,
+			log,
 			cChainInfo,
 			erc20TokenHome,
 			erc20TokenHomeAddress,
@@ -184,6 +190,7 @@ func ERC20TokenHomeERC20TokenRemoteSendAndCall(
 
 		receipt, transferredAmount := utils.SendERC20TokenHome(
 			ctx,
+			log,
 			cChainInfo,
 			erc20TokenHome,
 			erc20TokenHomeAddress,

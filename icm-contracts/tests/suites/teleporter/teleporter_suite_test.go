@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
 	teleporterFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/teleporter"
 	registryFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/teleporter/registry"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
-	"github.com/ava-labs/libevm/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -38,6 +38,7 @@ var (
 	LocalNetworkInstance *network.LocalNetwork
 	TeleporterInfo       utils.TeleporterTestInfo
 	e2eFlags             *e2e.FlagVars
+	log                  logging.Logger
 )
 
 func TestMain(m *testing.M) {
@@ -56,8 +57,15 @@ func TestTeleporter(t *testing.T) {
 }
 
 // Define the Teleporter before and after suite functions.
-var _ = ginkgo.BeforeSuite(func() {
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
+var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
+	log = logging.NewLogger(
+		"teleporter",
+		logging.NewWrappedCore(
+			logging.Info,
+			os.Stdout,
+			logging.JSON.ConsoleEncoder(),
+		),
+	)
 
 	// Generate the Teleporter deployment values
 	teleporterDeployerTransaction,
@@ -72,11 +80,12 @@ var _ = ginkgo.BeforeSuite(func() {
 	Expect(err).Should(BeNil())
 
 	// Create the local network instance
-	ctx, cancel := context.WithTimeout(context.Background(), 240*2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer cancel()
 
 	LocalNetworkInstance = network.NewLocalNetwork(
 		ctx,
+		log,
 		"teleporter-test-local-network",
 		warpGenesisTemplateFile,
 		[]network.L1Spec{
@@ -166,84 +175,84 @@ var _ = ginkgo.Describe("[Teleporter integration tests]", func() {
 	// Teleporter tests
 	ginkgo.It("Send a message from L1 A to L1 B, and one from B to A",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.BasicSendReceive(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.BasicSendReceive(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Deliver to the wrong chain",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.DeliverToWrongChain(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.DeliverToWrongChain(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Deliver to non-existent contract",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.DeliverToNonExistentContract(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.DeliverToNonExistentContract(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Retry successful execution",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.RetrySuccessfulExecution(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.RetrySuccessfulExecution(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Unallowed relayer",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.UnallowedRelayer(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.UnallowedRelayer(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Relay message twice",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.RelayMessageTwice(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.RelayMessageTwice(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Add additional fee amount",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.AddFeeAmount(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.AddFeeAmount(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Send specific receipts",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.SendSpecificReceipts(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.SendSpecificReceipts(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Insufficient gas",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.InsufficientGas(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.InsufficientGas(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Resubmit altered message",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.ResubmitAlteredMessage(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.ResubmitAlteredMessage(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Calculate Teleporter message IDs",
 		ginkgo.Label(utilsLabel),
-		func() {
-			teleporterFlows.CalculateMessageID(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.CalculateMessageID(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Relayer modifies message",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.RelayerModifiesMessage(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.RelayerModifiesMessage(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Validator churn",
 		ginkgo.Label(teleporterMessengerLabel),
-		func() {
-			teleporterFlows.ValidatorChurn(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			teleporterFlows.ValidatorChurn(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 
 	// Teleporter Registry tests
 	ginkgo.It("Teleporter registry",
 		ginkgo.Label(upgradabilityLabel),
-		func() {
-			registryFlows.TeleporterRegistry(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			registryFlows.TeleporterRegistry(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Check upgrade access",
 		ginkgo.Label(upgradabilityLabel),
-		func() {
-			registryFlows.CheckUpgradeAccess(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			registryFlows.CheckUpgradeAccess(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 	ginkgo.It("Pause and Unpause Teleporter",
 		ginkgo.Label(upgradabilityLabel),
-		func() {
-			registryFlows.PauseTeleporter(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			registryFlows.PauseTeleporter(ctx, log, LocalNetworkInstance, TeleporterInfo)
 		})
 })

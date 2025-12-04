@@ -4,15 +4,20 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	validatorsetsig "github.com/ava-labs/icm-services/abi-bindings/go/governance/ValidatorSetSig"
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
-func ValidatorSetSig(network *localnetwork.LocalNetwork) {
+func ValidatorSetSig(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+) {
 	// ************************************************************************************************
 	// Setup
 	// ************************************************************************************************
@@ -37,8 +42,6 @@ func ValidatorSetSig(network *localnetwork.LocalNetwork) {
 	// ************************************************************************************************
 	L1A, L1B := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy a ValidatorSetSigContract to L1A
 	validatorSetSigContractAddress, validatorSetSig := utils.DeployValidatorSetSig(
@@ -128,6 +131,7 @@ func ValidatorSetSig(network *localnetwork.LocalNetwork) {
 	// Create chain config file with off-chain validatorsetsig message
 	networkID := network.GetNetworkID()
 	offchainMessages, icmEnabledChainConfigWithMsg := utils.InitOffChainMessageChainConfigValidatorSetSig(
+		log,
 		networkID,
 		L1B,
 		validatorSetSigContractAddress,
@@ -151,6 +155,7 @@ func ValidatorSetSig(network *localnetwork.LocalNetwork) {
 	// Execute the ValidatorSetSig executeCall and wait for acceptance
 	receipt := utils.ExecuteValidatorSetSigCallAndVerify(
 		ctx,
+		log,
 		L1B,
 		L1A,
 		validatorSetSigContractAddress,
@@ -174,6 +179,7 @@ func ValidatorSetSig(network *localnetwork.LocalNetwork) {
 
 	_ = utils.ExecuteValidatorSetSigCallAndVerify(
 		ctx,
+		log,
 		L1B,
 		L1A,
 		validatorSetSigContractAddress,
@@ -191,6 +197,7 @@ func ValidatorSetSig(network *localnetwork.LocalNetwork) {
 	// Send another valid transaction with the incremented nonce
 	receipt2 := utils.ExecuteValidatorSetSigCallAndVerify(
 		ctx,
+		log,
 		L1B,
 		L1A,
 		validatorSetSigContractAddress,
@@ -223,6 +230,7 @@ func ValidatorSetSig(network *localnetwork.LocalNetwork) {
 	// from the same chain that it is deployed on.
 	receipt3 := utils.ExecuteValidatorSetSigCallAndVerify(
 		ctx,
+		log,
 		L1B,
 		L1B,
 		validatorSetSigContractAddress2,
