@@ -103,7 +103,7 @@ fi
 source "$REPO_PATH"/scripts/constants.sh
 source "$REPO_PATH"/scripts/versions.sh
 
-BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
+BASEDIR=${BASEDIR:-"$HOME/.icm-contracts-e2e-deps"}
 
 cwd=$(pwd)
 # Install the avalanchego and subnet-evm binaries
