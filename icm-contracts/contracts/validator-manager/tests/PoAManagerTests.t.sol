@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Ecosystem
-pragma solidity ^0.8.25.0;
+pragma solidity 0.8.30;
 
 import {ValidatorManagerTest} from "./ValidatorManagerTests.t.sol";
 import {PoAManager} from "../PoAManager.sol";

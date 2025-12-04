@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity ^0.8.25.0;
+pragma solidity 0.8.30;
 
 import {PChainOwner} from "./IACP99Manager.sol";
 

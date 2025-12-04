@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity ^0.8.25.0;
+pragma solidity 0.8.30;
 
 import {ERC20TokenTransferrerTest} from "./ERC20TokenTransferrerTests.t.sol";
 import {TokenRemoteTest} from "./TokenRemoteTests.t.sol";

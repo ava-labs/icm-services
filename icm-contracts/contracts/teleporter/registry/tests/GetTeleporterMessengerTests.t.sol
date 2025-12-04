@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity ^0.8.25.0;
+pragma solidity 0.8.30;
 
 import {BaseTeleporterRegistryAppTest} from "./BaseTeleporterRegistryAppTests.t.sol";
 import {ITeleporterMessenger} from "@teleporter/ITeleporterMessenger.sol";

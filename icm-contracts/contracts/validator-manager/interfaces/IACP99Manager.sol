@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity ^0.8.25.0;
+pragma solidity 0.8.30;
 
 /// @notice L1 validator status.
 enum ValidatorStatus {

@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity ^0.8.25.0;
+pragma solidity 0.8.30;
 
 import {StakingManagerTest} from "./StakingManagerTests.t.sol";
 import {ERC20TokenStakingManager} from "../ERC20TokenStakingManager.sol";
