@@ -5,31 +5,35 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	. "github.com/onsi/gomega"
 )
 
 // Disallow this test from being run on anything but a local network, since it requires special behavior by the relayer
-func RelayerModifiesMessage(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RelayerModifiesMessage(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	// Send a transaction to L1 A to issue a Warp Message from the Teleporter contract to L1 B
-	ctx := context.Background()
 
 	sendCrossChainMessageInput := teleportermessenger.TeleporterMessageInput{
 		DestinationBlockchainID: l1BInfo.BlockchainID,
@@ -50,6 +54,7 @@ func RelayerModifiesMessage(network *localnetwork.LocalNetwork, teleporter utils
 	// Relayer modifies the message in flight
 	relayAlteredMessage(
 		ctx,
+		log,
 		teleporter,
 		receipt,
 		l1AInfo,
@@ -65,11 +70,12 @@ func RelayerModifiesMessage(network *localnetwork.LocalNetwork, teleporter utils
 
 func relayAlteredMessage(
 	ctx context.Context,
+	log logging.Logger,
 	teleporter utils.TeleporterTestInfo,
 	sourceReceipt *types.Receipt,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
-	network *localnetwork.LocalNetwork,
+	network *network.LocalNetwork,
 ) {
 	// Fetch the Teleporter message from the logs
 	sendEvent, err := utils.GetEventFromLogs(
@@ -94,6 +100,7 @@ func relayAlteredMessage(
 	_, fundedKey := network.GetFundedAccountInfo()
 	signedTx := createAlteredReceiveCrossChainMessageTransaction(
 		ctx,
+		log,
 		signedWarpMessage,
 		&sendEvent.Message,
 		sendEvent.Message.RequiredGasLimit,
@@ -108,6 +115,7 @@ func relayAlteredMessage(
 
 func createAlteredReceiveCrossChainMessageTransaction(
 	ctx context.Context,
+	log logging.Logger,
 	signedMessage *avalancheWarp.Message,
 	teleporterMessage *teleportermessenger.TeleporterMessage,
 	requiredGasLimit *big.Int,

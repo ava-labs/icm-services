@@ -37,7 +37,7 @@ func main() {
 	pb.RegisterDeciderServiceServer(server, &deciderServer{})
 
 	log := logging.NewLogger(
-		"signature-aggregator",
+		"decider",
 		logging.NewWrappedCore(
 			logging.Info,
 			os.Stdout,

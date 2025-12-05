@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
 	nativetokenstakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/NativeTokenStakingManager"
 	poamanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/PoAManager"
 	validatormanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/ValidatorManager"
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -38,7 +39,11 @@ import (
  * - Delist the previous PoA validator properly
  * - Delist the PoS validator
  */
-func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
+func PoAMigrationToPoS(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
@@ -50,7 +55,6 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 	ownerAddress := crypto.PubkeyToAddress(ownerKey.PublicKey)
 
 	// Transfer native assets to the owner account
-	ctx := context.Background()
 	fundAmount := big.NewInt(1e18) // 10avax
 	fundAmount.Mul(fundAmount, big.NewInt(10))
 	utils.SendNativeTransfer(

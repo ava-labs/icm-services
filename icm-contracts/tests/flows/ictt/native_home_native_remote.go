@@ -4,9 +4,10 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	nativetokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/NativeTokenHome"
 	nativetokenremote "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenRemote/NativeTokenRemote"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
@@ -18,12 +19,15 @@ import (
  * Transfers C-Chain native tokens to L1 A
  * Transfer back tokens from L1 A to C-Chain
  */
-func NativeTokenHomeNativeDestination(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func NativeTokenHomeNativeDestination(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy an example WAVAX on the primary network
 	cChainWAVAXAddress, wavax := utils.DeployWrappedNativeToken(
@@ -63,6 +67,7 @@ func NativeTokenHomeNativeDestination(network *localnetwork.LocalNetwork, telepo
 	// Register the NativeTokenRemote on the NativeTokenHome
 	collateralAmount := utils.RegisterTokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		nativeTokenHomeAddress,

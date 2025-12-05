@@ -4,8 +4,9 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	nativetokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/NativeTokenHome"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
@@ -20,12 +21,15 @@ import (
  * Transfer tokens from L1 A to L1 B through multi-hop
  * Brige back tokens from L1 B to L1 A through multi-hop
  */
-func NativeTokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func NativeTokenHomeERC20TokenRemoteMultiHop(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy a NativeTokenHome on the primary network
 	wavaxAddress, wavax := utils.DeployWrappedNativeToken(
@@ -87,6 +91,7 @@ func NativeTokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork,
 	// Register both ERC20Destinations on the NativeTokenHome
 	utils.RegisterERC20TokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		nativeTokenHomeAddress,
@@ -98,6 +103,7 @@ func NativeTokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork,
 
 	utils.RegisterERC20TokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		nativeTokenHomeAddress,

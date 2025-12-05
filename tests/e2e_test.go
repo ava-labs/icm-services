@@ -109,6 +109,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	defer networkStartCancel()
 	localNetworkInstance = network.NewLocalNetwork(
 		networkStartCtx,
+		log,
 		"icm-off-chain-services-e2e-test",
 		warpGenesisTemplateFile,
 		[]network.L1Spec{

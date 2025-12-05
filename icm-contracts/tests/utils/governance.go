@@ -4,15 +4,16 @@ import (
 	"context"
 	"crypto/ecdsa"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	validatorsetsig "github.com/ava-labs/icm-services/abi-bindings/go/governance/ValidatorSetSig"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 func DeployValidatorSetSig(
@@ -40,6 +41,7 @@ func DeployValidatorSetSig(
 // and we don't want to add the ValidatorSetSig ABI to the L1Info
 func ExecuteValidatorSetSigCallAndVerify(
 	ctx context.Context,
+	log logging.Logger,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
 	validatorSetSigAddress common.Address,
@@ -49,7 +51,7 @@ func ExecuteValidatorSetSigCallAndVerify(
 	expectSuccess bool,
 ) *types.Receipt {
 	signedWarpMsg := GetSignedMessage(source, destination, unsignedMessage, nil, signatureAggregator)
-	log.Info("Got signed warp message", "messageID", signedWarpMsg.ID())
+	log.Info("Got signed warp message", zap.Stringer("messageID", signedWarpMsg.ID()))
 
 	signedPredicateTx := CreateExecuteCallPredicateTransaction(
 		ctx,
@@ -67,6 +69,7 @@ func ExecuteValidatorSetSigCallAndVerify(
 }
 
 func InitOffChainMessageChainConfigValidatorSetSig(
+	log logging.Logger,
 	networkID uint32,
 	l1 interfaces.L1TestInfo,
 	validatorSetSigAddress common.Address,
@@ -77,8 +80,9 @@ func InitOffChainMessageChainConfigValidatorSetSig(
 		unsignedMessage := CreateOffChainValidatorSetSigMessage(networkID, l1, message)
 		unsignedMessages = append(unsignedMessages, *unsignedMessage)
 		log.Info("Adding validatorSetSig off-chain message to Warp chain config",
-			"messageID", unsignedMessage.ID(),
-			"blockchainID", l1.BlockchainID.String())
+			zap.Stringer("messageID", unsignedMessage.ID()),
+			zap.Stringer("blockchainID", l1.BlockchainID),
+		)
 	}
 	return unsignedMessages, GetChainConfigWithOffChainMessages(unsignedMessages)
 }

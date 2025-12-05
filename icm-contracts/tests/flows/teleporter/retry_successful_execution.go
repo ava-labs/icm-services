@@ -4,14 +4,20 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
-func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RetrySuccessfulExecution(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -19,7 +25,6 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	//
 	// Deploy TestMessenger to L1s A and B
 	//
-	ctx := context.Background()
 
 	_, l1ATestMessenger := utils.DeployTestMessenger(
 		ctx,

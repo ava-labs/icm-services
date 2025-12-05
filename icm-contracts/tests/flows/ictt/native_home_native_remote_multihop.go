@@ -4,8 +4,9 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/utils/logging"
 	nativetokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/NativeTokenHome"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
@@ -21,12 +22,15 @@ import (
   - Transfer tokens from L1 A to L1 B through multi-hop
   - Transfer back tokens from L1 B to L1 A through multi-hop
 */
-func NativeTokenHomeNativeTokenRemoteMultiHop(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func NativeTokenHomeNativeTokenRemoteMultiHop(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// decimalsShift is always 0 for native to native
 	decimalsShift := uint8(0)
@@ -83,6 +87,7 @@ func NativeTokenHomeNativeTokenRemoteMultiHop(network *localnetwork.LocalNetwork
 	// Register both NativeTokenDestinations on the NativeTokenHome
 	collateralAmountA := utils.RegisterTokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		nativeTokenHomeAddress,
@@ -97,6 +102,7 @@ func NativeTokenHomeNativeTokenRemoteMultiHop(network *localnetwork.LocalNetwork
 
 	collateralAmountB := utils.RegisterTokenRemoteOnHome(
 		ctx,
+		log,
 		teleporter,
 		cChainInfo,
 		nativeTokenHomeAddress,

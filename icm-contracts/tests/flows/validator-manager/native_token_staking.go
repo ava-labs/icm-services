@@ -2,15 +2,15 @@ package staking
 
 import (
 	"context"
-	"log"
 	"math/big"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
 	nativetokenstakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/NativeTokenStakingManager"
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
-	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
@@ -32,14 +32,16 @@ import (
  * - Deliver the Warp message to the L1
  * - Verify that the validator is delisted from the staking contract
  */
-func NativeTokenStakingManager(network *localnetwork.LocalNetwork) {
+func NativeTokenStakingManager(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalNetwork,
+) {
 	// Get the L1s info
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
 	pChainInfo := utils.GetPChainInfo(cChainInfo)
-
-	ctx := context.Background()
 
 	balance := 100 * units.Avax
 	nodes, initialValidationIDs := network.ConvertSubnet(
@@ -112,7 +114,7 @@ func NativeTokenStakingManager(network *localnetwork.LocalNetwork) {
 	//
 	var delegationID ids.ID
 	{
-		log.Println("Registering delegator")
+		log.Info("Registering delegator")
 		delegatorStake, err := nativeStakingManager.WeightToValue(
 			&bind.CallOpts{},
 			nodes[0].Weight,
@@ -191,7 +193,7 @@ func NativeTokenStakingManager(network *localnetwork.LocalNetwork) {
 	// Delist the delegator
 	//
 	{
-		log.Println("Delisting delegator")
+		log.Info("Delisting delegator")
 		nonce := uint64(2)
 		receipt := utils.InitiateDelegatorRemoval(
 			ctx,

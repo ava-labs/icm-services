@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
-	"log"
 	"math/big"
 	"os"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/log"
 	"github.com/pkg/errors"
 )
 
@@ -49,7 +49,7 @@ type byteCodeFile struct {
 }
 
 func extractByteCode(byteCodeFileName string) (byteCodeFile, error) {
-	log.Println("Using bytecode file at", byteCodeFileName)
+	log.Info("Using bytecode file at", byteCodeFileName)
 	byteCodeFileContents, err := os.ReadFile(byteCodeFileName)
 	if err != nil {
 		return byteCodeFile{}, errors.Wrap(err, "Failed to read bytecode file contents")
@@ -126,8 +126,8 @@ func ConstructKeylessTransaction(
 	contractAddress := crypto.CreateAddress(senderAddress, 0)
 	contractAddressString := contractAddress.Hex() // "0x" prepended by Hex() already.
 
-	log.Println("TeleporterMessenger Keyless Deployer Address: ", senderAddressString)
-	log.Println("TeleporterMessenger Universal Contract Address: ", contractAddressString)
+	log.Info("TeleporterMessenger Keyless Deployer Address: ", senderAddressString)
+	log.Info("TeleporterMessenger Universal Contract Address: ", contractAddressString)
 
 	if writeFile {
 		err = os.WriteFile(
