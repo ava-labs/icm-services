@@ -4,70 +4,148 @@
 
 set -e
 
-HELP=
-LOG_LEVEL=
-EPOCH_DURATION=
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -v | --verbose) LOG_LEVEL=debug ;;
-        -e | --epoch-duration) EPOCH_DURATION=$2 ;;
-        -h | --help) HELP=true ;;
-    esac
-    shift
-done
-
-if [ "$HELP" = true ]; then
-    echo "Usage: ./scripts/e2e_test.sh [OPTIONS]"
-    echo "Run E2E tests for ICM Services."
-    echo ""
-    echo "Options:"
-    echo "  -v, --verbose                     Enable debug logs"
-    echo "  -e, --epoch-duration              Set the epoch duration for Granite testing"
-    echo "  -h, --help                        Print this help message"
-    exit 0
-fi
-
-BASE_PATH=$(
+REPO_PATH=$(
   cd "$(dirname "${BASH_SOURCE[0]}")"
   cd .. && pwd
 )
 
-source "$BASE_PATH"/scripts/constants.sh
-source "$BASE_PATH"/scripts/versions.sh
+function printHelp() {
+    echo "Usage: ./scripts/e2e_test.sh [--components component]"
+    echo ""
+    printUsage
+}
+
+function printUsage() {
+    cat << EOF
+Arguments:
+    --components component1,component2            Comma separated list of test suites to run. Valid components are:
+                                                  $(echo $valid_components | tr ' ' '\n' | sort | tr '\n' ' ')
+                                                  (default: all)
+    --network-dir path                            Path to the network directory. 
+                                                  If the directory does not exist or is empty, it will be used as the root network directory for a new network.
+                                                  If the directory exists and is non-empty, the network will be reused.
+                                                  If not set, a new network will be created at the default root network directory.
+    --epoch-duration duration                     Set to override the default test epoch duration.
+Options:
+    --help                                        Print this help message
+    -v | --verbose                                Enable debug logs
+EOF
+}
+
+valid_components=$(ls -d $REPO_PATH/icm-contracts/tests/suites/*/ | xargs -n 1 basename)
+components=
+reuse_network_dir=
+root_dir=
+network_dir=
+reuse_network=false
+epoch_duration=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --components)  
+            if [[ $2 != --* ]]; then
+                components=$2
+            else 
+                echo "Invalid components $2" && printHelp && exit 1
+            fi 
+            shift;;
+        --network-dir)
+            if [[ $2 != --* ]]; then
+                reuse_network_dir=$2
+            else 
+                echo "Invalid network directory $2" && printHelp && exit 1
+            fi 
+            shift;;
+        --epoch-duration)
+            if [[ $2 != --* ]]; then
+                epoch_duration=$2
+            else 
+                echo "Invalid epoch duration $2" && printHelp && exit 1
+            fi 
+            shift;;
+        --help) 
+            printHelp && exit 0 ;;
+        -v | --verbose)
+            LOG_LEVEL=debug ;;
+        *) 
+            echo "Invalid option: $1" && printHelp && exit 1;;
+    esac
+    shift
+done
+
+# Run all suites if no component is provided
+if [ -z "$components" ]; then
+    components=$valid_components
+fi
+
+# Exit if invalid component is provided
+for component in $(echo $components | tr ',' ' '); do
+    if [[ $valid_components != *$component* ]]; then
+        echo "Invalid component $component" && exit 1
+    fi
+done
+
+if [ -n "$reuse_network_dir" ]; then
+    if [ -d "$reuse_network_dir" ] && [ "$(ls -A "$reuse_network_dir")" ]; then
+        network_dir=$reuse_network_dir
+        reuse_network=true
+        echo "Reuse network directory: $network_dir"
+    else
+        echo "Network directory $reuse_network_dir does not exist or is empty. Creating a new network at root $reuse_network_dir."
+        mkdir -p "$reuse_network_dir"
+        root_dir=$reuse_network_dir
+    fi
+fi
+
+if [ -n "$epoch_duration" ]; then
+    export GRANITE_EPOCH_DURATION=$epoch_duration
+    echo "GRANITE_EPOCH_DURATION: $GRANITE_EPOCH_DURATION"
+fi
+
+source "$REPO_PATH"/scripts/constants.sh
+source "$REPO_PATH"/scripts/versions.sh
 
 BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 
 cwd=$(pwd)
 # Install the avalanchego and subnet-evm binaries
 rm -rf $BASEDIR/avalanchego
-BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego ./scripts/install_avalanchego_release.sh
-BASEDIR=$BASEDIR ./scripts/install_subnetevm_release.sh
-
-# Install signature-aggregator to the location used by the tests
-SIGNATURE_AGGREGATOR_PATH=$BASEDIR/icm-services/signature-aggregator
-./scripts/build_signature_aggregator.sh $SIGNATURE_AGGREGATOR_PATH
-echo "signature-aggregator Path: ${SIGNATURE_AGGREGATOR_PATH}"
+BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
+BASEDIR=$BASEDIR "${REPO_PATH}/scripts/install_subnetevm_release.sh"
 
 cp ${BASEDIR}/subnet-evm/subnet-evm ${BASEDIR}/avalanchego/plugins/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
 echo "Copied ${BASEDIR}/subnet-evm/subnet-evm binary to ${BASEDIR}/avalanchego/plugins/"
 
 export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
-export AVALANCHEGO_PATH=$BASEDIR/avalanchego/avalanchego
-export AVAGO_PLUGIN_DIR=$BASEDIR/avalanchego/plugins
+export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
+export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
 
-go run github.com/onsi/ginkgo/v2/ginkgo build ./tests/
-go build -v -o tests/cmd/decider/decider ./tests/cmd/decider/
+# Install signature-aggregator binary
+"$REPO_PATH"/scripts/build_signature_aggregator.sh
 
-if [ -n "$EPOCH_DURATION" ]; then
-  export GRANITE_EPOCH_DURATION=$EPOCH_DURATION
+cd "$REPO_PATH"
+if command -v forge &> /dev/null; then
+  forge build --skip test
+else
+  echo "Forge command not found, attempting to use from $HOME"
+  $HOME/.foundry/bin/forge build
 fi
 
-# Run the tests
-echo "Running e2e tests $RUN_E2E"
-RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${SIG_AGG_PATH:-"$BASEDIR/icm-services/signature-aggregator"} ./tests/tests.test \
-  --ginkgo.vv \
-  --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \
-  --ginkgo.focus=${GINKGO_FOCUS:-""} 
+for component in $(echo $components | tr ',' ' '); do
+    echo "Building e2e tests for $component"
+    go run github.com/onsi/ginkgo/v2/ginkgo build ${REPO_PATH}/icm-contracts/tests/suites/$component
 
-echo "e2e tests passed"
+    echo "Running e2e tests for $component"
+
+    RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${REPO_PATH}/build/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
+    --root-network-dir=${root_dir} \
+    --reuse-network=${reuse_network} \
+    --network-dir=${network_dir} \
+    --ginkgo.vv \
+    --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \
+    --ginkgo.focus=${GINKGO_FOCUS:-""} \
+    --ginkgo.trace
+
+    echo "$component e2e tests passed"
+    echo ""
+done
 exit 0

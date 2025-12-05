@@ -1,7 +1,7 @@
 // Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package tests
+package services_test
 
 import (
 	"context"
@@ -19,9 +19,10 @@ import (
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
+	servicesFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/services"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	teleporterTestUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/tests/utils"
+	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/onsi/ginkgo/v2"
@@ -211,33 +212,33 @@ var _ = ginkgo.AfterSuite(cleanup)
 
 var _ = ginkgo.Describe("[ICM Relayer Integration Tests", func() {
 	ginkgo.It("Basic Relay", func(ctx context.Context) {
-		BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Manually Provided Message", func(ctx context.Context) {
-		ManualMessage(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.ManualMessage(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Shared Database", func(ctx context.Context) {
-		SharedDatabaseAccess(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.SharedDatabaseAccess(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Allowed Addresses", func(ctx context.Context) {
-		AllowedAddresses(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.AllowedAddresses(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Batch Message", func(ctx context.Context) {
-		BatchRelay(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.BatchRelay(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Relay Message API", func(ctx context.Context) {
-		RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Warp API", func(ctx context.Context) {
-		WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Signature Aggregator", func(ctx context.Context) {
-		SignatureAggregatorAPI(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.SignatureAggregatorAPI(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Signature Aggregator Epoch Validators", func(ctx context.Context) {
-		SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 	ginkgo.It("Validators Only Network", func(ctx context.Context) {
-		ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
+		servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
 	})
 })
