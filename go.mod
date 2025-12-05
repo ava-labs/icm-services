@@ -1,6 +1,6 @@
 module github.com/ava-labs/icm-services
 
-go 1.24.9
+go 1.24.11
 
 tool (
 	github.com/bufbuild/buf/cmd/buf
