@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity 0.8.30;
 
 import {NativeTokenRemoteUpgradeable} from "./NativeTokenRemoteUpgradeable.sol";
 import {TokenRemoteSettings} from "./interfaces/ITokenRemote.sol";
