@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity 0.8.30;
 
 import {IValidatorManager} from "../interfaces/IValidatorManager.sol";
 import {IRewardCalculator} from "./IRewardCalculator.sol";

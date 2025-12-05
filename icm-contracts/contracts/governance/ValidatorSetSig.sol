@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity 0.8.30;
 
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts@5.0.2/utils/ReentrancyGuard.sol";

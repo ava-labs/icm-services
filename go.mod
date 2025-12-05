@@ -1,6 +1,6 @@
 module github.com/ava-labs/icm-services
 
-go 1.24.9
+go 1.24.11
 
 tool (
 	github.com/bufbuild/buf/cmd/buf
@@ -24,7 +24,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/segmentio/encoding v0.5.3
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
