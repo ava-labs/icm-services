@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	LocalNetworkInstance *localnetwork.LocalNetwork
+	LocalNetworkInstance *localnetwork.LocalAvalancheNetwork
 	e2eFlags             *e2e.FlagVars
 )
 

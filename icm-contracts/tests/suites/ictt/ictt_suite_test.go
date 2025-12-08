@@ -40,7 +40,7 @@ const (
 )
 
 var (
-	LocalNetworkInstance *localnetwork.LocalNetwork
+	LocalNetworkInstance *localnetwork.LocalAvalancheNetwork
 	TeleporterInfo       utils.TeleporterTestInfo
 	e2eFlags             *e2e.FlagVars
 )

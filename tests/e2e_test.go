@@ -38,7 +38,7 @@ const (
 var (
 	log logging.Logger
 
-	localNetworkInstance *network.LocalNetwork
+	localNetworkInstance *network.LocalAvalancheNetwork
 	teleporterInfo       teleporterTestUtils.TeleporterTestInfo
 
 	decider  *exec.Cmd
