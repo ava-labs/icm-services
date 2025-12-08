@@ -22,15 +22,16 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/rpc"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 var (
@@ -141,7 +142,7 @@ func (t TeleporterTestInfo) DeployTeleporterMessenger(
 	)
 	SendTransactionAndWaitForSuccess(ctx, l1, fundDeployerTx)
 
-	log.Info("Finished funding Teleporter deployer", "blockchainID", l1.BlockchainID.Hex())
+	log.Info("Finished funding Teleporter deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
 
 	// Deploy Teleporter contract
 	rpcClient, err := rpc.DialContext(
@@ -299,7 +300,7 @@ func (t TeleporterTestInfo) AddProtocolVersionAndWaitForAcceptance(
 	signatureAggregator *SignatureAggregator,
 ) {
 	signedWarpMsg := GetSignedMessage(l1, l1, unsignedMessage, nil, signatureAggregator)
-	log.Info("Got signed warp message", "messageID", signedWarpMsg.ID())
+	log.Info("Got signed warp message", zap.Stringer("messageID", signedWarpMsg.ID()))
 
 	// Construct tx to add protocol version and send to destination chain
 	signedTx := CreateAddProtocolVersionTransaction(
@@ -346,7 +347,7 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 		destination.BlockchainID,
 	)
 	for outstandReceiptCount.Cmp(big.NewInt(0)) != 0 {
-		log.Info("Emptying receipt queue", "remainingReceipts", outstandReceiptCount.String())
+		log.Info("Emptying receipt queue", zap.Stringer("remainingReceipts", outstandReceiptCount))
 		// Send message from L1 B to L1 A to trigger the "regular" method of delivering receipts.
 		// The next message from B->A will contain the same receipts that were manually sent in the above steps,
 		// but they should not be processed again on L1 A.
@@ -482,9 +483,9 @@ func SendAddFeeAmountAndWaitForAcceptance(
 	Expect(addFeeAmountEvent.MessageID[:]).Should(Equal(messageID[:]))
 
 	log.Info("Send AddFeeAmount transaction on source chain",
-		"messageID", messageID,
-		"sourceChainID", source.BlockchainID,
-		"destinationBlockchainID", destination.BlockchainID,
+		zap.Stringer("messageID", messageID),
+		zap.Stringer("sourceChainID", source.BlockchainID),
+		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
 	)
 
 	return receipt
@@ -585,8 +586,9 @@ func SendSpecifiedReceiptsAndWaitForAcceptance(
 	Expect(event.DestinationBlockchainID[:]).Should(Equal(destinationBlockchainID[:]))
 
 	log.Info("Sending SendSpecifiedReceipts transaction",
-		"destinationBlockchainID", destinationBlockchainID,
-		"txHash", tx.Hash())
+		zap.Stringer("destinationBlockchainID", destinationBlockchainID),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	return receipt, event.MessageID
 }
@@ -614,9 +616,10 @@ func SendCrossChainMessageAndWaitForAcceptance(
 	Expect(err).Should(BeNil())
 
 	log.Info("Sending SendCrossChainMessage transaction on source chain",
-		"sourceChainID", source.BlockchainID,
-		"destinationBlockchainID", destination.BlockchainID,
-		"txHash", tx.Hash())
+		zap.Stringer("sourceChainID", source.BlockchainID),
+		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	return receipt, event.MessageID
 }
@@ -821,8 +824,8 @@ func InitOffChainMessageChainConfig(
 		},
 	)
 	log.Info("Adding off-chain message to Warp chain config",
-		"messageID", unsignedMessage.ID(),
-		"blockchainID", l1.BlockchainID.String(),
+		zap.Stringer("messageID", unsignedMessage.ID()),
+		zap.Stringer("blockchainID", l1.BlockchainID),
 	)
 
 	return unsignedMessage, GetChainConfigWithOffChainMessages([]avalancheWarp.UnsignedMessage{*unsignedMessage})

@@ -7,11 +7,12 @@ import (
 	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const HELLO_WORLD = "Hello, world!"
@@ -29,7 +30,7 @@ func DeliverToNonExistentContract(network *localnetwork.LocalNetwork, teleporter
 	// Fund the deployer address on L1 B
 	//
 	ctx := context.Background()
-	log.Info("Funding address on L1 B", "address", deployerAddress.Hex())
+	log.Info("Funding address on L1 B", zap.String("address", deployerAddress.Hex()))
 
 	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(10)) // 10eth
 	fundDeployerTx := utils.CreateNativeTransferTransaction(

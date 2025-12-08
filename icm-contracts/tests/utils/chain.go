@@ -23,19 +23,20 @@ import (
 	nativeMinter "github.com/ava-labs/icm-services/abi-bindings/go/subnet-evm/INativeMinter"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
+	"github.com/ava-labs/icm-services/log"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/eth/tracers"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/nativeminter"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const (
@@ -244,7 +245,7 @@ func waitForTransactionReceipt(
 		if errors.Is(err, ethereum.NotFound) {
 			log.Debug("Transaction not yet mined")
 		} else {
-			log.Error("Receipt retrieval failed", "err", err)
+			log.Error("Receipt retrieval failed", zap.Error(err))
 			return nil, err
 		}
 
@@ -361,7 +362,7 @@ func waitForBlockHeight(
 			return nil
 		} else {
 			log.Info("Waiting for block height where transaction was included",
-				"blockNumber", expectedBlockNumber)
+				zap.Uint64("blockNumber", expectedBlockNumber))
 		}
 
 		// Wait for the next round.
@@ -567,7 +568,10 @@ func WaitForAllValidatorsToAcceptBlock(ctx context.Context, nodeURIs []string, b
 	defer cancel()
 	for i, uri := range nodeURIs {
 		chainAWSURI := HttpToWebsocketURI(uri, blockchainID.String())
-		log.Debug("Creating ethclient for blockchain", "blockchainID", blockchainID.String(), "wsURI", chainAWSURI)
+		log.Debug("Creating ethclient for blockchain",
+			zap.Stringer("blockchainID", blockchainID),
+			zap.String("wsURI", chainAWSURI),
+		)
 		client, err := ethclient.Dial(chainAWSURI)
 		Expect(err).Should(BeNil())
 		defer client.Close()
@@ -577,7 +581,10 @@ func WaitForAllValidatorsToAcceptBlock(ctx context.Context, nodeURIs []string, b
 			block, err := client.BlockByNumber(cctx, nil)
 			Expect(err).Should(BeNil())
 			if block.NumberU64() >= height {
-				log.Debug("Client accepted the block containing SendWarpMessage", "client", i, "height", block.NumberU64())
+				log.Debug("Client accepted the block containing SendWarpMessage",
+					zap.Int("client", i),
+					zap.Uint64("height", block.NumberU64()),
+				)
 				break
 			}
 		}
@@ -718,7 +725,7 @@ func IssueTxsToAdvanceChain(
 	}
 	log.Info(
 		"Built required number of blocks",
-		"txCount", numTriggerTxs,
+		zap.Int("txCount", numTriggerTxs),
 	)
 	return nil
 }

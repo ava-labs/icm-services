@@ -12,10 +12,11 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	teleporterutils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 func SendSpecificReceipts(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
@@ -219,7 +220,10 @@ func SendSpecificReceipts(network *localnetwork.LocalNetwork, teleporter utils.T
 		l1ATeleporterMessenger.ParseReceiveCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
-	log.Info("Receipt included", "count", len(receiveEvent.Message.Receipts), "receipts", receiveEvent.Message.Receipts)
+	log.Info("Receipt included",
+		zap.Int("count", len(receiveEvent.Message.Receipts)),
+		zap.Any("receipts", receiveEvent.Message.Receipts),
+	)
 	Expect(receiptIncluded(
 		teleporterContractAddress,
 		messageID1,

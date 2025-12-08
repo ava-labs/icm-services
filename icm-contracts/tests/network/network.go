@@ -36,10 +36,11 @@ import (
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	subnetEvmTestUtils "github.com/ava-labs/subnet-evm/tests/utils"
+	"go.uber.org/zap"
 
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
 )
 
@@ -607,8 +608,8 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 		if err != nil {
 			log.Error(
 				"failed to unmarshal chain config",
-				"error", err,
-				"chainConfig", chainConfig,
+				zap.String("chainConfig", chainConfig),
+				zap.Error(err),
 			)
 		}
 		if chainIDStr == utils.CChainPathSpecifier {
@@ -627,13 +628,13 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 	}
 	err := n.Network.Write()
 	if err != nil {
-		log.Error("failed to write network", "error", err)
+		log.Error("failed to write network", zap.Error(err))
 	}
 
 	for _, l1 := range n.Network.Subnets {
 		err := l1.Write(n.Network.GetSubnetDir())
 		if err != nil {
-			log.Error("failed to write L1s", "error", err)
+			log.Error("failed to write L1s", zap.Error(err))
 		}
 	}
 
