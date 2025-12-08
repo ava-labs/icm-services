@@ -81,7 +81,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/contracts_e2e_test.sh --components teleporter
+          ./scripts/e2e_test.sh --components teleporter
 
   governance_e2e:
     name: governance-e2e-tests
@@ -107,7 +107,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/contracts_e2e_test.sh --components governance
+          ./scripts/e2e_test.sh --components governance
 
   validator_manager_e2e:
     name: validator-manager-e2e-tests
@@ -133,7 +133,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/contracts_e2e_test.sh --components validator-manager
+          ./scripts/e2e_test.sh --components validator-manager
 
   ictt_e2e:
     name: ictt-e2e-tests
@@ -159,7 +159,7 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          ./scripts/contracts_e2e_test.sh --components ictt
+          ./scripts/e2e_test.sh --components ictt
 
   services_e2e:
     name: ICM Services E2E Tests
@@ -178,16 +178,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Install AvalancheGo Release
-        run: BASEDIR=/tmp/e2e-test AVALANCHEGO_BUILD_PATH=/tmp/e2e-test/avalanchego ./scripts/install_avalanchego_release.sh
-
-      - name: Build Subnet-EVM Plugin Binary
-        run: ./scripts/build.sh /tmp/e2e-test/avalanchego/plugins/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
-
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
 
       - name: Run E2E Tests
-        run: AVALANCHEGO_BUILD_PATH=/tmp/e2e-test/avalanchego DATA_DIR=/tmp/e2e-test/data ./scripts/e2e_test.sh
+        # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH="$PATH:$GOPATH/bin"
+          ./scripts/e2e_test.sh --components services
