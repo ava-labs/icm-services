@@ -30,7 +30,6 @@ func ValidatorChurn(
 	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
-
 	//
 	// Send a Teleporter message on L1 A
 	//
