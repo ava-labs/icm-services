@@ -37,6 +37,7 @@ jobs:
       - name: Run Slither
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
+          export FOUNDRY_PROFILE=avalanche
           slither ./ --fail-none --sarif ./results.sarif
 
       - name: Upload SARIF file
