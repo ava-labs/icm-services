@@ -38,7 +38,7 @@ import (
  * - Delist the previous PoA validator properly
  * - Delist the PoS validator
  */
-func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
+func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
@@ -50,7 +50,6 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 	ownerAddress := crypto.PubkeyToAddress(ownerKey.PublicKey)
 
 	// Transfer native assets to the owner account
-	ctx := context.Background()
 	fundAmount := big.NewInt(1e18) // 10avax
 	fundAmount.Mul(fundAmount, big.NewInt(10))
 	utils.SendNativeTransfer(

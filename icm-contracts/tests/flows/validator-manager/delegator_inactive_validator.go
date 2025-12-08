@@ -25,14 +25,12 @@ import (
  * - Disable the validator by issuing a DisableL1ValidatorTx on the P-Chain
  * - Initiate and complete validator removal
  */
-func RemoveDelegatorInactiveValidator(network *localnetwork.LocalNetwork) {
+func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork.LocalNetwork) {
 	// Get the L1s info
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 	pChainInfo := utils.GetPChainInfo(cChainInfo)
-
-	ctx := context.Background()
 
 	balance := 100 * units.Avax
 	nodes, initialValidationIDs := network.ConvertSubnet(

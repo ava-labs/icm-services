@@ -18,12 +18,14 @@ import (
  * Transfers C-Chain native tokens to L1 A
  * Transfer back tokens from L1 A to C-Chain
  */
-func NativeTokenHomeNativeDestination(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func NativeTokenHomeNativeDestination(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy an example WAVAX on the primary network
 	cChainWAVAXAddress, wavax := utils.DeployWrappedNativeToken(

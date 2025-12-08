@@ -41,11 +41,11 @@ func TestGovernance(t *testing.T) {
 }
 
 // Define the before and after suite functions.
-var _ = ginkgo.BeforeSuite(func() {
+var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
 
 	// Create the local network instance
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	LocalNetworkInstance = localnetwork.NewLocalNetwork(
 		ctx,
@@ -79,7 +79,7 @@ var _ = ginkgo.Describe("[Governance integration tests]", func() {
 	// Governance tests
 	ginkgo.It("Deliver ValidatorSetSig signed message",
 		ginkgo.Label(validatorSetSigLabel),
-		func() {
-			governanceFlows.ValidatorSetSig(LocalNetworkInstance)
+		func(ctx context.Context) {
+			governanceFlows.ValidatorSetSig(ctx, LocalNetworkInstance)
 		})
 })

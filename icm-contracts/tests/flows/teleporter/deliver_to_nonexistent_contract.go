@@ -16,7 +16,11 @@ import (
 
 const HELLO_WORLD = "Hello, world!"
 
-func DeliverToNonExistentContract(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func DeliverToNonExistentContract(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -28,7 +32,6 @@ func DeliverToNonExistentContract(network *localnetwork.LocalNetwork, teleporter
 	//
 	// Fund the deployer address on L1 B
 	//
-	ctx := context.Background()
 	log.Info("Funding address on L1 B", "address", deployerAddress.Hex())
 
 	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(10)) // 10eth
