@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
-	goLog "log"
 	"os"
 	"sort"
 	"time"
@@ -220,9 +219,12 @@ func NewLocalNetwork(
 	if envDuration := os.Getenv("GRANITE_EPOCH_DURATION"); envDuration != "" {
 		if parsed, err := time.ParseDuration(envDuration); err == nil {
 			graniteEpochDuration = parsed
-			goLog.Printf("Using Granite epoch duration from environment: %v", graniteEpochDuration)
+			log.Info("Using Granite epoch duration from environment", zap.Duration("duration", graniteEpochDuration))
 		} else {
-			goLog.Printf("Invalid GRANITE_EPOCH_DURATION '%s', using default: %v", envDuration, graniteEpochDuration)
+			log.Info("Invalid GRANITE_EPOCH_DURATION, using default",
+				zap.String("envDuration", envDuration),
+				zap.Duration("defaultDuration", graniteEpochDuration),
+			)
 		}
 	}
 	upgrades.GraniteEpochDuration = graniteEpochDuration
@@ -246,7 +248,7 @@ func NewLocalNetwork(
 	defer cancelBootstrap()
 
 	logger := logging.NewLogger("tmpnet")
-	goLog.Println("Network bootstrapped")
+	log.Info("Network bootstrapped")
 
 	// Issue transactions to activate the proposerVM fork on the chains
 	if !isReuseNetwork {
@@ -280,7 +282,7 @@ func (n *LocalNetwork) ConvertSubnet(
 	proxy bool,
 ) ([]utils.Node, []ids.ID) {
 	Expect(len(weights)).Should(Equal(len(balances)))
-	goLog.Println("Converting l1", l1.SubnetID)
+	log.Info("Converting l1", zap.Stringer("subnetID", l1.SubnetID))
 	cChainInfo := n.GetPrimaryNetworkInfo()
 	pClient := platformvm.NewClient(cChainInfo.NodeURIs[0])
 	currentValidators, err := pClient.GetCurrentValidators(ctx, l1.SubnetID, nil)
@@ -381,7 +383,7 @@ func (n *LocalNetwork) ConvertSubnet(
 
 	// Wait for P-Chain to finalize and propagate transactions
 	utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
-	goLog.Println("Waiting for Granite epoch to complete for ", n.graniteEpochDuration)
+	log.Info("Waiting for Granite epoch to complete for ", zap.Duration("duration", n.graniteEpochDuration))
 	time.Sleep(n.graniteEpochDuration)
 
 	aggregator := n.GetSignatureAggregator()
@@ -407,7 +409,7 @@ func (n *LocalNetwork) ConvertSubnet(
 				Expect(n.Network.DefaultRuntimeConfig).ShouldNot(BeNil())
 				Expect(n.Network.DefaultRuntimeConfig.Process.ReuseDynamicPorts).Should(BeTrue())
 				node.RuntimeConfig = &n.Network.DefaultRuntimeConfig
-				goLog.Println("Restarting bootstrap node", node.NodeID)
+				log.Info("Restarting bootstrap node", zap.Stringer("nodeID", node.NodeID))
 				err = node.Restart(ctx)
 				Expect(err).Should(BeNil())
 			}
@@ -426,10 +428,18 @@ func (n *LocalNetwork) AddSubnetValidators(
 ) interfaces.L1TestInfo {
 	// Modify the each node's config to track the l1
 	for _, node := range nodes {
-		goLog.Printf("Adding node %s @ %s to l1 %s", node.NodeID, node.URI, l1.SubnetID)
+		log.Info("Adding node",
+			zap.Stringer("nodeID", node.NodeID),
+			zap.String("uri", node.URI),
+			zap.Stringer("subnetID", l1.SubnetID),
+		)
 		existingTrackedSubnets := node.Flags[config.TrackSubnetsKey]
 		if existingTrackedSubnets == l1.SubnetID.String() {
-			goLog.Printf("Node %s @ %s already tracking l1 %s\n", node.NodeID, node.URI, l1.SubnetID)
+			log.Info("Node already tracking l1",
+				zap.Stringer("subnetID", l1.SubnetID),
+				zap.Stringer("nodeID", node.NodeID),
+				zap.String("uri", node.URI),
+			)
 			continue
 		}
 		node.Flags[config.TrackSubnetsKey] = l1.SubnetID.String()
