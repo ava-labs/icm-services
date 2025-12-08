@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity 0.8.30;
 
 import {TokenTransferrerTest} from "./TokenTransferrerTests.t.sol";
 import {IERC20TokenTransferrer} from "../interfaces/IERC20TokenTransferrer.sol";

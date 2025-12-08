@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.25;
+pragma solidity 0.8.30;
 
 import {TokenHome} from "./TokenHome.sol";
 import {IERC20TokenHome} from "./interfaces/IERC20TokenHome.sol";

@@ -103,6 +103,7 @@ type txData struct {
 type txResult struct {
 	receipt *types.Receipt
 	err     error
+	txID    common.Hash
 }
 
 func NewDestinationClient(
@@ -344,12 +345,10 @@ func (c *destinationClient) SendTx(
 		c.logger.Error(
 			"Transaction failed to be issued or confirmed",
 			zap.Error(result.err),
+			zap.Stringer("txID", result.txID),
 		)
 		return nil, result.err
 	}
-	c.logger.Debug(
-		"Sent transaction",
-	)
 
 	return result.receipt, nil
 }
@@ -434,24 +433,24 @@ func (s *concurrentSigner) issueTransaction(
 	sendTxCtx, sendTxCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer sendTxCtxCancel()
 
-	s.logger.Info(
-		"Sending transaction",
+	log := s.logger.With(
 		zap.Stringer("txID", signedTx.Hash()),
+		zap.Uint64("gasLimit", data.gasLimit),
+		zap.Stringer("gasFeeCap", data.gasFeeCap),
+		zap.Stringer("gasTipCap", data.gasTipCap),
 		zap.Uint64("nonce", s.currentNonce),
 	)
 
+	log.Info("Sending transaction")
+
 	if err := s.destinationClient.client.SendTransaction(sendTxCtx, signedTx); err != nil {
-		s.logger.Error(
+		log.Error(
 			"Failed to send transaction",
 			zap.Error(err),
 		)
 		return err
 	}
-	s.logger.Info(
-		"Sent transaction",
-		zap.Stringer("txID", signedTx.Hash()),
-		zap.Uint64("nonce", s.currentNonce),
-	)
+	log.Info("Sent transaction")
 
 	s.currentNonce++
 
@@ -482,6 +481,7 @@ func (s *concurrentSigner) waitForReceipt(
 	notify := func(err error, duration time.Duration) {
 		s.logger.Info(
 			"waiting for receipt failed, retrying...",
+			zap.Stringer("txID", txHash),
 			zap.Duration("retryIn", duration),
 			zap.Error(err),
 		)
@@ -492,6 +492,7 @@ func (s *concurrentSigner) waitForReceipt(
 		resultChan <- txResult{
 			receipt: nil,
 			err:     fmt.Errorf("failed to get transaction receipt: %w", err),
+			txID:    txHash,
 		}
 		return
 	}
@@ -502,6 +503,7 @@ func (s *concurrentSigner) waitForReceipt(
 	resultChan <- txResult{
 		receipt: receipt,
 		err:     nil,
+		txID:    txHash,
 	}
 }
 
