@@ -15,7 +15,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func RelayMessageTwice(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RelayMessageTwice(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -23,7 +27,6 @@ func RelayMessageTwice(network *localnetwork.LocalNetwork, teleporter utils.Tele
 	//
 	// Send a transaction to L1 A to issue an ICM Message from the Teleporter contract to L1 B
 	//
-	ctx := context.Background()
 
 	sendCrossChainMessageInput := teleportermessenger.TeleporterMessageInput{
 		DestinationBlockchainID: l1BInfo.BlockchainID,

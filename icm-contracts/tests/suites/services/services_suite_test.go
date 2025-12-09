@@ -32,6 +32,7 @@ import (
 
 const (
 	warpGenesisTemplateFile   = "./tests/utils/warp-genesis-template.json"
+	servicesLabel             = "ICMServices"
 	minimumL1ValidatorBalance = 2048 * units.NanoAvax
 	defaultBalance            = 100 * units.Avax
 )
@@ -54,7 +55,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestE2E(t *testing.T) {
+func TestServices(t *testing.T) {
 	// Handle SIGINT and SIGTERM signals.
 	signalChan := make(chan os.Signal, 2)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
@@ -210,35 +211,55 @@ func cleanup() {
 
 var _ = ginkgo.AfterSuite(cleanup)
 
-var _ = ginkgo.Describe("[ICM Relayer Integration Tests", func() {
-	ginkgo.It("Basic Relay", func(ctx context.Context) {
-		servicesFlows.BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Manually Provided Message", func(ctx context.Context) {
-		servicesFlows.ManualMessage(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Shared Database", func(ctx context.Context) {
-		servicesFlows.SharedDatabaseAccess(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Allowed Addresses", func(ctx context.Context) {
-		servicesFlows.AllowedAddresses(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Batch Message", func(ctx context.Context) {
-		servicesFlows.BatchRelay(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Relay Message API", func(ctx context.Context) {
-		servicesFlows.RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Warp API", func(ctx context.Context) {
-		servicesFlows.WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Signature Aggregator", func(ctx context.Context) {
-		servicesFlows.SignatureAggregatorAPI(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Signature Aggregator Epoch Validators", func(ctx context.Context) {
-		servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
-	})
-	ginkgo.It("Validators Only Network", func(ctx context.Context) {
-		servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
-	})
+var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests", func() {
+	ginkgo.It("Basic Relay",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Manually Provided Message",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.ManualMessage(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Shared Database",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.SharedDatabaseAccess(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Allowed Addresses",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.AllowedAddresses(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Batch Message",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.BatchRelay(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Relay Message API",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Warp API",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Signature Aggregator",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.SignatureAggregatorAPI(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Signature Aggregator Epoch Validators",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("Validators Only Network",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
+		})
 })

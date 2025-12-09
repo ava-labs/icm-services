@@ -14,7 +14,11 @@ import (
 	"go.uber.org/zap"
 )
 
-func DeliverToWrongChain(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func DeliverToWrongChain(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, L1CInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -31,7 +35,6 @@ func DeliverToWrongChain(network *localnetwork.LocalNetwork, teleporter utils.Te
 	//
 	// Submit a message to be sent from L1A to L1B
 	//
-	ctx := context.Background()
 	sendCrossChainMessageInput := teleportermessenger.TeleporterMessageInput{
 		DestinationBlockchainID: l1BInfo.BlockchainID, // Message intended for L1B
 		DestinationAddress:      common.HexToAddress("0x1111111111111111111111111111111111111111"),

@@ -18,14 +18,17 @@ import (
 	"go.uber.org/zap"
 )
 
-func SendSpecificReceipts(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func SendSpecificReceipts(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	l1ATeleporterMessenger := teleporter.TeleporterMessenger(l1AInfo)
 	l1BTeleporterMessenger := teleporter.TeleporterMessenger(l1BInfo)
 	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
 	_, fundedKey := network.GetFundedAccountInfo()
-	ctx := context.Background()
 
 	aggregator := network.GetSignatureAggregator()
 	defer aggregator.Shutdown()

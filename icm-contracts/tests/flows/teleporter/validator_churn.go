@@ -22,12 +22,14 @@ const (
 	sleepPeriodSeconds = 5
 )
 
-func ValidatorChurn(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ValidatorChurn(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	//
 	// Send a Teleporter message on L1 A

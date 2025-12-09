@@ -21,14 +21,13 @@ import (
  * C-Chain and calls contract on the C-Chain using sendAndCall
  */
 func ERC20TokenHomeERC20TokenRemoteSendAndCall(
+	ctx context.Context,
 	network *localnetwork.LocalNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy an ExampleERC20 on the primary network as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(
