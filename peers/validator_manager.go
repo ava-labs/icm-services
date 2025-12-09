@@ -177,10 +177,7 @@ func (v *ValidatorManager) updatedTrackedValidators(
 	for _, vdr := range vdrs.Validators {
 		for _, nodeID := range vdr.NodeIDs {
 			if _, ok := v.manager.GetValidator(subnetID, nodeID); !ok {
-				v.logger.Debug("Adding validator",
-					zap.Stringer("nodeID", nodeID),
-					zap.Stringer("subnetID", subnetID),
-				)
+				v.logger.Debug("Adding validator")
 				if err := v.manager.AddStaker(
 					subnetID,
 					nodeID,
