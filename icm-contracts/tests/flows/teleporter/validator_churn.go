@@ -10,10 +10,11 @@ import (
 	poamanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/PoAManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const (
@@ -33,7 +34,7 @@ func ValidatorChurn(
 	//
 	// Send a Teleporter message on L1 A
 	//
-	log.Info("Sending Teleporter message on source chain", "destinationBlockchainID", l1BInfo.BlockchainID)
+	log.Info("Sending Teleporter message on source chain", zap.Stringer("destinationBlockchainID", l1BInfo.BlockchainID))
 	sendCrossChainMessageInput := teleportermessenger.TeleporterMessageInput{
 		DestinationBlockchainID: l1BInfo.BlockchainID,
 		DestinationAddress:      fundedAddress,

@@ -10,7 +10,7 @@ import (
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	governanceFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/governance"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
-	"github.com/ava-labs/libevm/log"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -42,8 +42,6 @@ func TestGovernance(t *testing.T) {
 
 // Define the before and after suite functions.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
-
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()

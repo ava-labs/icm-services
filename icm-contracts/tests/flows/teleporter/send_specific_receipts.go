@@ -3,7 +3,6 @@ package teleporter
 import (
 	"bytes"
 	"context"
-	goLog "log"
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -12,10 +11,11 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	teleporterutils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 func SendSpecificReceipts(
@@ -64,13 +64,13 @@ func SendSpecificReceipts(
 		AllowedRelayerAddresses: []common.Address{},
 		Message:                 []byte{1, 2, 3, 4},
 	}
-	goLog.Println("Sending two messages from L1 A to L1 B")
+	log.Info("Sending two messages from L1 A to L1 B")
 
 	// Send first message from L1 A to L1 B with fee amount 5
 	sendCrossChainMsgReceipt, messageID1 := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx, l1ATeleporterMessenger, l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey)
 
-	goLog.Println("Relaying the first message from L1 A to L1 B")
+	log.Info("Relaying the first message from L1 A to L1 B")
 	// Relay the message from L1A to L1B
 	deliveryReceipt1 := teleporter.RelayTeleporterMessage(
 		ctx,
@@ -94,12 +94,12 @@ func SendSpecificReceipts(
 	Expect(err).Should(BeNil())
 	Expect(delivered).Should(BeTrue())
 
-	goLog.Println("Sending the second message from L1 A to L1 B")
+	log.Info("Sending the second message from L1 A to L1 B")
 	// Send second message from L1 A to L1 B with fee amount 5
 	sendCrossChainMsgReceipt, messageID2 := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx, l1ATeleporterMessenger, l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey)
 
-	goLog.Println("Relaying the second message from L1 A to L1 B")
+	log.Info("Relaying the second message from L1 A to L1 B")
 	// Relay the message from L1 A to L1 B
 	deliveryReceipt2 := teleporter.RelayTeleporterMessage(
 		ctx,
@@ -123,7 +123,7 @@ func SendSpecificReceipts(
 	Expect(delivered).Should(BeTrue())
 
 	// Call send specific receipts to get reward of relaying two messages
-	goLog.Println("Sending specific receipts from L1 B to L1 A")
+	log.Info("Sending specific receipts from L1 B to L1 A")
 	receipt, messageID := utils.SendSpecifiedReceiptsAndWaitForAcceptance(
 		ctx,
 		l1BTeleporterMessenger,
@@ -139,7 +139,7 @@ func SendSpecificReceipts(
 	)
 
 	// Relay message from L1 B to L1 A
-	goLog.Println("Relaying the specific receipts from L1 B to L1 A")
+	log.Info("Relaying the specific receipts from L1 B to L1 A")
 	receipt = teleporter.RelayTeleporterMessage(
 		ctx,
 		receipt,
@@ -187,12 +187,12 @@ func SendSpecificReceipts(
 		Message:                 []byte{1, 2, 3, 4},
 	}
 
-	goLog.Println("Sending a message from L1 B to L1 A to trigger receipts")
+	log.Info("Sending a message from L1 B to L1 A to trigger receipts")
 	// This message will also have the same receipts as the previous message
 	receipt, messageID = utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx, l1BTeleporterMessenger, l1BInfo, l1AInfo, sendCrossChainMessageInput, fundedKey)
 
-	goLog.Println("Relaying the message from L1 B to L1 A")
+	log.Info("Relaying the message from L1 B to L1 A")
 	// Relay message from L1 B to L1 A
 	receipt = teleporter.RelayTeleporterMessage(
 		ctx,
@@ -222,7 +222,10 @@ func SendSpecificReceipts(
 		l1ATeleporterMessenger.ParseReceiveCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
-	log.Info("Receipt included", "count", len(receiveEvent.Message.Receipts), "receipts", receiveEvent.Message.Receipts)
+	log.Info("Receipt included",
+		zap.Int("count", len(receiveEvent.Message.Receipts)),
+		zap.Any("receipts", receiveEvent.Message.Receipts),
+	)
 	Expect(receiptIncluded(
 		teleporterContractAddress,
 		messageID1,

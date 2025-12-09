@@ -8,11 +8,12 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	validatorsetsig "github.com/ava-labs/icm-services/abi-bindings/go/governance/ValidatorSetSig"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 func DeployValidatorSetSig(
@@ -49,7 +50,7 @@ func ExecuteValidatorSetSigCallAndVerify(
 	expectSuccess bool,
 ) *types.Receipt {
 	signedWarpMsg := GetSignedMessage(source, destination, unsignedMessage, nil, signatureAggregator)
-	log.Info("Got signed warp message", "messageID", signedWarpMsg.ID())
+	log.Info("Got signed warp message", zap.Stringer("messageID", signedWarpMsg.ID()))
 
 	signedPredicateTx := CreateExecuteCallPredicateTransaction(
 		ctx,
@@ -77,8 +78,9 @@ func InitOffChainMessageChainConfigValidatorSetSig(
 		unsignedMessage := CreateOffChainValidatorSetSigMessage(networkID, l1, message)
 		unsignedMessages = append(unsignedMessages, *unsignedMessage)
 		log.Info("Adding validatorSetSig off-chain message to Warp chain config",
-			"messageID", unsignedMessage.ID(),
-			"blockchainID", l1.BlockchainID.String())
+			zap.Stringer("messageID", unsignedMessage.ID()),
+			zap.Stringer("blockchainID", l1.BlockchainID),
+		)
 	}
 	return unsignedMessages, GetChainConfigWithOffChainMessages(unsignedMessages)
 }

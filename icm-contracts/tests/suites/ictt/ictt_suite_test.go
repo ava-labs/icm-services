@@ -15,8 +15,8 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/segmentio/encoding/json"
@@ -62,8 +62,6 @@ func TestICTT(t *testing.T) {
 
 // Define the Teleporter before and after suite functions.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
-
 	// Generate the Teleporter deployment values
 	teleporterDeployerTransaction,
 		teleporterDeployedBytecode,

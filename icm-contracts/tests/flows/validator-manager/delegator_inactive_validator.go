@@ -2,7 +2,6 @@ package staking
 
 import (
 	"context"
-	"log"
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -12,6 +11,7 @@ import (
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
@@ -121,7 +121,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 	delegatorBalance, err := erc20.BalanceOf(&bind.CallOpts{}, fundedAddress)
 	Expect(err).Should(BeNil())
 	{
-		log.Println("Registering delegator")
+		log.Info("Registering delegator")
 		newValidatorWeight := nodes[0].Weight + delegatorWeight
 
 		nonce := uint64(1)
@@ -192,7 +192,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 	//
 	// Disable the validator on the P-Chain
 	//
-	log.Println("Disabling the validator on the P-Chain")
+	log.Info("Disabling the validator on the P-Chain")
 	_, err = network.GetPChainWallet(validationID).IssueDisableL1ValidatorTx(
 		validationID,
 	)
@@ -204,7 +204,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 	// Delist the delegator
 	//
 	{
-		log.Println("Delisting delegator")
+		log.Info("Delisting delegator")
 		nonce := uint64(2)
 		receipt := utils.InitiateDelegatorRemoval(
 			ctx,
