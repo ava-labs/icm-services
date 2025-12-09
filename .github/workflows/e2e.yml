@@ -44,6 +44,7 @@ jobs:
             services:
               - '.github/workflows/e2e.yml'
               - 'go.mod'
+              - 'icm-contracts/tests/**'
               - 'icm-contracts/utils/**'
               - 'config/**'
               - 'database/**'
@@ -51,7 +52,6 @@ jobs:
               - 'peers/**'
               - 'relayer/**'
               - 'signature-aggregator/**'
-              - 'tests/**'
               - 'scripts/**'
               - 'types/**'
               - 'utils/**'
