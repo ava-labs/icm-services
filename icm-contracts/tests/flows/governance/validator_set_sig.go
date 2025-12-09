@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func ValidatorSetSig(network *localnetwork.LocalNetwork) {
+func ValidatorSetSig(ctx context.Context, network *localnetwork.LocalNetwork) {
 	// ************************************************************************************************
 	// Setup
 	// ************************************************************************************************
@@ -37,8 +37,6 @@ func ValidatorSetSig(network *localnetwork.LocalNetwork) {
 	// ************************************************************************************************
 	L1A, L1B := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy a ValidatorSetSigContract to L1A
 	validatorSetSigContractAddress, validatorSetSig := utils.DeployValidatorSetSig(

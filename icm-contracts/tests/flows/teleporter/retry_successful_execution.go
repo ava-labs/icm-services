@@ -11,7 +11,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RetrySuccessfulExecution(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -19,7 +23,6 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	//
 	// Deploy TestMessenger to L1s A and B
 	//
-	ctx := context.Background()
 
 	_, l1ATestMessenger := utils.DeployTestMessenger(
 		ctx,
