@@ -12,6 +12,7 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0 # Disable non-security version updates
     ignore:
       # Update go-ethereum only via subnet-evm or avalanchego
       - dependency-name: "github.com/ethereum/go-ethereum"
@@ -21,3 +22,4 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0 # Disable non-security version updates
