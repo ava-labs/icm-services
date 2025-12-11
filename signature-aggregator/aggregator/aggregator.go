@@ -24,7 +24,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/utils/units"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -69,8 +68,7 @@ type SignatureAggregator struct {
 	currentRequestID       atomic.Uint32
 	metrics                *metrics.SignatureAggregatorMetrics
 	signatureCache         *SignatureCache
-	pChainClient           clients.PChainClient
-	pChainClientOptions    []rpc.Option
+	validatorClient        clients.CanonicalValidatorState
 	underfundedL1NodeCache *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 
 	subnetMapsLock sync.Mutex
@@ -85,8 +83,7 @@ func NewSignatureAggregator(
 	messageCreator message.Creator,
 	signatureCacheSize uint64,
 	metrics *metrics.SignatureAggregatorMetrics,
-	pChainClient clients.PChainClient,
-	pChainClientOptions []rpc.Option,
+	validatorClient clients.CanonicalValidatorState,
 ) (*SignatureAggregator, error) {
 	signatureCache, err := NewSignatureCache(signatureCacheSize)
 	if err != nil {
@@ -100,8 +97,7 @@ func NewSignatureAggregator(
 		currentRequestID:        atomic.Uint32{},
 		signatureCache:          signatureCache,
 		messageCreator:          messageCreator,
-		pChainClient:            pChainClient,
-		pChainClientOptions:     pChainClientOptions,
+		validatorClient:         validatorClient,
 		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
@@ -186,12 +182,7 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	signingSubnet ids.ID,
 ) (set.Set[ids.NodeID], error) {
 	fetchUnderfundedL1Nodes := func(subnetID ids.ID) (set.Set[ids.NodeID], error) {
-		validators, err := s.pChainClient.GetCurrentValidators(
-			ctx,
-			subnetID,
-			nil,
-			s.pChainClientOptions...,
-		)
+		validators, err := s.validatorClient.GetCurrentValidators(ctx, subnetID)
 		if err != nil {
 			log.Error(
 				"Failed to fetch current L1 validators",
@@ -726,7 +717,7 @@ func (s *SignatureAggregator) isSubnetL1(ctx context.Context, log logging.Logger
 	defer s.subnetMapsLock.Unlock()
 	isL1, ok := s.subnetIDIsL1[subnetID]
 	if !ok {
-		subnet, err := s.pChainClient.GetSubnet(ctx, subnetID, s.pChainClientOptions...)
+		subnet, err := s.validatorClient.GetSubnet(ctx, subnetID)
 		if err != nil {
 			log.Error(
 				"Failed to check if subnet is L1",
