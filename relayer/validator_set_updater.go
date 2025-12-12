@@ -162,7 +162,15 @@ func (u *ValidatorSetUpdater) updateDestination(
 			continue
 		}
 
-		if err := u.updateSubnetValidators(ctx, chainID, client, subnetID, currentPChainHeight, registryPChainHeight, validatorSet); err != nil {
+		if err := u.updateSubnetValidators(
+			ctx,
+			chainID,
+			client,
+			subnetID,
+			currentPChainHeight,
+			registryPChainHeight,
+			validatorSet,
+		); err != nil {
 			u.logger.Error("Failed to update subnet validators",
 				zap.String("chainID", chainID),
 				zap.Stringer("subnetID", subnetID),
@@ -250,7 +258,6 @@ func (u *ValidatorSetUpdater) createValidatorSetUpdateMessage(
 	// - Subnet ID
 	// - List of validators (nodeID, publicKey, weight)
 	//
-	// Example:
 	// payload := encodeValidatorSetUpdatePayload(pChainHeight, subnetID, validatorSet)
 	// unsignedMessage, err := warp.NewUnsignedMessage(networkID, sourceChainID, payload)
 
