@@ -13,7 +13,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/peers/utils"
 )
 
 // InfoAPI is a wrapper around the info.Client,
@@ -26,7 +25,7 @@ type InfoAPI struct {
 
 func NewInfoAPI(apiConfig *config.APIConfig) (*InfoAPI, error) {
 	client := info.NewClient(apiConfig.BaseURL)
-	options := utils.InitializeOptions(apiConfig)
+	options := apiConfig.Options()
 	return &InfoAPI{
 		client:  *client,
 		options: options,
