@@ -33,7 +33,7 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -453,9 +453,9 @@ func createSourceClients(
 	ctx context.Context,
 	logger logging.Logger,
 	cfg *config.Config,
-) (map[ids.ID]ethclient.Client, error) {
+) (map[ids.ID]*ethclient.Client, error) {
 	var err error
-	clients := make(map[ids.ID]ethclient.Client)
+	clients := make(map[ids.ID]*ethclient.Client)
 
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		clients[sourceBlockchain.GetBlockchainID()], err = utils.NewEthClientWithConfig(
@@ -485,7 +485,7 @@ func createApplicationRelayers(
 	ticker *utils.Ticker,
 	network *peers.AppRequestNetwork,
 	cfg *config.Config,
-	sourceClients map[ids.ID]ethclient.Client,
+	sourceClients map[ids.ID]*ethclient.Client,
 	destinationClients map[ids.ID]vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
 	processMessagesSemaphore chan struct{},

@@ -38,6 +38,8 @@ require (
 	google.golang.org/protobuf v1.36.10
 )
 
+replace github.com/ava-labs/libevm => ../libevm
+
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
 	4d63.com/gochecknoglobals v0.2.2 // indirect

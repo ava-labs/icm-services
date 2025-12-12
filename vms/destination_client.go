@@ -19,7 +19,7 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +39,7 @@ type DestinationClient interface {
 	) (*types.Receipt, error)
 
 	// Client returns the underlying client for the destination chain
-	Client() ethclient.Client
+	Client() *ethclient.Client
 
 	// SenderAddresses returns the addresses of the relayer on the destination chain
 	SenderAddresses() []common.Address

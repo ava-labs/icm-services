@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/rpc"
+	"github.com/ava-labs/libevm/ethclient"
+	"github.com/ava-labs/libevm/rpc"
 )
 
 var ErrInvalidEndpoint = errors.New("invalid rpc endpoint")
@@ -18,9 +18,10 @@ var ErrInvalidEndpoint = errors.New("invalid rpc endpoint")
 // NewEthClientWithConfig returns an ethclient.Client with the internal RPC client configured with the provided options.
 func NewEthClientWithConfig(
 	ctx context.Context,
-	baseURL string, httpHeaders,
+	baseURL string,
+	httpHeaders map[string]string,
 	queryParams map[string]string,
-) (ethclient.Client, error) {
+) (*ethclient.Client, error) {
 	client, err := DialWithConfig(ctx, baseURL, httpHeaders, queryParams)
 	if err != nil {
 		return nil, err

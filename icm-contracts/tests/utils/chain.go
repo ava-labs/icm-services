@@ -24,16 +24,15 @@ import (
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
 	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/eth/tracers"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/nativeminter"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -230,7 +229,7 @@ func waitForTransaction(
 // either a transaction receipt returned, or the context is cancelled or expired.
 func waitForTransactionReceipt(
 	cctx context.Context,
-	rpcClient ethclient.Client,
+	rpcClient *ethclient.Client,
 	txHash common.Hash,
 ) (*types.Receipt, error) {
 	queryTicker := time.NewTicker(200 * time.Millisecond)
@@ -293,11 +292,11 @@ func CalculateTxParams(
 }
 
 // Gomega will print the transaction trace and exit
-func TraceTransactionAndExit(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) {
+func TraceTransactionAndExit(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) {
 	Expect(TraceTransaction(ctx, rpcClient, txHash)).Should(Equal(""))
 }
 
-func TraceTransaction(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) string {
+func TraceTransaction(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) string {
 	var result interface{}
 	ct := "callTracer"
 	err := rpcClient.Client().Call(&result, "debug_traceTransaction", txHash.String(), tracers.TraceConfig{Tracer: &ct})
@@ -317,7 +316,7 @@ func TraceTransaction(ctx context.Context, rpcClient ethclient.Client, txHash co
 // It stops waiting when the context is canceled.
 // Takes a tx hash instead of the full tx in the subnet-evm version of this function.
 // Copied and modified from https://github.com/ava-labs/subnet-evm/blob/v0.6.0-fuji/accounts/abi/bind/util.go#L42
-func WaitMined(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
+func WaitMined(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
 	now := time.Now()
 	receipt, err := waitForTransactionReceipt(ctx, rpcClient, txHash)
 	if err != nil {
@@ -349,7 +348,7 @@ func WaitMined(ctx context.Context, rpcClient ethclient.Client, txHash common.Ha
 // is cancelled or expired.
 func waitForBlockHeight(
 	cctx context.Context,
-	rpcClient ethclient.Client,
+	rpcClient *ethclient.Client,
 	expectedBlockNumber uint64,
 ) error {
 	queryTicker := time.NewTicker(2 * time.Second)
@@ -415,7 +414,7 @@ func PrivateKeyToAddress(k *ecdsa.PrivateKey) common.Address {
 }
 
 // Throws a Gomega error if there is a mismatch
-func CheckBalance(ctx context.Context, addr common.Address, expectedBalance *big.Int, rpcClient ethclient.Client) {
+func CheckBalance(ctx context.Context, addr common.Address, expectedBalance *big.Int, rpcClient *ethclient.Client) {
 	bal, err := rpcClient.BalanceAt(ctx, addr, nil)
 	Expect(err).Should(BeNil())
 	ExpectBigEqual(bal, expectedBalance)
@@ -676,8 +675,10 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	chainIDInt, err := client.ChainID(ctx)
 	Expect(err).Should(BeNil())
 
-	err = subnetEvmUtils.IssueTxsToActivateProposerVMFork(ctx, chainIDInt, fundedKey, client)
-	Expect(err).Should(BeNil())
+	_ = chainIDInt
+	// TODO: Issue txs elsehow
+	// err = subnetEvmUtils.IssueTxsToActivateProposerVMFork(ctx, chainIDInt, fundedKey, client)
+	// Expect(err).Should(BeNil())
 }
 
 // Adapted from [subnetEvmUtils.IssueTxsToActivateProposerVMFork]

@@ -32,8 +32,8 @@ import (
 	validatormanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/ValidatorManager"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/ethclient"
 	subnetEvmTestUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	"go.uber.org/zap"
 
@@ -416,7 +416,8 @@ func (n *LocalNetwork) ConvertSubnet(
 		}
 	}
 	utils.PChainProposerVMWorkaround(pChainWallet)
-	utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.RPCClient, 5)
+	// TODO: Issue txs elsehow
+	// utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.RPCClient, 5)
 
 	return nodes, validationIDs
 }

@@ -16,7 +16,7 @@ import (
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 )
@@ -28,8 +28,8 @@ const (
 )
 
 type Subscriber struct {
-	wsClient     ethclient.Client
-	rpcClient    ethclient.Client
+	wsClient     *ethclient.Client
+	rpcClient    *ethclient.Client
 	blockchainID ids.ID
 	headers      chan *types.Header
 	icmBlocks    chan *relayerTypes.WarpBlockInfo
@@ -44,8 +44,8 @@ type Subscriber struct {
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
-	wsClient ethclient.Client,
-	rpcClient ethclient.Client,
+	wsClient *ethclient.Client,
+	rpcClient *ethclient.Client,
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID: blockchainID,

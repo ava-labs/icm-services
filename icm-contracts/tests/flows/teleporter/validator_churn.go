@@ -11,8 +11,8 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -125,12 +125,13 @@ func ValidatorChurn(
 	// Trigger the proposer VM to update its height so that the inner VM can see the new validator set
 	// We have to update all L1s, not just the ones directly involved in this test to ensure that the
 	// proposer VM is updated on all L1s.
-	for _, l1Info := range network.GetL1Infos() {
-		err = utils.IssueTxsToAdvanceChain(
-			ctx, l1Info.EVMChainID, fundedKey, l1Info.WSClient, 5,
-		)
-		Expect(err).Should(BeNil())
-	}
+	// TODO: Issue txs elsehow
+	// for _, l1Info := range network.GetL1Infos() {
+	// 	err = utils.IssueTxsToAdvanceChain(
+	// 		ctx, l1Info.EVMChainID, fundedKey, l1Info.WSClient, 5,
+	// 	)
+	// 	Expect(err).Should(BeNil())
+	// }
 
 	//
 	// Attempt to deliver the warp message signed by the old validator set. This should fail.

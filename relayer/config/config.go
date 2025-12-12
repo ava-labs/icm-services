@@ -20,7 +20,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/params"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 
@@ -200,7 +200,7 @@ func warpConfigFromSubnetWarpConfig(inputConfig warp.Config) WarpConfig {
 	}
 }
 
-func getWarpConfig(client ethclient.Client) (*warp.Config, error) {
+func getWarpConfig(client *ethclient.Client) (*warp.Config, error) {
 	// Fetch the subnet's chain config
 	chainConfig, err := client.ChainConfig(context.Background())
 	if err != nil {

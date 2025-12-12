@@ -20,9 +20,9 @@ import (
 	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/relayer/api"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 

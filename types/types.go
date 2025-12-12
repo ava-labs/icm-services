@@ -15,7 +15,7 @@ import (
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 )
@@ -44,7 +44,7 @@ type WarpMessageInfo struct {
 }
 
 // Extract Warp logs from the block, if they exist
-func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethclient.Client) (*WarpBlockInfo, error) {
+func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient *ethclient.Client) (*WarpBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error

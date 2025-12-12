@@ -27,7 +27,7 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm/signer"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/rpc"
 	"go.uber.org/zap"
@@ -53,7 +53,7 @@ type Client interface {
 
 // Implements DestinationClient
 type destinationClient struct {
-	client ethclient.Client
+	client *ethclient.Client
 
 	readonlyConcurrentSigners []*readonlyConcurrentSigner
 
@@ -507,7 +507,7 @@ func (s *concurrentSigner) waitForReceipt(
 	}
 }
 
-func (c *destinationClient) Client() ethclient.Client {
+func (c *destinationClient) Client() *ethclient.Client {
 	return c.client
 }
 

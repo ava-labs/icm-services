@@ -22,7 +22,7 @@ import (
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
-	"github.com/ava-labs/subnet-evm/rpc"
+	"github.com/ava-labs/libevm/rpc"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
