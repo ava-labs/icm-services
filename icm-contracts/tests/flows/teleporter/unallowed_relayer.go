@@ -7,13 +7,18 @@ import (
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
-func UnallowedRelayer(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func UnallowedRelayer(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -22,7 +27,6 @@ func UnallowedRelayer(network *localnetwork.LocalNetwork, teleporter utils.Telep
 	// Send a transaction to L1 A to issue an ICM Message from the Teleporter contract to L1 B
 	// The Teleporter message includes an allowed relayer list that does NOT include the relayer
 	//
-	ctx := context.Background()
 
 	sendCrossChainMessageInput := teleportermessenger.TeleporterMessageInput{
 		DestinationBlockchainID: l1BInfo.BlockchainID,
@@ -40,7 +44,7 @@ func UnallowedRelayer(network *localnetwork.LocalNetwork, teleporter utils.Telep
 
 	log.Info(
 		"Sending Teleporter transaction on source chain",
-		"destinationBlockchainID", l1BInfo.BlockchainID,
+		zap.Stringer("destinationBlockchainID", l1BInfo.BlockchainID),
 	)
 	receipt, teleporterMessageID := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx, teleporter.TeleporterMessenger(l1AInfo), l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey,

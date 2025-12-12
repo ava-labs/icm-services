@@ -36,7 +36,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ava-labs/icm-services/peers/clients"
-	"github.com/ava-labs/icm-services/peers/utils"
 	sharedUtils "github.com/ava-labs/icm-services/utils"
 )
 
@@ -168,7 +167,7 @@ func NewNetwork(
 	}
 
 	pClient := platformvm.NewClient(cfg.GetPChainAPI().BaseURL)
-	options := utils.InitializeOptions(cfg.GetPChainAPI())
+	options := cfg.GetPChainAPI().Options()
 
 	vdrs, err := pClient.GetCurrentValidators(
 		ctx,

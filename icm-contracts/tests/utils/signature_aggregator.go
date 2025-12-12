@@ -18,7 +18,8 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
-	"github.com/ava-labs/libevm/log"
+	"github.com/ava-labs/icm-services/log"
+	"go.uber.org/zap"
 
 	. "github.com/onsi/gomega"
 )
@@ -105,7 +106,7 @@ func NewSignatureAggregator(apiUri string, subnetIDs []ids.ID) *SignatureAggrega
 		// Context cancellation is the only expected way for the process to exit, otherwise log an error
 		// Don't panic to allow for easier cleanup
 		if !errors.Is(ctx.Err(), context.Canceled) {
-			log.Error("Signature aggregator exited abnormally", err)
+			log.Error("Signature aggregator exited abnormally", zap.Error(err))
 		}
 	}()
 
@@ -155,12 +156,12 @@ func (s *SignatureAggregator) createSignedMessage(
 	proposerClient := proposervm.NewJSONRPCClient(destination.NodeURIs[0], destination.BlockchainID.String())
 	currentEpoch, err := proposerClient.GetCurrentEpoch(context.Background())
 	Expect(err).Should(BeNil())
-	log.Info("current epoch", "epoch", currentEpoch)
+	log.Info("current epoch", zap.Any("epoch", currentEpoch))
 	if currentEpoch.Number != 0 {
 		pChainHeight = currentEpoch.PChainHeight
 		log.Info("Using P-Chain height for signature creation",
-			"pChainHeight", pChainHeight,
-			"epochNumber", currentEpoch.Number,
+			zap.Uint64("pChainHeight", pChainHeight),
+			zap.Uint64("epochNumber", currentEpoch.Number),
 		)
 	}
 

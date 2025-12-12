@@ -24,7 +24,6 @@ import (
 	"github.com/ava-labs/icm-services/messages/teleporter"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
-	peerUtils "github.com/ava-labs/icm-services/peers/utils"
 	"github.com/ava-labs/icm-services/relayer"
 	"github.com/ava-labs/icm-services/relayer/api"
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
@@ -260,7 +259,7 @@ func main() {
 			relayerMetricsRegistry,
 		),
 		platformvm.NewClient(cfg.GetPChainAPI().BaseURL),
-		peerUtils.InitializeOptions(cfg.GetPChainAPI()),
+		cfg.GetPChainAPI().Options(),
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))

@@ -7,13 +7,18 @@ import (
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
-func DeliverToWrongChain(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func DeliverToWrongChain(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, L1CInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -30,7 +35,6 @@ func DeliverToWrongChain(network *localnetwork.LocalNetwork, teleporter utils.Te
 	//
 	// Submit a message to be sent from L1A to L1B
 	//
-	ctx := context.Background()
 	sendCrossChainMessageInput := teleportermessenger.TeleporterMessageInput{
 		DestinationBlockchainID: l1BInfo.BlockchainID, // Message intended for L1B
 		DestinationAddress:      common.HexToAddress("0x1111111111111111111111111111111111111111"),
@@ -45,7 +49,7 @@ func DeliverToWrongChain(network *localnetwork.LocalNetwork, teleporter utils.Te
 
 	log.Info(
 		"Sending Teleporter transaction on source chain",
-		"destinationBlockchainID", l1BInfo.BlockchainID,
+		zap.Stringer("destinationBlockchainID", l1BInfo.BlockchainID),
 	)
 
 	receipt, _ := utils.SendCrossChainMessageAndWaitForAcceptance(

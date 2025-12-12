@@ -21,12 +21,14 @@ import (
  * Collateralize the remote
  * Check sending to collateralized remote succeeds and withdraws with correct scale.
  */
-func RegistrationAndCollateralCheck(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RegistrationAndCollateralCheck(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy an ExampleERC20 on L1 A as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(

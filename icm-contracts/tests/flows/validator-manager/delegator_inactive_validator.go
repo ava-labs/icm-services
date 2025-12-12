@@ -2,7 +2,6 @@ package staking
 
 import (
 	"context"
-	"log"
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -12,6 +11,7 @@ import (
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
@@ -25,14 +25,12 @@ import (
  * - Disable the validator by issuing a DisableL1ValidatorTx on the P-Chain
  * - Initiate and complete validator removal
  */
-func RemoveDelegatorInactiveValidator(network *localnetwork.LocalNetwork) {
+func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork.LocalNetwork) {
 	// Get the L1s info
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 	pChainInfo := utils.GetPChainInfo(cChainInfo)
-
-	ctx := context.Background()
 
 	balance := 100 * units.Avax
 	nodes, initialValidationIDs := network.ConvertSubnet(
@@ -123,7 +121,7 @@ func RemoveDelegatorInactiveValidator(network *localnetwork.LocalNetwork) {
 	delegatorBalance, err := erc20.BalanceOf(&bind.CallOpts{}, fundedAddress)
 	Expect(err).Should(BeNil())
 	{
-		log.Println("Registering delegator")
+		log.Info("Registering delegator")
 		newValidatorWeight := nodes[0].Weight + delegatorWeight
 
 		nonce := uint64(1)
@@ -194,7 +192,7 @@ func RemoveDelegatorInactiveValidator(network *localnetwork.LocalNetwork) {
 	//
 	// Disable the validator on the P-Chain
 	//
-	log.Println("Disabling the validator on the P-Chain")
+	log.Info("Disabling the validator on the P-Chain")
 	_, err = network.GetPChainWallet(validationID).IssueDisableL1ValidatorTx(
 		validationID,
 	)
@@ -206,7 +204,7 @@ func RemoveDelegatorInactiveValidator(network *localnetwork.LocalNetwork) {
 	// Delist the delegator
 	//
 	{
-		log.Println("Delisting delegator")
+		log.Info("Delisting delegator")
 		nonce := uint64(2)
 		receipt := utils.InitiateDelegatorRemoval(
 			ctx,

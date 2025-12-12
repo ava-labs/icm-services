@@ -14,7 +14,11 @@ const (
 	teleporterByteCodeFile = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
 )
 
-func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func TeleporterRegistry(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	// Deploy dApp on both chains that use Teleporter Registry
 	// Deploy version 2 of Teleporter to both chains
 	// Construct AddProtocolVersion txs for both chains
@@ -29,8 +33,6 @@ func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.Tel
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy a test cross chain messenger to both chains
 	testMessengerContractC, testMessengerC := utils.DeployTestMessenger(

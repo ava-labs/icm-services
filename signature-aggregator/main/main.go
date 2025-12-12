@@ -20,7 +20,6 @@ import (
 
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
-	peerUtils "github.com/ava-labs/icm-services/peers/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	"github.com/ava-labs/icm-services/signature-aggregator/config"
@@ -168,7 +167,7 @@ func main() {
 		cfg.SignatureCacheSize,
 		metricsInstance,
 		platformvm.NewClient(cfg.GetPChainAPI().BaseURL),
-		peerUtils.InitializeOptions(cfg.GetPChainAPI()),
+		cfg.GetPChainAPI().Options(),
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))

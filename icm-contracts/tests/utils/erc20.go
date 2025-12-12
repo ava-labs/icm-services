@@ -7,11 +7,12 @@ import (
 
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 var (
@@ -29,7 +30,10 @@ func DeployExampleERC20(
 	// Deploy Mock ERC20 contract
 	address, tx, token, err := exampleerc20.DeployExampleERC20(opts, source.RPCClient)
 	Expect(err).Should(BeNil())
-	log.Info("Deployed Mock ERC20 contract", "address", address.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Deployed Mock ERC20 contract",
+		zap.String("address", address.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	// Wait for the transaction to be mined
 	WaitForTransactionSuccess(ctx, source, tx.Hash())
@@ -55,7 +59,10 @@ func ERC20Approve(
 	Expect(err).Should(BeNil())
 	tx, err := token.Approve(opts, spender, amount)
 	Expect(err).Should(BeNil())
-	log.Info("Approved ERC20", "spender", spender.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Approved ERC20",
+		zap.String("spender", spender.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	WaitForTransactionSuccess(ctx, source, tx.Hash())
 }
