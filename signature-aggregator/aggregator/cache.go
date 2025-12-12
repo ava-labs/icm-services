@@ -48,16 +48,12 @@ func (c *SignatureCache) Add(
 	pubKey PublicKeyBytes,
 	signature SignatureBytes,
 ) {
-	var (
-		sigs map[PublicKeyBytes]SignatureBytes
-		ok   bool
-	)
-
 	// The number of signatures cached per message is implicitly bounded
 	// by the number of validators registered on-chain.
 	// As a result, uncontrolled memory growth is not a concern.
 	c.mu.Lock()
-	if sigs, ok = c.Get(msgID); !ok {
+	sigs, ok := c.Get(msgID)
+	if !ok {
 		sigs = make(map[PublicKeyBytes]SignatureBytes)
 	}
 	sigs[pubKey] = signature

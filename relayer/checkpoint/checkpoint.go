@@ -38,21 +38,18 @@ func NewCheckpointManager(
 	relayerID database.RelayerID,
 	startingHeight uint64,
 ) (*CheckpointManager, error) {
+	logger = logger.With(zap.Stringer("relayerID", relayerID.ID))
+
 	h := &utils.UInt64Heap{}
 	heap.Init(h)
 	logger.Info(
 		"Creating checkpoint manager",
-		zap.Stringer("relayerID", relayerID.ID),
 		zap.Uint64("startingHeight", startingHeight),
 	)
 
 	storedHeight, err := database.GetLatestProcessedBlockHeight(db, relayerID)
 	if err != nil && !database.IsKeyNotFoundError(err) {
-		logger.Error(
-			"Failed to get latest processed block height",
-			zap.Error(err),
-			zap.Stringer("relayerID", relayerID.ID),
-		)
+		logger.Error("Failed to get latest processed block height", zap.Error(err))
 		return nil, fmt.Errorf("failed to get the latest processed block height: %w", err)
 	}
 
@@ -83,10 +80,8 @@ func (cm *CheckpointManager) writeToDatabase() {
 		return
 	}
 
-	cm.logger.Verbo(
-		"Writing height",
+	cm.logger.Verbo("Writing height",
 		zap.Uint64("height", cm.committedHeight),
-		zap.Stringer("relayerID", cm.relayerID.ID),
 	)
 	err := cm.database.Put(
 		cm.relayerID.ID,
@@ -94,11 +89,7 @@ func (cm *CheckpointManager) writeToDatabase() {
 		[]byte(strconv.FormatUint(cm.committedHeight, 10)),
 	)
 	if err != nil {
-		cm.logger.Error(
-			"Failed to write latest processed block height",
-			zap.Error(err),
-			zap.Stringer("relayerID", cm.relayerID.ID),
-		)
+		cm.logger.Error("Failed to write latest processed block height", zap.Error(err))
 		return
 	}
 
@@ -120,12 +111,13 @@ func (cm *CheckpointManager) listenForWriteSignal() {
 func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
+
+	log := cm.logger.With(zap.Uint64("stagingHeight", height))
+
 	if height <= cm.committedHeight {
-		cm.logger.Debug(
+		log.Debug(
 			"Attempting to commit height less than or equal to the committed height. Skipping.",
-			zap.Uint64("height", height),
 			zap.Uint64("committedHeight", cm.committedHeight),
-			zap.Stringer("relayerID", cm.relayerID.ID),
 		)
 		return
 	}
@@ -133,20 +125,14 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 	// First push the height onto the pending commits min heap
 	// This will ensure that the heights are committed in order
 	heap.Push(cm.pendingCommits, height)
-	cm.logger.Verbo(
+	log.Verbo(
 		"Pending committed heights",
-		zap.Any("maxPendingHeight", height),
 		zap.Uint64("maxCommittedHeight", cm.committedHeight),
-		zap.Stringer("relayerID", cm.relayerID.ID),
 	)
 
 	for cm.pendingCommits.Peek() == cm.committedHeight+1 {
 		h := heap.Pop(cm.pendingCommits).(uint64)
-		cm.logger.Verbo(
-			"Committing height",
-			zap.Uint64("height", height),
-			zap.Stringer("relayerID", cm.relayerID.ID),
-		)
+		log.Verbo("Committing height")
 		cm.committedHeight = h
 		cm.dirty = true
 		if cm.pendingCommits.Len() == 0 {

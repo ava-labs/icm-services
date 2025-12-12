@@ -4,7 +4,6 @@
 package utils
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
@@ -74,50 +73,8 @@ func CalculateQuorumPercentageBuffer(
 }
 
 //
-// Chain Utils
-//
-
-// Calls f until it returns a non-error result or the context is canceled, with a 200ms delay between calls.
-func CallWithRetry[T any](ctx context.Context, f func() (T, error)) (T, error) {
-	queryTicker := time.NewTicker(200 * time.Millisecond)
-	defer queryTicker.Stop()
-	var (
-		t   T
-		err error
-	)
-	for {
-		t, err = f()
-		if err == nil {
-			return t, nil
-		}
-
-		// Wait for the next round.
-		select {
-		case <-ctx.Done():
-			return *new(T), ctx.Err()
-		case <-queryTicker.C:
-		}
-	}
-}
-
-//
 // Generic Utils
 //
-
-// BigToHashSafe ensures that a bignum value is able to fit into a 32 byte buffer before converting it to a common.Hash
-// Returns an error if overflow/truncation would occur by trying to perform this operation.
-func BigToHashSafe(in *big.Int) (common.Hash, error) {
-	if in == nil {
-		return common.Hash{}, ErrNilInput
-	}
-
-	bytes := in.Bytes()
-	if len(bytes) > common.HashLength {
-		return common.Hash{}, ErrTooLarge
-	}
-
-	return common.BytesToHash(bytes), nil
-}
 
 func PrivateKeyToString(key *ecdsa.PrivateKey) string {
 	// Use FillBytes so leading zeroes are not stripped.

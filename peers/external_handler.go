@@ -208,13 +208,14 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 	}
 	h.timeoutManager.Remove(reqID)
 
+	log := h.log.With(
+		zap.Stringer("nodeID", reqID.NodeID),
+		zap.Uint32("requestID", requestID),
+	)
+
 	// If the message is from an unexpected node, we ignore it
 	if !h.isRequestedNode(requestID, reqID.NodeID) {
-		h.log.Debug(
-			"Received response from unexpected node",
-			zap.Stringer("nodeID", reqID.NodeID),
-			zap.Uint32("requestID", requestID),
-		)
+		log.Debug("Received response from unexpected node")
 		return
 	}
 
@@ -222,7 +223,7 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 	if responseChan, ok := h.responseChans[requestID]; ok {
 		responseChan <- inboundMessage
 	} else {
-		h.log.Debug("Could not find response channel for request", zap.Uint32("requestID", requestID))
+		log.Debug("Could not find response channel for request")
 		return
 	}
 
@@ -230,7 +231,7 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 	// TODO: we can improve performance here by independently locking the response channel and response count maps
 	responses, ok := h.responsesCount[requestID]
 	if !ok {
-		h.log.Error("Could not find expected responses for request", zap.Uint32("requestID", requestID))
+		log.Error("Could not find expected responses for request")
 		return
 	}
 	received := responses.received + 1
