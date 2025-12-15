@@ -61,7 +61,7 @@ validator set, but the update function expects them to be diffs.
 
 A challenge when applying diffs is that all Avalanche validator sets have a canonical ordering. The diffs must include
 sufficient information so that after the new validator set is reconstructed, its ordering is also computable. _A final
-decision about this issue and how best to resolve it  has not yet been made_.
+decision about this issue and how best to resolve it has not yet been made_.
 
 ## Registering and updating new L1s
 
@@ -92,7 +92,7 @@ struct ICMUnsignedMessage {
 
 struct ICMMessage {
     ICMUnsignedMessage unsignedMessage;
-    bytes unsignedMessageBygtes;
+    bytes unsignedMessageBytes;
     ICMSignature signature;
 }
 ```

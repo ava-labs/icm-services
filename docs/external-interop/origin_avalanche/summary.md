@@ -25,10 +25,10 @@ just sending messages that will be required. This is further describe in the [Re
 
 The P-chain of Avalanche is root of trust for all aspects of the protocol when authenticating messages from Avalanche or
 an Avalanche L1. Specifically, all authentication proofs should derive their authority from a specific initial 
-P-chain validator set known to external EVM chain. While the publication of this initial set may be done in a centralized
+P-chain validator set known to the external EVM chain. While the publication of this initial set may be done in a centralized
 manner, it's validity is publicly auditable and thus a trustless procedure. 
 
-As P-chain validator sets change over time, a __chain of custody__ must be maintained whereby a quorum the current P-chain 
+As P-chain validator sets change over time, a __chain of custody__ must be maintained whereby a quorum of the current P-chain 
 validator set must sign off on the next validator set (_N.B. we will often say that validator set signs a message, but 
 this should always be interpreted as meaning a quorum of signatures_). This new set will be published on the external EVM 
 chain if the signature check passes. From then on, this will be the current P-chain validator set whose signatures represent 

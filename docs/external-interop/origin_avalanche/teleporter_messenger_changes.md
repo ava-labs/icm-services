@@ -2,7 +2,7 @@
 
 `Teleporter` is an interoperability messaging primitive that provides at most once delivery of authenticated messages built 
 on top of ICM. We wish to extend this protocol to external EVM chains, but this will require changing the 
-`TeleporterMessnger` contracts which we describe in this section
+`TeleporterMessnger` contracts which we describe in this section.
 
 ## Accessing Warp / ICM
 
