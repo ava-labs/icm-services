@@ -28,7 +28,7 @@ jobs:
       - name: Run unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
-          FOUNDRY_PROFILE=avalanche forge test -vvv
+          forge test -vvv
 
   unit_tests:
     name: Unit tests

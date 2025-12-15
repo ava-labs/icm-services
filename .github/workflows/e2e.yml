@@ -81,7 +81,6 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          export FOUNDRY_PROFILE=avalanche
           ./scripts/e2e_test.sh --components teleporter
 
   governance_e2e:
@@ -108,7 +107,6 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          export FOUNDRY_PROFILE=avalanche
           ./scripts/e2e_test.sh --components governance
 
   validator_manager_e2e:
@@ -135,7 +133,6 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          export FOUNDRY_PROFILE=avalanche
           ./scripts/e2e_test.sh --components validator-manager
 
   ictt_e2e:
@@ -162,7 +159,6 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
-          export FOUNDRY_PROFILE=avalanche
           ./scripts/e2e_test.sh --components ictt
 
   services_e2e:
