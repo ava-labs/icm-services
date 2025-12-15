@@ -23,7 +23,6 @@ func CalculateMessageID(
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1Info := network.GetPrimaryNetworkInfo()
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1Info)
 
 	sourceBlockchainID := common.HexToHash("0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd")
 	destinationBlockchainID := common.HexToHash("0x1234567812345678123456781234567812345678123456781234567812345678")
@@ -38,7 +37,6 @@ func CalculateMessageID(
 	Expect(err).Should(BeNil())
 
 	calculatedMessageID, err := teleporterutils.CalculateMessageID(
-		teleporterContractAddress,
 		ids.ID(sourceBlockchainID),
 		ids.ID(destinationBlockchainID),
 		nonce,

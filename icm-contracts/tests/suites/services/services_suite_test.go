@@ -106,6 +106,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		globalUtils.SanitizeHexString(teleporterDeployerTransactionStr),
 	)
 	Expect(err).Should(BeNil())
+
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
 	localNetworkInstance = network.NewLocalNetwork(
@@ -152,6 +153,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
 	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
 		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
+		teleporterInfo.Initialize(subnet, fundedKey, common.HexToAddress("0x0200000000000000000000000000000000000005"))
 		teleporterInfo.InitializeBlockchainID(subnet, fundedKey)
 		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
 	}
