@@ -1,7 +1,7 @@
 # Sending messages from Avalanche
 
 This section of the design document is concerned with messages originating from Avalanche. In this section, we detail
-how external EVM chains authenticate messages from Avalanche and  the infrastructure for sending messages and maintaining 
+how external EVM chains authenticate messages from Avalanche and the infrastructure for sending messages and maintaining 
 trust.
 
 ## Message protocol
