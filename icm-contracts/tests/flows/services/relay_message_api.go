@@ -18,7 +18,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/relayer/api"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
@@ -37,16 +36,16 @@ func RelayMessageAPI(
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-	err := testUtils.ClearRelayerStorage()
+	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
 
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	log.Info("Sending teleporter message")
-	receipt, _, teleporterMessageID := testUtils.SendBasicTeleporterMessage(
+	receipt, _, teleporterMessageID := utils.SendBasicTeleporterMessage(
 		ctx,
 		log,
 		teleporter,
@@ -58,7 +57,7 @@ func RelayMessageAPI(
 	warpMessage := getWarpMessageFromLog(ctx, log, receipt, l1AInfo)
 
 	// Set up relayer config
-	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -69,14 +68,14 @@ func RelayMessageAPI(
 	// Don't process missed blocks, so we can manually relay
 	relayerConfig.ProcessMissedBlocks = false
 
-	relayerConfigPath := testUtils.WriteRelayerConfig(
+	relayerConfigPath := utils.WriteRelayerConfig(
 		log,
 		relayerConfig,
-		testUtils.DefaultRelayerCfgFname,
+		utils.DefaultRelayerCfgFname,
 	)
 
 	log.Info("Starting the relayer")
-	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan := utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath,
@@ -88,7 +87,7 @@ func RelayMessageAPI(
 	log.Info("Waiting for the relayer to start up")
 	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	reqBody := api.RelayMessageRequest{
 		BlockchainID: l1AInfo.BlockchainID.String(),
@@ -126,7 +125,8 @@ func RelayMessageAPI(
 
 		receipt, err := l1BInfo.RPCClient.TransactionReceipt(ctx, common.HexToHash(response.TransactionHash))
 		Expect(err).Should(BeNil())
-		receiveEvent, err := testUtils.GetEventFromLogs(
+
+		receiveEvent, err := utils.GetEventFromLogs(
 			receipt.Logs,
 			teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage,
 		)

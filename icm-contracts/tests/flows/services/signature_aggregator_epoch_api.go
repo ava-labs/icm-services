@@ -19,7 +19,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -52,20 +51,20 @@ func SignatureAggregatorEpochAPI(
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
-	signatureAggregatorConfig := testUtils.CreateDefaultSignatureAggregatorConfig(
+	signatureAggregatorConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 	)
 
-	signatureAggregatorConfigPath := testUtils.WriteSignatureAggregatorConfig(
+	signatureAggregatorConfigPath := utils.WriteSignatureAggregatorConfig(
 		log,
 		signatureAggregatorConfig,
-		testUtils.DefaultSignatureAggregatorCfgFname,
+		utils.DefaultSignatureAggregatorCfgFname,
 	)
 	log.Info("Starting the signature aggregator for epoch tests",
 		zap.String("configPath", signatureAggregatorConfigPath),
 	)
-	signatureAggregatorCancel, readyChan := testUtils.RunSignatureAggregatorExecutable(
+	signatureAggregatorCancel, readyChan := utils.RunSignatureAggregatorExecutable(
 		ctx,
 		log,
 		signatureAggregatorConfigPath,
@@ -77,12 +76,12 @@ func SignatureAggregatorEpochAPI(
 	log.Info("Waiting for the signature aggregator to start up")
 	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	// End setup step
 
 	log.Info("Sending teleporter message for epoch validator tests")
-	receipt, _, _ := testUtils.SendBasicTeleporterMessage(
+	receipt, _, _ := utils.SendBasicTeleporterMessage(
 		ctx,
 		log,
 		teleporter,
@@ -151,7 +150,7 @@ func SignatureAggregatorEpochAPI(
 
 	// Test the reverse direction as well
 	log.Info("Testing reverse direction with epoch validators")
-	receipt, _, _ = testUtils.SendBasicTeleporterMessage(
+	receipt, _, _ = utils.SendBasicTeleporterMessage(
 		ctx,
 		log,
 		teleporter,

@@ -16,7 +16,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/relayer/api"
 	"github.com/ava-labs/libevm/common"
@@ -37,7 +36,7 @@ func ManualMessage(
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-	err := testUtils.ClearRelayerStorage()
+	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
 
 	//
@@ -54,7 +53,7 @@ func ManualMessage(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{cChainInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{cChainInfo}, fundedKey, relayerKey)
 
 	//
 	// Define the off-chain Warp message
@@ -67,21 +66,23 @@ func ManualMessage(
 	// Set up the nodes to accept the off-chain message
 	//
 	// Create chain config file with off chain message for each chain
-	unsignedMessage, warpEnabledChainConfigC := testUtils.InitOffChainMessageChainConfig(
+	unsignedMessage, warpEnabledChainConfigC := utils.InitOffChainMessageChainConfig(
 		networkID,
 		cChainInfo,
 		teleporter.TeleporterRegistryAddress(cChainInfo),
 		newProtocolAddress,
 		2,
 	)
-	_, warpEnabledChainConfigA := testUtils.InitOffChainMessageChainConfig(
+
+	_, warpEnabledChainConfigA := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1AInfo,
 		teleporter.TeleporterRegistryAddress(l1AInfo),
 		newProtocolAddress,
 		2,
 	)
-	_, warpEnabledChainConfigB := testUtils.InitOffChainMessageChainConfig(
+
+	_, warpEnabledChainConfigB := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1BInfo,
 		teleporter.TeleporterRegistryAddress(l1BInfo),
@@ -90,7 +91,8 @@ func ManualMessage(
 	)
 
 	// Create chain config with off chain messages
-	chainConfigs := make(testUtils.ChainConfigMap)
+
+	chainConfigs := make(utils.ChainConfigMap)
 	chainConfigs.Add(cChainInfo, warpEnabledChainConfigC)
 	chainConfigs.Add(l1BInfo, warpEnabledChainConfigB)
 	chainConfigs.Add(l1AInfo, warpEnabledChainConfigA)
@@ -105,7 +107,7 @@ func ManualMessage(
 	//
 	// Set up relayer config
 	//
-	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{cChainInfo},
@@ -113,14 +115,14 @@ func ManualMessage(
 		fundedAddress,
 		relayerKey,
 	)
-	relayerConfigPath := testUtils.WriteRelayerConfig(
+	relayerConfigPath := utils.WriteRelayerConfig(
 		log,
 		relayerConfig,
-		testUtils.DefaultRelayerCfgFname,
+		utils.DefaultRelayerCfgFname,
 	)
 
 	log.Info("Starting the relayer")
-	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan := utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath,
@@ -132,7 +134,7 @@ func ManualMessage(
 	log.Info("Waiting for the relayer to start up")
 	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	reqBody := api.ManualWarpMessageRequest{
 		UnsignedMessageBytes: unsignedMessage.Bytes(),
