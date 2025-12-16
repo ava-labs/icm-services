@@ -17,6 +17,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/icm-services/vms/evm/client"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
@@ -36,7 +37,7 @@ const (
 //
 // Implements vms.DestinationClient interface.
 type ExternalEVMDestinationClient struct {
-	client          *ethclient.Client
+	client          *client.ExternalEthClientWrapper
 	logger          logging.Logger
 	chainID         string
 	evmChainID      *big.Int
@@ -53,9 +54,8 @@ type ExternalEVMDestinationClient struct {
 	// Concurrent senders for transaction processing
 	concurrentSenders []*externalEVMConcurrentSender
 
-	// TODO: Add registry contract and teleporter messenger binding
-	// registryContract get the current p-chain height
-	// teleporterMessengerContract send the message to the external EVM chain
+	// TODO: Add registry contract binding for GetPChainHeightForDestination()
+	// registryContract *validatorregistry.AvalancheValidatorSetRegistry
 }
 
 // externalEVMConcurrentSender handles transaction signing and sending for one private key.
@@ -114,13 +114,16 @@ func NewExternalEVMDestinationClient(
 	}
 
 	// Create ethclient connection using libevm/ethclient for external EVM compatibility
-	client, err := ethclient.Dial(rpcEndpointURL)
+	rawClient, err := ethclient.Dial(rpcEndpointURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial rpc endpoint: %w", err)
 	}
 
+	// Wrap the client to add Avalanche-specific method stubs
+	wrappedClient := client.NewExternalEthClientWrapper(rawClient)
+
 	// Verify chain ID matches
-	networkChainID, err := client.ChainID(context.Background())
+	networkChainID, err := wrappedClient.ChainID(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chain ID from endpoint: %w", err)
 	}
@@ -129,7 +132,7 @@ func NewExternalEVMDestinationClient(
 	}
 
 	destClient := &ExternalEVMDestinationClient{
-		client:                     client,
+		client:                     wrappedClient,
 		logger:                     logger,
 		chainID:                    chainID,
 		evmChainID:                 evmChainID,
@@ -154,7 +157,7 @@ func NewExternalEVMDestinationClient(
 		senderLogger := logger.With(zap.Stringer("senderAddress", address))
 
 		// Get current nonce for this sender
-		nonce, err := client.NonceAt(context.Background(), address, nil)
+		nonce, err := wrappedClient.NonceAt(context.Background(), address, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get nonce for sender %s: %w", address.Hex(), err)
 		}
@@ -446,7 +449,7 @@ func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 }
 
 // Client returns the underlying ethclient.
-func (c *ExternalEVMDestinationClient) Client() *ethclient.Client {
+func (c *ExternalEVMDestinationClient) Client() client.EthClient {
 	return c.client
 }
 
