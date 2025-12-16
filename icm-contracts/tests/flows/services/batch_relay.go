@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
@@ -29,20 +28,20 @@ func BatchRelay(
 ) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-	err := testUtils.ClearRelayerStorage()
+	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
 
 	//
 	// Deploy the batch messenger contracts
 	//
-	_, batchMessengerA := testUtils.DeployBatchCrossChainMessenger(
+	_, batchMessengerA := utils.DeployBatchCrossChainMessenger(
 		ctx,
 		fundedKey,
 		teleporter,
 		fundedAddress,
 		l1AInfo,
 	)
-	batchMessengerAddressB, batchMessengerB := testUtils.DeployBatchCrossChainMessenger(
+	batchMessengerAddressB, batchMessengerB := utils.DeployBatchCrossChainMessenger(
 		ctx,
 		fundedKey,
 		teleporter,
@@ -57,12 +56,12 @@ func BatchRelay(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	//
 	// Set up relayer config
 	//
-	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -71,10 +70,10 @@ func BatchRelay(
 		relayerKey,
 	)
 
-	relayerConfigPath := testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath := utils.WriteRelayerConfig(log, relayerConfig, utils.DefaultRelayerCfgFname)
 
 	log.Info("Starting the relayer")
-	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan := utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath,
@@ -86,7 +85,7 @@ func BatchRelay(
 	log.Info("Waiting for the relayer to start up")
 	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	//
 	// Send a batch message from subnet A -> B
