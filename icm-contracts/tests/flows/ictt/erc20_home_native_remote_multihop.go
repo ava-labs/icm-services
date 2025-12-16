@@ -22,12 +22,14 @@ import (
   - Transfer tokens from L1 A to L1 B through multi-hop
   - Transfer back tokens from L1 B to L1 A through multi-hop
 */
-func ERC20TokenHomeNativeTokenRemoteMultiHop(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func ERC20TokenHomeNativeTokenRemoteMultiHop(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy an ExampleERC20 on L1 A as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(

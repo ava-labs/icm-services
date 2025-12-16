@@ -177,7 +177,7 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 			signedMsg, err := aggregator.CreateSignedMessage(
 				t.Context(),
 				logging.NoLog{},
-				nil,
+				&warp.UnsignedMessage{},
 				nil,
 				ids.Empty,
 				tc.requiredQuorumPercentage,

@@ -156,16 +156,14 @@ func (v *ValidatorManager) updatedTrackedValidators(
 	v.validatorSetLock.Lock()
 	defer v.validatorSetLock.Unlock()
 
+	log := v.logger.With(zap.Stringer("subnetID", subnetID))
 	nodeIDs := clients.NodeIDs(vdrs)
 
 	// Remove any elements from the manager that are not in the new validator set
 	currentVdrs := v.manager.GetValidatorIDs(subnetID)
 	for _, nodeID := range currentVdrs {
 		if !nodeIDs.Contains(nodeID) {
-			v.logger.Debug("Removing validator",
-				zap.Stringer("nodeID", nodeID),
-				zap.Stringer("subnetID", subnetID),
-			)
+			log.Debug("Removing validator", zap.Stringer("nodeID", nodeID))
 			weight := v.manager.GetWeight(subnetID, nodeID)
 			if err := v.manager.RemoveWeight(subnetID, nodeID, weight); err != nil {
 				return err
@@ -177,10 +175,7 @@ func (v *ValidatorManager) updatedTrackedValidators(
 	for _, vdr := range vdrs.Validators {
 		for _, nodeID := range vdr.NodeIDs {
 			if _, ok := v.manager.GetValidator(subnetID, nodeID); !ok {
-				v.logger.Debug("Adding validator",
-					zap.Stringer("nodeID", nodeID),
-					zap.Stringer("subnetID", subnetID),
-				)
+				log.Debug("Adding validator", zap.Stringer("nodeID", nodeID))
 				if err := v.manager.AddStaker(
 					subnetID,
 					nodeID,

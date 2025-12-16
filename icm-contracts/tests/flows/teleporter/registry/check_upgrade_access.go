@@ -13,14 +13,17 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func CheckUpgradeAccess(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func CheckUpgradeAccess(
+	ctx context.Context,
+	network *localnetwork.LocalNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1Info := network.GetPrimaryNetworkInfo()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	//
 	// Deploy TestMessenger to the L1
 	//
-	ctx := context.Background()
 	teleporterAddress := teleporter.TeleporterMessengerAddress(l1Info)
 	_, testMessenger := utils.DeployTestMessenger(
 		ctx,

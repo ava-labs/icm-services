@@ -17,7 +17,6 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 
 	"github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/peers/utils"
 )
 
 var _ CanonicalValidatorState = &CanonicalValidatorClient{}
@@ -39,7 +38,7 @@ type CanonicalValidatorClient struct {
 
 func NewCanonicalValidatorClient(apiConfig *config.APIConfig) *CanonicalValidatorClient {
 	client := platformvm.NewClient(apiConfig.BaseURL)
-	options := utils.InitializeOptions(apiConfig)
+	options := apiConfig.Options()
 	return &CanonicalValidatorClient{
 		client:  client,
 		options: options,

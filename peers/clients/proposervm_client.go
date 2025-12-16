@@ -10,7 +10,6 @@ import (
 	"github.com/ava-labs/avalanchego/vms/proposervm"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/peers/utils"
 )
 
 // ProposerVMAPI is a wrapper around a [proposervm.JSONRPCClient],
@@ -23,7 +22,7 @@ type ProposerVMAPI struct {
 func NewProposerVMAPI(uri string, chain string, cfg *config.APIConfig) *ProposerVMAPI {
 	return &ProposerVMAPI{
 		client:  proposervm.NewJSONRPCClient(uri, chain),
-		options: utils.InitializeOptions(cfg),
+		options: cfg.Options(),
 	}
 }
 
