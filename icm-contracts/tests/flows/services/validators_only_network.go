@@ -26,7 +26,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	. "github.com/onsi/gomega"
@@ -68,14 +67,14 @@ func ValidatorsOnlyNetwork(
 	Expect(err).Should(BeNil())
 
 	// Create a config without TLS cert and key
-	baseConfig := testUtils.CreateDefaultSignatureAggregatorConfig(
+	baseConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
 	)
-	baseConfigPath := testUtils.WriteSignatureAggregatorConfig(
+	baseConfigPath := utils.WriteSignatureAggregatorConfig(
 		log,
 		baseConfig,
-		testUtils.DefaultSignatureAggregatorCfgFname,
+		utils.DefaultSignatureAggregatorCfgFname,
 	)
 
 	keyPath := dir + "/key.pem"
@@ -86,15 +85,15 @@ func ValidatorsOnlyNetwork(
 	signatureAggregatorConfig.TLSCertPath = certPath
 	signatureAggregatorConfig.TLSKeyPath = keyPath
 
-	signatureAggregatorConfigPath := testUtils.WriteSignatureAggregatorConfig(
+	signatureAggregatorConfigPath := utils.WriteSignatureAggregatorConfig(
 		log,
 		signatureAggregatorConfig,
-		testUtils.DefaultSignatureAggregatorCfgFname,
+		utils.DefaultSignatureAggregatorCfgFname,
 	)
 	log.Info("Starting the signature aggregator",
 		zap.String("configPath", signatureAggregatorConfigPath),
 	)
-	signatureAggregatorCancel, readyChan := testUtils.RunSignatureAggregatorExecutable(
+	signatureAggregatorCancel, readyChan := utils.RunSignatureAggregatorExecutable(
 		ctx,
 		log,
 		signatureAggregatorConfigPath,
@@ -105,7 +104,7 @@ func ValidatorsOnlyNetwork(
 	log.Info("Waiting for the signature-aggregator to start up")
 	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	cert, err := staking.LoadTLSCertFromFiles(keyPath, certPath)
 	Expect(err).Should(BeNil())
@@ -119,7 +118,7 @@ func ValidatorsOnlyNetwork(
 	// We have to send the message before making the network private.
 
 	log.Info("Sending teleporter message from B -> A")
-	receipt, _, _ := testUtils.SendBasicTeleporterMessage(
+	receipt, _, _ := utils.SendBasicTeleporterMessage(
 		ctx,
 		log,
 		teleporter,
@@ -220,7 +219,7 @@ func ValidatorsOnlyNetwork(
 
 	// start sig-agg again with a floating TLS cert - this should fail
 	log.Info("Starting the signature aggregator with a floating TLS cert")
-	signatureAggregatorCancel, readyChan = testUtils.RunSignatureAggregatorExecutable(
+	signatureAggregatorCancel, readyChan = utils.RunSignatureAggregatorExecutable(
 		ctx,
 		log,
 		baseConfigPath,
@@ -231,14 +230,14 @@ func ValidatorsOnlyNetwork(
 	log.Info("Waiting for the signature-aggregator to start up")
 	startupCtx, startupCancel = context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	sendRequestToAPI(false)
 	signatureAggregatorCancel()
 
 	// start sig-agg again with the same TLS cert
 	log.Info("Starting the signature aggregator with the same TLS cert")
-	signatureAggregatorCancel, readyChan = testUtils.RunSignatureAggregatorExecutable(
+	signatureAggregatorCancel, readyChan = utils.RunSignatureAggregatorExecutable(
 		ctx,
 		log,
 		signatureAggregatorConfigPath,
@@ -250,7 +249,7 @@ func ValidatorsOnlyNetwork(
 	log.Info("Waiting for the signature-aggregator to start up")
 	startupCtx, startupCancel = context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	sendRequestToAPI(true)
 }
