@@ -18,7 +18,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	teleporterTestUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/relayer/api"
 	ethereum "github.com/ava-labs/libevm"
@@ -127,7 +126,7 @@ func RelayMessageAPI(
 
 		receipt, err := l1BInfo.RPCClient.TransactionReceipt(ctx, common.HexToHash(response.TransactionHash))
 		Expect(err).Should(BeNil())
-		receiveEvent, err := teleporterTestUtils.GetEventFromLogs(
+		receiveEvent, err := testUtils.GetEventFromLogs(
 			receipt.Logs,
 			teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage,
 		)

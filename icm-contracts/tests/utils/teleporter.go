@@ -127,41 +127,6 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	info.TeleporterRegistry = teleporterRegistry
 }
 
-func (t TeleporterTestInfo) DeployTeleporterMessenger(
-	ctx context.Context,
-	l1 interfaces.L1TestInfo,
-	transactionBytes []byte,
-	deployerAddress common.Address,
-	contractAddress common.Address,
-	fundedKey *ecdsa.PrivateKey,
-) {
-	// Fund the deployer address
-	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
-	fundDeployerTx := CreateNativeTransferTransaction(
-		ctx, l1, fundedKey, deployerAddress, fundAmount,
-	)
-	SendTransactionAndWaitForSuccess(ctx, l1, fundDeployerTx)
-
-	log.Info("Finished funding Teleporter deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
-
-	// Deploy Teleporter contract
-	rpcClient, err := rpc.DialContext(
-		ctx,
-		HttpToRPCURI(l1.NodeURIs[0], l1.BlockchainID.String()),
-	)
-	Expect(err).Should(BeNil())
-	defer rpcClient.Close()
-
-	txHash := common.Hash{}
-	err = rpcClient.CallContext(ctx, &txHash, "eth_sendRawTransaction", hexutil.Encode(transactionBytes))
-	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, txHash)
-
-	teleporterCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
-	Expect(err).Should(BeNil())
-	Expect(len(teleporterCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
-}
-
 func (t TeleporterTestInfo) RelayTeleporterMessage(
 	ctx context.Context,
 	sourceReceipt *types.Receipt,
@@ -375,15 +340,54 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 	log.Info("Receipt queue emptied")
 }
 
+//
+// Deployment utils
+//
+
+func DeployTeleporterMessenger(
+	ctx context.Context,
+	l1 interfaces.L1TestInfo,
+	transactionBytes []byte,
+	deployerAddress common.Address,
+	contractAddress common.Address,
+	fundedKey *ecdsa.PrivateKey,
+) {
+	// Fund the deployer address
+	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
+	fundDeployerTx := CreateNativeTransferTransaction(
+		ctx, l1, fundedKey, deployerAddress, fundAmount,
+	)
+	SendTransactionAndWaitForSuccess(ctx, l1, fundDeployerTx)
+
+	log.Info("Finished funding Teleporter deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
+
+	// Deploy Teleporter contract
+	rpcClient, err := rpc.DialContext(
+		ctx,
+		HttpToRPCURI(l1.NodeURIs[0], l1.BlockchainID.String()),
+	)
+	Expect(err).Should(BeNil())
+	defer rpcClient.Close()
+
+	txHash := common.Hash{}
+	err = rpcClient.CallContext(ctx, &txHash, "eth_sendRawTransaction", hexutil.Encode(transactionBytes))
+	Expect(err).Should(BeNil())
+	WaitForTransactionSuccess(ctx, l1, txHash)
+
+	teleporterCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
+	Expect(err).Should(BeNil())
+	Expect(len(teleporterCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
+}
+
 // Deploys a new version of Teleporter and returns its address
 // Does NOT modify the global Teleporter contract address to provide greater testing flexibility.
-func (t TeleporterTestInfo) DeployNewTeleporterVersion(
+func DeployNewTeleporterVersion(
 	ctx context.Context,
 	l1 interfaces.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	teleporterByteCodeFile string,
 ) common.Address {
-	contractCreationGasPrice := (&big.Int{}).Add(deploymentUtils.GetDefaultContractCreationGasPrice(), big.NewInt(1))
+	contractCreationGasPrice := new(big.Int).Add(deploymentUtils.GetDefaultContractCreationGasPrice(), big.NewInt(1))
 	teleporterDeployerTransaction,
 		_,
 		teleporterDeployerAddress,
@@ -395,7 +399,7 @@ func (t TeleporterTestInfo) DeployNewTeleporterVersion(
 	)
 	Expect(err).Should(BeNil())
 
-	t.DeployTeleporterMessenger(
+	DeployTeleporterMessenger(
 		ctx,
 		l1,
 		teleporterDeployerTransaction,
@@ -406,10 +410,6 @@ func (t TeleporterTestInfo) DeployNewTeleporterVersion(
 
 	return teleporterContractAddress
 }
-
-//
-// Deployment utils
-//
 
 func DeployTestMessenger(
 	ctx context.Context,
