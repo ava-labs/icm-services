@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	teleporterByteCodeFile  = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
 	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
 
 	icttLabel              = "ICTT"
