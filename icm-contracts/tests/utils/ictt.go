@@ -26,9 +26,8 @@ import (
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"go.uber.org/zap"
-
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 // Deployer keys set in the genesis file in order to determine the deployed address in advance.
