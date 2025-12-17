@@ -19,9 +19,8 @@ import (
 	"github.com/ava-labs/avalanchego/vms/proposervm"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/log"
-	"go.uber.org/zap"
-
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 const (

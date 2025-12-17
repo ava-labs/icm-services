@@ -16,7 +16,6 @@ import (
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
-
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/peers/clients"

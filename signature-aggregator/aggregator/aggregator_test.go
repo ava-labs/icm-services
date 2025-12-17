@@ -3,11 +3,10 @@ package aggregator
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"slices"
 	"testing"
 	"time"
-
-	"crypto/rand"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"

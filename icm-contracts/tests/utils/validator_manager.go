@@ -37,10 +37,9 @@ import (
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	"github.com/ava-labs/subnet-evm/warp/messages"
+	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
-
-	. "github.com/onsi/gomega"
 )
 
 const (

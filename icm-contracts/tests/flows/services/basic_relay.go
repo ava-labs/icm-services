@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
@@ -32,7 +31,7 @@ func BasicRelay(
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-	err := testUtils.ClearRelayerStorage()
+	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
 
 	//
@@ -42,12 +41,12 @@ func BasicRelay(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	//
 	// Set up relayer config
 	//
-	relayerConfig := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -59,7 +58,7 @@ func BasicRelay(
 	// The config needs to be validated in order to be passed to database.GetConfigRelayerIDs
 	relayerConfig.Validate()
 
-	relayerConfigPath := testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath := utils.WriteRelayerConfig(log, relayerConfig, utils.DefaultRelayerCfgFname)
 
 	//
 	// Test Relaying from Subnet A to Subnet B
@@ -67,7 +66,7 @@ func BasicRelay(
 	log.Info("Test Relaying from Subnet A to Subnet B")
 
 	log.Info("Starting the relayer")
-	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan := utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath,
@@ -78,10 +77,10 @@ func BasicRelay(
 	// Wait for relayer to start up
 	startupCtx, startupCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	log.Info("Sending transaction from Subnet A to Subnet B")
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -95,7 +94,7 @@ func BasicRelay(
 	// Test Relaying from Subnet B to Subnet A
 	//
 	log.Info("Test Relaying from Subnet B to Subnet A")
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -114,7 +113,7 @@ func BasicRelay(
 	//
 	log.Info("Test Relaying Already Delivered Message")
 	relayerConfig.ProcessMissedBlocks = true
-	relayerConfigPath = testUtils.WriteRelayerConfig(log, relayerConfig, testUtils.DefaultRelayerCfgFname)
+	relayerConfigPath = utils.WriteRelayerConfig(log, relayerConfig, utils.DefaultRelayerCfgFname)
 
 	jsonDB, err := database.NewJSONFileStorage(
 		log,
@@ -150,7 +149,7 @@ func BasicRelay(
 
 	// Run the relayer
 	log.Info("Creating new relayer instance to test already delivered message")
-	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan = utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath,
@@ -162,7 +161,7 @@ func BasicRelay(
 	log.Info("Waiting for the relayer to start up")
 	startupCtx, startupCancel = context.WithTimeout(ctx, 60*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	// We should not receive a new block on subnet B, since the relayer should have
 	// seen the Teleporter message was already delivered.
@@ -173,7 +172,7 @@ func BasicRelay(
 	// Set ProcessHistoricalBlocksFromHeight in config
 	//
 	log.Info("Test Setting ProcessHistoricalBlocksFromHeight in config")
-	testUtils.TriggerProcessMissedBlocks(
+	utils.TriggerProcessMissedBlocks(
 		ctx,
 		log,
 		teleporter,

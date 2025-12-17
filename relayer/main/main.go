@@ -36,13 +36,12 @@ import (
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"go.uber.org/atomic"
+	// Sets GOMAXPROCS to the CPU quota for containerized environments
+	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	// Sets GOMAXPROCS to the CPU quota for containerized environments
-	_ "go.uber.org/automaxprocs"
 )
 
 var version = "v0.0.0-dev"

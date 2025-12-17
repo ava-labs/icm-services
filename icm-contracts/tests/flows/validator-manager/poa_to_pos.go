@@ -15,7 +15,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-
 	. "github.com/onsi/gomega"
 )
 
