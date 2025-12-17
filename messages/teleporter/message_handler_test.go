@@ -90,7 +90,6 @@ func TestShouldSendMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	messageID, err := teleporterUtils.CalculateMessageID(
-		messageProtocolAddress,
 		sourceBlockchainID,
 		destinationBlockchainID,
 		validTeleporterMessage.MessageNonce,
@@ -283,7 +282,6 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	require.NoError(t, err)
 
 	messageID, err := teleporterUtils.CalculateMessageID(
-		messageProtocolAddress,
 		sourceBlockchainID,
 		destinationBlockchainID,
 		validTeleporterMessage.MessageNonce,

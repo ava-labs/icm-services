@@ -25,8 +25,13 @@ jobs:
       with:
           go-version-file: 'go.mod'
 
+    - name: Install Foundry
+      run: ./scripts/install_foundry.sh
+
     - name: Run Lint
-      run: ./scripts/lint.sh --go-lint
+      run: |
+        export PATH=$PATH:$HOME/.foundry/bin
+        ./scripts/lint.sh --go-lint
 
   protobuf-check:
     runs-on: ubuntu-22.04
@@ -43,8 +48,12 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
+    - name: Install Foundry
+      run: ./scripts/install_foundry.sh
+
     - name: Ensure protobuf changes are checked in
       run: |
+        export PATH=$PATH:$HOME/.foundry/bin
         scripts/protobuf_codegen.sh
         git update-index --really-refresh >> /dev/null
         git diff-index HEAD # to show the differences
@@ -61,8 +70,13 @@ jobs:
         npm install solhint -g
         solhint --version
 
+    - name: Install Foundry
+      run: ./scripts/install_foundry.sh
+
     - name: Run Lint
-      run: ./scripts/lint.sh --sol-lint
+      run: |
+        export PATH=$PATH:$HOME/.foundry/bin
+        ./scripts/lint.sh --sol-lint
 
   format-solidity:
     runs-on: ubuntu-22.04
@@ -118,6 +132,7 @@ jobs:
 
       - name: Install solc
         run: |
+          export PATH=$PATH:$HOME/.foundry/bin
           source ./scripts/versions.sh
           wget https://github.com/ethereum/solidity/releases/download/v$AVALANCHE_SOLIDITY_VERSION/solc-static-linux
           chmod +x solc-static-linux

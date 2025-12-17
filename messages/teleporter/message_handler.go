@@ -97,7 +97,6 @@ func (f *factory) NewMessageHandler(
 	}
 	destinationBlockChainID := destinationClient.DestinationBlockchainID()
 	teleporterMessageID, err := teleporterUtils.CalculateMessageID(
-		f.protocolAddress,
 		unsignedMessage.SourceChainID,
 		destinationBlockChainID,
 		teleporterMessage.MessageNonce,

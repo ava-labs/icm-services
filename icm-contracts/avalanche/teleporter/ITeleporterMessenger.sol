@@ -46,6 +46,28 @@ struct TeleporterFeeInfo {
     uint256 amount;
 }
 
+// A bitset indicating which validators from a validator set provided
+// signatures (using the canonical validator set ordering) along with
+// an aggregate BLS signature.
+struct ICMSignature {
+    bytes signers;
+    bytes signature;
+}
+
+// A general message with the network and blockchain IDs of the source
+struct ICMUnsignedMessage {
+    uint32 avalancheNetworkID;
+    bytes32 avalancheSourceBlockchainID;
+    bytes payload;
+}
+
+// An ICM message and signature. Also contains the serialized message bytes
+struct ICMMessage {
+    ICMUnsignedMessage unsignedMessage;
+    bytes unsignedMessageBytes;
+    ICMSignature signature;
+}
+
 /**
  * @dev Interface that describes functionalities for a cross-chain messenger implementing the Teleporter protcol.
  *
