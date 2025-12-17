@@ -8,14 +8,14 @@ trust.
 
 Communication between Avalanche L1 (the so-called _"internal interoperability"_) uses the [ICM protocol](../../../icm-contracts/contracts/teleporter/README.md) 
 which is handled by a set of `Teleporter` contracts. Further protocols can be built on top of `Teleporter`, but this is 
-out of scope for this design doc. The goal external interoperability is to support `Teleporter` contracts on external EVM 
+out of scope for this design doc. The goal of external interoperability is to support `Teleporter` contracts on external EVM 
 chains to leverage existing protocols. This will require changes to the `TeleporterMessenger` contracts which will be 
 deployed on external EVM chains; these changes are detailed in the [TeleporterMessesenger changes](teleporter_messenger_changes.md)
 section.
 
 The primary difference between internal and external interoperability is how message authentication is accomplished. For
 internal interoperability, this was achieved used a pre-compiled smart contract called `Warp`. An alternative solution
-is necessary for external EVM chains.
+is necessary for external EVM chains because the `Warp` pre-compile is specific to Avalanche. 
 
 This will also require changing the relayers. They will need clients for external EVM chains and will need to call
 different contract functions and provide different data as well. There also new duties required of relayers other than
@@ -23,8 +23,8 @@ just sending messages that will be required. This is further describe in the [Re
 
 ## Root of trust
 
-The P-chain of Avalanche is root of trust for all aspects of the protocol when authenticating messages from Avalanche or
-an Avalanche L1. Specifically, all authentication proofs should derive their authority from a specific initial 
+The Avalanche P-chain is the root of trust when authenticating messages from the Avalanche C-chain or
+an Avalanche L1. Specifically, all authentication proofs should derive their authority from an initial 
 P-chain validator set known to the external EVM chain. While the publication of this initial set may be done in a centralized
 manner, it's validity is publicly auditable and thus a trustless procedure. 
 
