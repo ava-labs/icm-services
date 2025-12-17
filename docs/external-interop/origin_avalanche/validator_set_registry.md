@@ -85,6 +85,7 @@ struct ICMSignature {
 }
 
 struct ICMUnsignedMessage {
+    // used to distinguish between main- and testnets
     uint32 avalancheNetworkID;
     bytes32 avalancheSourceBlockchainID;
     bytes payload;
