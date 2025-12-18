@@ -1,7 +1,7 @@
 // Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package teleporter_test
+package suites
 
 import (
 	"context"
@@ -16,14 +16,12 @@ import (
 	registryFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/teleporter/registry"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 const (
-	teleporterByteCodeFile  = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
 	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
 
 	teleporterMessengerLabel = "TeleporterMessenger"
@@ -57,17 +55,11 @@ func TestTeleporter(t *testing.T) {
 
 // Define the Teleporter before and after suite functions.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
-	// Generate the Teleporter deployment values
-	teleporterDeployerTransaction,
-		teleporterDeployedBytecode,
+	teleporterContractAddress,
 		teleporterDeployerAddress,
-		teleporterContractAddress,
-		err := deploymentUtils.ConstructKeylessTransaction(
-		teleporterByteCodeFile,
-		false,
-		deploymentUtils.GetDefaultContractCreationGasPrice(),
-	)
-	Expect(err).Should(BeNil())
+		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
+
+	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
 
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 240*2*time.Second)
@@ -82,7 +74,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				Name:                         "A",
 				EVMChainID:                   12345,
 				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedBytecode,
+				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
 				TeleporterDeployerAddress:    teleporterDeployerAddress,
 				NodeCount:                    5,
 				RequirePrimaryNetworkSigners: true,
@@ -91,7 +83,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				Name:                         "B",
 				EVMChainID:                   54321,
 				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedBytecode,
+				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
 				TeleporterDeployerAddress:    teleporterDeployerAddress,
 				NodeCount:                    5,
 				RequirePrimaryNetworkSigners: true,
@@ -107,7 +99,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the l1 chains.
 	_, fundedKey := LocalNetworkInstance.GetFundedAccountInfo()
 	if e2eFlags.NetworkDir() == "" {
-		TeleporterInfo.DeployTeleporterMessenger(
+		utils.DeployTeleporterMessenger(
 			ctx,
 			LocalNetworkInstance.GetPrimaryNetworkInfo(),
 			teleporterDeployerTransaction,

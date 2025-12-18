@@ -1,4 +1,4 @@
-package validator_manager_test
+package suites
 
 import (
 	"context"

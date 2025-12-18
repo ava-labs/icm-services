@@ -1,4 +1,4 @@
-package governance_test
+package suites
 
 import (
 	"context"
