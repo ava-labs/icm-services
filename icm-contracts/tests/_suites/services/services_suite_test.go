@@ -21,13 +21,13 @@ import (
 	servicesFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/services"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/_suites"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
 
 const (
-	warpGenesisTemplateFile   = "./tests/utils/warp-genesis-template.json"
 	servicesLabel             = "ICMServices"
 	minimumL1ValidatorBalance = 2048 * units.NanoAvax
 	defaultBalance            = 100 * units.Avax
@@ -35,13 +35,11 @@ const (
 
 var (
 	log logging.Logger
-
-	localNetworkInstance *network.LocalNetwork
-	teleporterInfo       utils.TeleporterTestInfo
-
 	decider *exec.Cmd
 
-	e2eFlags *e2e.FlagVars
+	localNetworkInstance *localnetwork.LocalNetwork
+	teleporterInfo       utils.TeleporterTestInfo
+	e2eFlags             *e2e.FlagVars
 )
 
 func TestMain(m *testing.M) {
@@ -83,49 +81,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		teleporterDeployerAddress,
 		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
 
-	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
-
-	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
-	defer networkStartCancel()
-	localNetworkInstance = network.NewLocalNetwork(
-		networkStartCtx,
-		"icm-off-chain-services-e2e-test",
-		warpGenesisTemplateFile,
-		[]network.L1Spec{
-			{
-				Name:                         "A",
-				EVMChainID:                   12345,
-				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
-				TeleporterDeployerAddress:    teleporterDeployerAddress,
-				NodeCount:                    2,
-				RequirePrimaryNetworkSigners: true,
-			},
-			{
-				Name:                         "B",
-				EVMChainID:                   54321,
-				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
-				TeleporterDeployerAddress:    teleporterDeployerAddress,
-				NodeCount:                    2,
-				RequirePrimaryNetworkSigners: true,
-			},
-		},
-		4,
-		4,
-		e2eFlags,
-	)
-
-	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
-	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
-	utils.DeployTeleporterMessenger(
-		networkStartCtx,
-		localNetworkInstance.GetPrimaryNetworkInfo(),
-		teleporterDeployerTransaction,
-		teleporterDeployerAddress,
-		teleporterContractAddress,
-		fundedKey,
-	)
+	localNetworkInstance = suites.StartDefaultNetwork(ctx, "icm-off-chain-services-e2e-test", e2eFlags)
 
 	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
@@ -138,7 +94,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Convert the subnets to sovereign L1s
 	for _, subnet := range localNetworkInstance.GetL1Infos() {
 		localNetworkInstance.ConvertSubnet(
-			networkStartCtx,
+			ctx,
 			subnet,
 			utils.PoAValidatorManager,
 			[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
