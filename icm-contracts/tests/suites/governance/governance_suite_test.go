@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	LocalNetworkInstance *localnetwork.LocalNetwork
+	localNetworkInstance *localnetwork.LocalNetwork
 	e2eFlags             *e2e.FlagVars
 )
 
@@ -45,7 +45,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	LocalNetworkInstance = localnetwork.NewLocalNetwork(
+	localNetworkInstance = localnetwork.NewLocalNetwork(
 		ctx,
 		"governance-test-local-network",
 		warpGenesisTemplateFile,
@@ -69,8 +69,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 })
 
 var _ = ginkgo.AfterSuite(func() {
-	LocalNetworkInstance.TearDownNetwork()
-	LocalNetworkInstance = nil
+	localNetworkInstance.TearDownNetwork()
+	localNetworkInstance = nil
 })
 
 var _ = ginkgo.Describe("[Governance integration tests]", func() {
@@ -78,6 +78,6 @@ var _ = ginkgo.Describe("[Governance integration tests]", func() {
 	ginkgo.It("Deliver ValidatorSetSig signed message",
 		ginkgo.Label(validatorSetSigLabel),
 		func(ctx context.Context) {
-			governanceFlows.ValidatorSetSig(ctx, LocalNetworkInstance)
+			governanceFlows.ValidatorSetSig(ctx, localNetworkInstance)
 		})
 })
