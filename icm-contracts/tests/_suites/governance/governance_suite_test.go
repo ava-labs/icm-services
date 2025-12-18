@@ -32,10 +32,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestGovernance(t *testing.T) {
-	if os.Getenv("RUN_E2E") == "" {
-		t.Skip("Environment variable RUN_E2E not set; skipping E2E tests")
-	}
-
 	RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, "Governance e2e test")
 }

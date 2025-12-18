@@ -32,7 +32,7 @@ Options:
 EOF
 }
 
-valid_components=$(ls -d $REPO_PATH/icm-contracts/tests/suites/*/ | xargs -n 1 basename)
+valid_components=$(ls -d $REPO_PATH/icm-contracts/tests/_suites/*/ | xargs -n 1 basename)
 components=
 reuse_network_dir=
 root_dir=
@@ -132,11 +132,11 @@ fi
 
 for component in $(echo $components | tr ',' ' '); do
     echo "Building e2e tests for $component"
-    go run github.com/onsi/ginkgo/v2/ginkgo build ${REPO_PATH}/icm-contracts/tests/suites/$component
+    go run github.com/onsi/ginkgo/v2/ginkgo build ${REPO_PATH}/icm-contracts/tests/_suites/$component
 
     echo "Running e2e tests for $component"
 
-    RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${REPO_PATH}/build/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
+    LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${REPO_PATH}/build/signature-aggregator ./icm-contracts/tests/_suites/$component/$component.test \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
     --network-dir=${network_dir} \
