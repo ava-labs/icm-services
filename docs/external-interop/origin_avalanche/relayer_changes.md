@@ -1,36 +1,27 @@
 # Relayer changes
 
-Existing relayers need to be extended to handle external EVM chains. Not only will new clients be necessary and 
-the way messages are sent change, but new types of messages now need to be relayed. For example, for the
-`AvalancheValidatorSetRegistry` contracts, new validator sets will need to be relayed periodically.
+Existing relayers need to be extended to handle external EVM chains. Not only will new clients be necessary and  the way messages are sent change, but new types of messages now need to be relayed. For example, for the `AvalancheValidatorSetRegistry` contracts, new validator sets will need to be relayed periodically.
 
 ## Updating Validator sets
 
-Avalanche will require a `ValidatorSetUpdater` component that monitors validator set changes for Avalanche L1s and posts 
-updates to external EVM chains. All L1 validators are registered on the P-chain, which maintains separate validator sets 
-for each L1. The updater queries the P-chain for each configured L1's validator set and posts updates to 
-`AvalancheValidatorSetRegistry` contracts on external chains.  Before signing messages, the relayer queries the destination
-registry to determine what P-chain height was last registered for the source L1, then signs with the specific validators. 
-External EVM chains need to verify ICM messages from Avalanche L1s by checking validator signatures.
-
+Avalanche will require a `ValidatorSetUpdater` component that monitors validator set changes for Avalanche L1s and posts  updates to external EVM chains. All L1 validators are registered on the P-chain, which maintains separate validator sets  for each L1. The updater queries the P-chain for each configured L1's validator set and posts updates to  `AvalancheValidatorSetRegistry` contracts on external chains.  Before signing messages, the relayer queries the destination registry to determine what P-chain height was last registered for the source L1, then signs with the specific validators.  External EVM chains need to verify ICM messages from Avalanche L1s by checking validator signatures.
 
 The `ValidatorSetUpdater` component polls P-chain at configurable intervals. On each iteration it performs the following:
 
-1. Query current P-chain height using `GetLatestHeight`
+1. Query current P-chain height using `GetLatestHeight` 
 2. If height changed, fetch ALL validator sets: `GetAllValidatorSets(height)` returns `map[subnetID]ValidatorSet`
-3. Update the `AvalancheValidatorSetRegistry` for each L1 and P-chain
-   1. This is done when an L1's validator set reaches some configurable expiration time (base on the P-chain 
-      height/timestamp of registration) or exceeds a churn threshold.
-   2. If there is a newer validator set available, post update to the external EVM chains
-   3. Call for each L1:
+3. Update the `AvalancheValidatorSetRegistry` for each L1 and P-chain   
+   1. This is done when an L1's validator set reaches some configurable expiration time (base on the P-chain        height/timestamp of registration) or exceeds a churn threshold.
+   2. If there is a newer validator set available, post update to the external EVM chains   
+   3. Call for each L1:       
        ```go 
        updateValidatorSet(
-          uint64 pchainHeight, 
-          bytes32 sourceSubnetID, 
-          ValidatorInfo[] memory validators
+           uint64 pchainHeight, 
+           bytes32 sourceSubnetID, 
+           ValidatorInfo[] memory validators
        )
-       ``` 
-The `ValidatorSetUpdater` struct should look like the following:
+       ```  
+      The `ValidatorSetUpdater` struct should look like the following:
 
 ```go
 type ValidatorSetUpdater struct {
@@ -85,8 +76,7 @@ func (u *ValidatorSetUpdater) checkAndUpdate(ctx context.Context) error {
 
 ### Configuration
 
-To configure the relayer, we will add `destination-external-evm-blockchains` blocks to the relayer configuration that
-look as follows:
+To configure the relayer, we will add `destination-external-evm-blockchains` blocks to the relayer configuration that look as follows: 
 ```json
 {
   "source-blockchains": [{    
@@ -105,8 +95,7 @@ look as follows:
 
 ### External Evm Destination Client
 
-A new client, `ExternalEVMDestinationCient` will be created implementing the `vms.DestinationClient` interface. The
-implementation of `GetPChainHeightForDestination` function will look as follows:
+A new client, `ExternalEVMDestinationCient` will be created implementing the `vms.DestinationClient` interface. The implementation of `GetPChainHeightForDestination` function will look as follows:
 ```go
 type externalEVMDestinationClient struct {
     client              ethclient.Client
@@ -129,7 +118,7 @@ func (c *externalEVMDestinationClient) GetPChainHeightForDestination(
 }
 ```
 
-The destination client factory will create separate client types for Avalanche L1s and external EVM chains:
+The destination client factory will create separate client types for Avalanche L1s and external EVM chains: 
 ```go
 // vms/destination_client.go
 // https://github.com/ava-labs/icm-services/blob/ba3c9944b0eba2b24fd5c455325de54189a32bd3/vms/destination_client.go#L64
