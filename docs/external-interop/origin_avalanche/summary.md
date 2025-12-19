@@ -8,7 +8,7 @@ Communication between Avalanche L1 (the so-called _"internal interoperability"_)
 
 The primary difference between internal and external interoperability is how message authentication is accomplished. For internal interoperability, this was achieved used a pre-compiled smart contract called `Warp`. An alternative solution is necessary for external EVM chains because the `Warp` pre-compile is specific to Avalanche.
 
-This will also require changing the relayers. They will need clients for external EVM chains and will need to call different contract functions and provide different data as well. There also new duties required of relayers other than just sending messages that will be required. This is further describe in the [Relayer changes](relayer_changes.md) section.
+This will also require changing the relayers. They will need clients for external EVM chains and will need to call different contract functions and provide different data as well. There are also new duties required of relayers other than just sending messages that will be required. This is further describe in the [Relayer changes](relayer_changes.md) section.
 
 ## Root of trust
 
