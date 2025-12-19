@@ -11,7 +11,7 @@ The `ValidatorSetUpdater` component polls P-chain at configurable intervals. On 
 1. Query current P-chain height using `GetLatestHeight` 
 2. If height changed, fetch ALL validator sets: `GetAllValidatorSets(height)` returns `map[subnetID]ValidatorSet`
 3. Update the `AvalancheValidatorSetRegistry` for each L1 and P-chain   
-   1. This is done when an L1's validator set reaches some configurable expiration time (base on the P-chain        height/timestamp of registration) or exceeds a churn threshold.
+   1. This is done when an L1's validator set reaches some configurable expiration time (base on the P-chain height/timestamp of registration) or exceeds a churn threshold.
    2. If there is a newer validator set available, post update to the external EVM chains   
    3. Call for each L1:       
        ```go 
