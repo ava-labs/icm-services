@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	LocalNetworkInstance *localnetwork.LocalNetwork
+	localNetworkInstance *localnetwork.LocalNetwork
 	e2eFlags             *e2e.FlagVars
 )
 
@@ -45,7 +45,7 @@ var _ = ginkgo.BeforeEach(func(ctx context.Context) {
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
-	LocalNetworkInstance = localnetwork.NewLocalNetwork(
+	localNetworkInstance = localnetwork.NewLocalNetwork(
 		ctx,
 		"validator-manager-test-local-network",
 		warpGenesisTemplateFile,
@@ -71,8 +71,8 @@ var _ = ginkgo.BeforeEach(func(ctx context.Context) {
 })
 
 var _ = ginkgo.AfterEach(func() {
-	LocalNetworkInstance.TearDownNetwork()
-	LocalNetworkInstance = nil
+	localNetworkInstance.TearDownNetwork()
+	localNetworkInstance = nil
 })
 
 var _ = ginkgo.Describe("[Validator manager integration tests]", func() {
@@ -80,21 +80,21 @@ var _ = ginkgo.Describe("[Validator manager integration tests]", func() {
 	ginkgo.It("Native token staking manager",
 		ginkgo.Label(validatorManagerLabel),
 		func(ctx context.Context) {
-			validatorManagerFlows.NativeTokenStakingManager(ctx, LocalNetworkInstance)
+			validatorManagerFlows.NativeTokenStakingManager(ctx, localNetworkInstance)
 		})
 	ginkgo.It("ERC20 token staking manager",
 		ginkgo.Label(validatorManagerLabel),
 		func(ctx context.Context) {
-			validatorManagerFlows.ERC20TokenStakingManager(ctx, LocalNetworkInstance)
+			validatorManagerFlows.ERC20TokenStakingManager(ctx, localNetworkInstance)
 		})
 	ginkgo.It("PoA migration to PoS",
 		ginkgo.Label(validatorManagerLabel),
 		func(ctx context.Context) {
-			validatorManagerFlows.PoAMigrationToPoS(ctx, LocalNetworkInstance)
+			validatorManagerFlows.PoAMigrationToPoS(ctx, localNetworkInstance)
 		})
 	ginkgo.It("Delegate disable validator",
 		ginkgo.Label(validatorManagerLabel),
 		func(ctx context.Context) {
-			validatorManagerFlows.RemoveDelegatorInactiveValidator(ctx, LocalNetworkInstance)
+			validatorManagerFlows.RemoveDelegatorInactiveValidator(ctx, localNetworkInstance)
 		})
 })
