@@ -3,9 +3,7 @@ package ictt_test
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io/fs"
-	"math/big"
 	"os"
 	"testing"
 	"time"
@@ -14,7 +12,6 @@ import (
 	icttFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/ictt"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/onsi/ginkgo/v2"
@@ -23,7 +20,6 @@ import (
 )
 
 const (
-	teleporterByteCodeFile  = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
 	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
 
 	icttLabel              = "ICTT"
@@ -62,17 +58,11 @@ func TestICTT(t *testing.T) {
 
 // Define the Teleporter before and after suite functions.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
-	// Generate the Teleporter deployment values
-	teleporterDeployerTransaction,
-		teleporterDeployedBytecode,
+	teleporterContractAddress,
 		teleporterDeployerAddress,
-		teleporterContractAddress,
-		err := deploymentUtils.ConstructKeylessTransaction(
-		teleporterByteCodeFile,
-		false,
-		deploymentUtils.GetDefaultContractCreationGasPrice(),
-	)
-	Expect(err).Should(BeNil())
+		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
+
+	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
 
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
@@ -86,7 +76,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				Name:                       "A",
 				EVMChainID:                 12345,
 				TeleporterContractAddress:  teleporterContractAddress,
-				TeleporterDeployedBytecode: teleporterDeployedBytecode,
+				TeleporterDeployedBytecode: teleporterDeployedByteCode,
 				TeleporterDeployerAddress:  teleporterDeployerAddress,
 				NodeCount:                  2,
 			},
@@ -94,7 +84,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				Name:                       "B",
 				EVMChainID:                 54321,
 				TeleporterContractAddress:  teleporterContractAddress,
-				TeleporterDeployedBytecode: teleporterDeployedBytecode,
+				TeleporterDeployedBytecode: teleporterDeployedByteCode,
 				TeleporterDeployerAddress:  teleporterDeployerAddress,
 				NodeCount:                  2,
 			},
@@ -111,7 +101,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	if e2eFlags.NetworkDir() == "" {
 		// Only deploy Teleporter if we are not reusing an existing network
-		teleporterInfo.DeployTeleporterMessenger(
+		utils.DeployTeleporterMessenger(
 			ctx,
 			localNetworkInstance.GetPrimaryNetworkInfo(),
 			teleporterDeployerTransaction,
@@ -137,13 +127,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		Expect(err).Should(BeNil())
 
 	} else {
-		fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(15)) // 11 AVAX
-		fundDeployerTx := utils.CreateNativeTransferTransaction(
-			ctx, localNetworkInstance.GetPrimaryNetworkInfo(), fundedKey, teleporterDeployerAddress, fundAmount,
-		)
-		utils.SendTransactionAndWaitForSuccess(ctx, localNetworkInstance.GetPrimaryNetworkInfo(), fundDeployerTx)
-		fmt.Println("Deployer funded with", fundAmount, "AVAX")
-
 		// Read the Teleporter registry address from the file
 		registryAddresseses := make(map[string]string)
 		data, err := os.ReadFile(teleporterRegistryAddressFile)

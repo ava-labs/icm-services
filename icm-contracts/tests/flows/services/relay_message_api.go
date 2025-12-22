@@ -125,6 +125,7 @@ func RelayMessageAPI(
 
 		receipt, err := l1BInfo.RPCClient.TransactionReceipt(ctx, common.HexToHash(response.TransactionHash))
 		Expect(err).Should(BeNil())
+
 		receiveEvent, err := utils.GetEventFromLogs(
 			receipt.Logs,
 			teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage,

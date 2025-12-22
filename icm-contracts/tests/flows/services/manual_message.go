@@ -73,6 +73,7 @@ func ManualMessage(
 		newProtocolAddress,
 		2,
 	)
+
 	_, warpEnabledChainConfigA := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1AInfo,
@@ -80,6 +81,7 @@ func ManualMessage(
 		newProtocolAddress,
 		2,
 	)
+
 	_, warpEnabledChainConfigB := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1BInfo,
@@ -89,6 +91,7 @@ func ManualMessage(
 	)
 
 	// Create chain config with off chain messages
+
 	chainConfigs := make(utils.ChainConfigMap)
 	chainConfigs.Add(cChainInfo, warpEnabledChainConfigC)
 	chainConfigs.Add(l1BInfo, warpEnabledChainConfigB)

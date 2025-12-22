@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
@@ -76,6 +78,35 @@ type Node struct {
 //
 // URL utils
 //
+
+func TeleporterDeploymentValues() (
+	teleporterContractAddress common.Address,
+	teleporterDeployerAddress common.Address,
+	teleporterDeployedByteCode string,
+) {
+	teleporterContractAddress = common.HexToAddress(
+		ReadHexTextFile("./tests/utils/UniversalTeleporterMessengerContractAddress.txt"),
+	)
+	teleporterDeployerAddress = common.HexToAddress(
+		ReadHexTextFile("./tests/utils/UniversalTeleporterDeployerAddress.txt"),
+	)
+	teleporterDeployedByteCode = ReadHexTextFile(
+		"./tests/utils/UniversalTeleporterDeployedBytecode.txt",
+	)
+
+	return teleporterContractAddress, teleporterDeployerAddress, teleporterDeployedByteCode
+}
+
+func TeleporterDeployerTransaction() []byte {
+	teleporterDeployerTransactionStr := ReadHexTextFile(
+		"./tests/utils/UniversalTeleporterDeployerTransaction.txt",
+	)
+	teleporterDeployerTransaction, err := hex.DecodeString(
+		utils.SanitizeHexString(teleporterDeployerTransactionStr),
+	)
+	Expect(err).Should(BeNil())
+	return teleporterDeployerTransaction
+}
 
 func HttpToWebsocketURI(uri string, blockchainID string) string {
 	return fmt.Sprintf("ws://%s/ext/bc/%s/ws", strings.TrimPrefix(uri, "http://"), blockchainID)
