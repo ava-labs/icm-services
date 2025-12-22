@@ -16,7 +16,12 @@ import (
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/vms/evm"
+	"github.com/ava-labs/libevm/common"
 	"go.uber.org/zap"
+)
+
+const (
+	gasLimit = 1000000
 )
 
 // ValidatorSetUpdater monitors P-chain validator sets and posts updates
@@ -38,6 +43,8 @@ type ValidatorSetUpdater struct {
 	// Per-source-subnet tracking to avoid redundant updates
 	lastPostedHeights map[ids.ID]uint64   // sourceSubnetID -> P-chain height
 	lastPostedHashes  map[ids.ID][32]byte // sourceSubnetID -> hash of validator set
+
+	registryAddress common.Address
 }
 
 // NewValidatorSetUpdater creates a new validator set updater.
@@ -228,7 +235,7 @@ func (u *ValidatorSetUpdater) updateSubnetValidators(
 	}
 
 	// Step 3: Send to external EVM via SendTx
-	err = u.sendValidatorSetUpdate(ctx, client, signedMessage, subnetID)
+	err = u.sendValidatorSetUpdate(ctx, client, signedMessage)
 	if err != nil {
 		return fmt.Errorf("failed to send validator set update: %w", err)
 	}
@@ -280,18 +287,10 @@ func (u *ValidatorSetUpdater) signMessage(
 	// The pChainHeight should be from the registry (registryPChainHeight)
 	// so the external chain can verify against its known validator set
 
-	signedMessage, err := u.signatureAggregator.CreateSignedMessage(
-		ctx,
-		u.logger,
-		unsignedMessage,
-		nil, // justification
-		subnetID,
-		67, // quorumNumerator (67% required)
-		0,  // quorumPercentageBuffer
-		pChainHeight,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create signed message: %w", err)
+	// TODO: sign the message
+	signedMessage := &warp.Message{
+		UnsignedMessage: *unsignedMessage,
+		Signature:       &warp.BitSetSignature{},
 	}
 
 	return signedMessage, nil
@@ -302,24 +301,23 @@ func (u *ValidatorSetUpdater) sendValidatorSetUpdate(
 	ctx context.Context,
 	client *evm.ExternalEVMDestinationClient,
 	signedMessage *warp.Message,
-	subnetID ids.ID,
 ) error {
 	// TODO: Construct callData for registry contract and send via client.SendTx
-	//
-	// Example:
-	// callData := registryABI.Pack("updateValidatorSet", signedMessage.Bytes())
-	// receipt, err := client.SendTx(
-	//     signedMessage,
-	//     nil,                    // Any sender can deliver
-	//     registryAddress,        // Registry contract address
-	//     gasLimit,
-	//     callData,
-	// )
 
-	_ = ctx
-	_ = client
-	_ = signedMessage
-	_ = subnetID
+	// callData := registryABI.Pack("updateValidatorSet", signedMessage.Bytes())
+	receipt, err := client.SendTx(
+		signedMessage,
+		nil,                     // Any sender can deliver
+		u.registryAddress.Hex(), // Registry contract address
+		gasLimit,
+		[]byte{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to send validator set update: %w", err)
+	}
+	if receipt == nil {
+		return fmt.Errorf("failed to send validator set update: no receipt")
+	}
 
 	return fmt.Errorf("sendValidatorSetUpdate not implemented")
 }

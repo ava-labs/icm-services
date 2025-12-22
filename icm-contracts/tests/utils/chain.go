@@ -202,6 +202,22 @@ func WaitForTransactionFailure(
 	return waitForTransaction(ctx, l1Info, txHash, false)
 }
 
+// WaitForTransactionSuccessWithClient waits for a transaction to be mined using a raw ethclient.
+// This is useful for external EVM chains that don't use L1TestInfo.
+func WaitForTransactionSuccessWithClient(
+	ctx context.Context,
+	client ethclient.Client,
+	txHash common.Hash,
+) *types.Receipt {
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	receipt, err := WaitMined(cctx, client, txHash)
+	Expect(err).Should(BeNil())
+	Expect(receipt.Status).Should(Equal(types.ReceiptStatusSuccessful))
+	return receipt
+}
+
 // Waits for a transaction to be mined.
 // Asserts Receipt.status equals success.
 func waitForTransaction(
