@@ -35,8 +35,8 @@ const (
 )
 
 var (
-	LocalNetworkInstance *network.LocalNetwork
-	TeleporterInfo       utils.TeleporterTestInfo
+	localNetworkInstance *network.LocalNetwork
+	teleporterInfo       utils.TeleporterTestInfo
 	e2eFlags             *e2e.FlagVars
 )
 
@@ -73,7 +73,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer cancel()
 
-	LocalNetworkInstance = network.NewLocalNetwork(
+	localNetworkInstance = network.NewLocalNetwork(
 		ctx,
 		"teleporter-test-local-network",
 		warpGenesisTemplateFile,
@@ -101,24 +101,24 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		2,
 		e2eFlags,
 	)
-	TeleporterInfo = utils.NewTeleporterTestInfo(LocalNetworkInstance.GetAllL1Infos())
+	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 	log.Info("Started local network")
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the l1 chains.
-	_, fundedKey := LocalNetworkInstance.GetFundedAccountInfo()
+	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
 	if e2eFlags.NetworkDir() == "" {
-		TeleporterInfo.DeployTeleporterMessenger(
+		teleporterInfo.DeployTeleporterMessenger(
 			ctx,
-			LocalNetworkInstance.GetPrimaryNetworkInfo(),
+			localNetworkInstance.GetPrimaryNetworkInfo(),
 			teleporterDeployerTransaction,
 			teleporterDeployerAddress,
 			teleporterContractAddress,
 			fundedKey,
 		)
 		balance := 100 * units.Avax
-		for _, subnet := range LocalNetworkInstance.GetL1Infos() {
+		for _, subnet := range localNetworkInstance.GetL1Infos() {
 			// Choose weights such that we can test validator churn
-			LocalNetworkInstance.ConvertSubnet(
+			localNetworkInstance.ConvertSubnet(
 				ctx,
 				subnet,
 				utils.PoAValidatorManager,
@@ -129,35 +129,35 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			)
 		}
 
-		for _, l1 := range LocalNetworkInstance.GetAllL1Infos() {
-			TeleporterInfo.SetTeleporter(teleporterContractAddress, l1)
-			TeleporterInfo.InitializeBlockchainID(l1, fundedKey)
-			TeleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
+		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+			teleporterInfo.InitializeBlockchainID(l1, fundedKey)
+			teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
 		}
 
 		// Save the Teleporter registry address and validator addresses to files
-		utils.SaveRegistyAddress(TeleporterInfo, teleporterRegistryAddressFile)
+		utils.SaveRegistyAddress(teleporterInfo, teleporterRegistryAddressFile)
 
-		LocalNetworkInstance.SaveValidatorAddress(validatorAddressesFile)
+		localNetworkInstance.SaveValidatorAddress(validatorAddressesFile)
 	} else {
 		// Read the Teleporter registry address from the file
 		utils.SetTeleporterInfoFromFile(
 			teleporterRegistryAddressFile,
 			teleporterContractAddress,
-			TeleporterInfo,
-			LocalNetworkInstance.GetAllL1Infos(),
+			teleporterInfo,
+			localNetworkInstance.GetAllL1Infos(),
 		)
 
 		// Read the validator addresses from the file
-		LocalNetworkInstance.SetValidatorAddressFromFile(validatorAddressesFile)
+		localNetworkInstance.SetValidatorAddressFromFile(validatorAddressesFile)
 	}
 
 	log.Info("Set up ginkgo before suite")
 })
 
 var _ = ginkgo.AfterSuite(func() {
-	LocalNetworkInstance.TearDownNetwork()
-	LocalNetworkInstance = nil
+	localNetworkInstance.TearDownNetwork()
+	localNetworkInstance = nil
 })
 
 var _ = ginkgo.Describe("[Teleporter integration tests]", func() {
@@ -165,83 +165,83 @@ var _ = ginkgo.Describe("[Teleporter integration tests]", func() {
 	ginkgo.It("Send a message from L1 A to L1 B, and one from B to A",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.BasicSendReceive(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.BasicSendReceive(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Deliver to the wrong chain",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.DeliverToWrongChain(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.DeliverToWrongChain(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Deliver to non-existent contract",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.DeliverToNonExistentContract(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.DeliverToNonExistentContract(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Retry successful execution",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.RetrySuccessfulExecution(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.RetrySuccessfulExecution(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Unallowed relayer",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.UnallowedRelayer(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.UnallowedRelayer(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Relay message twice",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.RelayMessageTwice(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.RelayMessageTwice(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Add additional fee amount",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.AddFeeAmount(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.AddFeeAmount(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Send specific receipts",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.SendSpecificReceipts(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.SendSpecificReceipts(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Insufficient gas",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.InsufficientGas(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.InsufficientGas(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Resubmit altered message",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.ResubmitAlteredMessage(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.ResubmitAlteredMessage(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Calculate Teleporter message IDs",
 		ginkgo.Label(utilsLabel),
 		func(ctx context.Context) {
-			teleporterFlows.CalculateMessageID(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.CalculateMessageID(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Relayer modifies message",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.RelayerModifiesMessage(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.RelayerModifiesMessage(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Validator churn",
 		ginkgo.Label(teleporterMessengerLabel),
 		func(ctx context.Context) {
-			teleporterFlows.ValidatorChurn(ctx, LocalNetworkInstance, TeleporterInfo)
+			teleporterFlows.ValidatorChurn(ctx, localNetworkInstance, teleporterInfo)
 		})
 
 	// Teleporter Registry tests
 	ginkgo.It("Teleporter registry",
 		ginkgo.Label(upgradabilityLabel),
 		func(ctx context.Context) {
-			registryFlows.TeleporterRegistry(ctx, LocalNetworkInstance, TeleporterInfo)
+			registryFlows.TeleporterRegistry(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Check upgrade access",
 		ginkgo.Label(upgradabilityLabel),
 		func(ctx context.Context) {
-			registryFlows.CheckUpgradeAccess(ctx, LocalNetworkInstance, TeleporterInfo)
+			registryFlows.CheckUpgradeAccess(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Pause and Unpause Teleporter",
 		ginkgo.Label(upgradabilityLabel),
 		func(ctx context.Context) {
-			registryFlows.PauseTeleporter(ctx, LocalNetworkInstance, TeleporterInfo)
+			registryFlows.PauseTeleporter(ctx, localNetworkInstance, teleporterInfo)
 		})
 })

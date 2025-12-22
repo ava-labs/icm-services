@@ -26,7 +26,10 @@ jobs:
           go-version-file: 'go.mod'
 
     - name: Run Lint
-      run: ./scripts/lint.sh --go-lint
+      run: |
+        ./scripts/lint.sh --go-lint
+        git --no-pager diff -- **.go
+        git --no-pager diff --quiet -- **.go
 
   protobuf-check:
     runs-on: ubuntu-22.04

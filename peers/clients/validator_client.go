@@ -15,7 +15,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
-
 	"github.com/ava-labs/icm-services/config"
 )
 
@@ -24,10 +23,12 @@ var _ CanonicalValidatorState = &CanonicalValidatorClient{}
 // CanonicalValidatorState is an interface that wraps [avalancheWarp.ValidatorState] and adds additional
 // convenience methods for fetching current and proposed validator sets.
 type CanonicalValidatorState interface {
+	GetSubnet(ctx context.Context, blockchainID ids.ID) (platformvm.GetSubnetClientResponse, error)
 	GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error)
 	GetLatestHeight(ctx context.Context) (uint64, error)
 	GetAllValidatorSets(ctx context.Context, pchainHeight uint64) (map[ids.ID]validators.WarpSet, error)
 	GetProposedValidators(ctx context.Context, subnetID ids.ID) (validators.WarpSet, error)
+	GetCurrentValidators(ctx context.Context, subnetID ids.ID) ([]platformvm.ClientPermissionlessValidator, error)
 }
 
 // CanonicalValidatorClient wraps [platformvm.Client] and implements [CanonicalValidatorState]
@@ -55,6 +56,20 @@ func (v *CanonicalValidatorClient) GetLatestHeight(ctx context.Context) (uint64,
 
 func (v *CanonicalValidatorClient) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
 	return v.client.ValidatedBy(ctx, blockchainID, v.options...)
+}
+
+func (v *CanonicalValidatorClient) GetSubnet(
+	ctx context.Context,
+	blockchainID ids.ID,
+) (platformvm.GetSubnetClientResponse, error) {
+	return v.client.GetSubnet(ctx, blockchainID, v.options...)
+}
+
+func (v *CanonicalValidatorClient) GetCurrentValidators(
+	ctx context.Context,
+	subnetID ids.ID,
+) ([]platformvm.ClientPermissionlessValidator, error) {
+	return v.client.GetCurrentValidators(ctx, subnetID, nil, v.options...)
 }
 
 func (v *CanonicalValidatorClient) GetProposedValidators(

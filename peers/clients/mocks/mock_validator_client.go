@@ -15,6 +15,7 @@ import (
 
 	ids "github.com/ava-labs/avalanchego/ids"
 	validators "github.com/ava-labs/avalanchego/snow/validators"
+	platformvm "github.com/ava-labs/avalanchego/vms/platformvm"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,6 +58,21 @@ func (mr *MockCanonicalValidatorStateMockRecorder) GetAllValidatorSets(ctx, pcha
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllValidatorSets", reflect.TypeOf((*MockCanonicalValidatorState)(nil).GetAllValidatorSets), ctx, pchainHeight)
 }
 
+// GetCurrentValidators mocks base method.
+func (m *MockCanonicalValidatorState) GetCurrentValidators(ctx context.Context, subnetID ids.ID) ([]platformvm.ClientPermissionlessValidator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentValidators", ctx, subnetID)
+	ret0, _ := ret[0].([]platformvm.ClientPermissionlessValidator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCurrentValidators indicates an expected call of GetCurrentValidators.
+func (mr *MockCanonicalValidatorStateMockRecorder) GetCurrentValidators(ctx, subnetID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentValidators", reflect.TypeOf((*MockCanonicalValidatorState)(nil).GetCurrentValidators), ctx, subnetID)
+}
+
 // GetLatestHeight mocks base method.
 func (m *MockCanonicalValidatorState) GetLatestHeight(ctx context.Context) (uint64, error) {
 	m.ctrl.T.Helper()
@@ -85,6 +101,21 @@ func (m *MockCanonicalValidatorState) GetProposedValidators(ctx context.Context,
 func (mr *MockCanonicalValidatorStateMockRecorder) GetProposedValidators(ctx, subnetID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProposedValidators", reflect.TypeOf((*MockCanonicalValidatorState)(nil).GetProposedValidators), ctx, subnetID)
+}
+
+// GetSubnet mocks base method.
+func (m *MockCanonicalValidatorState) GetSubnet(ctx context.Context, blockchainID ids.ID) (platformvm.GetSubnetClientResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSubnet", ctx, blockchainID)
+	ret0, _ := ret[0].(platformvm.GetSubnetClientResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSubnet indicates an expected call of GetSubnet.
+func (mr *MockCanonicalValidatorStateMockRecorder) GetSubnet(ctx, blockchainID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnet", reflect.TypeOf((*MockCanonicalValidatorState)(nil).GetSubnet), ctx, blockchainID)
 }
 
 // GetSubnetID mocks base method.
