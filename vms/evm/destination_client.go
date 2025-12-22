@@ -24,6 +24,7 @@ import (
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/icm-services/vms/evm/client"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -507,7 +508,7 @@ func (s *concurrentSigner) waitForReceipt(
 	}
 }
 
-func (c *destinationClient) Client() ethclient.Client {
+func (c *destinationClient) Client() client.EthClient {
 	return c.client
 }
 

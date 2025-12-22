@@ -16,9 +16,9 @@ import (
 	ids "github.com/ava-labs/avalanchego/ids"
 	set "github.com/ava-labs/avalanchego/utils/set"
 	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	client "github.com/ava-labs/icm-services/vms/evm/client"
 	common "github.com/ava-labs/libevm/common"
 	types "github.com/ava-labs/libevm/core/types"
-	ethclient "github.com/ava-labs/subnet-evm/ethclient"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -61,10 +61,10 @@ func (mr *MockDestinationClientMockRecorder) BlockGasLimit() *gomock.Call {
 }
 
 // Client mocks base method.
-func (m *MockDestinationClient) Client() ethclient.Client {
+func (m *MockDestinationClient) Client() client.EthClient {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Client")
-	ret0, _ := ret[0].(ethclient.Client)
+	ret0, _ := ret[0].(client.EthClient)
 	return ret0
 }
 
