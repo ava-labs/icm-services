@@ -20,7 +20,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 
-	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/params"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 
@@ -200,14 +199,13 @@ func warpConfigFromSubnetWarpConfig(inputConfig warp.Config) WarpConfig {
 	}
 }
 
-func getWarpConfig(client *ethclient.Client) (*warp.Config, error) {
-	// Fetch the subnet's chain config
+func getWarpConfig(client configRPCClient) (*warp.Config, error) { // Fetch the subnet's chain config
 	chainConfig, err := client.ChainConfig(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch chain config")
 	}
 
-	latestBlock, err := client.BlockByNumber(context.Background(), nil)
+	latestHeader, err := client.LatestHeader(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch latest block")
 	}
@@ -225,7 +223,7 @@ func getWarpConfig(client *ethclient.Client) (*warp.Config, error) {
 
 		// If the upgrade is scheduled in the future, skip it. If it activates during the lifetime of the relayer
 		// it will become unhealthy and restart and pick up the new config on next startup.
-		if cfg.Timestamp() != nil && *cfg.Timestamp() > latestBlock.Time() {
+		if cfg.Timestamp() != nil && *cfg.Timestamp() > latestHeader.Time {
 			continue
 		}
 

@@ -16,7 +16,6 @@ import (
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 )
@@ -27,9 +26,31 @@ const (
 	MaxBlocksPerRequest         = 200
 )
 
+// SubscriberRPCClient defines the minimal interface required for the rpcClient field in Subscriber.
+// This interface includes only the methods used by Subscriber and related functions.
+type SubscriberRPCClient interface {
+	// BlockNumber returns the most recent block number.
+	// Used in: Subscriber.ProcessFromHeight (line 79)
+	BlockNumber(ctx context.Context) (uint64, error)
+
+	// FilterLogs returns logs matching the provided filter query.
+	// Used in: Subscriber.getFilterLogsByBlockRangeRetryable (line 153)
+	//         types.NewWarpBlockInfo (line 57 in types/types.go)
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+}
+
+// SubscriberWSClient defines the minimal interface required for the wsClient field in Subscriber.
+// This interface includes only the methods used by Subscriber for websocket subscriptions.
+type SubscriberWSClient interface {
+	// SubscribeNewHead subscribes to notifications about new block headers.
+	// Returns a subscription that can be used to receive new headers via the provided channel.
+	// Used in: Subscriber.subscribe (line 197)
+	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+}
+
 type Subscriber struct {
-	wsClient     *ethclient.Client
-	rpcClient    *ethclient.Client
+	wsClient     SubscriberWSClient
+	rpcClient    SubscriberRPCClient
 	blockchainID ids.ID
 	headers      chan *types.Header
 	icmBlocks    chan *relayerTypes.WarpBlockInfo
@@ -44,8 +65,8 @@ type Subscriber struct {
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
-	wsClient *ethclient.Client,
-	rpcClient *ethclient.Client,
+	wsClient SubscriberWSClient,
+	rpcClient SubscriberRPCClient,
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID: blockchainID,

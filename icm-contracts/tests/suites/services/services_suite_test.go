@@ -25,6 +25,7 @@ import (
 	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -51,6 +52,7 @@ var (
 
 func TestMain(m *testing.M) {
 	e2eFlags = e2e.RegisterFlags()
+	evm.RegisterAllLibEVMExtras()
 	flag.Parse()
 	os.Exit(m.Run())
 }

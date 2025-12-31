@@ -271,8 +271,10 @@ func CalculateTxParams(
 	l1Info interfaces.L1TestInfo,
 	fundedAddress common.Address,
 ) (*big.Int, *big.Int, uint64) {
-	baseFee, err := l1Info.RPCClient.EstimateBaseFee(ctx)
+	block, err := l1Info.RPCClient.BlockByNumber(ctx, nil)
 	Expect(err).Should(BeNil())
+
+	baseFee := block.BaseFee()
 
 	gasTipCap, err := l1Info.RPCClient.SuggestGasTipCap(ctx)
 	Expect(err).Should(BeNil())

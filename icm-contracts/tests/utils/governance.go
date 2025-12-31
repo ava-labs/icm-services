@@ -24,6 +24,20 @@ func DeployValidatorSetSig(
 ) (common.Address, *validatorsetsig.ValidatorSetSig) {
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, contractL1.EVMChainID)
 	Expect(err).Should(BeNil())
+	// block, err := contractL1.RPCClient.BlockByNumber(ctx, nil)
+	// Expect(err).Should(BeNil())
+
+	// baseFee := block.BaseFee()
+
+	// gasTipCap, err := contractL1.RPCClient.SuggestGasTipCap(ctx)
+	// Expect(err).Should(BeNil())
+	// opts.GasFeeCap = new(big.Int).Add(baseFee, gasTipCap)
+	// opts.GasTipCap = gasTipCap
+	opts.GasLimit = 20_000_000
+	log.Info("Deploying ValidatorSetSig contract",
+		zap.Any("opts.GasFeeCap", opts.GasFeeCap),
+		zap.Any("opts.GasTipCap", opts.GasTipCap),
+	)
 	address, tx, validatorSetSig, err := validatorsetsig.DeployValidatorSetSig(
 		opts,
 		contractL1.RPCClient,

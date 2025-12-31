@@ -11,6 +11,7 @@ import (
 	governanceFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/governance"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -26,6 +27,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	evm.RegisterAllLibEVMExtras()
 	e2eFlags = e2e.RegisterFlags()
 	flag.Parse()
 	os.Exit(m.Run())

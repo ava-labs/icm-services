@@ -4,6 +4,7 @@
 package evm
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -11,13 +12,33 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/relayer/config"
-	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
+	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
-func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient.MockClient) {
+var _ SubscriberRPCClient = (*subscriberClientStub)(nil)
+var _ SubscriberWSClient = (*subscriberClientStub)(nil)
+
+type subscriberClientStub struct {
+	blockNumber       uint64
+	numFilterLogCalls int
+}
+
+func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) {
+	return c.blockNumber, nil
+}
+
+func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	c.numFilterLogCalls++
+	return []types.Log{}, nil
+}
+
+func (c *subscriberClientStub) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
+	return nil, nil
+}
+
+func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *subscriberClientStub) {
 	sourceSubnet := config.SourceBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
@@ -28,12 +49,12 @@ func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient
 
 	logger := logging.NoLog{}
 
-	mockEthClient := mock_ethclient.NewMockClient(gomock.NewController(t))
+	stubRPCClient := &subscriberClientStub{}
 	blockchainID, err := ids.FromString(sourceSubnet.BlockchainID)
 	require.NoError(t, err)
-	subscriber := NewSubscriber(logger, blockchainID, mockEthClient, mockEthClient)
+	subscriber := NewSubscriber(logger, blockchainID, stubRPCClient, stubRPCClient)
 
-	return subscriber, mockEthClient
+	return subscriber, stubRPCClient
 }
 
 func TestProcessFromHeight(t *testing.T) {
@@ -76,22 +97,12 @@ func TestProcessFromHeight(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			subscriberUnderTest, mockEthClient := makeSubscriberWithMockEthClient(t)
+			subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t)
 
-			mockEthClient.
-				EXPECT().
-				BlockNumber(gomock.Any()).
-				Return(uint64(tc.latest), nil).
-				Times(1)
+			stubRPCClient.blockNumber = uint64(tc.latest)
+			var expectedFilterLogCalls int64
 			if tc.latest > tc.input {
-				expectedFilterLogCalls := (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
-				mockEthClient.EXPECT().FilterLogs(
-					gomock.Any(),
-					gomock.Any(),
-				).Return(
-					[]types.Log{},
-					nil,
-				).Times(int(expectedFilterLogCalls))
+				expectedFilterLogCalls = (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
 			}
 			done := make(chan bool, 1)
 			subscriberUnderTest.ProcessFromHeight(big.NewInt(tc.input), done)
@@ -106,6 +117,7 @@ func TestProcessFromHeight(t *testing.T) {
 				}
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
+			require.EqualValues(t, expectedFilterLogCalls, stubRPCClient.numFilterLogCalls)
 		})
 	}
 }

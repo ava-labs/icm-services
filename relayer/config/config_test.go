@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,7 +18,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/utils"
-	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/subnet-evm/params"
 	"github.com/ava-labs/subnet-evm/params/extras"
@@ -25,7 +25,6 @@ import (
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/precompile/precompileconfig"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 var (
@@ -41,6 +40,19 @@ func setupConfigJSON(t *testing.T, rootPath string, value string) string {
 	configFilePath := filepath.Join(rootPath, "config.json")
 	require.NoError(t, os.WriteFile(configFilePath, []byte(value), 0o600))
 	return configFilePath
+}
+
+type stubRPCClient struct {
+	chainConfig  *params.ChainConfigWithUpgradesJSON
+	latestHeader *types.Header
+}
+
+func (c *stubRPCClient) ChainConfig(ctx context.Context) (*params.ChainConfigWithUpgradesJSON, error) {
+	return c.chainConfig, nil
+}
+
+func (c *stubRPCClient) LatestHeader(ctx context.Context) (*types.Header, error) {
+	return c.latestHeader, nil
 }
 
 func TestMultipleSignersConfig(t *testing.T) {
@@ -658,19 +670,12 @@ func TestGetWarpConfig(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			client := mock_ethclient.NewMockClient(gomock.NewController(t))
-			gomock.InOrder(
-				client.EXPECT().ChainConfig(gomock.Any()).Return(
-					&testCase.chainConfig,
-					nil,
-				).Times(testCase.getChainConfigCalls),
-				client.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(
-					currentBlock,
-					nil,
-				).Times(testCase.getChainConfigCalls),
-			)
+			client := stubRPCClient{
+				chainConfig:  &testCase.chainConfig,
+				latestHeader: currentBlock.Header(),
+			}
 
-			subnetWarpConfig, err := getWarpConfig(client)
+			subnetWarpConfig, err := getWarpConfig(&client)
 			require.Equal(t, testCase.expectedError, err)
 			expectedWarpConfig := warpConfigFromSubnetWarpConfig(*subnetWarpConfig)
 			require.Equal(t, testCase.expectedWarpConfig, expectedWarpConfig)

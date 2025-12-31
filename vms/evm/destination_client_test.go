@@ -101,7 +101,7 @@ func TestGetFeePerGas(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			mockClient := mock_ethclient.NewMockClient(ctrl)
+			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			destClient := destinationClient{
 				logger:                     logging.NoLog{},
 				client:                     mockClient,
@@ -216,7 +216,7 @@ func TestSendTx(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			mockClient := mock_ethclient.NewMockClient(ctrl)
+			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			destClient = destinationClient{
 				readonlyConcurrentSigners: []*readonlyConcurrentSigner{
 					(*readonlyConcurrentSigner)(signer),
