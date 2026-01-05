@@ -42,7 +42,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var _ LocalNetwork = &LocalAvalancheNetwork{}
+var _ LocalNetwork = (*LocalAvalancheNetwork)(nil)
 
 type ProxyAddress struct {
 	common.Address
