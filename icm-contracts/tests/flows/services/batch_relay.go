@@ -23,7 +23,7 @@ import (
 func BatchRelay(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
@@ -115,7 +115,7 @@ func BatchRelay(
 	)
 	Expect(err).Should(BeNil())
 
-	utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
 
 	// Wait for the message on the destination
 	maxWait := 40

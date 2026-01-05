@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func ValidatorSetSig(ctx context.Context, network *localnetwork.LocalNetwork) {
+func ValidatorSetSig(ctx context.Context, network *localnetwork.LocalAvalancheNetwork) {
 	// ************************************************************************************************
 	// Setup
 	// ************************************************************************************************

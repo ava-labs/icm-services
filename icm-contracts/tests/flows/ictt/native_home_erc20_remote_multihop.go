@@ -21,7 +21,7 @@ import (
  */
 func NativeTokenHomeERC20TokenRemoteMultiHop(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()

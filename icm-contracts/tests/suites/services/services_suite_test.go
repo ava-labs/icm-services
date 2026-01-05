@@ -36,7 +36,7 @@ const (
 var (
 	log logging.Logger
 
-	localNetworkInstance *network.LocalNetwork
+	localNetworkInstance *network.LocalAvalancheNetwork
 	teleporterInfo       utils.TeleporterTestInfo
 
 	decider *exec.Cmd
@@ -91,7 +91,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
-	localNetworkInstance = network.NewLocalNetwork(
+	localNetworkInstance = network.NewLocalAvalancheNetwork(
 		networkStartCtx,
 		"icm-off-chain-services-e2e-test",
 		warpGenesisTemplateFile,
