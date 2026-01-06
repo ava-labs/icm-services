@@ -12,6 +12,15 @@ struct TeleporterMessageReceipt {
     address relayerRewardAddress;
 }
 
+struct ICMMessage {
+	TeleporterMessage unsignedMessage;
+	// The blockchain on which the message originated. This needs to be checked by the verifier contract.
+	bytes32 sourceBlockchainID;
+	// Arbitrary data. Used by `IMessageVerifier` contracts to 
+	// to authenticate the message
+	bytes attestation;
+}
+
 // Represents all of the information required for submitting a Teleporter message
 // to be sent to the given destination chain ID and address. Includes the fee
 // information for the message, the amount of gas the relayer must provide to execute
@@ -26,10 +35,13 @@ struct TeleporterMessageInput {
     bytes message;
 }
 
-// Represents a message sent or received by an implementation of {ITeleporterMessenger}.
 struct TeleporterMessage {
     uint256 messageNonce;
     address originSenderAddress;
+    // This is needed because we have an extra level of abstraction now. Before TeleporterMessenger was calling
+    // WarpMessenger directly, so the `senderAddress` of the warp message was the address of the TeleporterMessenger contract.
+    // Now, WarpAdapter is calling WarpMessenger, so the `originSenderAddress` of the warp message is the address of the WarpAdapter contract.
+    address originTeleporterAddress;
     bytes32 destinationBlockchainID;
     address destinationAddress;
     uint256 requiredGasLimit;
@@ -44,6 +56,16 @@ struct TeleporterMessage {
 struct TeleporterFeeInfo {
     address feeTokenAddress;
     uint256 amount;
+}
+
+interface IMessageVerifier {
+	function verifyMessage(ICMMessage calldata message) external returns (bool);
+}
+
+// This function signature can be changed to accept bytes to make it more generic, but I think
+// having the TeleporterMessage struct is more clear for now.
+interface IMessageSender {
+	function sendMessage(TeleporterMessage calldata message) external;
 }
 
 /**
@@ -154,11 +176,8 @@ interface ITeleporterMessenger {
 
     /**
      * @notice Receives a cross-chain message, and marks the `relayerRewardAddress` for fee reward for a successful delivery.
-     *
-     * @dev The message specified by `messageIndex` must be provided at that index in the access list storage slots of the transaction,
-     * and is verified in the precompile predicate.
      */
-    function receiveCrossChainMessage(uint32 messageIndex, address relayerRewardAddress) external;
+    function receiveCrossChainMessage(ICMMessage calldata message, address relayerRewardAddress) external;
 
     /**
      * @notice Retries the execution of a previously delivered message by verifying the payload matches
