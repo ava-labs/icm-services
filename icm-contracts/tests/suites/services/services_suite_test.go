@@ -122,7 +122,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
-	utils.DeployTeleporterMessenger(
+	utils.DeployWithNicksMethod(
 		networkStartCtx,
 		localNetworkInstance.GetPrimaryNetworkInfo(),
 		teleporterDeployerTransaction,
@@ -135,7 +135,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
 	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
 		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
-		teleporterInfo.InitializeBlockchainID(subnet, fundedKey)
 		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
 	}
 
