@@ -19,7 +19,7 @@ const HELLO_WORLD = "Hello, world!"
 
 func DeliverToNonExistentContract(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -39,7 +39,7 @@ func DeliverToNonExistentContract(
 	fundDeployerTx := utils.CreateNativeTransferTransaction(
 		ctx, l1BInfo, fundedKey, deployerAddress, fundAmount,
 	)
-	utils.SendTransactionAndWaitForSuccess(ctx, l1BInfo, fundDeployerTx)
+	utils.SendTransactionAndWaitForSuccess(ctx, l1BInfo.RPCClient, fundDeployerTx)
 
 	//
 	// Deploy ExampleMessenger to L1 A, but not to L1 B
@@ -78,7 +78,7 @@ func DeliverToNonExistentContract(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
 
 	sendEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,

@@ -32,7 +32,7 @@ const rpcSignatureMetricName = "app_fetch_signature_rpc_count"
 func WarpAPIRelay(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()

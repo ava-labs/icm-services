@@ -25,7 +25,7 @@ import (
 // Disallow this test from being run on anything but a local network, since it requires special behavior by the relayer
 func RelayerModifiesMessage(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -72,7 +72,7 @@ func relayAlteredMessage(
 	sourceReceipt *types.Receipt,
 	source interfaces.L1TestInfo,
 	destination interfaces.L1TestInfo,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 ) {
 	// Fetch the Teleporter message from the logs
 	sendEvent, err := utils.GetEventFromLogs(
@@ -106,7 +106,7 @@ func relayAlteredMessage(
 	)
 
 	log.Info("Sending transaction to destination chain")
-	utils.SendTransactionAndWaitForFailure(ctx, destination, signedTx)
+	utils.SendTransactionAndWaitForFailure(ctx, destination.RPCClient, signedTx)
 }
 
 func createAlteredReceiveCrossChainMessageTransaction(
@@ -137,7 +137,7 @@ func createAlteredReceiveCrossChainMessageTransaction(
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, fundedAddress)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := utils.CalculateTxParams(ctx, l1Info, fundedAddress)
+	gasFeeCap, gasTipCap, nonce := utils.CalculateTxParams(ctx, l1Info.RPCClient, fundedAddress)
 
 	alterTeleporterMessage(signedMessage)
 

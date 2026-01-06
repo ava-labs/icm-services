@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	localNetworkInstance *network.LocalNetwork
+	localNetworkInstance *network.LocalAvalancheNetwork
 	teleporterInfo       utils.TeleporterTestInfo
 	e2eFlags             *e2e.FlagVars
 )
@@ -65,7 +65,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer cancel()
 
-	localNetworkInstance = network.NewLocalNetwork(
+	localNetworkInstance = network.NewLocalAvalancheNetwork(
 		ctx,
 		"teleporter-test-local-network",
 		warpGenesisTemplateFile,

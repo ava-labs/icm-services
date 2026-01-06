@@ -15,7 +15,7 @@ import (
 // Tests basic one-way send from L1 A to L1 B and vice versa
 func BasicSendReceive(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()

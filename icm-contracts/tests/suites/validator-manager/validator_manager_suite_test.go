@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	localNetworkInstance *localnetwork.LocalNetwork
+	localNetworkInstance *localnetwork.LocalAvalancheNetwork
 	e2eFlags             *e2e.FlagVars
 )
 
@@ -45,7 +45,7 @@ var _ = ginkgo.BeforeEach(func(ctx context.Context) {
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
-	localNetworkInstance = localnetwork.NewLocalNetwork(
+	localNetworkInstance = localnetwork.NewLocalAvalancheNetwork(
 		ctx,
 		"validator-manager-test-local-network",
 		warpGenesisTemplateFile,

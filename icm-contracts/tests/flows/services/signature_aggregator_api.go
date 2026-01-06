@@ -35,7 +35,7 @@ import (
 func SignatureAggregatorAPI(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	// Begin Setup step
