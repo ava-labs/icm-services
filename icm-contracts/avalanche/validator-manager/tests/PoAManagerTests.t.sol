@@ -153,21 +153,20 @@ contract PoAManagerTest is ValidatorManagerTest {
     }
 
     // Implement required abstract functions
-    // solhint-disable-next-line no-empty-blocks
+    /* solhint-disable no-empty-blocks */
     function _beforeSend(
         uint256 amount,
         address spender
     ) internal virtual override {}
+    /* solhint-enable no-empty-blocks */
 
+    /* solhint-disable no-empty-blocks */
     function _beforeRegisterValidator(
         bytes32 validationID,
         address rewardRecipient
-    )
-        internal
-        virtual
-        override // solhint-disable-next-line no-empty-blocks
+    ) internal virtual override {}
 
-    {}
+    /* solhint-enable no-empty-blocks */
 
     // Override helper functions to call PoAManager instead of ValidatorManager
     function _initiateValidatorRegistration(
