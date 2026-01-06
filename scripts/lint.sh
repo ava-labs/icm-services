@@ -14,13 +14,13 @@ source $REPO_PATH/scripts/versions.sh
 function solFormat() {
     # format solidity contracts
     echo "Formatting Solidity contracts..."
-    forge fmt --root $REPO_PATH $REPO_PATH/icm-contracts/contracts/**
+    forge fmt --root $REPO_PATH $REPO_PATH/icm-contracts/**
 }
 
 function solFormatCheck() {
     # format solidity contracts
     echo "Checking formatting of Solidity contracts..."
-    forge fmt --check --root $REPO_PATH $REPO_PATH/icm-contracts/contracts/**
+    forge fmt --check --root $REPO_PATH $REPO_PATH/icm-contracts/**
 }
 
 function solLinter() {
