@@ -102,7 +102,7 @@ func (t TeleporterTestInfo) InitializeBlockchainID(l1 interfaces.L1TestInfo, fun
 	Expect(err).Should(BeNil())
 	tx, err := t.TeleporterMessenger(l1).InitializeBlockchainID(opts)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(context.Background(), l1, tx.Hash())
+	WaitForTransactionSuccess(context.Background(), l1.RPCClient, tx.Hash())
 }
 
 func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
@@ -120,7 +120,7 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	)
 	Expect(err).Should(BeNil())
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	info := t[l1.BlockchainID]
 	info.TeleporterRegistryAddress = teleporterRegistryAddress
@@ -158,10 +158,10 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 
 	log.Info("Sending transaction to destination chain")
 	if !expectSuccess {
-		return SendTransactionAndWaitForFailure(ctx, destination, signedTx)
+		return SendTransactionAndWaitForFailure(ctx, destination.RPCClient, signedTx)
 	}
 
-	receipt := SendTransactionAndWaitForSuccess(ctx, destination, signedTx)
+	receipt := SendTransactionAndWaitForSuccess(ctx, destination.RPCClient, signedTx)
 
 	// Check the transaction logs for the ReceiveCrossChainMessage event emitted by the Teleporter contract
 	receiveEvent, err := GetEventFromLogs(
@@ -201,7 +201,7 @@ func (t TeleporterTestInfo) SendExampleCrossChainMessageAndVerify(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	sourceTeleporterMessenger := t.TeleporterMessenger(source)
 	destTeleporterMessenger := t.TeleporterMessenger(destination)
@@ -280,7 +280,7 @@ func (t TeleporterTestInfo) AddProtocolVersionAndWaitForAcceptance(
 	expectedLatestVersion := big.NewInt(curLatestVersion.Int64() + 1)
 
 	// Wait for tx to be accepted, and verify events emitted
-	receipt := SendTransactionAndWaitForSuccess(ctx, l1, signedTx)
+	receipt := SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, signedTx)
 	teleporterRegistry := t.TeleporterRegistry(l1)
 	addProtocolVersionEvent, err := GetEventFromLogs(receipt.Logs, teleporterRegistry.ParseAddProtocolVersion)
 	Expect(err).Should(BeNil())
@@ -357,7 +357,7 @@ func DeployTeleporterMessenger(
 	fundDeployerTx := CreateNativeTransferTransaction(
 		ctx, l1, fundedKey, deployerAddress, fundAmount,
 	)
-	SendTransactionAndWaitForSuccess(ctx, l1, fundDeployerTx)
+	SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, fundDeployerTx)
 
 	log.Info("Finished funding Teleporter deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
 
@@ -372,7 +372,7 @@ func DeployTeleporterMessenger(
 	txHash := common.Hash{}
 	err = rpcClient.CallContext(ctx, &txHash, "eth_sendRawTransaction", hexutil.Encode(transactionBytes))
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, txHash)
+	WaitForTransactionSuccess(ctx, l1.RPCClient, txHash)
 
 	teleporterCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
 	Expect(err).Should(BeNil())
@@ -433,7 +433,7 @@ func DeployTestMessenger(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, exampleMessenger
 }
@@ -476,7 +476,7 @@ func SendAddFeeAmountAndWaitForAcceptance(
 	tx, err := transactor.AddFeeAmount(opts, messageID, feeContractAddress, amount)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	addFeeAmountEvent, err := GetEventFromLogs(receipt.Logs, transactor.ParseAddFeeAmount)
 	Expect(err).Should(BeNil())
@@ -505,7 +505,7 @@ func RetryMessageExecutionAndWaitForAcceptance(
 	tx, err := destinationTeleporterMessenger.RetryMessageExecution(opts, sourceBlockchainID, message)
 	Expect(err).Should(BeNil())
 
-	return WaitForTransactionSuccess(ctx, destinationL1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, destinationL1.RPCClient, tx.Hash())
 }
 
 func RedeemRelayerRewardsAndConfirm(
@@ -534,7 +534,7 @@ func RedeemRelayerRewardsAndConfirm(
 		txOpts, feeTokenAddress,
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	// Check that the ERC20 balance was incremented
 	balanceAfterRedemption, err := feeToken.BalanceOf(
@@ -578,7 +578,7 @@ func SendSpecifiedReceiptsAndWaitForAcceptance(
 		opts, destinationBlockchainID, messageIDs, feeInfo, allowedRelayerAddresses)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	// Check the transaction logs for the SendCrossChainMessage event emitted by the Teleporter contract
 	event, err := GetEventFromLogs(receipt.Logs, sourceTeleporterMessenger.ParseSendCrossChainMessage)
@@ -609,7 +609,7 @@ func SendCrossChainMessageAndWaitForAcceptance(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be accepted
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	// Check the transaction logs for the SendCrossChainMessage event emitted by the Teleporter contract
 	event, err := GetEventFromLogs(receipt.Logs, sourceTeleporterMessenger.ParseSendCrossChainMessage)
@@ -664,7 +664,7 @@ func CreateSendCrossChainMessageTransaction(
 	data, err := teleportermessenger.PackSendCrossChainMessage(input)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, source, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, source.RPCClient, PrivateKeyToAddress(senderKey))
 
 	// Send a transaction to the Teleporter contract
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -708,7 +708,7 @@ func CreateReceiveCrossChainMessageTransaction(
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, PrivateKeyToAddress(senderKey))
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -745,7 +745,7 @@ func CreateAddProtocolVersionTransaction(
 	callData, err := teleporterregistry.PackAddProtocolVersion(0)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -779,7 +779,7 @@ func CreateExecuteCallPredicateTransaction(
 	callData, err := validatorsetsig.PackExecuteCall(0)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,

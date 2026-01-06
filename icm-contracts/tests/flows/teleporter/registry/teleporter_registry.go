@@ -16,7 +16,7 @@ const (
 
 func TeleporterRegistry(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	// Deploy dApp on both chains that use Teleporter Registry
@@ -128,7 +128,7 @@ func TeleporterRegistry(
 	tx, err := testMessengerB.UpdateMinTeleporterVersion(opts, latestVersionB)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
 
 	// Verify that minTeleporterVersion updated
 	minTeleporterVersionUpdatedEvent, err := utils.GetEventFromLogs(

@@ -25,7 +25,7 @@ import (
 func BasicRelay(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()

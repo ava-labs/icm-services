@@ -37,7 +37,7 @@ import (
  * - Delist the previous PoA validator properly
  * - Delist the PoS validator
  */
-func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) {
+func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalancheNetwork) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
@@ -170,7 +170,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) 
 	Expect(err).Should(BeNil())
 	tx, err := poaManager.TransferValidatorManagerOwnership(opts, stakingManagerAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1AInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(context.Background(), l1AInfo.RPCClient, tx.Hash())
 
 	// Check that previous validator is still registered
 	validationID, err := validatorManager.GetNodeValidationID(&bind.CallOpts{}, poaNodeID)
