@@ -8,8 +8,9 @@ import {IValidatorManagerExternalOwnable} from "../interfaces/IValidatorManagerE
 import {IACP99Manager, PChainOwner, ConversionData} from "../interfaces/IACP99Manager.sol";
 import {ValidatorMessages} from "../ValidatorMessages.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
 
 contract PoAManagerTest is ValidatorManagerTest {
     PoAManager public poaManager;
@@ -153,7 +154,10 @@ contract PoAManagerTest is ValidatorManagerTest {
 
     // Implement required abstract functions
     // solhint-disable-next-line no-empty-blocks
-    function _beforeSend(uint256 amount, address spender) internal virtual override {}
+    function _beforeSend(
+        uint256 amount,
+        address spender
+    ) internal virtual override {}
 
     function _beforeRegisterValidator(
         bytes32 validationID,
@@ -162,6 +166,7 @@ contract PoAManagerTest is ValidatorManagerTest {
         internal
         virtual
         override // solhint-disable-next-line no-empty-blocks
+
     {}
 
     // Override helper functions to call PoAManager instead of ValidatorManager

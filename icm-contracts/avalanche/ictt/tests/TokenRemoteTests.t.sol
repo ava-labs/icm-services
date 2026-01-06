@@ -153,8 +153,8 @@ abstract contract TokenRemoteTest is TokenTransferrerTest {
 
         if (
             TokenScalingUtils.removeTokenScale(
-                tokenRemote.getTokenMultiplier(), tokenRemote.getMultiplyOnRemote(), amount
-            ) != 0
+                    tokenRemote.getTokenMultiplier(), tokenRemote.getMultiplyOnRemote(), amount
+                ) != 0
         ) {
             return;
         }
@@ -377,9 +377,9 @@ abstract contract TokenRemoteTest is TokenTransferrerTest {
         _setUpMockMint(address(tokenRemote), amount);
         vm.expectRevert("CallUtils: insufficient gas");
         vm.prank(MOCK_TELEPORTER_MESSENGER_ADDRESS);
-        tokenRemote.receiveTeleporterMessage{gas: gasLimit - 1}(
-            DEFAULT_TOKEN_HOME_BLOCKCHAIN_ID, DEFAULT_TOKEN_HOME_ADDRESS, message
-        );
+        tokenRemote.receiveTeleporterMessage{
+            gas: gasLimit - 1
+        }(DEFAULT_TOKEN_HOME_BLOCKCHAIN_ID, DEFAULT_TOKEN_HOME_ADDRESS, message);
     }
 
     function testReceiveInvalidMessageType() public {
@@ -523,7 +523,10 @@ abstract contract TokenRemoteTest is TokenTransferrerTest {
         _sendAndCall(input, amount);
     }
 
-    function _setUpMockMint(address recipient, uint256 amount) internal virtual;
+    function _setUpMockMint(
+        address recipient,
+        uint256 amount
+    ) internal virtual;
 
     function _setUpExpectedSendAndCall(
         bytes32 sourceBlockchainID,
@@ -538,7 +541,11 @@ abstract contract TokenRemoteTest is TokenTransferrerTest {
 
     // Remotes don't need to register supported remotes because they
     // only send messages to their configured token home.
-    function _setUpRegisteredRemote(bytes32, address, uint256) internal virtual override {
+    function _setUpRegisteredRemote(
+        bytes32,
+        address,
+        uint256
+    ) internal virtual override {
         return;
     }
 
@@ -553,7 +560,9 @@ abstract contract TokenRemoteTest is TokenTransferrerTest {
         return TeleporterMessageInput({
             destinationBlockchainID: tokenRemote.getTokenHomeBlockchainID(),
             destinationAddress: tokenRemote.getTokenHomeAddress(),
-            feeInfo: TeleporterFeeInfo({feeTokenAddress: address(tokenRemote), amount: input.primaryFee}),
+            feeInfo: TeleporterFeeInfo({
+                feeTokenAddress: address(tokenRemote), amount: input.primaryFee
+            }),
             requiredGasLimit: tokenRemote.MULTI_HOP_SEND_REQUIRED_GAS(),
             allowedRelayerAddresses: new address[](0),
             message: _encodeMultiHopSendMessage({
@@ -576,12 +585,12 @@ abstract contract TokenRemoteTest is TokenTransferrerTest {
         return TeleporterMessageInput({
             destinationBlockchainID: tokenRemote.getTokenHomeBlockchainID(),
             destinationAddress: tokenRemote.getTokenHomeAddress(),
-            feeInfo: TeleporterFeeInfo({feeTokenAddress: address(tokenRemote), amount: input.primaryFee}),
+            feeInfo: TeleporterFeeInfo({
+                feeTokenAddress: address(tokenRemote), amount: input.primaryFee
+            }),
             requiredGasLimit: tokenRemote.MULTI_HOP_CALL_REQUIRED_GAS()
-                + (
-                    tokenRemote.calculateNumWords(input.recipientPayload.length)
-                        * tokenRemote.MULTI_HOP_CALL_GAS_PER_WORD()
-                ),
+                + (tokenRemote.calculateNumWords(input.recipientPayload.length)
+                    * tokenRemote.MULTI_HOP_CALL_GAS_PER_WORD()),
             allowedRelayerAddresses: new address[](0),
             message: _encodeMultiHopCallMessage({
                 originSenderAddress: originSenderAddress,

@@ -6,8 +6,9 @@
 pragma solidity 0.8.30;
 
 import {TeleporterMessageInput, TeleporterFeeInfo} from "@teleporter/ITeleporterMessenger.sol";
-import {TeleporterRegistryOwnableAppUpgradeable} from
-    "@teleporter/registry/TeleporterRegistryOwnableAppUpgradeable.sol";
+import {
+    TeleporterRegistryOwnableAppUpgradeable
+} from "@teleporter/registry/TeleporterRegistryOwnableAppUpgradeable.sol";
 import {ITokenHome, RemoteTokenTransferrerSettings} from "./interfaces/ITokenHome.sol";
 import {
     SendTokensInput,
@@ -66,9 +67,9 @@ abstract contract TokenHome is
         mapping(
             bytes32 remoteBlockchainID
                 => mapping(
-                    address remoteTokenTransferrerAddress
-                        => RemoteTokenTransferrerSettings remoteSettings
-                )
+                address remoteTokenTransferrerAddress
+                    => RemoteTokenTransferrerSettings remoteSettings
+            )
         ) _registeredRemotes;
         /**
          * @notice Tracks the balances of tokens sent to TokenRemote instances.
@@ -192,8 +193,9 @@ abstract contract TokenHome is
             message.homeTokenDecimals == $._tokenDecimals, "TokenHome: invalid home token decimals"
         );
 
-        (uint256 tokenMultiplier, bool multiplyOnRemote) = TokenScalingUtils
-            .deriveTokenMultiplierValues($._tokenDecimals, message.remoteTokenDecimals);
+        (uint256 tokenMultiplier, bool multiplyOnRemote) = TokenScalingUtils.deriveTokenMultiplierValues(
+            $._tokenDecimals, message.remoteTokenDecimals
+        );
 
         // Calculate the collateral needed in home token denomination.
         uint256 collateralNeeded = TokenScalingUtils.removeTokenScale(
@@ -207,8 +209,7 @@ abstract contract TokenHome is
             collateralNeeded += 1;
         }
 
-        $._registeredRemotes[remoteBlockchainID][remoteTokenTransferrerAddress] =
-        RemoteTokenTransferrerSettings({
+        $._registeredRemotes[remoteBlockchainID][remoteTokenTransferrerAddress] = RemoteTokenTransferrerSettings({
             registered: true,
             collateralNeeded: collateralNeeded,
             tokenMultiplier: tokenMultiplier,
@@ -236,7 +237,10 @@ abstract contract TokenHome is
      * - {input.recipient} cannot be the zero address
      * - {amount} must be greater than 0
      */
-    function _send(SendTokensInput memory input, uint256 amount) internal sendNonReentrant {
+    function _send(
+        SendTokensInput memory input,
+        uint256 amount
+    ) internal sendNonReentrant {
         _validateSendTokensInput(input);
         // Require that a single hop transfer does not have a multi-hop fallback recipient.
         require(input.multiHopFallback == address(0), "TokenHome: non-zero multi-hop fallback");
@@ -262,8 +266,7 @@ abstract contract TokenHome is
                 destinationBlockchainID: input.destinationBlockchainID,
                 destinationAddress: input.destinationTokenTransferrerAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: feeAmount
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: feeAmount
                 }),
                 requiredGasLimit: input.requiredGasLimit,
                 allowedRelayerAddresses: new address[](0),
@@ -320,8 +323,7 @@ abstract contract TokenHome is
                 destinationBlockchainID: input.destinationBlockchainID,
                 destinationAddress: input.destinationTokenTransferrerAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: input.primaryFee
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: input.primaryFee
                 }),
                 requiredGasLimit: input.requiredGasLimit,
                 allowedRelayerAddresses: new address[](0),
@@ -374,8 +376,7 @@ abstract contract TokenHome is
                 destinationBlockchainID: input.destinationBlockchainID,
                 destinationAddress: input.destinationTokenTransferrerAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: feeAmount
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: feeAmount
                 }),
                 requiredGasLimit: input.requiredGasLimit,
                 allowedRelayerAddresses: new address[](0),
@@ -430,8 +431,7 @@ abstract contract TokenHome is
                 destinationBlockchainID: input.destinationBlockchainID,
                 destinationAddress: input.destinationTokenTransferrerAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: input.primaryFee
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: input.primaryFee
                 }),
                 requiredGasLimit: input.requiredGasLimit,
                 allowedRelayerAddresses: new address[](0),
@@ -608,7 +608,10 @@ abstract contract TokenHome is
      * @param recipient The address to withdraw tokens to
      * @param amount The amount of tokens to withdraw
      */
-    function _withdraw(address recipient, uint256 amount) internal virtual;
+    function _withdraw(
+        address recipient,
+        uint256 amount
+    ) internal virtual;
 
     /**
      * @notice Processes a send and call message by calling the recipient contract.

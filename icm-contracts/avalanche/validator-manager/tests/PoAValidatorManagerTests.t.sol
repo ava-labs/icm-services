@@ -7,8 +7,9 @@ pragma solidity 0.8.30;
 
 import {ValidatorManagerTest} from "./ValidatorManagerTests.t.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts@5.0.2/proxy/utils/Initializable.sol";
 import {IACP99Manager, PChainOwner, ConversionData} from "../interfaces/IACP99Manager.sol";
 import {IValidatorManager, ValidatorManager} from "../ValidatorManager.sol";
@@ -111,11 +112,17 @@ contract PoAValidatorManagerTest is ValidatorManagerTest {
         return app.completeValidatorRegistration(messageIndex);
     }
 
-    function _initiateValidatorRemoval(bytes32 validationID, bool) internal virtual override {
+    function _initiateValidatorRemoval(
+        bytes32 validationID,
+        bool
+    ) internal virtual override {
         return app.initiateValidatorRemoval(validationID);
     }
 
-    function _forceInitiateValidatorRemoval(bytes32 validationID, bool) internal virtual override {
+    function _forceInitiateValidatorRemoval(
+        bytes32 validationID,
+        bool
+    ) internal virtual override {
         return app.initiateValidatorRemoval(validationID);
     }
 
@@ -135,7 +142,10 @@ contract PoAValidatorManagerTest is ValidatorManagerTest {
     }
 
     // solhint-disable-next-line no-empty-blocks
-    function _beforeSend(uint256 amount, address spender) internal virtual override {}
+    function _beforeSend(
+        uint256 amount,
+        address spender
+    ) internal virtual override {}
 
     function _beforeRegisterValidator(
         bytes32 validationID,
@@ -144,5 +154,6 @@ contract PoAValidatorManagerTest is ValidatorManagerTest {
         internal
         virtual
         override // solhint-disable-next-line no-empty-blocks
+
     {}
 }

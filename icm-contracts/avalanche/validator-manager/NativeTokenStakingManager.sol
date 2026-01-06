@@ -12,8 +12,9 @@ import {INativeTokenStakingManager} from "./interfaces/INativeTokenStakingManage
 import {INativeMinter} from "@subnet-evm/INativeMinter.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 import {Address} from "@openzeppelin/contracts@5.0.2/utils/Address.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 
 /**
  * @dev Implementation of the {INativeTokenStakingManager} interface.
@@ -102,14 +103,20 @@ contract NativeTokenStakingManager is Initializable, StakingManager, INativeToke
     /**
      * @notice See {StakingManager-_unlock}
      */
-    function _unlock(address to, uint256 value) internal virtual override {
+    function _unlock(
+        address to,
+        uint256 value
+    ) internal virtual override {
         payable(to).sendValue(value);
     }
 
     /**
      * @notice See {StakingManager-_reward}
      */
-    function _reward(address account, uint256 amount) internal virtual override {
+    function _reward(
+        address account,
+        uint256 amount
+    ) internal virtual override {
         NATIVE_MINTER.mintNativeCoin(account, amount);
     }
 }

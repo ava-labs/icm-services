@@ -21,8 +21,9 @@ import {
 import {TeleporterFeeInfo, TeleporterMessageInput} from "@teleporter/ITeleporterMessenger.sol";
 import {INativeMinter} from "@subnet-evm/INativeMinter.sol";
 import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/ERC20.sol";
-import {ERC20Upgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/token/ERC20/ERC20Upgradeable.sol";
+import {
+    ERC20Upgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/token/ERC20/ERC20Upgradeable.sol";
 import {Address} from "@openzeppelin/contracts@5.0.2/utils/Address.sol";
 import {CallUtils} from "@utilities/CallUtils.sol";
 import {TokenScalingUtils} from "@utilities/TokenScalingUtils.sol";
@@ -103,7 +104,8 @@ contract NativeTokenRemoteUpgradeable is
      * fees and burned transferred amounts can be tracked separately.
      * This address was chosen arbitrarily.
      */
-    address public constant BURNED_FOR_TRANSFER_ADDRESS = 0x0100000000000000000000000000000000010203;
+    address public constant BURNED_FOR_TRANSFER_ADDRESS =
+        0x0100000000000000000000000000000000010203;
 
     /**
      * @notice Address used to blackhole funds on the home chain, effectively burning them.
@@ -181,6 +183,7 @@ contract NativeTokenRemoteUpgradeable is
         _getNativeTokenRemoteStorage()._burnedFeesReportingRewardPercentage =
             burnedFeesReportingRewardPercentage;
     }
+
     // solhint-enable ordering
 
     /**
@@ -322,7 +325,10 @@ contract NativeTokenRemoteUpgradeable is
     /**
      * @dev See {TokenRemote-_withdraw}
      */
-    function _withdraw(address recipient, uint256 amount) internal virtual override {
+    function _withdraw(
+        address recipient,
+        uint256 amount
+    ) internal virtual override {
         emit TokensWithdrawn(recipient, amount);
         _mintNativeCoin(recipient, amount);
     }
@@ -411,7 +417,10 @@ contract NativeTokenRemoteUpgradeable is
     /**
      * @dev Mints coins to the recipient through the NativeMinter precompile.
      */
-    function _mintNativeCoin(address recipient, uint256 amount) private {
+    function _mintNativeCoin(
+        address recipient,
+        uint256 amount
+    ) private {
         NativeTokenRemoteStorage storage $ = _getNativeTokenRemoteStorage();
         $._totalMinted += amount;
         // Calls NativeMinter precompile through INativeMinter interface.

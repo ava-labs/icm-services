@@ -18,7 +18,10 @@ import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
 contract PoAManager is IPoAManager, Ownable {
     IValidatorManagerExternalOwnable private immutable _manager;
 
-    constructor(address owner, IValidatorManagerExternalOwnable validatorManager) Ownable(owner) {
+    constructor(
+        address owner,
+        IValidatorManagerExternalOwnable validatorManager
+    ) Ownable(owner) {
         _manager = validatorManager;
     }
 

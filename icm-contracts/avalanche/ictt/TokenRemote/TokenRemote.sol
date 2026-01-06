@@ -18,8 +18,9 @@ import {
     RegisterRemoteMessage
 } from "../interfaces/ITokenTransferrer.sol";
 import {TeleporterMessageInput, TeleporterFeeInfo} from "@teleporter/ITeleporterMessenger.sol";
-import {TeleporterRegistryOwnableAppUpgradeable} from
-    "@teleporter/registry/TeleporterRegistryOwnableAppUpgradeable.sol";
+import {
+    TeleporterRegistryOwnableAppUpgradeable
+} from "@teleporter/registry/TeleporterRegistryOwnableAppUpgradeable.sol";
 import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {SendReentrancyGuardUpgradeable} from "@utilities/SendReentrancyGuardUpgradeable.sol";
 import {TokenScalingUtils} from "@utilities/TokenScalingUtils.sol";
@@ -193,9 +194,11 @@ abstract contract TokenRemote is
         $._isCollateralized = initialReserveImbalance_ == 0;
         $._homeTokenDecimals = settings.tokenHomeDecimals;
         $._tokenDecimals = tokenDecimals;
-        ($._tokenMultiplier, $._multiplyOnRemote) =
-            TokenScalingUtils.deriveTokenMultiplierValues(settings.tokenHomeDecimals, tokenDecimals);
+        ($._tokenMultiplier, $._multiplyOnRemote) = TokenScalingUtils.deriveTokenMultiplierValues(
+            settings.tokenHomeDecimals, tokenDecimals
+        );
     }
+
     // solhint-enable ordering
 
     /**
@@ -225,7 +228,9 @@ abstract contract TokenRemote is
             TeleporterMessageInput({
                 destinationBlockchainID: $._tokenHomeBlockchainID,
                 destinationAddress: $._tokenHomeAddress,
-                feeInfo: TeleporterFeeInfo({feeTokenAddress: feeInfo.feeTokenAddress, amount: feeAmount}),
+                feeInfo: TeleporterFeeInfo({
+                    feeTokenAddress: feeInfo.feeTokenAddress, amount: feeAmount
+                }),
                 requiredGasLimit: REGISTER_REMOTE_REQUIRED_GAS,
                 allowedRelayerAddresses: new address[](0),
                 message: abi.encode(message)
@@ -279,6 +284,7 @@ abstract contract TokenRemote is
         TokenRemoteStorage storage $ = _getTokenRemoteStorage();
         return $._blockchainID;
     }
+
     // solhint-enable ordering
 
     /**
@@ -287,7 +293,10 @@ abstract contract TokenRemote is
      * @dev Burns the transferred amount, and uses Teleporter to send a cross chain message to the token TokenHome instance.
      * Tokens can be sent the token TokenHome instance, or to any TokenRemote instance registered with the home other than this one.
      */
-    function _send(SendTokensInput calldata input, uint256 amount) internal sendNonReentrant {
+    function _send(
+        SendTokensInput calldata input,
+        uint256 amount
+    ) internal sendNonReentrant {
         TokenRemoteStorage storage $ = _getTokenRemoteStorage();
         _validateSendTokensInput(input);
         if (input.destinationBlockchainID == $._tokenHomeBlockchainID) {
@@ -371,7 +380,10 @@ abstract contract TokenRemote is
      * @param recipient The address to withdraw tokens to
      * @param amount The amount of tokens to withdraw
      */
-    function _withdraw(address recipient, uint256 amount) internal virtual;
+    function _withdraw(
+        address recipient,
+        uint256 amount
+    ) internal virtual;
 
     /**
      * @notice Burns the user's tokens to initiate a token transfer.
@@ -445,7 +457,10 @@ abstract contract TokenRemote is
     /**
      * @dev Sends tokens to the specified destination.
      */
-    function _processSend(SendTokensInput calldata input, uint256 amount) private {
+    function _processSend(
+        SendTokensInput calldata input,
+        uint256 amount
+    ) private {
         TokenRemoteStorage storage $ = _getTokenRemoteStorage();
         _validateSingleHopInput(
             input.destinationTokenTransferrerAddress, input.secondaryFee, input.multiHopFallback
@@ -469,8 +484,7 @@ abstract contract TokenRemote is
                 destinationBlockchainID: $._tokenHomeBlockchainID,
                 destinationAddress: $._tokenHomeAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: primaryFee
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: primaryFee
                 }),
                 requiredGasLimit: input.requiredGasLimit,
                 allowedRelayerAddresses: new address[](0),
@@ -484,7 +498,10 @@ abstract contract TokenRemote is
     /**
      * @dev Sends tokens to the specified destination via multi-hop.
      */
-    function _processSendMultiHop(SendTokensInput calldata input, uint256 amount) private {
+    function _processSendMultiHop(
+        SendTokensInput calldata input,
+        uint256 amount
+    ) private {
         TokenRemoteStorage storage $ = _getTokenRemoteStorage();
         _validateMultiHopInput(
             input.destinationBlockchainID,
@@ -520,8 +537,7 @@ abstract contract TokenRemote is
                 destinationBlockchainID: $._tokenHomeBlockchainID,
                 destinationAddress: $._tokenHomeAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: primaryFee
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: primaryFee
                 }),
                 requiredGasLimit: MULTI_HOP_SEND_REQUIRED_GAS,
                 allowedRelayerAddresses: new address[](0),
@@ -536,7 +552,10 @@ abstract contract TokenRemote is
      * @dev Sends tokens to the specified recipient contract on the destination blockchain ID by
      * calling the {receiveTokens} method of the respective recipient.
      */
-    function _processSendAndCall(SendAndCallInput calldata input, uint256 amount) private {
+    function _processSendAndCall(
+        SendAndCallInput calldata input,
+        uint256 amount
+    ) private {
         TokenRemoteStorage storage $ = _getTokenRemoteStorage();
         _validateSingleHopInput(
             input.destinationTokenTransferrerAddress, input.secondaryFee, input.multiHopFallback
@@ -572,8 +591,7 @@ abstract contract TokenRemote is
                 destinationBlockchainID: $._tokenHomeBlockchainID,
                 destinationAddress: $._tokenHomeAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: primaryFee
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: primaryFee
                 }),
                 requiredGasLimit: input.requiredGasLimit,
                 allowedRelayerAddresses: new address[](0),
@@ -588,7 +606,10 @@ abstract contract TokenRemote is
      * @dev Sends tokens to the specified recipient contract on the destination blockchain ID by
      * calling the {receiveTokens} method of the respective recipient.
      */
-    function _processSendAndCallMultiHop(SendAndCallInput calldata input, uint256 amount) private {
+    function _processSendAndCallMultiHop(
+        SendAndCallInput calldata input,
+        uint256 amount
+    ) private {
         TokenRemoteStorage storage $ = _getTokenRemoteStorage();
         _validateMultiHopInput(
             input.destinationBlockchainID,
@@ -626,7 +647,8 @@ abstract contract TokenRemote is
         // The required gas limit for the first message sent back to the TokenHome instance
         // needs to account for the number of words in the payload. Each word uses additional
         // gas to include in the message to the final destination chain.
-        uint256 messageRequiredGasLimit = MULTI_HOP_CALL_REQUIRED_GAS
+        uint256 messageRequiredGasLimit =
+            MULTI_HOP_CALL_REQUIRED_GAS
             + (calculateNumWords(input.recipientPayload.length) * MULTI_HOP_CALL_GAS_PER_WORD);
 
         // Send message to the token TokenHome instance
@@ -635,8 +657,7 @@ abstract contract TokenRemote is
                 destinationBlockchainID: $._tokenHomeBlockchainID,
                 destinationAddress: $._tokenHomeAddress,
                 feeInfo: TeleporterFeeInfo({
-                    feeTokenAddress: input.primaryFeeTokenAddress,
-                    amount: primaryFee
+                    feeTokenAddress: input.primaryFeeTokenAddress, amount: primaryFee
                 }),
                 requiredGasLimit: messageRequiredGasLimit,
                 allowedRelayerAddresses: new address[](0),

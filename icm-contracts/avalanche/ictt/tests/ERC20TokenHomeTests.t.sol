@@ -181,12 +181,13 @@ contract ERC20TokenHomeTest is ERC20TokenTransferrerTest, TokenHomeTest {
             destinationBlockchainID: input.destinationBlockchainID,
             destinationAddress: input.destinationTokenTransferrerAddress,
             feeInfo: TeleporterFeeInfo({
-                feeTokenAddress: address(transferredToken),
-                amount: input.primaryFee
+                feeTokenAddress: address(transferredToken), amount: input.primaryFee
             }),
             requiredGasLimit: input.requiredGasLimit,
             allowedRelayerAddresses: new address[](0),
-            message: _encodeSingleHopSendMessage(amount * tokenMultiplier, DEFAULT_RECIPIENT_ADDRESS)
+            message: _encodeSingleHopSendMessage(
+                amount * tokenMultiplier, DEFAULT_RECIPIENT_ADDRESS
+            )
         });
         _checkExpectedTeleporterCallsForSend(expectedMessage);
         vm.expectEmit(true, true, true, true, address(tokenTransferrer));
@@ -194,7 +195,10 @@ contract ERC20TokenHomeTest is ERC20TokenTransferrerTest, TokenHomeTest {
         _send(input, amount);
     }
 
-    function _checkExpectedWithdrawal(address recipient, uint256 amount) internal override {
+    function _checkExpectedWithdrawal(
+        address recipient,
+        uint256 amount
+    ) internal override {
         vm.expectEmit(true, true, true, true, address(tokenHome));
         emit TokensWithdrawn(recipient, amount);
         vm.expectCall(
@@ -280,7 +284,10 @@ contract ERC20TokenHomeTest is ERC20TokenTransferrerTest, TokenHomeTest {
         vm.expectRevert("SafeERC20TransferFrom: balance not increased");
     }
 
-    function _setUpExpectedDeposit(uint256 amount, uint256 feeAmount) internal virtual override {
+    function _setUpExpectedDeposit(
+        uint256 amount,
+        uint256 feeAmount
+    ) internal virtual override {
         // Transfer the fee to the token transferrer if it is greater than 0
         if (feeAmount > 0) {
             transferredToken.safeIncreaseAllowance(address(tokenTransferrer), feeAmount);

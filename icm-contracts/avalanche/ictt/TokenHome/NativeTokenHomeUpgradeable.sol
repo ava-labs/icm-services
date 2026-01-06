@@ -111,6 +111,7 @@ contract NativeTokenHomeUpgradeable is INativeTokenHome, TokenHome {
     ) internal onlyInitializing {
         _getNativeTokenHomeStorage()._wrappedToken = IWrappedNativeToken(wrappedTokenAddress);
     }
+
     // solhint-enable ordering
 
     /**
@@ -177,7 +178,10 @@ contract NativeTokenHomeUpgradeable is INativeTokenHome, TokenHome {
      * Withdraws the wrapped tokens for native tokens,
      * and sends them to the recipient.
      */
-    function _withdraw(address recipient, uint256 amount) internal virtual override {
+    function _withdraw(
+        address recipient,
+        uint256 amount
+    ) internal virtual override {
         NativeTokenHomeStorage storage $ = _getNativeTokenHomeStorage();
         emit TokensWithdrawn(recipient, amount);
         $._wrappedToken.withdraw(amount);

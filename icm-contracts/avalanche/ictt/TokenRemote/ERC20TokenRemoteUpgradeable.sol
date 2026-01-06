@@ -15,8 +15,9 @@ import {
     SingleHopCallMessage
 } from "../interfaces/ITokenTransferrer.sol";
 import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/ERC20.sol";
-import {ERC20Upgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/token/ERC20/ERC20Upgradeable.sol";
+import {
+    ERC20Upgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/token/ERC20/ERC20Upgradeable.sol";
 import {SafeERC20TransferFrom} from "@utilities/SafeERC20TransferFrom.sol";
 import {CallUtils} from "@utilities/CallUtils.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
@@ -102,6 +103,7 @@ contract ERC20TokenRemoteUpgradeable is IERC20TokenTransferrer, ERC20Upgradeable
     ) internal {
         _getERC20TokenRemoteStorage()._decimals = tokenDecimals;
     }
+
     // solhint-enable ordering
 
     /**
@@ -111,14 +113,20 @@ contract ERC20TokenRemoteUpgradeable is IERC20TokenTransferrer, ERC20Upgradeable
      * a multi-hop transfer is performed, where the tokens are sent back to the token TokenHome instance
      * first to check for token transfer balance, and then routed to the final destination TokenRemote instance.
      */
-    function send(SendTokensInput calldata input, uint256 amount) external {
+    function send(
+        SendTokensInput calldata input,
+        uint256 amount
+    ) external {
         _send(input, amount);
     }
 
     /**
      * @dev See {IERC20TokenTransferrer-sendAndCall}
      */
-    function sendAndCall(SendAndCallInput calldata input, uint256 amount) external {
+    function sendAndCall(
+        SendAndCallInput calldata input,
+        uint256 amount
+    ) external {
         _sendAndCall(input, amount);
     }
 
@@ -133,7 +141,10 @@ contract ERC20TokenRemoteUpgradeable is IERC20TokenTransferrer, ERC20Upgradeable
     /**
      * @dev See {TokenRemote-_withdraw}
      */
-    function _withdraw(address recipient, uint256 amount) internal virtual override {
+    function _withdraw(
+        address recipient,
+        uint256 amount
+    ) internal virtual override {
         emit TokensWithdrawn(recipient, amount);
         _mint(recipient, amount);
     }

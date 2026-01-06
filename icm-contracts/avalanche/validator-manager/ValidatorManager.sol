@@ -16,10 +16,12 @@ import {
 } from "./interfaces/IACP99Manager.sol";
 import {ACP99Manager} from "./ACP99Manager.sol";
 import {IWarpMessenger, WarpMessage} from "@subnet-evm/IWarpMessenger.sol";
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 
 /**
@@ -135,7 +137,10 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
      * @param validationID The ID of the validation period to migrate.
      * @param receivedNonce The latest nonce received from the P-Chain.
      */
-    function migrateFromV1(bytes32 validationID, uint32 receivedNonce) external {
+    function migrateFromV1(
+        bytes32 validationID,
+        uint32 receivedNonce
+    ) external {
         ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
         ValidatorLegacy storage legacy = $._validationPeriodsLegacy[validationID];
         if (legacy.status == ValidatorStatus.Unknown) {
@@ -356,8 +361,7 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
 
         uint64 registrationExpiry = uint64(block.timestamp) + REGISTRATION_EXPIRY_LENGTH;
 
-        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 subnetID: $._subnetID,
                 nodeID: nodeID,
@@ -423,8 +427,9 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
         uint32 messageIndex
     ) public virtual override onlyOwner returns (bytes32) {
         ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
-        (bytes32 validationID, bool validRegistration) = ValidatorMessages
-            .unpackL1ValidatorRegistrationMessage(_getPChainWarpMessage(messageIndex).payload);
+        (bytes32 validationID, bool validRegistration) = ValidatorMessages.unpackL1ValidatorRegistrationMessage(
+            _getPChainWarpMessage(messageIndex).payload
+        );
 
         if (!validRegistration) {
             revert UnexpectedRegistrationStatus(validRegistration);
@@ -573,8 +578,9 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
         ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
 
         // Get the Warp message.
-        (bytes32 validationID, bool registered) = ValidatorMessages
-            .unpackL1ValidatorRegistrationMessage(_getPChainWarpMessage(messageIndex).payload);
+        (bytes32 validationID, bool registered) = ValidatorMessages.unpackL1ValidatorRegistrationMessage(
+            _getPChainWarpMessage(messageIndex).payload
+        );
         if (registered) {
             revert UnexpectedRegistrationStatus(registered);
         }

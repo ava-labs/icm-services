@@ -70,8 +70,7 @@ contract AddFeeAmountTest is TeleporterMessengerTest {
         address relayerRewardAddress = 0xA66884fAdC0D4d7B7eedcF61Eb863Ff413bB6234;
         TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](1);
         receipts[0] = TeleporterMessageReceipt({
-            receivedMessageNonce: expectedNonce,
-            relayerRewardAddress: relayerRewardAddress
+            receivedMessageNonce: expectedNonce, relayerRewardAddress: relayerRewardAddress
         });
 
         _receiveTestMessage(DEFAULT_DESTINATION_BLOCKCHAIN_ID, 1, relayerRewardAddress, receipts);

@@ -17,5 +17,8 @@ interface IERC20Mintable is IERC20 {
      * @param amount How many tokens to mint.
      * @dev This function should have appropriate user controls to ensure that only authorized users can mint.
      */
-    function mint(address account, uint256 amount) external;
+    function mint(
+        address account,
+        uint256 amount
+    ) external;
 }

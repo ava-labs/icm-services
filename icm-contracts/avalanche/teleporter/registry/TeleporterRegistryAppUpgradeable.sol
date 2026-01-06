@@ -8,14 +8,17 @@ pragma solidity 0.8.30;
 import {TeleporterRegistry} from "./TeleporterRegistry.sol";
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 import {ITeleporterMessenger, TeleporterMessageInput} from "@teleporter/ITeleporterMessenger.sol";
-import {ContextUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/utils/ContextUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/utils/ReentrancyGuardUpgradeable.sol";
+import {
+    ContextUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/utils/ContextUpgradeable.sol";
+import {
+    ReentrancyGuardUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/utils/ReentrancyGuardUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 
 /**
  * @dev TeleporterRegistryAppUpgradeable provides upgrade utility for applications built on top
@@ -126,6 +129,7 @@ abstract contract TeleporterRegistryAppUpgradeable is
         $._teleporterRegistry = registry;
         _setMinTeleporterVersion(minTeleporterVersion);
     }
+
     // solhint-enable ordering
 
     /**
@@ -309,9 +313,8 @@ abstract contract TeleporterRegistryAppUpgradeable is
                 messageInput.feeInfo.feeTokenAddress != address(0),
                 "TeleporterRegistryApp: zero fee token address"
             );
-            IERC20(messageInput.feeInfo.feeTokenAddress).safeIncreaseAllowance(
-                address(teleporterMessenger), messageInput.feeInfo.amount
-            );
+            IERC20(messageInput.feeInfo.feeTokenAddress)
+                .safeIncreaseAllowance(address(teleporterMessenger), messageInput.feeInfo.amount);
         }
         return teleporterMessenger.sendCrossChainMessage(messageInput);
     }

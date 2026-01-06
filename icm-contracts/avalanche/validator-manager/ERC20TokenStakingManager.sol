@@ -12,8 +12,9 @@ import {IERC20TokenStakingManager} from "./interfaces/IERC20TokenStakingManager.
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 import {SafeERC20TransferFrom} from "@utilities/SafeERC20TransferFrom.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
 
 /**
@@ -147,14 +148,20 @@ contract ERC20TokenStakingManager is Initializable, StakingManager, IERC20TokenS
      * @notice See {StakingManager-_unlock}
      * Note: Must be guarded with reentrancy guard for safe transfer.
      */
-    function _unlock(address to, uint256 value) internal virtual override {
+    function _unlock(
+        address to,
+        uint256 value
+    ) internal virtual override {
         _getERC20StakingManagerStorage()._token.safeTransfer(to, value);
     }
 
     /**
      * @notice See {StakingManager-_reward}
      */
-    function _reward(address account, uint256 amount) internal virtual override {
+    function _reward(
+        address account,
+        uint256 amount
+    ) internal virtual override {
         ERC20TokenStakingManagerStorage storage $ = _getERC20StakingManagerStorage();
         $._token.mint(account, amount);
     }

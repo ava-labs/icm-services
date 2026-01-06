@@ -67,8 +67,9 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
      * @dev The key is the blockchain ID of the other chain, and the value is a queue of pending receipts for messages
      * received from that chain.
      */
-    mapping(bytes32 sourceBlockchainID => ReceiptQueue.TeleporterMessageReceiptQueue receiptQueue)
-        public receiptQueues;
+    mapping(
+        bytes32 sourceBlockchainID => ReceiptQueue.TeleporterMessageReceiptQueue receiptQueue
+    ) public receiptQueues;
 
     /**
      * @notice Tracks the message hash and fee information for each message sent that has yet to be acknowledged
@@ -301,7 +302,8 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
         }
 
         // Store the receipt of this message delivery.
-        receiptQueues[warpMessage.sourceChainID].enqueue(
+        receiptQueues[warpMessage.sourceChainID]
+        .enqueue(
             TeleporterMessageReceipt({
                 receivedMessageNonce: teleporterMessage.messageNonce,
                 relayerRewardAddress: relayerRewardAddress
@@ -664,12 +666,10 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
         // Store the fee asset and amount to be paid to the relayer of this message upon receiving the receipt.
         // Also store the message hash so that it can be retried until a receipt of its delivery is received back.
         TeleporterFeeInfo memory adjustedFeeInfo = TeleporterFeeInfo({
-            feeTokenAddress: messageInput.feeInfo.feeTokenAddress,
-            amount: adjustedFeeAmount
+            feeTokenAddress: messageInput.feeInfo.feeTokenAddress, amount: adjustedFeeAmount
         });
         sentMessageInfo[messageID] = SentMessageInfo({
-            messageHash: keccak256(teleporterMessageBytes),
-            feeInfo: adjustedFeeInfo
+            messageHash: keccak256(teleporterMessageBytes), feeInfo: adjustedFeeInfo
         });
 
         emit SendCrossChainMessage(
@@ -687,7 +687,10 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
      * given message ID. The message nonce must not be zero in order to be able to distinguish between
      * received and unreceived messages based on their ID.
      */
-    function _markMessageReceived(bytes32 messageID, uint256 messageNonce_) private {
+    function _markMessageReceived(
+        bytes32 messageID,
+        uint256 messageNonce_
+    ) private {
         require(messageNonce_ != 0, "TeleporterMessenger: zero message nonce");
         _receivedMessageNonces[messageID] = messageNonce_;
     }
@@ -725,8 +728,9 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
 
         // Increment the fee/reward amount owed to the relayer for having delivered
         // the message identified in this receipt.
-        _relayerRewardAmounts[receipt.relayerRewardAddress][messageInfo.feeInfo.feeTokenAddress] +=
-            messageInfo.feeInfo.amount;
+        _relayerRewardAmounts[
+            receipt.relayerRewardAddress
+        ][messageInfo.feeInfo.feeTokenAddress] += messageInfo.feeInfo.amount;
 
         emit ReceiptReceived(
             messageID, destinationBlockchainID_, receipt.relayerRewardAddress, messageInfo.feeInfo
@@ -804,16 +808,15 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
         bool success;
         // solhint-disable-next-line no-inline-assembly
         assembly {
-            success :=
-                call(
-                    gasLimit, // gas provided to the call
-                    target, // call target
-                    0, // zero value
-                    add(payload, 0x20), // input data - 0x20 needs to be added to an array because the first 32-byte slot contains the array length (0x20 in hex is 32 in decimal).
-                    mload(payload), // input data size - mload returns mem[p..(p+32)], which is the first 32-byte slot of the array. In this case, the array length.
-                    0, // output
-                    0 // output size
-                )
+            success := call(
+                gasLimit, // gas provided to the call
+                target, // call target
+                0, // zero value
+                add(payload, 0x20), // input data - 0x20 needs to be added to an array because the first 32-byte slot contains the array length (0x20 in hex is 32 in decimal).
+                mload(payload), // input data size - mload returns mem[p..(p+32)], which is the first 32-byte slot of the array. In this case, the array length.
+                0, // output
+                0 // output size
+            )
         }
         return success;
     }

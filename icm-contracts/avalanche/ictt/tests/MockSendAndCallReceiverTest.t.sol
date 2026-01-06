@@ -135,7 +135,9 @@ contract MockNativeSendAndCallReceiverTest is Test {
             amount,
             payload
         );
-        nativeSendAndCallReceiver.receiveTokens{value: amount}(
+        nativeSendAndCallReceiver.receiveTokens{
+            value: amount
+        }(
             DEFAULT_TOKEN_HOME_BLOCKCHAIN_ID,
             _originTokenTransferrerAddress,
             _originSenderAddress,
@@ -158,7 +160,9 @@ contract MockNativeSendAndCallReceiverTest is Test {
         );
 
         vm.expectRevert("MockNativeSendAndCallReceiver: sender blocked");
-        nativeSendAndCallReceiver.receiveTokens{value: amount}(
+        nativeSendAndCallReceiver.receiveTokens{
+            value: amount
+        }(
             DEFAULT_TOKEN_HOME_BLOCKCHAIN_ID,
             _originTokenTransferrerAddress,
             _originSenderAddress,

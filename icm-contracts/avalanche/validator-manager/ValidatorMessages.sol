@@ -340,15 +340,15 @@ library ValidatorMessages {
         {
             uint32 remainingBalanceOwnerThreshold;
             for (uint256 i; i < 4; ++i) {
-                remainingBalanceOwnerThreshold |=
-                    uint32(uint8(input[i + index])) << uint32((8 * (3 - i)));
+                remainingBalanceOwnerThreshold |= uint32(uint8(input[i + index]))
+                << uint32((8 * (3 - i)));
             }
             index += 4;
 
             // Unpack the remainingBalanceOwner addresses length
             for (uint256 i; i < 4; ++i) {
-                remainingBalanceOwnerAddressesLength |=
-                    uint32(uint8(input[i + index])) << uint32((8 * (3 - i)));
+                remainingBalanceOwnerAddressesLength |= uint32(uint8(input[i + index]))
+                << uint32((8 * (3 - i)));
             }
             index += 4;
 
@@ -369,8 +369,7 @@ library ValidatorMessages {
                 index += 20;
             }
             validation.remainingBalanceOwner = PChainOwner({
-                threshold: remainingBalanceOwnerThreshold,
-                addresses: remainingBalanceOwnerAddresses
+                threshold: remainingBalanceOwnerThreshold, addresses: remainingBalanceOwnerAddresses
             });
         }
 
@@ -385,8 +384,8 @@ library ValidatorMessages {
 
             // Unpack the disableOwner addresses length
             for (uint256 i; i < 4; ++i) {
-                disableOwnerAddressesLength |=
-                    uint32(uint8(input[i + index])) << uint32((8 * (3 - i)));
+                disableOwnerAddressesLength |= uint32(uint8(input[i + index]))
+                << uint32((8 * (3 - i)));
             }
             index += 4;
 
@@ -409,7 +408,8 @@ library ValidatorMessages {
                 PChainOwner({threshold: disableOwnerThreshold, addresses: disableOwnerAddresses});
         }
         // Now that we have all the variable lengths, validate the input length
-        uint32 expectedLength = 122 + nodeIDLength
+        uint32 expectedLength =
+            122 + nodeIDLength
             + (remainingBalanceOwnerAddressesLength + disableOwnerAddressesLength) * 20;
         if (input.length != expectedLength) {
             revert InvalidMessageLength(uint32(input.length), expectedLength);

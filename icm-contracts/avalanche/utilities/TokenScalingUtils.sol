@@ -47,12 +47,11 @@ library TokenScalingUtils {
         uint8 remoteTokenDecimals
     ) internal pure returns (uint256, bool) {
         bool multiplyOnRemote = remoteTokenDecimals > homeTokenDecimals;
-        uint256 tokenMultiplier = 10
-            ** (
-                multiplyOnRemote
+        uint256 tokenMultiplier =
+            10
+            ** (multiplyOnRemote
                     ? uint256(remoteTokenDecimals - homeTokenDecimals)
-                    : uint256(homeTokenDecimals - remoteTokenDecimals)
-            );
+                    : uint256(homeTokenDecimals - remoteTokenDecimals));
         return (tokenMultiplier, multiplyOnRemote);
     }
 

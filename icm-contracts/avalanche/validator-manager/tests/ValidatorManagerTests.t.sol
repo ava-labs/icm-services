@@ -7,7 +7,9 @@ pragma solidity 0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
 import {
-    IValidatorManager, ValidatorManager, ValidatorManagerSettings
+    IValidatorManager,
+    ValidatorManager,
+    ValidatorManagerSettings
 } from "../ValidatorManager.sol";
 import {ValidatorMessages} from "../ValidatorMessages.sol";
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
@@ -18,8 +20,9 @@ import {
     PChainOwner,
     ValidatorStatus
 } from "../interfaces/IACP99Manager.sol";
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
 
 // TODO: Remove this once all unit tests implemented
 // solhint-disable no-empty-blocks
@@ -241,8 +244,7 @@ abstract contract ValidatorManagerTest is Test {
             DEFAULT_BLS_PUBLIC_KEY,
             address(this)
         );
-        (, bytes memory registerL1ValidatorMessage) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (, bytes memory registerL1ValidatorMessage) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 subnetID: DEFAULT_SUBNET_ID,
                 nodeID: DEFAULT_NODE_ID,
@@ -570,8 +572,7 @@ abstract contract ValidatorManagerTest is Test {
     ) internal returns (bytes32) {
         uint64 registrationExpiry = uint64(block.timestamp) + 1 days;
 
-        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 nodeID: nodeID,
                 subnetID: subnetID,
@@ -698,7 +699,10 @@ abstract contract ValidatorManagerTest is Test {
         _completeValidatorRemoval(0);
     }
 
-    function _mockSendWarpMessage(bytes memory payload, bytes32 expectedMessageID) internal {
+    function _mockSendWarpMessage(
+        bytes memory payload,
+        bytes32 expectedMessageID
+    ) internal {
         vm.mockCall(
             WARP_PRECOMPILE_ADDRESS,
             abi.encode(IWarpMessenger.sendWarpMessage.selector),
@@ -709,7 +713,10 @@ abstract contract ValidatorManagerTest is Test {
         );
     }
 
-    function _mockGetPChainWarpMessage(bytes memory expectedPayload, bool valid) internal {
+    function _mockGetPChainWarpMessage(
+        bytes memory expectedPayload,
+        bool valid
+    ) internal {
         vm.mockCall(
             WARP_PRECOMPILE_ADDRESS,
             abi.encodeWithSelector(IWarpMessenger.getVerifiedWarpMessage.selector, uint32(0)),
@@ -727,7 +734,10 @@ abstract contract ValidatorManagerTest is Test {
         );
     }
 
-    function _mockGetUptimeWarpMessage(bytes memory expectedPayload, bool valid) internal {
+    function _mockGetUptimeWarpMessage(
+        bytes memory expectedPayload,
+        bool valid
+    ) internal {
         vm.mockCall(
             WARP_PRECOMPILE_ADDRESS,
             abi.encodeWithSelector(IWarpMessenger.getVerifiedWarpMessage.selector, uint32(0)),
@@ -791,7 +801,10 @@ abstract contract ValidatorManagerTest is Test {
         uint32 messageIndex
     ) internal virtual returns (bytes32);
 
-    function _initiateValidatorRemoval(bytes32 validationID, bool includeUptime) internal virtual;
+    function _initiateValidatorRemoval(
+        bytes32 validationID,
+        bool includeUptime
+    ) internal virtual;
 
     function _forceInitiateValidatorRemoval(
         bytes32 validationID,
@@ -804,7 +817,10 @@ abstract contract ValidatorManagerTest is Test {
 
     function _setUp() internal virtual returns (IACP99Manager);
 
-    function _beforeSend(uint256 amount, address spender) internal virtual;
+    function _beforeSend(
+        uint256 amount,
+        address spender
+    ) internal virtual;
 
     function _beforeRegisterValidator(
         bytes32 validationID,
@@ -920,8 +936,8 @@ abstract contract ValidatorManagerTest is Test {
     ) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
-                uint256(keccak256(abi.encodePacked("avalanche-icm.storage.", storageName))) - 1
-            )
+            uint256(keccak256(abi.encodePacked("avalanche-icm.storage.", storageName))) - 1
+        )
         ) & ~bytes32(uint256(0xff));
     }
 

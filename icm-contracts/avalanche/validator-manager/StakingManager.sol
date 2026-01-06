@@ -17,10 +17,12 @@ import {
 import {Validator, ValidatorStatus, PChainOwner} from "./interfaces/IACP99Manager.sol";
 import {IRewardCalculator} from "./interfaces/IRewardCalculator.sol";
 import {IWarpMessenger, WarpMessage} from "@subnet-evm/IWarpMessenger.sol";
-import {ReentrancyGuardUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/utils/ReentrancyGuardUpgradeable.sol";
-import {ContextUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/utils/ContextUpgradeable.sol";
+import {
+    ReentrancyGuardUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/utils/ReentrancyGuardUpgradeable.sol";
+import {
+    ContextUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.0.2/utils/ContextUpgradeable.sol";
 
 /**
  * @dev Implementation of the {IStakingManager} interface.
@@ -195,12 +197,15 @@ abstract contract StakingManager is
     /**
      * @notice See {IStakingManager-submitUptimeProof}.
      */
-    function submitUptimeProof(bytes32 validationID, uint32 messageIndex) external {
+    function submitUptimeProof(
+        bytes32 validationID,
+        uint32 messageIndex
+    ) external {
         if (!_isPoSValidator(validationID)) {
             revert ValidatorNotPoS(validationID);
         }
         ValidatorStatus status =
-            _getStakingManagerStorage()._manager.getValidator(validationID).status;
+        _getStakingManagerStorage()._manager.getValidator(validationID).status;
         if (status != ValidatorStatus.Active) {
             revert InvalidValidatorStatus(status);
         }
@@ -358,13 +363,14 @@ abstract contract StakingManager is
             uptimeSeconds = $._posValidatorInfo[validationID].uptimeSeconds;
         }
 
-        uint256 reward = $._rewardCalculator.calculateReward({
-            stakeAmount: weightToValue(validator.startingWeight),
-            validatorStartTime: validator.startTime,
-            stakingStartTime: validator.startTime,
-            stakingEndTime: validator.endTime,
-            uptimeSeconds: uptimeSeconds
-        });
+        uint256 reward = $._rewardCalculator
+            .calculateReward({
+                stakeAmount: weightToValue(validator.startingWeight),
+                validatorStartTime: validator.startTime,
+                stakingStartTime: validator.startTime,
+                stakingEndTime: validator.endTime,
+                uptimeSeconds: uptimeSeconds
+            });
 
         $._redeemableValidatorRewards[validationID] += reward;
 
@@ -413,7 +419,10 @@ abstract contract StakingManager is
      * @dev Helper function that extracts the uptime from a ValidationUptimeMessage Warp message
      * If the uptime is greater than the stored uptime, update the stored uptime.
      */
-    function _updateUptime(bytes32 validationID, uint32 messageIndex) internal returns (uint64) {
+    function _updateUptime(
+        bytes32 validationID,
+        uint32 messageIndex
+    ) internal returns (uint64) {
         (WarpMessage memory warpMessage, bool valid) =
             WARP_MESSENGER.getVerifiedWarpMessage(messageIndex);
         if (!valid) {
@@ -491,13 +500,14 @@ abstract contract StakingManager is
         uint256 lockedValue = _lock(stakeAmount);
 
         uint64 weight = valueToWeight(lockedValue);
-        bytes32 validationID = $._manager.initiateValidatorRegistration({
-            nodeID: nodeID,
-            blsPublicKey: blsPublicKey,
-            remainingBalanceOwner: remainingBalanceOwner,
-            disableOwner: disableOwner,
-            weight: weight
-        });
+        bytes32 validationID = $._manager
+            .initiateValidatorRegistration({
+                nodeID: nodeID,
+                blsPublicKey: blsPublicKey,
+                remainingBalanceOwner: remainingBalanceOwner,
+                disableOwner: disableOwner,
+                weight: weight
+            });
 
         address owner = _msgSender();
 
@@ -605,9 +615,11 @@ abstract contract StakingManager is
         bytes32 delegationID
     ) public view returns (address, uint256) {
         StakingManagerStorage storage $ = _getStakingManagerStorage();
-        return (
-            $._delegatorRewardRecipients[delegationID], $._redeemableDelegatorRewards[delegationID]
-        );
+        return
+            (
+                $._delegatorRewardRecipients[delegationID],
+                $._redeemableDelegatorRewards[delegationID]
+            );
     }
 
     /**
@@ -623,7 +635,10 @@ abstract contract StakingManager is
      * @param to Address to send token to.
      * @param value Number of tokens to lock.
      */
-    function _unlock(address to, uint256 value) internal virtual;
+    function _unlock(
+        address to,
+        uint256 value
+    ) internal virtual;
 
     /**
      * @notice Initiates delegator registration by updating the validator's weight and storing the delegation information.
@@ -694,7 +709,10 @@ abstract contract StakingManager is
      * @notice See {IStakingManager-completeDelegatorRegistration}.
      * Extends the functionality of {ACP99Manager-completeValidatorWeightUpdate} by updating the delegation status.
      */
-    function completeDelegatorRegistration(bytes32 delegationID, uint32 messageIndex) external {
+    function completeDelegatorRegistration(
+        bytes32 delegationID,
+        uint32 messageIndex
+    ) external {
         StakingManagerStorage storage $ = _getStakingManagerStorage();
 
         Delegator memory delegator = $._delegatorStakes[delegationID];
@@ -825,8 +843,7 @@ abstract contract StakingManager is
             // initiate the removal.
             $._delegatorStakes[delegationID].status = DelegatorStatus.PendingRemoved;
 
-            ($._delegatorStakes[delegationID].endingNonce,) = $
-                ._manager
+            ($._delegatorStakes[delegationID].endingNonce,) = $._manager
                 .initiateValidatorWeightUpdate(validationID, validator.weight - delegator.weight);
 
             uint256 reward =
@@ -876,13 +893,14 @@ abstract contract StakingManager is
             return 0;
         }
 
-        uint256 reward = $._rewardCalculator.calculateReward({
-            stakeAmount: weightToValue(delegator.weight),
-            validatorStartTime: validator.startTime,
-            stakingStartTime: delegator.startTime,
-            stakingEndTime: delegationEndTime,
-            uptimeSeconds: $._posValidatorInfo[delegator.validationID].uptimeSeconds
-        });
+        uint256 reward = $._rewardCalculator
+            .calculateReward({
+                stakeAmount: weightToValue(delegator.weight),
+                validatorStartTime: validator.startTime,
+                stakingStartTime: delegator.startTime,
+                stakingEndTime: delegationEndTime,
+                uptimeSeconds: $._posValidatorInfo[delegator.validationID].uptimeSeconds
+            });
 
         if (rewardRecipient == address(0)) {
             rewardRecipient = delegator.owner;
@@ -1003,7 +1021,10 @@ abstract contract StakingManager is
     /**
      * @dev This function must be implemented to mint rewards to validators and delegators.
      */
-    function _reward(address account, uint256 amount) internal virtual;
+    function _reward(
+        address account,
+        uint256 amount
+    ) internal virtual;
 
     /**
      * @dev Return true if this is a PoS validator with locked stake. Returns false if this was originally a PoA
@@ -1016,7 +1037,10 @@ abstract contract StakingManager is
         return $._posValidatorInfo[validationID].owner != address(0);
     }
 
-    function _withdrawValidationRewards(address rewardRecipient, bytes32 validationID) internal {
+    function _withdrawValidationRewards(
+        address rewardRecipient,
+        bytes32 validationID
+    ) internal {
         StakingManagerStorage storage $ = _getStakingManagerStorage();
 
         uint256 rewards = $._redeemableValidatorRewards[validationID];

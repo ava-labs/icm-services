@@ -118,9 +118,8 @@ contract ValidatorSetSig is ReentrancyGuard {
         // We don't need to protect against return bomb vectors below here since the caller is expected to have full control over the contract called.
         (
             bool success, // solhint-disable-next-line avoid-low-level-calls
-        ) = validatorSetSigMessage.targetContractAddress.call{value: validatorSetSigMessage.value}(
-            validatorSetSigMessage.payload
-        );
+        ) = validatorSetSigMessage.targetContractAddress
+        .call{value: validatorSetSigMessage.value}(validatorSetSigMessage.payload);
 
         // Use require to revert the transaction if the call fails. This is to prevent consuming the nonce if the call fails due to out of gas
         // and requiring re-signing of the message with a new nonce.
