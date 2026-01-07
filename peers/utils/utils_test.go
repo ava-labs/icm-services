@@ -52,7 +52,7 @@ func TestInitializeOptionsLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			options := InitializeOptions(tt.apiConfig)
+			options := tt.apiConfig.Options()
 			require.Len(t, options, tt.expectedLength)
 		})
 	}
@@ -69,7 +69,7 @@ func TestInitializeOptionsCreatesCorrectTypes(t *testing.T) {
 		},
 	}
 
-	options := InitializeOptions(apiConfig)
+	options := apiConfig.Options()
 
 	expectedCount := len(apiConfig.QueryParams) + len(apiConfig.HTTPHeaders)
 	require.Len(t, options, expectedCount)
