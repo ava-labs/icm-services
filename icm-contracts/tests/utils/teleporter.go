@@ -97,14 +97,6 @@ func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, l1 int
 	info.TeleporterRegistry = teleporterRegistry
 }
 
-func (t TeleporterTestInfo) InitializeBlockchainID(l1 interfaces.L1TestInfo, fundedKey *ecdsa.PrivateKey) {
-	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
-	Expect(err).Should(BeNil())
-	tx, err := t.TeleporterMessenger(l1).InitializeBlockchainID(opts)
-	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(context.Background(), l1.RPCClient, tx.Hash())
-}
-
 func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
 	ctx := context.Background()
 	entries := []teleporterregistry.ProtocolRegistryEntry{
@@ -344,7 +336,7 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 // Deployment utils
 //
 
-func DeployTeleporterMessenger(
+func DeployWithNicksMethod(
 	ctx context.Context,
 	l1 interfaces.L1TestInfo,
 	transactionBytes []byte,
@@ -399,7 +391,7 @@ func DeployNewTeleporterVersion(
 	)
 	Expect(err).Should(BeNil())
 
-	DeployTeleporterMessenger(
+	DeployWithNicksMethod(
 		ctx,
 		l1,
 		teleporterDeployerTransaction,

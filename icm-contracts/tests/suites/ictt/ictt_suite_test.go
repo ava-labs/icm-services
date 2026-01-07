@@ -101,7 +101,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	if e2eFlags.NetworkDir() == "" {
 		// Only deploy Teleporter if we are not reusing an existing network
-		utils.DeployTeleporterMessenger(
+		utils.DeployWithNicksMethod(
 			ctx,
 			localNetworkInstance.GetPrimaryNetworkInfo(),
 			teleporterDeployerTransaction,
@@ -112,7 +112,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
-			teleporterInfo.InitializeBlockchainID(l1, fundedKey)
 			teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
 		}
 
