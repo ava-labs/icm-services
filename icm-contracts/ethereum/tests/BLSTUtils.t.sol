@@ -5,8 +5,7 @@ import {Test} from "@forge-std/Test.sol";
 import {BLST} from "../utils/BLST.sol";
 
 contract BLSTUtilsTest is Test {
-    function testCreateAndVerifySignature() public {
-        bytes memory message = "Hello Ethereum, it's Avalanche.";
+    function testCreateAndVerifySignature(bytes calldata message) public view {
         uint256 secretKey = 273952;
         bytes memory pk = BLST.getPublicKeyFromSecret(secretKey);
         bytes memory sig = BLST.createSignature(secretKey, message);
@@ -21,8 +20,7 @@ contract BLSTUtilsTest is Test {
         assertTrue(validAggregate);
     }
 
-    function testCreateAndVerifyAggregateSignature() public {
-        bytes memory message = "Hello Ethereum, it's Avalanche.";
+    function testCreateAndVerifyAggregateSignature(bytes calldata message) public view {
         uint256[] memory secretKeys = new uint256[](2);
         secretKeys[0] = 273952;
         secretKeys[1] = 93293485;
@@ -60,17 +58,6 @@ contract BLSTUtilsTest is Test {
 
         bytes memory aggregated = BLST.aggregatePublicKeys(publicKeys);
         assertEq(aggregated, expectedAggregated);
-    }
-
-    function testVerifyBLSSignatureSuccess() public view {
-        bytes memory message = "Hello Ethereum, it's Avalanche.";
-        bytes memory pk =
-            hex"000000000000000000000000000000000d89fe5ee3754167f889ff991c81e1717b665690955ad302a50e285dbe68aac93d03177fba54622bf5c4926ce90d0ac60000000000000000000000000000000015874901c0288afcdf442b402199d6a2ed38c5ac28d055637e7bafb44dc4a46a56db1c74caf0e339f6ed665dbc0c0c60";
-        bytes memory sig =
-            hex"1572ad7226ef5d2a52c89d824179e1723a523c7a30c8ff2643aee0b19aca4e3670a28d8749991075d72dd9d64aba703a0ed0d39f4a935cfc5b96c5fbc8985596a9556dec84286c0f945c93ebf33c96bc58ce5cf54a70c3b5221da81d01b6640e058b6a69058a96395acf26fb8013e93dcacbe83f93ed0697e6fd080132062c8e3fc4b63488e00ec5dd60dd2dcda6264112ce2d0e1e024de26bc4d75fb1a7b0fa823b44770570e1539cf500aa5fa2c5abd8e806246d0009d260e224e1f435cc97";
-
-        bool valid = BLST.verifySignature(pk, sig, message);
-        assertTrue(valid);
     }
 
     function testVerifyBLSAggregateSignatureSuccess() public view {
