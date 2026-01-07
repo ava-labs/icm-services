@@ -24,7 +24,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/avalanchego/utils/rpc"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/utils/units"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -69,8 +68,7 @@ type SignatureAggregator struct {
 	currentRequestID       atomic.Uint32
 	metrics                *metrics.SignatureAggregatorMetrics
 	signatureCache         *SignatureCache
-	pChainClient           clients.PChainClient
-	pChainClientOptions    []rpc.Option
+	validatorClient        clients.CanonicalValidatorState
 	underfundedL1NodeCache *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 
 	subnetMapsLock sync.Mutex
@@ -85,8 +83,7 @@ func NewSignatureAggregator(
 	messageCreator message.Creator,
 	signatureCacheSize uint64,
 	metrics *metrics.SignatureAggregatorMetrics,
-	pChainClient clients.PChainClient,
-	pChainClientOptions []rpc.Option,
+	validatorClient clients.CanonicalValidatorState,
 ) (*SignatureAggregator, error) {
 	signatureCache, err := NewSignatureCache(signatureCacheSize)
 	if err != nil {
@@ -100,8 +97,7 @@ func NewSignatureAggregator(
 		currentRequestID:        atomic.Uint32{},
 		signatureCache:          signatureCache,
 		messageCreator:          messageCreator,
-		pChainClient:            pChainClient,
-		pChainClientOptions:     pChainClientOptions,
+		validatorClient:         validatorClient,
 		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
@@ -186,28 +182,17 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	signingSubnet ids.ID,
 ) (set.Set[ids.NodeID], error) {
 	fetchUnderfundedL1Nodes := func(subnetID ids.ID) (set.Set[ids.NodeID], error) {
-		validators, err := s.pChainClient.GetCurrentValidators(
-			ctx,
-			subnetID,
-			nil,
-			s.pChainClientOptions...,
-		)
+		validators, err := s.validatorClient.GetCurrentValidators(ctx, subnetID)
 		if err != nil {
-			log.Error(
-				"Failed to fetch current L1 validators",
-				zap.Stringer("subnetID", subnetID),
-				zap.Error(err),
-			)
-			return nil, fmt.Errorf("failed to fetch current L1 validators: %w", err)
+			log.Error("Failed to fetch current L1 validators", zap.Error(err))
+			return nil, err
 		}
 
 		underfundedL1Nodes := set.NewSet[ids.NodeID](0)
 		for _, v := range validators {
+			log = log.With(zap.Stringer("nodeID", v.NodeID))
 			if v.ClientL1Validator.ValidationID == nil {
-				log.Debug(
-					"Skipping non-L1 validator",
-					zap.Stringer("nodeID", v.NodeID),
-				)
+				log.Debug("Skipping non-L1 validator")
 				continue
 			}
 
@@ -215,10 +200,7 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 
 			if l1Validator.Balance == nil {
 				underfundedL1Nodes.Add(v.NodeID)
-				log.Warn(
-					"Node has nil balance",
-					zap.Stringer("nodeID", v.NodeID),
-				)
+				log.Warn("Node has nil balance")
 				continue
 			}
 
@@ -226,9 +208,7 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 				underfundedL1Nodes.Add(v.NodeID)
 				log.Debug(
 					"Node has insufficient balance",
-					zap.Stringer("nodeID", v.NodeID),
 					zap.Uint64("balance", *l1Validator.Balance),
-					zap.Any("signingSubnetID", signingSubnet),
 				)
 			}
 		}
@@ -242,11 +222,7 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 		false,
 	)
 	if err != nil {
-		log.Error(
-			"Failed to get underfunded L1 nodes",
-			zap.Stringer("signingSubnetID", signingSubnet),
-			zap.Error(err),
-		)
+		log.Error("Failed to get underfunded L1 nodes", zap.Error(err))
 		return nil, err
 	}
 
@@ -259,13 +235,10 @@ func (s *SignatureAggregator) getExcludedValidators(
 	signingSubnet ids.ID,
 	vdrs *peers.CanonicalValidators,
 ) (set.Set[int], error) {
+	log = log.With(zap.Stringer("signingSubnetID", signingSubnet))
+
 	underfundedL1Nodes, err := s.getUnderfundedL1Nodes(ctx, log, signingSubnet)
 	if err != nil {
-		log.Error(
-			"Failed to fetch underfunded L1 nodes",
-			zap.Stringer("signingSubnetID", signingSubnet),
-			zap.Error(err),
-		)
 		return nil, fmt.Errorf("failed to fetch underfunded L1 nodes: %w", err)
 	}
 
@@ -285,7 +258,6 @@ func (s *SignatureAggregator) getExcludedValidators(
 				"Excluding validator",
 				zap.Int("index", i),
 				zap.Any("nodeIDs", validator.NodeIDs),
-				zap.Any("signingSubnetID", signingSubnet),
 			)
 			excludedValidators.Add(i)
 		}
@@ -309,10 +281,7 @@ func (s *SignatureAggregator) selectSigningSubnet(
 ) (ids.ID, ids.ID, error) {
 	sourceSubnetID, err := s.getSubnetID(ctx, log, unsignedMessage.SourceChainID)
 	if err != nil {
-		return ids.ID{}, ids.ID{}, fmt.Errorf(
-			"source message subnet not found for chainID %s",
-			unsignedMessage.SourceChainID,
-		)
+		return ids.ID{}, ids.ID{}, err
 	}
 
 	var signingSubnetID ids.ID
@@ -426,12 +395,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		responseChan := s.network.RegisterRequestID(requestID, vdrSet)
 		if responseChan == nil {
 			msg := "Failed to register request ID"
-			log.Error(
-				msg,
-				zap.Int("requestID", int(requestID)),
-				zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
-				zap.Stringer("signingSubnetID", signingSubnet),
-			)
+			log.Error(msg)
 			return fmt.Errorf("%s", msg)
 		}
 
@@ -440,7 +404,6 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		log.Debug(
 			"Sent signature request to network",
 			zap.Any("sentTo", sentTo),
-			zap.Stringer("sourceSubnetID", sourceSubnet),
 		)
 
 		failedSendNodes := make([]ids.NodeID, 0, responsesExpected)
@@ -523,7 +486,6 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 				"Created signed message.",
 				zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
 				zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-				zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 			)
 			return nil
 		}
@@ -543,7 +505,6 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		logger.Warn(
 			"Failed to collect a threshold of signatures",
 			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
-			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 			zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
 			zap.Error(err),
 		)
@@ -562,17 +523,15 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	quorumPercentageBuffer uint64,
 	pchainHeight uint64,
 ) (*avalancheWarp.Message, error) {
-	log.Info("Creating signed message",
+	log = log.With(
 		zap.Uint64("requiredQuorumPercentage", requiredQuorumPercentage),
 		zap.Uint64("quorumPercentageBuffer", quorumPercentageBuffer),
 		zap.Uint64("pchainHeight", pchainHeight),
+		zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 	)
+	log.Info("Creating signed message")
 	if err := validateQuorumPercentages(requiredQuorumPercentage, quorumPercentageBuffer); err != nil {
-		log.Error(
-			"Invalid quorum percentages",
-			zap.Uint64("requiredQuorumPercentage", requiredQuorumPercentage),
-			zap.Uint64("quorumPercentageBuffer", quorumPercentageBuffer),
-		)
+		log.Error("Invalid quorum percentages")
 		return nil, err
 	}
 
@@ -582,10 +541,9 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	if err != nil {
 		return nil, err
 	}
-	log.Debug(
-		"Creating signed message with signing subnet",
-		zap.Stringer("signingSubnet", signingSubnet),
-	)
+
+	log = log.With(zap.Stringer("signingSubnet", signingSubnet))
+	log.Debug("Creating signed message with signing subnet")
 
 	vdrs, err := s.connectToQuorumValidators(
 		ctx,
@@ -595,19 +553,16 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		pchainHeight,
 	)
 	if err != nil {
-		log.Error(
-			"Failed to fetch quorum of connected canonical validators",
-			zap.Stringer("signingSubnet", signingSubnet),
-			zap.Error(err),
-		)
+		log.Error("Failed to fetch quorum of connected canonical validators", zap.Error(err))
 		return nil, err
 	}
 
 	isL1 := false
 	if signingSubnet != constants.PrimaryNetworkID {
-		isL1, err = s.isSubnetL1(ctx, log, signingSubnet)
+		isL1, err = s.isSubnetL1(ctx, signingSubnet)
 		if err != nil {
-			return nil, fmt.Errorf("failed to check if signing subnet is L1: %w", err)
+			log.Error("Failed to check if signing subnet is L1", zap.Error(err))
+			return nil, err
 		}
 	}
 
@@ -624,11 +579,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		log.Debug("Checking L1 validators for zero balance nodes")
 		excludedValidators, err = s.getExcludedValidators(ctx, log, signingSubnet, vdrs)
 		if err != nil {
-			log.Error(
-				"Failed to get excluded validators",
-				zap.Stringer("signingSubnetID", signingSubnet),
-				zap.Error(err),
-			)
+			log.Error("Failed to get excluded validators", zap.Error(err))
 			return nil, fmt.Errorf("failed to get excluded validators: %w", err)
 		}
 	}
@@ -688,7 +639,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 			"Failed to collect signatures",
 			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
 			zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -721,19 +671,14 @@ func (s *SignatureAggregator) getSubnetID(
 
 // Looks up whether a subnet is an L1 and caches the result in the map for the lifetime of the application.
 // since this value can change only once in the lifetime of the subnet.
-func (s *SignatureAggregator) isSubnetL1(ctx context.Context, log logging.Logger, subnetID ids.ID) (bool, error) {
+func (s *SignatureAggregator) isSubnetL1(ctx context.Context, subnetID ids.ID) (bool, error) {
 	s.subnetMapsLock.Lock()
 	defer s.subnetMapsLock.Unlock()
 	isL1, ok := s.subnetIDIsL1[subnetID]
 	if !ok {
-		subnet, err := s.pChainClient.GetSubnet(ctx, subnetID, s.pChainClientOptions...)
+		subnet, err := s.validatorClient.GetSubnet(ctx, subnetID)
 		if err != nil {
-			log.Error(
-				"Failed to check if subnet is L1",
-				zap.Stringer("subnetID", subnetID),
-				zap.Error(err),
-			)
-			return false, err
+			return false, fmt.Errorf("failed to get subnet: %w", err)
 		}
 		isL1 = subnet.ConversionID != ids.Empty
 		s.subnetIDIsL1[subnetID] = isL1
@@ -852,11 +797,7 @@ func (s *SignatureAggregator) aggregateIfSufficientWeight(
 	aggSig, vdrBitSet, err := s.aggregateSignatures(log, signatureMap)
 	if err != nil {
 		msg := "Failed to aggregate signature."
-		log.Error(
-			msg,
-			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
-			zap.Error(err),
-		)
+		log.Error(msg, zap.Error(err))
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
@@ -869,11 +810,7 @@ func (s *SignatureAggregator) aggregateIfSufficientWeight(
 	)
 	if err != nil {
 		msg := "Failed to create new signed message"
-		log.Error(
-			msg,
-			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
-			zap.Error(err),
-		)
+		log.Error(msg, zap.Error(err))
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 	return signedMsg, nil
@@ -888,39 +825,28 @@ func (s *SignatureAggregator) isValidSignatureResponse(
 	response message.InboundMessage,
 	pubKey *bls.PublicKey,
 ) (blsSignatureBuf, bool) {
+	log = log.With(zap.Stringer("nodeID", response.NodeID()))
 	// If the handler returned an error response, count the response and continue
 	if response.Op() == message.AppErrorOp {
-		log.Debug(
-			"Relayer async response failed",
-			zap.Stringer("nodeID", response.NodeID()),
-		)
+		log.Debug("Relayer async response failed")
 		return blsSignatureBuf{}, false
 	}
 
 	appResponse, ok := response.Message().(*p2p.AppResponse)
 	if !ok {
-		log.Debug(
-			"Relayer async response was not an AppResponse",
-			zap.Stringer("nodeID", response.NodeID()),
-		)
+		log.Debug("Relayer async response was not an AppResponse")
 		return blsSignatureBuf{}, false
 	}
 
 	signature, err := s.unmarshalResponse(appResponse.GetAppBytes())
 	if err != nil {
-		log.Error(
-			"Error unmarshaling signature response",
-			zap.Error(err),
-		)
+		log.Error("Error unmarshaling signature response", zap.Error(err))
 	}
 
 	// If the node returned an empty signature, then it has not yet seen the warp message. Retry later.
 	emptySignature := blsSignatureBuf{}
 	if bytes.Equal(signature[:], emptySignature[:]) {
-		log.Debug(
-			"Response contained an empty signature",
-			zap.Stringer("nodeID", response.NodeID()),
-		)
+		log.Debug("Response contained an empty signature")
 		return blsSignatureBuf{}, false
 	}
 
@@ -935,9 +861,7 @@ func (s *SignatureAggregator) isValidSignatureResponse(
 
 	sig, err := bls.SignatureFromBytes(signature[:])
 	if err != nil {
-		log.Debug(
-			"Failed to create signature from response",
-		)
+		log.Debug("Failed to create signature from response")
 		return blsSignatureBuf{}, false
 	}
 

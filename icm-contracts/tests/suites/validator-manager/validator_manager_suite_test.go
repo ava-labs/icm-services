@@ -10,7 +10,7 @@ import (
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	validatorManagerFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/validator-manager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
-	"github.com/ava-labs/libevm/log"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	LocalNetworkInstance *localnetwork.LocalNetwork
+	localNetworkInstance *localnetwork.LocalAvalancheNetwork
 	e2eFlags             *e2e.FlagVars
 )
 
@@ -41,11 +41,11 @@ func TestValidatorManager(t *testing.T) {
 }
 
 // Define the before and after suite functions.
-var _ = ginkgo.BeforeEach(func() {
+var _ = ginkgo.BeforeEach(func(ctx context.Context) {
 	// Create the local network instance
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
-	LocalNetworkInstance = localnetwork.NewLocalNetwork(
+	localNetworkInstance = localnetwork.NewLocalAvalancheNetwork(
 		ctx,
 		"validator-manager-test-local-network",
 		warpGenesisTemplateFile,
@@ -71,30 +71,30 @@ var _ = ginkgo.BeforeEach(func() {
 })
 
 var _ = ginkgo.AfterEach(func() {
-	LocalNetworkInstance.TearDownNetwork()
-	LocalNetworkInstance = nil
+	localNetworkInstance.TearDownNetwork()
+	localNetworkInstance = nil
 })
 
 var _ = ginkgo.Describe("[Validator manager integration tests]", func() {
 	// Validator Manager tests
 	ginkgo.It("Native token staking manager",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.NativeTokenStakingManager(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.NativeTokenStakingManager(ctx, localNetworkInstance)
 		})
 	ginkgo.It("ERC20 token staking manager",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.ERC20TokenStakingManager(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.ERC20TokenStakingManager(ctx, localNetworkInstance)
 		})
 	ginkgo.It("PoA migration to PoS",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.PoAMigrationToPoS(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.PoAMigrationToPoS(ctx, localNetworkInstance)
 		})
 	ginkgo.It("Delegate disable validator",
 		ginkgo.Label(validatorManagerLabel),
-		func() {
-			validatorManagerFlows.RemoveDelegatorInactiveValidator(LocalNetworkInstance)
+		func(ctx context.Context) {
+			validatorManagerFlows.RemoveDelegatorInactiveValidator(ctx, localNetworkInstance)
 		})
 })

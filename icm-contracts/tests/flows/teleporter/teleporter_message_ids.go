@@ -4,6 +4,7 @@
 package teleporter
 
 import (
+	"context"
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -16,7 +17,11 @@ import (
 )
 
 // Tests Teleporter message ID calculation
-func CalculateMessageID(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func CalculateMessageID(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1Info := network.GetPrimaryNetworkInfo()
 	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1Info)
 

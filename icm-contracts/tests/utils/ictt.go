@@ -21,13 +21,13 @@ import (
 	mockERC20SACR "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/MockERC20SendAndCallReceiver"
 	mockNSACR "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/MockNativeSendAndCallReceiver"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 // Deployer keys set in the genesis file in order to determine the deployed address in advance.
@@ -92,7 +92,7 @@ func DeployERC20TokenHome(
 		tokenHomeDecimals,
 	)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return implAddress, erc20TokenHome
 }
@@ -132,7 +132,7 @@ func DeployERC20TokenRemote(
 	)
 	Expect(err).Should(BeNil())
 
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return implAddress, erc20TokenRemote
 }
@@ -178,7 +178,7 @@ func DeployNativeTokenRemote(
 		burnedFeesReportingRewardPercentage,
 	)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	// Increment to the next deployer key so that the next contract deployment succeeds
 	nativeTokenRemoteDeployerKeyIndex++
@@ -208,7 +208,7 @@ func DeployNativeTokenHome(
 		tokenAddress,
 	)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return implAddress, nativeTokenHome
 }
@@ -230,7 +230,7 @@ func DeployWrappedNativeToken(
 	)
 	Expect(err).Should(BeNil())
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, token
 }
@@ -246,10 +246,13 @@ func DeployMockNativeSendAndCallReceiver(
 	// Deploy MockNativeSendAndCallReceiver contract
 	address, tx, contract, err := mockNSACR.DeployMockNativeSendAndCallReceiver(opts, l1.RPCClient)
 	Expect(err).Should(BeNil())
-	log.Info("Deployed MockNativeSendAndCallReceiver contract", "address", address.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Deployed MockNativeSendAndCallReceiver contract",
+		zap.String("address", address.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, contract
 }
@@ -265,10 +268,13 @@ func DeployMockERC20SendAndCallReceiver(
 	// Deploy MockERC20SendAndCallReceiver contract
 	address, tx, contract, err := mockERC20SACR.DeployMockERC20SendAndCallReceiver(opts, l1.RPCClient)
 	Expect(err).Should(BeNil())
-	log.Info("Deployed MockERC20SendAndCallReceiver contract", "address", address.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Deployed MockERC20SendAndCallReceiver contract",
+		zap.String("address", address.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, contract
 }
@@ -285,10 +291,13 @@ func DeployExampleERC20Decimals(
 	// Deploy Mock ERC20 contract
 	address, tx, token, err := exampleerc20.DeployExampleERC20Decimals(opts, l1.RPCClient, tokenDecimals)
 	Expect(err).Should(BeNil())
-	log.Info("Deployed Mock ERC20 contract", "address", address.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Deployed Mock ERC20 contract",
+		zap.String("address", address.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	// Check that the deployer has the expected initial balance
 	senderAddress := crypto.PubkeyToAddress(senderKey.PublicKey)
@@ -374,7 +383,7 @@ func RegisterTokenRemoteOnHome(
 		},
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, remoteL1, sendRegisterTx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, remoteL1.RPCClient, sendRegisterTx.Hash())
 
 	// Relay the register message to the home
 	receipt = teleporter.RelayTeleporterMessage(
@@ -449,7 +458,7 @@ func AddCollateralToERC20TokenHome(
 		collateralAmount,
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, erc20TokenHome.ParseCollateralAdded)
 	Expect(err).Should(BeNil())
 	Expect(event.RemoteBlockchainID[:]).Should(Equal(remoteBlockchainID[:]))
@@ -491,7 +500,7 @@ func AddCollateralToNativeTokenHome(
 		remoteAddress,
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, nativeTokenHome.ParseCollateralAdded)
 	Expect(err).Should(BeNil())
 	Expect(event.RemoteBlockchainID[:]).Should(Equal(remoteBlockchainID[:]))
@@ -538,7 +547,7 @@ func SendERC20TokenHome(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, erc20TokenHome.ParseTokensSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Sender).Should(Equal(crypto.PubkeyToAddress(senderKey.PublicKey)))
@@ -584,7 +593,7 @@ func SendNativeTokenHome(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, nativeTokenHome.ParseTokensSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Sender).Should(Equal(crypto.PubkeyToAddress(senderKey.PublicKey)))
@@ -629,7 +638,7 @@ func SendNativeTokenRemote(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, nativeTokenRemote.ParseTokensSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Sender).Should(Equal(crypto.PubkeyToAddress(senderKey.PublicKey)))
@@ -656,7 +665,7 @@ func SendERC20TokenRemote(
 	)
 	Expect(err).Should(BeNil())
 
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	// Transfer the tokens back to l1 A
 	tx, err = erc20TokenRemote.Send(
@@ -666,7 +675,7 @@ func SendERC20TokenRemote(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, erc20TokenRemote.ParseTokensSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Sender).Should(Equal(crypto.PubkeyToAddress(senderKey.PublicKey)))
@@ -705,7 +714,7 @@ func SendAndCallERC20TokenHome(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, erc20TokenHome.ParseTokensAndCallSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Input.RecipientContract).Should(Equal(input.RecipientContract))
@@ -740,7 +749,7 @@ func SendAndCallNativeTokenHome(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, nativeTokenHome.ParseTokensAndCallSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Input.RecipientContract).Should(Equal(input.RecipientContract))
@@ -784,7 +793,7 @@ func SendAndCallNativeTokenRemote(
 
 	transferredAmount := big.NewInt(0).Sub(amount, input.PrimaryFee)
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, nativeTokenRemote.ParseTokensAndCallSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Input.RecipientContract).Should(Equal(input.RecipientContract))
@@ -811,7 +820,7 @@ func SendAndCallERC20TokenRemote(
 	)
 	Expect(err).Should(BeNil())
 
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	// Transfer the tokens back to l1 A
 	tx, err = erc20TokenRemote.SendAndCall(
@@ -821,7 +830,7 @@ func SendAndCallERC20TokenRemote(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	event, err := GetEventFromLogs(receipt.Logs, erc20TokenRemote.ParseTokensAndCallSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Input.RecipientContract).Should(Equal(input.RecipientContract))
@@ -1085,14 +1094,14 @@ func DepositAndApproveWrappedTokenForFees(
 	tx, err := wrappedToken.Deposit(opts)
 	Expect(err).Should(BeNil())
 
-	_ = WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	_ = WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	opts, err = bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
 	tx, err = wrappedToken.Approve(opts, spender, amount)
 	Expect(err).Should(BeNil())
 
-	_ = WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	_ = WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func ERC20DecimalsApprove(
@@ -1107,7 +1116,10 @@ func ERC20DecimalsApprove(
 	Expect(err).Should(BeNil())
 	tx, err := token.Approve(opts, spender, amount)
 	Expect(err).Should(BeNil())
-	log.Info("Approved ERC20", "spender", spender.Hex(), "txHash", tx.Hash().Hex())
+	log.Info("Approved ERC20",
+		zap.String("spender", spender.Hex()),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }

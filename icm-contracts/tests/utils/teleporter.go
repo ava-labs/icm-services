@@ -22,15 +22,16 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/log"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/rpc"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 var (
@@ -96,14 +97,6 @@ func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, l1 int
 	info.TeleporterRegistry = teleporterRegistry
 }
 
-func (t TeleporterTestInfo) InitializeBlockchainID(l1 interfaces.L1TestInfo, fundedKey *ecdsa.PrivateKey) {
-	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
-	Expect(err).Should(BeNil())
-	tx, err := t.TeleporterMessenger(l1).InitializeBlockchainID(opts)
-	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(context.Background(), l1, tx.Hash())
-}
-
 func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
 	ctx := context.Background()
 	entries := []teleporterregistry.ProtocolRegistryEntry{
@@ -119,46 +112,11 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	)
 	Expect(err).Should(BeNil())
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	info := t[l1.BlockchainID]
 	info.TeleporterRegistryAddress = teleporterRegistryAddress
 	info.TeleporterRegistry = teleporterRegistry
-}
-
-func (t TeleporterTestInfo) DeployTeleporterMessenger(
-	ctx context.Context,
-	l1 interfaces.L1TestInfo,
-	transactionBytes []byte,
-	deployerAddress common.Address,
-	contractAddress common.Address,
-	fundedKey *ecdsa.PrivateKey,
-) {
-	// Fund the deployer address
-	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
-	fundDeployerTx := CreateNativeTransferTransaction(
-		ctx, l1, fundedKey, deployerAddress, fundAmount,
-	)
-	SendTransactionAndWaitForSuccess(ctx, l1, fundDeployerTx)
-
-	log.Info("Finished funding Teleporter deployer", "blockchainID", l1.BlockchainID.Hex())
-
-	// Deploy Teleporter contract
-	rpcClient, err := rpc.DialContext(
-		ctx,
-		HttpToRPCURI(l1.NodeURIs[0], l1.BlockchainID.String()),
-	)
-	Expect(err).Should(BeNil())
-	defer rpcClient.Close()
-
-	txHash := common.Hash{}
-	err = rpcClient.CallContext(ctx, &txHash, "eth_sendRawTransaction", hexutil.Encode(transactionBytes))
-	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, txHash)
-
-	teleporterCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
-	Expect(err).Should(BeNil())
-	Expect(len(teleporterCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
 }
 
 func (t TeleporterTestInfo) RelayTeleporterMessage(
@@ -192,10 +150,10 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 
 	log.Info("Sending transaction to destination chain")
 	if !expectSuccess {
-		return SendTransactionAndWaitForFailure(ctx, destination, signedTx)
+		return SendTransactionAndWaitForFailure(ctx, destination.RPCClient, signedTx)
 	}
 
-	receipt := SendTransactionAndWaitForSuccess(ctx, destination, signedTx)
+	receipt := SendTransactionAndWaitForSuccess(ctx, destination.RPCClient, signedTx)
 
 	// Check the transaction logs for the ReceiveCrossChainMessage event emitted by the Teleporter contract
 	receiveEvent, err := GetEventFromLogs(
@@ -235,7 +193,7 @@ func (t TeleporterTestInfo) SendExampleCrossChainMessageAndVerify(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	sourceTeleporterMessenger := t.TeleporterMessenger(source)
 	destTeleporterMessenger := t.TeleporterMessenger(destination)
@@ -299,7 +257,7 @@ func (t TeleporterTestInfo) AddProtocolVersionAndWaitForAcceptance(
 	signatureAggregator *SignatureAggregator,
 ) {
 	signedWarpMsg := GetSignedMessage(l1, l1, unsignedMessage, nil, signatureAggregator)
-	log.Info("Got signed warp message", "messageID", signedWarpMsg.ID())
+	log.Info("Got signed warp message", zap.Stringer("messageID", signedWarpMsg.ID()))
 
 	// Construct tx to add protocol version and send to destination chain
 	signedTx := CreateAddProtocolVersionTransaction(
@@ -314,7 +272,7 @@ func (t TeleporterTestInfo) AddProtocolVersionAndWaitForAcceptance(
 	expectedLatestVersion := big.NewInt(curLatestVersion.Int64() + 1)
 
 	// Wait for tx to be accepted, and verify events emitted
-	receipt := SendTransactionAndWaitForSuccess(ctx, l1, signedTx)
+	receipt := SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, signedTx)
 	teleporterRegistry := t.TeleporterRegistry(l1)
 	addProtocolVersionEvent, err := GetEventFromLogs(receipt.Logs, teleporterRegistry.ParseAddProtocolVersion)
 	Expect(err).Should(BeNil())
@@ -346,7 +304,7 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 		destination.BlockchainID,
 	)
 	for outstandReceiptCount.Cmp(big.NewInt(0)) != 0 {
-		log.Info("Emptying receipt queue", "remainingReceipts", outstandReceiptCount.String())
+		log.Info("Emptying receipt queue", zap.Stringer("remainingReceipts", outstandReceiptCount))
 		// Send message from L1 B to L1 A to trigger the "regular" method of delivering receipts.
 		// The next message from B->A will contain the same receipts that were manually sent in the above steps,
 		// but they should not be processed again on L1 A.
@@ -374,15 +332,54 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 	log.Info("Receipt queue emptied")
 }
 
+//
+// Deployment utils
+//
+
+func DeployWithNicksMethod(
+	ctx context.Context,
+	l1 interfaces.L1TestInfo,
+	transactionBytes []byte,
+	deployerAddress common.Address,
+	contractAddress common.Address,
+	fundedKey *ecdsa.PrivateKey,
+) {
+	// Fund the deployer address
+	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
+	fundDeployerTx := CreateNativeTransferTransaction(
+		ctx, l1, fundedKey, deployerAddress, fundAmount,
+	)
+	SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, fundDeployerTx)
+
+	log.Info("Finished funding Teleporter deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
+
+	// Deploy Teleporter contract
+	rpcClient, err := rpc.DialContext(
+		ctx,
+		HttpToRPCURI(l1.NodeURIs[0], l1.BlockchainID.String()),
+	)
+	Expect(err).Should(BeNil())
+	defer rpcClient.Close()
+
+	txHash := common.Hash{}
+	err = rpcClient.CallContext(ctx, &txHash, "eth_sendRawTransaction", hexutil.Encode(transactionBytes))
+	Expect(err).Should(BeNil())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, txHash)
+
+	teleporterCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
+	Expect(err).Should(BeNil())
+	Expect(len(teleporterCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
+}
+
 // Deploys a new version of Teleporter and returns its address
 // Does NOT modify the global Teleporter contract address to provide greater testing flexibility.
-func (t TeleporterTestInfo) DeployNewTeleporterVersion(
+func DeployNewTeleporterVersion(
 	ctx context.Context,
 	l1 interfaces.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	teleporterByteCodeFile string,
 ) common.Address {
-	contractCreationGasPrice := (&big.Int{}).Add(deploymentUtils.GetDefaultContractCreationGasPrice(), big.NewInt(1))
+	contractCreationGasPrice := new(big.Int).Add(deploymentUtils.GetDefaultContractCreationGasPrice(), big.NewInt(1))
 	teleporterDeployerTransaction,
 		_,
 		teleporterDeployerAddress,
@@ -394,7 +391,7 @@ func (t TeleporterTestInfo) DeployNewTeleporterVersion(
 	)
 	Expect(err).Should(BeNil())
 
-	t.DeployTeleporterMessenger(
+	DeployWithNicksMethod(
 		ctx,
 		l1,
 		teleporterDeployerTransaction,
@@ -405,10 +402,6 @@ func (t TeleporterTestInfo) DeployNewTeleporterVersion(
 
 	return teleporterContractAddress
 }
-
-//
-// Deployment utils
-//
 
 func DeployTestMessenger(
 	ctx context.Context,
@@ -432,7 +425,7 @@ func DeployTestMessenger(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, exampleMessenger
 }
@@ -475,16 +468,16 @@ func SendAddFeeAmountAndWaitForAcceptance(
 	tx, err := transactor.AddFeeAmount(opts, messageID, feeContractAddress, amount)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	addFeeAmountEvent, err := GetEventFromLogs(receipt.Logs, transactor.ParseAddFeeAmount)
 	Expect(err).Should(BeNil())
 	Expect(addFeeAmountEvent.MessageID[:]).Should(Equal(messageID[:]))
 
 	log.Info("Send AddFeeAmount transaction on source chain",
-		"messageID", messageID,
-		"sourceChainID", source.BlockchainID,
-		"destinationBlockchainID", destination.BlockchainID,
+		zap.Stringer("messageID", messageID),
+		zap.Stringer("sourceChainID", source.BlockchainID),
+		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
 	)
 
 	return receipt
@@ -504,7 +497,7 @@ func RetryMessageExecutionAndWaitForAcceptance(
 	tx, err := destinationTeleporterMessenger.RetryMessageExecution(opts, sourceBlockchainID, message)
 	Expect(err).Should(BeNil())
 
-	return WaitForTransactionSuccess(ctx, destinationL1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, destinationL1.RPCClient, tx.Hash())
 }
 
 func RedeemRelayerRewardsAndConfirm(
@@ -533,7 +526,7 @@ func RedeemRelayerRewardsAndConfirm(
 		txOpts, feeTokenAddress,
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	// Check that the ERC20 balance was incremented
 	balanceAfterRedemption, err := feeToken.BalanceOf(
@@ -577,7 +570,7 @@ func SendSpecifiedReceiptsAndWaitForAcceptance(
 		opts, destinationBlockchainID, messageIDs, feeInfo, allowedRelayerAddresses)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	// Check the transaction logs for the SendCrossChainMessage event emitted by the Teleporter contract
 	event, err := GetEventFromLogs(receipt.Logs, sourceTeleporterMessenger.ParseSendCrossChainMessage)
@@ -585,8 +578,9 @@ func SendSpecifiedReceiptsAndWaitForAcceptance(
 	Expect(event.DestinationBlockchainID[:]).Should(Equal(destinationBlockchainID[:]))
 
 	log.Info("Sending SendSpecifiedReceipts transaction",
-		"destinationBlockchainID", destinationBlockchainID,
-		"txHash", tx.Hash())
+		zap.Stringer("destinationBlockchainID", destinationBlockchainID),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	return receipt, event.MessageID
 }
@@ -607,16 +601,17 @@ func SendCrossChainMessageAndWaitForAcceptance(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be accepted
-	receipt := WaitForTransactionSuccess(ctx, source, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	// Check the transaction logs for the SendCrossChainMessage event emitted by the Teleporter contract
 	event, err := GetEventFromLogs(receipt.Logs, sourceTeleporterMessenger.ParseSendCrossChainMessage)
 	Expect(err).Should(BeNil())
 
 	log.Info("Sending SendCrossChainMessage transaction on source chain",
-		"sourceChainID", source.BlockchainID,
-		"destinationBlockchainID", destination.BlockchainID,
-		"txHash", tx.Hash())
+		zap.Stringer("sourceChainID", source.BlockchainID),
+		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
+		zap.String("txHash", tx.Hash().Hex()),
+	)
 
 	return receipt, event.MessageID
 }
@@ -661,7 +656,7 @@ func CreateSendCrossChainMessageTransaction(
 	data, err := teleportermessenger.PackSendCrossChainMessage(input)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, source, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, source.RPCClient, PrivateKeyToAddress(senderKey))
 
 	// Send a transaction to the Teleporter contract
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -705,7 +700,7 @@ func CreateReceiveCrossChainMessageTransaction(
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, PrivateKeyToAddress(senderKey))
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -742,7 +737,7 @@ func CreateAddProtocolVersionTransaction(
 	callData, err := teleporterregistry.PackAddProtocolVersion(0)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -776,7 +771,7 @@ func CreateExecuteCallPredicateTransaction(
 	callData, err := validatorsetsig.PackExecuteCall(0)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -821,8 +816,8 @@ func InitOffChainMessageChainConfig(
 		},
 	)
 	log.Info("Adding off-chain message to Warp chain config",
-		"messageID", unsignedMessage.ID(),
-		"blockchainID", l1.BlockchainID.String(),
+		zap.Stringer("messageID", unsignedMessage.ID()),
+		zap.Stringer("blockchainID", l1.BlockchainID),
 	)
 
 	return unsignedMessage, GetChainConfigWithOffChainMessages([]avalancheWarp.UnsignedMessage{*unsignedMessage})

@@ -34,6 +34,8 @@ func CalculateStartingBlockHeight(
 	processHistoricalBlocksFromHeight uint64,
 	currentHeight uint64,
 ) (uint64, error) {
+	logger = logger.With(zap.Stringer("relayerID", relayerID.ID))
+
 	latestProcessedBlock, err := GetLatestProcessedBlockHeight(db, relayerID)
 	if IsKeyNotFoundError(err) {
 		// The database does not contain the latest processed block data for the chain,
@@ -45,11 +47,7 @@ func CalculateStartingBlockHeight(
 		return processHistoricalBlocksFromHeight, nil
 	} else if err != nil {
 		// Otherwise, we've encountered an unknown database error
-		logger.Error(
-			"Failed to get latest block from database",
-			zap.Stringer("relayerID", relayerID.ID),
-			zap.Error(err),
-		)
+		logger.Error("Failed to get latest block from database", zap.Error(err))
 		return 0, err
 	}
 
@@ -58,7 +56,6 @@ func CalculateStartingBlockHeight(
 	if latestProcessedBlock > processHistoricalBlocksFromHeight {
 		logger.Info(
 			"Processing historical blocks from the latest processed block in the DB",
-			zap.Stringer("relayerID", relayerID.ID),
 			zap.Uint64("latestProcessedBlock", latestProcessedBlock),
 		)
 		return latestProcessedBlock, nil
@@ -66,7 +63,6 @@ func CalculateStartingBlockHeight(
 	// Otherwise, return the configured start block height
 	logger.Info(
 		"Processing historical blocks from the configured start block height",
-		zap.Stringer("relayerID", relayerID.ID),
 		zap.Uint64("processHistoricalBlocksFromHeight", processHistoricalBlocksFromHeight),
 	)
 	return processHistoricalBlocksFromHeight, nil

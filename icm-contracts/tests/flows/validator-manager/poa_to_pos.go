@@ -15,7 +15,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-
 	. "github.com/onsi/gomega"
 )
 
@@ -38,7 +37,7 @@ import (
  * - Delist the previous PoA validator properly
  * - Delist the PoS validator
  */
-func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
+func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalancheNetwork) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
@@ -50,7 +49,6 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 	ownerAddress := crypto.PubkeyToAddress(ownerKey.PublicKey)
 
 	// Transfer native assets to the owner account
-	ctx := context.Background()
 	fundAmount := big.NewInt(1e18) // 10avax
 	fundAmount.Mul(fundAmount, big.NewInt(10))
 	utils.SendNativeTransfer(
@@ -172,7 +170,7 @@ func PoAMigrationToPoS(network *localnetwork.LocalNetwork) {
 	Expect(err).Should(BeNil())
 	tx, err := poaManager.TransferValidatorManagerOwnership(opts, stakingManagerAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1AInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(context.Background(), l1AInfo.RPCClient, tx.Hash())
 
 	// Check that previous validator is still registered
 	validationID, err := validatorManager.GetNodeValidationID(&bind.CallOpts{}, poaNodeID)

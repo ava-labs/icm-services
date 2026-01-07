@@ -14,7 +14,11 @@ const (
 	teleporterByteCodeFile = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
 )
 
-func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func TeleporterRegistry(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	// Deploy dApp on both chains that use Teleporter Registry
 	// Deploy version 2 of Teleporter to both chains
 	// Construct AddProtocolVersion txs for both chains
@@ -29,8 +33,6 @@ func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.Tel
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy a test cross chain messenger to both chains
 	testMessengerContractC, testMessengerC := utils.DeployTestMessenger(
@@ -51,7 +53,7 @@ func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.Tel
 	// Deploy the new version of Teleporter to both chains
 	var newTeleporterAddress common.Address
 	for _, l1 := range network.GetAllL1Infos() {
-		newTeleporterAddress = teleporter.DeployNewTeleporterVersion(ctx, l1, fundedKey, teleporterByteCodeFile)
+		newTeleporterAddress = utils.DeployNewTeleporterVersion(ctx, l1, fundedKey, teleporterByteCodeFile)
 	}
 
 	networkID := network.GetNetworkID()
@@ -126,7 +128,7 @@ func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.Tel
 	tx, err := testMessengerB.UpdateMinTeleporterVersion(opts, latestVersionB)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
 
 	// Verify that minTeleporterVersion updated
 	minTeleporterVersionUpdatedEvent, err := utils.GetEventFromLogs(
@@ -155,7 +157,6 @@ func TeleporterRegistry(network *localnetwork.LocalNetwork, teleporter utils.Tel
 	// Update teleporter with the new TeleporterMessengers
 	for _, l1 := range network.GetAllL1Infos() {
 		teleporter.SetTeleporter(newTeleporterAddress, l1)
-		teleporter.InitializeBlockchainID(l1, fundedKey)
 	}
 
 	teleporter.SendExampleCrossChainMessageAndVerify(

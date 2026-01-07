@@ -10,7 +10,7 @@ import (
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	governanceFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/governance"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
-	"github.com/ava-labs/libevm/log"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	LocalNetworkInstance *localnetwork.LocalNetwork
+	localNetworkInstance *localnetwork.LocalAvalancheNetwork
 	e2eFlags             *e2e.FlagVars
 )
 
@@ -41,13 +41,11 @@ func TestGovernance(t *testing.T) {
 }
 
 // Define the before and after suite functions.
-var _ = ginkgo.BeforeSuite(func() {
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
-
+var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Create the local network instance
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	LocalNetworkInstance = localnetwork.NewLocalNetwork(
+	localNetworkInstance = localnetwork.NewLocalAvalancheNetwork(
 		ctx,
 		"governance-test-local-network",
 		warpGenesisTemplateFile,
@@ -71,15 +69,15 @@ var _ = ginkgo.BeforeSuite(func() {
 })
 
 var _ = ginkgo.AfterSuite(func() {
-	LocalNetworkInstance.TearDownNetwork()
-	LocalNetworkInstance = nil
+	localNetworkInstance.TearDownNetwork()
+	localNetworkInstance = nil
 })
 
 var _ = ginkgo.Describe("[Governance integration tests]", func() {
 	// Governance tests
 	ginkgo.It("Deliver ValidatorSetSig signed message",
 		ginkgo.Label(validatorSetSigLabel),
-		func() {
-			governanceFlows.ValidatorSetSig(LocalNetworkInstance)
+		func(ctx context.Context) {
+			governanceFlows.ValidatorSetSig(ctx, localNetworkInstance)
 		})
 })

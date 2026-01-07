@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"math/big"
 	"reflect"
 	"time"
@@ -30,6 +29,7 @@ import (
 	validatormanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/ValidatorManager"
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
@@ -37,9 +37,9 @@ import (
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	"github.com/ava-labs/subnet-evm/warp/messages"
-	"google.golang.org/protobuf/proto"
-
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -86,7 +86,7 @@ func DeployValidatorManager(
 	)
 	Expect(err).Should(BeNil())
 
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	var proxyAdmin *proxyadmin.ProxyAdmin
 	if proxy {
@@ -121,7 +121,7 @@ func InitializeValidatorManager(
 		},
 	)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func DeployAndInitializeValidatorManagerSpecialization(
@@ -152,7 +152,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			0, // ICMInitializable.Allowed
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 		if proxy {
 			// Overwrite the manager address with the proxy address
@@ -190,7 +190,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			erc20Address,
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	case NativeTokenStakingManager:
 		// Reset the global binary data for better test isolation
 		nativetokenstakingmanager.NativeTokenStakingManagerBin =
@@ -203,7 +203,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			0, // ICMInitializable.Allowed
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 		if proxy {
 			// Overwrite the manager address with the proxy address
@@ -252,7 +252,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			validatorManagerAddress,
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	}
 	return address, proxyAdmin
 }
@@ -273,7 +273,7 @@ func DeployExampleRewardCalculator(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, calculator
 }
@@ -292,7 +292,7 @@ func InitializeValidatorSet(
 	signatureAggregator *SignatureAggregator,
 	nodes []Node,
 ) []ids.ID {
-	log.Println("Initializing validator set", "subnetID", l1Info.SubnetID)
+	log.Info("Initializing validator set", zap.Stringer("subnetID", l1Info.SubnetID))
 	initialValidators := make([]warpMessage.SubnetToL1ConversionValidatorData, len(nodes))
 	initialValidatorsABI := make([]acp99manager.InitialValidator, len(nodes))
 	for i, node := range nodes {
@@ -413,7 +413,7 @@ func InitiateNativeValidatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	acp99Manager, err := acp99manager.NewACP99Manager(validatorManagerAddress, l1.RPCClient)
 	Expect(err).Should(BeNil())
 	registrationInitiatedEvent, err := GetEventFromLogs(
@@ -460,7 +460,7 @@ func InitiateERC20ValidatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	acp99Manager, err := acp99manager.NewACP99Manager(validatorManagerAddress, l1.RPCClient)
 	Expect(err).Should(BeNil())
 	registrationInitiatedEvent, err := GetEventFromLogs(
@@ -492,7 +492,7 @@ func InitiatePoAValidatorRegistration(
 		node.Weight,
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	acp99Manager, err := acp99manager.NewACP99Manager(validatorManagerAddress, l1.RPCClient)
 	Expect(err).Should(BeNil())
 	registrationInitiatedEvent, err := GetEventFromLogs(
@@ -534,7 +534,7 @@ func CallWarpReceiver(
 	contract common.Address,
 	signedMessageBytes []byte,
 ) *types.Receipt {
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1.RPCClient, PrivateKeyToAddress(senderKey))
 
 	registrationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1.EVMChainID,
@@ -554,7 +554,7 @@ func CallWarpReceiver(
 	})
 
 	signedRegistrationTx := SignTransaction(registrationTx, senderKey, l1.EVMChainID)
-	return SendTransactionAndWaitForSuccess(ctx, l1, signedRegistrationTx)
+	return SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, signedRegistrationTx)
 }
 
 func InitiateAndCompleteNativeValidatorRegistration(
@@ -601,7 +601,7 @@ func InitiateAndCompleteNativeValidatorRegistration(
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
-	log.Println("Completing validator registration")
+	log.Info("Completing validator registration")
 	registrationSignedMessage := ConstructL1ValidatorRegistrationMessage(
 		validationID,
 		registrationInitiatedEvent.RegistrationExpiry,
@@ -655,7 +655,7 @@ func InitiateAndCompleteERC20ValidatorRegistration(
 	Expect(err).Should(BeNil())
 	// Initiate validator registration
 	var receipt *types.Receipt
-	log.Println("Initializing validator registration")
+	log.Info("Initializing validator registration")
 	receipt, registrationInitiatedEvent := InitiateERC20ValidatorRegistration(
 		ctx,
 		fundedKey,
@@ -682,7 +682,7 @@ func InitiateAndCompleteERC20ValidatorRegistration(
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
-	log.Println("Completing validator registration")
+	log.Info("Completing validator registration")
 	registrationSignedMessage := ConstructL1ValidatorRegistrationMessage(
 		validationID,
 		registrationInitiatedEvent.RegistrationExpiry,
@@ -753,7 +753,7 @@ func InitiateAndCompletePoAValidatorRegistration(
 	AdvanceProposerVM(ctx, l1Info, ownerKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
-	log.Println("Completing validator registration")
+	log.Info("Completing validator registration")
 	registrationSignedMessage := ConstructL1ValidatorRegistrationMessage(
 		validationID,
 		expiry,
@@ -802,7 +802,7 @@ func InitiateEndPoSValidation(
 		0,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func ForceInitiateEndPoSValidation(
@@ -821,7 +821,7 @@ func ForceInitiateEndPoSValidation(
 		0,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func ConstructUptimeProofMessage(
@@ -931,7 +931,7 @@ func InitiateEndPoAValidation(
 		validationID,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func CompleteEndPoAValidation(
@@ -1005,7 +1005,7 @@ func InitiateERC20DelegatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	_, err = GetEventFromLogs(
 		receipt.Logs,
 		stakingManager.ParseInitiatedDelegatorRegistration,
@@ -1032,7 +1032,7 @@ func InitiateNativeDelegatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	_, err = GetEventFromLogs(
 		receipt.Logs,
 		stakingManager.ParseInitiatedDelegatorRegistration,
@@ -1082,7 +1082,7 @@ func InitiateDelegatorRemoval(
 		0,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func CompleteDelegatorRemoval(
@@ -1122,7 +1122,7 @@ func InitiateAndCompleteEndInitialPoSValidation(
 	pchainWallet pwallet.Wallet,
 	networkID uint32,
 ) {
-	log.Println("Initializing initial validator removal")
+	log.Info("Initializing initial validator removal")
 	WaitMinStakeDuration(ctx, l1Info, fundedKey)
 	receipt := ForceInitiateEndPoSValidation(
 		ctx,
@@ -1143,7 +1143,7 @@ func InitiateAndCompleteEndInitialPoSValidation(
 
 	// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 	// (Sending to the P-Chain will be skipped for now)
-	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info)
+	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info.RPCClient)
 	signedWarpMessage, err := signatureAggregator.CreateSignedMessage(
 		unsignedMessage,
 		nil,
@@ -1159,7 +1159,7 @@ func InitiateAndCompleteEndInitialPoSValidation(
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
-	log.Println("Completing initial validator removal POS")
+	log.Info("Completing initial validator removal POS")
 	registrationSignedMessage := ConstructL1ValidatorRegistrationMessageForInitialValidator(
 		validationID,
 		index,
@@ -1206,7 +1206,7 @@ func InitiateAndCompleteEndPoSValidation(
 	pchainWallet pwallet.Wallet,
 	networkID uint32,
 ) {
-	log.Println("Initializing validator removal")
+	log.Info("Initializing validator removal")
 	WaitMinStakeDuration(ctx, l1Info, fundedKey)
 
 	var receipt *types.Receipt
@@ -1243,7 +1243,7 @@ func InitiateAndCompleteEndPoSValidation(
 	Expect(validatorRemovalEvent.Weight).Should(Equal(node.Weight))
 
 	// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
-	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info)
+	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info.RPCClient)
 	signedWarpMessage, err := signatureAggregator.CreateSignedMessage(
 		unsignedMessage,
 		nil,
@@ -1259,7 +1259,7 @@ func InitiateAndCompleteEndPoSValidation(
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
-	log.Println("Completing validator removal")
+	log.Info("Completing validator removal")
 	registrationSignedMessage := ConstructL1ValidatorRegistrationMessage(
 		validationID,
 		expiry,
@@ -1304,7 +1304,7 @@ func InitiateAndCompleteEndInitialPoAValidation(
 	pchainWallet pwallet.Wallet,
 	networkID uint32,
 ) {
-	log.Println("Initializing initial validator removal")
+	log.Info("Initializing initial validator removal")
 	WaitMinStakeDuration(ctx, l1Info, ownerKey)
 	receipt := InitiateEndPoAValidation(
 		ctx,
@@ -1325,7 +1325,7 @@ func InitiateAndCompleteEndInitialPoAValidation(
 
 	// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 	// (Sending to the P-Chain will be skipped for now)
-	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info)
+	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info.RPCClient)
 	signedWarpMessage, err := signatureAggregator.CreateSignedMessage(
 		unsignedMessage,
 		nil,
@@ -1341,7 +1341,7 @@ func InitiateAndCompleteEndInitialPoAValidation(
 	AdvanceProposerVM(ctx, l1Info, ownerKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
-	log.Println("Completing initial validator removal POA")
+	log.Info("Completing initial validator removal POA")
 	registrationSignedMessage := ConstructL1ValidatorRegistrationMessageForInitialValidator(
 		validationID,
 		index,
@@ -1795,7 +1795,7 @@ func PackInitialValidator(iv interface{}) ([]byte, error) {
 func PChainProposerVMWorkaround(
 	pchainWallet pwallet.Wallet,
 ) {
-	log.Println("Waiting for P-Chain...")
+	log.Info("Waiting for P-Chain...")
 	time.Sleep(30 * time.Second)
 }
 
@@ -1805,7 +1805,7 @@ func AdvanceProposerVM(
 	fundedKey *ecdsa.PrivateKey,
 	blocks int,
 ) {
-	log.Println("Advancing proposer VM")
+	log.Info("Advancing proposer VM")
 	for i := 0; i < blocks; i++ {
 		err := subnetEvmUtils.IssueTxsToActivateProposerVMFork(
 			ctx, l1.EVMChainID, fundedKey, l1.WSClient,

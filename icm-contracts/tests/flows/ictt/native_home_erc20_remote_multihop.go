@@ -9,7 +9,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-
 	. "github.com/onsi/gomega"
 )
 
@@ -20,12 +19,14 @@ import (
  * Transfer tokens from L1 A to L1 B through multi-hop
  * Brige back tokens from L1 B to L1 A through multi-hop
  */
-func NativeTokenHomeERC20TokenRemoteMultiHop(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func NativeTokenHomeERC20TokenRemoteMultiHop(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, l1BInfo := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy a NativeTokenHome on the primary network
 	wavaxAddress, wavax := utils.DeployWrappedNativeToken(

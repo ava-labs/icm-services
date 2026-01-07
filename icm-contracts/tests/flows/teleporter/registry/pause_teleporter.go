@@ -9,7 +9,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func PauseTeleporter(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func PauseTeleporter(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -17,7 +21,6 @@ func PauseTeleporter(network *localnetwork.LocalNetwork, teleporter utils.Telepo
 	//
 	// Deploy TestMessenger to L1s A and B
 	//
-	ctx := context.Background()
 	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
 	_, testMessengerA := utils.DeployTestMessenger(
 		ctx,
@@ -43,7 +46,7 @@ func PauseTeleporter(network *localnetwork.LocalNetwork, teleporter utils.Telepo
 	tx, err := testMessengerB.PauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
 	pauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressPaused)
 	Expect(err).Should(BeNil())
 	Expect(pauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))
@@ -73,7 +76,7 @@ func PauseTeleporter(network *localnetwork.LocalNetwork, teleporter utils.Telepo
 	tx, err = testMessengerB.UnpauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
 	unpauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressUnpaused)
 	Expect(err).Should(BeNil())
 	Expect(unpauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))

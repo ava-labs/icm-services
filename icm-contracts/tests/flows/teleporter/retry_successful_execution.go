@@ -11,7 +11,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func RetrySuccessfulExecution(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
@@ -19,7 +23,6 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	//
 	// Deploy TestMessenger to L1s A and B
 	//
-	ctx := context.Background()
 
 	_, l1ATestMessenger := utils.DeployTestMessenger(
 		ctx,
@@ -53,7 +56,7 @@ func RetrySuccessfulExecution(network *localnetwork.LocalNetwork, teleporter uti
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,

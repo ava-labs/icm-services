@@ -3,9 +3,7 @@ package ictt_test
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io/fs"
-	"math/big"
 	"os"
 	"testing"
 	"time"
@@ -14,16 +12,14 @@ import (
 	icttFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/ictt"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/segmentio/encoding/json"
 )
 
 const (
-	teleporterByteCodeFile  = "./out/TeleporterMessenger.sol/TeleporterMessenger.json"
 	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
 
 	icttLabel              = "ICTT"
@@ -40,8 +36,8 @@ const (
 )
 
 var (
-	LocalNetworkInstance *localnetwork.LocalNetwork
-	TeleporterInfo       utils.TeleporterTestInfo
+	localNetworkInstance *localnetwork.LocalAvalancheNetwork
+	teleporterInfo       utils.TeleporterTestInfo
 	e2eFlags             *e2e.FlagVars
 )
 
@@ -61,25 +57,17 @@ func TestICTT(t *testing.T) {
 }
 
 // Define the Teleporter before and after suite functions.
-var _ = ginkgo.BeforeSuite(func() {
-	log.SetDefault(log.NewLogger(log.NewTerminalHandler(os.Stdout, false)))
-
-	// Generate the Teleporter deployment values
-	teleporterDeployerTransaction,
-		teleporterDeployedBytecode,
+var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
+	teleporterContractAddress,
 		teleporterDeployerAddress,
-		teleporterContractAddress,
-		err := deploymentUtils.ConstructKeylessTransaction(
-		teleporterByteCodeFile,
-		false,
-		deploymentUtils.GetDefaultContractCreationGasPrice(),
-	)
-	Expect(err).Should(BeNil())
+		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
+
+	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
 
 	// Create the local network instance
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	LocalNetworkInstance = localnetwork.NewLocalNetwork(
+	localNetworkInstance = localnetwork.NewLocalAvalancheNetwork(
 		ctx,
 		"teleporter-test-local-network",
 		warpGenesisTemplateFile,
@@ -88,7 +76,7 @@ var _ = ginkgo.BeforeSuite(func() {
 				Name:                       "A",
 				EVMChainID:                 12345,
 				TeleporterContractAddress:  teleporterContractAddress,
-				TeleporterDeployedBytecode: teleporterDeployedBytecode,
+				TeleporterDeployedBytecode: teleporterDeployedByteCode,
 				TeleporterDeployerAddress:  teleporterDeployerAddress,
 				NodeCount:                  2,
 			},
@@ -96,7 +84,7 @@ var _ = ginkgo.BeforeSuite(func() {
 				Name:                       "B",
 				EVMChainID:                 54321,
 				TeleporterContractAddress:  teleporterContractAddress,
-				TeleporterDeployedBytecode: teleporterDeployedBytecode,
+				TeleporterDeployedBytecode: teleporterDeployedByteCode,
 				TeleporterDeployerAddress:  teleporterDeployerAddress,
 				NodeCount:                  2,
 			},
@@ -105,31 +93,30 @@ var _ = ginkgo.BeforeSuite(func() {
 		2,
 		e2eFlags,
 	)
-	TeleporterInfo = utils.NewTeleporterTestInfo(LocalNetworkInstance.GetAllL1Infos())
+	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 	log.Info("Started local network")
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
-	_, fundedKey := LocalNetworkInstance.GetFundedAccountInfo()
+	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
 
 	if e2eFlags.NetworkDir() == "" {
 		// Only deploy Teleporter if we are not reusing an existing network
-		TeleporterInfo.DeployTeleporterMessenger(
+		utils.DeployWithNicksMethod(
 			ctx,
-			LocalNetworkInstance.GetPrimaryNetworkInfo(),
+			localNetworkInstance.GetPrimaryNetworkInfo(),
 			teleporterDeployerTransaction,
 			teleporterDeployerAddress,
 			teleporterContractAddress,
 			fundedKey,
 		)
 
-		for _, l1 := range LocalNetworkInstance.GetAllL1Infos() {
-			TeleporterInfo.SetTeleporter(teleporterContractAddress, l1)
-			TeleporterInfo.InitializeBlockchainID(l1, fundedKey)
-			TeleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
+		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+			teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
 		}
 
 		registryAddresseses := make(map[string]string)
-		for l1, teleporterInfo := range TeleporterInfo {
+		for l1, teleporterInfo := range teleporterInfo {
 			registryAddresseses[l1.Hex()] = teleporterInfo.TeleporterRegistryAddress.Hex()
 		}
 
@@ -139,13 +126,6 @@ var _ = ginkgo.BeforeSuite(func() {
 		Expect(err).Should(BeNil())
 
 	} else {
-		fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(15)) // 11 AVAX
-		fundDeployerTx := utils.CreateNativeTransferTransaction(
-			ctx, LocalNetworkInstance.GetPrimaryNetworkInfo(), fundedKey, teleporterDeployerAddress, fundAmount,
-		)
-		utils.SendTransactionAndWaitForSuccess(ctx, LocalNetworkInstance.GetPrimaryNetworkInfo(), fundDeployerTx)
-		fmt.Println("Deployer funded with", fundAmount, "AVAX")
-
 		// Read the Teleporter registry address from the file
 		registryAddresseses := make(map[string]string)
 		data, err := os.ReadFile(teleporterRegistryAddressFile)
@@ -153,9 +133,9 @@ var _ = ginkgo.BeforeSuite(func() {
 		err = json.Unmarshal(data, &registryAddresseses)
 		Expect(err).Should(BeNil())
 
-		for _, l1 := range LocalNetworkInstance.GetAllL1Infos() {
-			TeleporterInfo.SetTeleporter(teleporterContractAddress, l1)
-			TeleporterInfo.SetTeleporterRegistry(
+		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+			teleporterInfo.SetTeleporterRegistry(
 				common.HexToAddress(registryAddresseses[l1.BlockchainID.Hex()]),
 				l1,
 			)
@@ -165,65 +145,65 @@ var _ = ginkgo.BeforeSuite(func() {
 })
 
 var _ = ginkgo.AfterSuite(func() {
-	LocalNetworkInstance.TearDownNetwork()
-	LocalNetworkInstance = nil
+	localNetworkInstance.TearDownNetwork()
+	localNetworkInstance = nil
 })
 
 var _ = ginkgo.Describe("[ICTT integration tests]", func() {
 	// ICTT tests
 	ginkgo.It("Transfer an ERC20 token between two L1s",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel),
-		func() {
-			icttFlows.ERC20TokenHomeERC20TokenRemote(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.ERC20TokenHomeERC20TokenRemote(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer a native token to an ERC20 token",
 		ginkgo.Label(icttLabel, nativeTokenHomeLabel, erc20TokenRemoteLabel),
-		func() {
-			icttFlows.NativeTokenHomeERC20TokenRemote(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.NativeTokenHomeERC20TokenRemote(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer a native token to a native token",
 		ginkgo.Label(icttLabel, nativeTokenHomeLabel, nativeTokenRemoteLabel),
-		func() {
-			icttFlows.NativeTokenHomeNativeDestination(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.NativeTokenHomeNativeDestination(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer an ERC20 token with ERC20TokenHome multi-hop",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.ERC20TokenHomeERC20TokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.ERC20TokenHomeERC20TokenRemoteMultiHop(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer a native token with NativeTokenHome multi-hop",
 		ginkgo.Label(icttLabel, nativeTokenHomeLabel, erc20TokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.NativeTokenHomeERC20TokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.NativeTokenHomeERC20TokenRemoteMultiHop(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer an ERC20 token to a native token",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel),
-		func() {
-			icttFlows.ERC20TokenHomeNativeTokenRemote(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.ERC20TokenHomeNativeTokenRemote(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer a native token with ERC20TokenHome multi-hop",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.ERC20TokenHomeNativeTokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.ERC20TokenHomeNativeTokenRemoteMultiHop(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer a native token to a native token multi-hop",
 		ginkgo.Label(icttLabel, nativeTokenHomeLabel, nativeTokenRemoteLabel, multiHopLabel),
-		func() {
-			icttFlows.NativeTokenHomeNativeTokenRemoteMultiHop(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.NativeTokenHomeNativeTokenRemoteMultiHop(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transfer an ERC20 token using sendAndCall",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, sendAndCallLabel),
-		func() {
-			icttFlows.ERC20TokenHomeERC20TokenRemoteSendAndCall(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.ERC20TokenHomeERC20TokenRemoteSendAndCall(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Registration and collateral checks",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, nativeTokenRemoteLabel, registrationLabel),
-		func() {
-			icttFlows.RegistrationAndCollateralCheck(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.RegistrationAndCollateralCheck(ctx, localNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Transparent proxy upgrade",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel, upgradabilityLabel),
-		func() {
-			icttFlows.TransparentUpgradeableProxy(LocalNetworkInstance, TeleporterInfo)
+		func(ctx context.Context) {
+			icttFlows.TransparentUpgradeableProxy(ctx, localNetworkInstance, teleporterInfo)
 		})
 })

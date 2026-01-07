@@ -6,6 +6,8 @@ package config
 import (
 	"fmt"
 	"net/url"
+
+	"github.com/ava-labs/avalanchego/utils/rpc"
 )
 
 // API configuration containing the base URL and query parameters
@@ -20,4 +22,16 @@ func (c *APIConfig) Validate() error {
 		return fmt.Errorf("invalid base URL: %w", err)
 	}
 	return nil
+}
+
+// Options initializes and returns the rpc options for an API
+func (c *APIConfig) Options() []rpc.Option {
+	options := make([]rpc.Option, 0, len(c.QueryParams)+len(c.HTTPHeaders))
+	for key, value := range c.QueryParams {
+		options = append(options, rpc.WithQueryParam(key, value))
+	}
+	for key, value := range c.HTTPHeaders {
+		options = append(options, rpc.WithHeader(key, value))
+	}
+	return options
 }

@@ -298,34 +298,28 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	}
 
 	txHash := receipt.TxHash
+	log := m.logger.With(zap.Stringer("txID", txHash))
 
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		// Check if the message has already been delivered to the destination chain
 		delivered, err := m.getTeleporterMessenger().MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
 		if err != nil {
-			m.logger.Error(
+			log.Error(
 				"Failed to check if message has been delivered to destination chain.",
 				zap.Error(err),
-				zap.Stringer("txID", txHash),
 			)
 			return common.Hash{}, fmt.Errorf("failed to check if message has been delivered: %w", err)
 		}
 		if delivered {
-			m.logger.Info("Execution reverted: message already delivered to destination.", zap.Stringer("txID", txHash))
+			log.Info("Execution reverted: message already delivered to destination.")
 			return txHash, nil
 		}
 
-		m.logger.Error(
-			"Transaction failed",
-			zap.Stringer("txID", txHash),
-		)
+		log.Error("Transaction failed")
 		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
 	}
 
-	m.logger.Info(
-		"Delivered message to destination chain",
-		zap.Stringer("txID", txHash),
-	)
+	log.Info("Delivered message to destination chain")
 	return txHash, nil
 }
 

@@ -3,11 +3,10 @@ package aggregator
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"slices"
 	"testing"
 	"time"
-
-	"crypto/rand"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
@@ -40,7 +39,6 @@ func instantiateAggregator(t *testing.T) (
 	*peers.RelayerExternalHandler, // handler for test access
 	*avago_mocks.MockNetwork,
 	*client_mocks.MockCanonicalValidatorState,
-	*client_mocks.MockPChainClient,
 ) {
 	mockController := gomock.NewController(t)
 	mockNetwork := avago_mocks.NewMockNetwork(mockController)
@@ -57,8 +55,6 @@ func instantiateAggregator(t *testing.T) (
 		constants.DefaultNetworkMaximumInboundTimeout,
 	)
 	require.NoError(t, err)
-
-	mockPClient := client_mocks.NewMockPChainClient(mockController)
 
 	// Create handler for AppRequestNetwork
 	peerMetrics := peers.NewAppRequestNetworkMetrics(registry)
@@ -85,13 +81,12 @@ func instantiateAggregator(t *testing.T) (
 		testMessageCreator,
 		1024,
 		testSigAggMetrics,
-		mockPClient,
-		nil,
+		mockValidatorClient,
 	)
 	require.NoError(t, err)
 
 	// Return the AppRequestNetwork, handler (for injecting responses), and mocks so tests can set expectations
-	return aggregator, appRequestNetwork, handler, mockNetwork, mockValidatorClient, mockPClient
+	return aggregator, appRequestNetwork, handler, mockNetwork, mockValidatorClient
 }
 
 // Generate the validator values.
@@ -173,11 +168,11 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			aggregator, _, _, _, _, _ := instantiateAggregator(t)
+			aggregator, _, _, _, _ := instantiateAggregator(t)
 			signedMsg, err := aggregator.CreateSignedMessage(
 				t.Context(),
 				logging.NoLog{},
-				nil,
+				&warp.UnsignedMessage{},
 				nil,
 				ids.Empty,
 				tc.requiredQuorumPercentage,
@@ -191,7 +186,7 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 }
 
 func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
-	aggregator, _, _, mockNetwork, mockValidatorClient, _ := instantiateAggregator(t)
+	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
 	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil).AnyTimes()
@@ -219,7 +214,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 }
 
 func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
-	aggregator, _, _, mockNetwork, mockValidatorClient, _ := instantiateAggregator(t)
+	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
 	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
@@ -275,7 +270,7 @@ func makeAppRequests(
 }
 
 func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
-	aggregator, _, _, mockNetwork, mockValidatorClient, mockPClient := instantiateAggregator(t)
+	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateAggregator(t)
 
 	var (
 		connectedValidators, _ = makeConnectedValidators(2)
@@ -328,7 +323,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 		subnets.NoOpAllower,
 	).AnyTimes()
 
-	mockPClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+	mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
 		platformvm.GetSubnetClientResponse{},
 		nil,
 	).Times(1)
@@ -378,7 +373,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 
 			// prime the aggregator:
 
-			aggregator, _, handler, mockNetwork, mockValidatorClient, mockPClient := instantiateAggregator(t)
+			aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateAggregator(t)
 
 			subnetID := ids.GenerateTestID()
 			mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(
@@ -406,7 +401,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			}
 			mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfos).AnyTimes()
 
-			mockPClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+			mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
 				platformvm.GetSubnetClientResponse{},
 				nil,
 			).Times(1)
@@ -510,7 +505,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 }
 
 func TestUnmarshalResponse(t *testing.T) {
-	aggregator, _, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateAggregator(t)
 
 	emptySignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: []byte{}})
 	require.NoError(t, err)
@@ -763,13 +758,13 @@ func TestGetExcludedValidators(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			aggregator, _, _, _, _, mockPClient := instantiateAggregator(t)
+			aggregator, _, _, _, mockValidatorClient := instantiateAggregator(t)
 			ctx := t.Context()
 			log := logging.NoLog{}
 			signingSubnet := ids.GenerateTestID()
 
-			mockPClient.EXPECT().
-				GetCurrentValidators(gomock.Any(), signingSubnet, gomock.Nil(), gomock.Any()).
+			mockValidatorClient.EXPECT().
+				GetCurrentValidators(gomock.Any(), signingSubnet).
 				Return(tc.l1Validators, nil)
 
 			excluded, err := aggregator.getExcludedValidators(ctx, log, signingSubnet, tc.connected)
@@ -828,7 +823,7 @@ func TestValidateQuorumPercentages(t *testing.T) {
 }
 
 func TestSelectSigningSubnet(t *testing.T) {
-	aggregator, _, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateAggregator(t)
 	ctx := t.Context()
 	log := logging.NoLog{}
 	chainID := ids.GenerateTestID()
@@ -854,7 +849,7 @@ func TestSelectSigningSubnet(t *testing.T) {
 }
 
 func TestPopulateSignatureMapFromCache(t *testing.T) {
-	aggregator, _, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateAggregator(t)
 	connectedValidators, signers := makeConnectedValidators(2)
 	msg, err := warp.NewUnsignedMessage(0, ids.GenerateTestID(), []byte("test"))
 	require.NoError(t, err)

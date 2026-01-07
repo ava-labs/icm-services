@@ -1,0 +1,189 @@
+// Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package tests
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
+	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/relayer/api"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
+	. "github.com/onsi/gomega"
+)
+
+func RelayMessageAPI(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
+	l1AInfo := network.GetPrimaryNetworkInfo()
+	l1BInfo, _ := network.GetTwoL1s()
+	fundedAddress, fundedKey := network.GetFundedAccountInfo()
+	err := utils.ClearRelayerStorage()
+	Expect(err).Should(BeNil())
+
+	log.Info("Funding relayer address on all subnets")
+	relayerKey, err := crypto.GenerateKey()
+	Expect(err).Should(BeNil())
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+
+	log.Info("Sending teleporter message")
+	receipt, _, teleporterMessageID := utils.SendBasicTeleporterMessage(
+		ctx,
+		log,
+		teleporter,
+		l1AInfo,
+		l1BInfo,
+		fundedKey,
+		fundedAddress,
+	)
+	warpMessage := getWarpMessageFromLog(ctx, log, receipt, l1AInfo)
+
+	// Set up relayer config
+	relayerConfig := utils.CreateDefaultRelayerConfig(
+		log,
+		teleporter,
+		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		fundedAddress,
+		relayerKey,
+	)
+	// Don't process missed blocks, so we can manually relay
+	relayerConfig.ProcessMissedBlocks = false
+
+	relayerConfigPath := utils.WriteRelayerConfig(
+		log,
+		relayerConfig,
+		utils.DefaultRelayerCfgFname,
+	)
+
+	log.Info("Starting the relayer")
+	relayerCleanup, readyChan := utils.RunRelayerExecutable(
+		ctx,
+		log,
+		relayerConfigPath,
+		relayerConfig,
+	)
+	defer relayerCleanup()
+
+	// Wait for relayer to start up
+	log.Info("Waiting for the relayer to start up")
+	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer startupCancel()
+	utils.WaitForChannelClose(startupCtx, readyChan)
+
+	reqBody := api.RelayMessageRequest{
+		BlockchainID: l1AInfo.BlockchainID.String(),
+		MessageID:    warpMessage.ID().String(),
+		BlockNum:     receipt.BlockNumber.Uint64(),
+	}
+
+	client := http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	requestURL := fmt.Sprintf("http://localhost:%d%s", relayerConfig.APIPort, api.RelayAPIPath)
+
+	// Send request to API
+	{
+		b, err := json.Marshal(reqBody)
+		Expect(err).Should(BeNil())
+		bodyReader := bytes.NewReader(b)
+
+		req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
+		Expect(err).Should(BeNil())
+		req.Header.Set("Content-Type", "application/json")
+
+		res, err := client.Do(req)
+		Expect(err).Should(BeNil())
+		Expect(res.Status).Should(Equal("200 OK"))
+
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		Expect(err).Should(BeNil())
+
+		var response api.RelayMessageResponse
+		err = json.Unmarshal(body, &response)
+		Expect(err).Should(BeNil())
+
+		receipt, err := l1BInfo.RPCClient.TransactionReceipt(ctx, common.HexToHash(response.TransactionHash))
+		Expect(err).Should(BeNil())
+
+		receiveEvent, err := utils.GetEventFromLogs(
+			receipt.Logs,
+			teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage,
+		)
+		Expect(err).Should(BeNil())
+		Expect(ids.ID(receiveEvent.MessageID)).Should(Equal(teleporterMessageID))
+	}
+
+	// Send the same request to ensure the correct response.
+	{
+		b, err := json.Marshal(reqBody)
+		Expect(err).Should(BeNil())
+		bodyReader := bytes.NewReader(b)
+
+		req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
+		Expect(err).Should(BeNil())
+		req.Header.Set("Content-Type", "application/json")
+
+		res, err := client.Do(req)
+		Expect(err).Should(BeNil())
+		Expect(res.Status).Should(Equal("200 OK"))
+
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		Expect(err).Should(BeNil())
+
+		var response api.RelayMessageResponse
+		err = json.Unmarshal(body, &response)
+		Expect(err).Should(BeNil())
+		Expect(response.TransactionHash).Should(Equal(
+			"0x0000000000000000000000000000000000000000000000000000000000000000",
+		))
+	}
+
+	// Cancel the command and stop the relayer
+	relayerCleanup()
+}
+
+func getWarpMessageFromLog(
+	ctx context.Context,
+	log logging.Logger,
+	receipt *types.Receipt,
+	source interfaces.L1TestInfo,
+) *avalancheWarp.UnsignedMessage {
+	log.Info("Fetching relevant warp logs from the newly produced block")
+	logs, err := source.RPCClient.FilterLogs(ctx, ethereum.FilterQuery{
+		BlockHash: &receipt.BlockHash,
+		Addresses: []common.Address{warp.Module.Address},
+	})
+	Expect(err).Should(BeNil())
+	Expect(len(logs)).Should(Equal(1))
+
+	// Check for relevant warp log from subscription and ensure that it matches
+	// the log extracted from the last block.
+	txLog := logs[0]
+	log.Info("Parsing logData as unsigned warp message")
+	unsignedMsg, err := warp.UnpackSendWarpEventDataToMessage(txLog.Data)
+	Expect(err).Should(BeNil())
+
+	return unsignedMsg
+}

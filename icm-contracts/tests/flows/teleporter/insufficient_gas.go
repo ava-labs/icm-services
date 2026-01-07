@@ -10,11 +10,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func InsufficientGas(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func InsufficientGas(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-	ctx := context.Background()
 
 	// Deploy TestMessenger to L1s A
 	_, l1ATestMessenger := utils.DeployTestMessenger(
@@ -51,7 +54,7 @@ func InsufficientGas(network *localnetwork.LocalNetwork, teleporter utils.Telepo
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,

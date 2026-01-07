@@ -26,12 +26,14 @@ import (
  * Check that the transfer was successful, and expected balances are correct
  */
 
-func TransparentUpgradeableProxy(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func TransparentUpgradeableProxy(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-
-	ctx := context.Background()
 
 	// Deploy an ExampleERC20 on the primary network as the token to be transferred
 	exampleERC20Address, exampleERC20 := utils.DeployExampleERC20Decimals(
@@ -59,7 +61,7 @@ func TransparentUpgradeableProxy(network *localnetwork.LocalNetwork, teleporter 
 		uint8(1),
 	)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.RPCClient, tx.Hash())
 
 	// Deploy a TransparentUpgradeableProxy contract on primary network for the ERC20TokenHome logic contract
 	erc20TokenHomeAddress, proxyAdmin := utils.DeployTransparentUpgradeableProxy(
@@ -80,7 +82,7 @@ func TransparentUpgradeableProxy(network *localnetwork.LocalNetwork, teleporter 
 		tokenDecimals,
 	)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.RPCClient, tx.Hash())
 
 	// Deploy the ERC20TokenRemote contract on L1 A
 	erc20TokenRemoteAddress, erc20TokenRemote := utils.DeployERC20TokenRemote(
@@ -171,12 +173,12 @@ func TransparentUpgradeableProxy(network *localnetwork.LocalNetwork, teleporter 
 		uint8(1),
 	)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.RPCClient, tx.Hash())
 
 	// Upgrade the TransparentUpgradeableProxy contract to use the new logic contract
 	tx, err = proxyAdmin.UpgradeAndCall(opts, erc20TokenHomeAddress, newLogic, []byte{})
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.RPCClient, tx.Hash())
 
 	// Send a transfer from L1 A back to primary network
 	utils.SendNativeTransfer(

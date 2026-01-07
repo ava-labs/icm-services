@@ -13,15 +13,17 @@ import (
 )
 
 // Tests basic one-way send from L1 A to L1 B and vice versa
-func BasicSendReceive(network *localnetwork.LocalNetwork, teleporter utils.TeleporterTestInfo) {
+func BasicSendReceive(
+	ctx context.Context,
+	network *localnetwork.LocalAvalancheNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	// Send a transaction to L1 A to issue an ICM Message from the Teleporter contract to L1 B
-	ctx := context.Background()
-
 	aggregator := network.GetSignatureAggregator()
 	defer aggregator.Shutdown()
 
