@@ -454,8 +454,7 @@ func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
 		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
 	}
 
-	logger := logging.NoLog{}
-	_, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
+	_, err := NewDestinationClient(logging.NoLog{}, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
 	for key, expectedValue := range queryParams {
@@ -517,14 +516,11 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 	client, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	ethClient := client.Client()
 	ethClient.BlockNumber(ctx)
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
-
-	mu.Lock()
-	defer mu.Unlock()
 
 	require.Greater(t, len(receivedParams), 0, "No requests were made")
 	for i, params := range receivedParams {
