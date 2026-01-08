@@ -416,8 +416,8 @@ func (n *LocalNetwork) ConvertSubnet(
 		}
 	}
 	utils.PChainProposerVMWorkaround(pChainWallet)
-	// TODO: Issue txs elsehow
-	// utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.RPCClient, 5)
+	err = utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.RPCClient, 5)
+	Expect(err).Should(BeNil())
 
 	return nodes, validationIDs
 }

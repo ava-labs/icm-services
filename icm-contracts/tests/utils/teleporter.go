@@ -100,6 +100,7 @@ func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, l1 int
 func (t TeleporterTestInfo) InitializeBlockchainID(l1 interfaces.L1TestInfo, fundedKey *ecdsa.PrivateKey) {
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
+	opts.GasLimit = 10_000_000
 	tx, err := t.TeleporterMessenger(l1).InitializeBlockchainID(opts)
 	Expect(err).Should(BeNil())
 	WaitForTransactionSuccess(context.Background(), l1, tx.Hash())
@@ -115,6 +116,7 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	}
 	opts, err := bind.NewKeyedTransactorWithChainID(deployerKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
+	opts.GasLimit = 10_000_000
 	teleporterRegistryAddress, tx, teleporterRegistry, err := teleporterregistry.DeployTeleporterRegistry(
 		opts, l1.RPCClient, entries,
 	)
@@ -224,6 +226,7 @@ func (t TeleporterTestInfo) SendExampleCrossChainMessageAndVerify(
 	// Call the example messenger contract on L1 A
 	optsA, err := bind.NewKeyedTransactorWithChainID(senderKey, source.EVMChainID)
 	Expect(err).Should(BeNil())
+	optsA.GasLimit = 10_000_000
 	tx, err := sourceExampleMessenger.SendMessage(
 		optsA,
 		destination.BlockchainID,
@@ -423,6 +426,7 @@ func DeployTestMessenger(
 		l1.EVMChainID,
 	)
 	Expect(err).Should(BeNil())
+	opts.GasLimit = 10_000_000
 	address, tx, exampleMessenger, err := testmessenger.DeployTestMessenger(
 		opts,
 		l1.RPCClient,
@@ -472,7 +476,7 @@ func SendAddFeeAmountAndWaitForAcceptance(
 		source.EVMChainID,
 	)
 	Expect(err).Should(BeNil())
-
+	opts.GasLimit = 10_000_000
 	tx, err := transactor.AddFeeAmount(opts, messageID, feeContractAddress, amount)
 	Expect(err).Should(BeNil())
 
@@ -501,7 +505,7 @@ func RetryMessageExecutionAndWaitForAcceptance(
 ) *types.Receipt {
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, destinationL1.EVMChainID)
 	Expect(err).Should(BeNil())
-
+	opts.GasLimit = 10_000_000
 	tx, err := destinationTeleporterMessenger.RetryMessageExecution(opts, sourceBlockchainID, message)
 	Expect(err).Should(BeNil())
 
@@ -530,6 +534,7 @@ func RedeemRelayerRewardsAndConfirm(
 		redeemerKey, l1.EVMChainID,
 	)
 	Expect(err).Should(BeNil())
+	txOpts.GasLimit = 10_000_000
 	tx, err := teleporterMessenger.RedeemRelayerRewards(
 		txOpts, feeTokenAddress,
 	)
@@ -573,7 +578,7 @@ func SendSpecifiedReceiptsAndWaitForAcceptance(
 ) (*types.Receipt, ids.ID) {
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, source.EVMChainID)
 	Expect(err).Should(BeNil())
-
+	opts.GasLimit = 10_000_000
 	tx, err := sourceTeleporterMessenger.SendSpecifiedReceipts(
 		opts, destinationBlockchainID, messageIDs, feeInfo, allowedRelayerAddresses)
 	Expect(err).Should(BeNil())
@@ -603,7 +608,7 @@ func SendCrossChainMessageAndWaitForAcceptance(
 ) (*types.Receipt, ids.ID) {
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, source.EVMChainID)
 	Expect(err).Should(BeNil())
-
+	opts.GasLimit = 10_000_000
 	// Send a transaction to the Teleporter contract
 	tx, err := sourceTeleporterMessenger.SendCrossChainMessage(opts, input)
 	Expect(err).Should(BeNil())

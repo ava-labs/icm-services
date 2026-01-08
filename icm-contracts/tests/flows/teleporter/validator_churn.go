@@ -125,13 +125,12 @@ func ValidatorChurn(
 	// Trigger the proposer VM to update its height so that the inner VM can see the new validator set
 	// We have to update all L1s, not just the ones directly involved in this test to ensure that the
 	// proposer VM is updated on all L1s.
-	// TODO: Issue txs elsehow
-	// for _, l1Info := range network.GetL1Infos() {
-	// 	err = utils.IssueTxsToAdvanceChain(
-	// 		ctx, l1Info.EVMChainID, fundedKey, l1Info.WSClient, 5,
-	// 	)
-	// 	Expect(err).Should(BeNil())
-	// }
+	for _, l1Info := range network.GetL1Infos() {
+		err = utils.IssueTxsToAdvanceChain(
+			ctx, l1Info.EVMChainID, fundedKey, l1Info.RPCClient, 5,
+		)
+		Expect(err).Should(BeNil())
+	}
 
 	//
 	// Attempt to deliver the warp message signed by the old validator set. This should fail.

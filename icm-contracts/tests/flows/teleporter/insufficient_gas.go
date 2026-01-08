@@ -42,6 +42,7 @@ func InsufficientGas(
 		l1AInfo.EVMChainID,
 	)
 	Expect(err).Should(BeNil())
+	optsA.GasLimit = 10_000_000
 	tx, err := l1ATestMessenger.SendMessage(
 		optsA,
 		l1BInfo.BlockchainID,

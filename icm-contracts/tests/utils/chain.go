@@ -560,6 +560,7 @@ func AddNativeMinterAdmin(
 
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
+	opts.GasLimit = 10_000_000
 	tx, err := nativeMinterPrecompile.SetAdmin(opts, address)
 	Expect(err).Should(BeNil())
 	WaitForTransactionSuccess(ctx, l1, tx.Hash())
@@ -678,9 +679,8 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	Expect(err).Should(BeNil())
 
 	_ = chainIDInt
-	// TODO: Issue txs elsehow
-	// err = subnetEvmUtils.IssueTxsToActivateProposerVMFork(ctx, chainIDInt, fundedKey, client)
-	// Expect(err).Should(BeNil())
+	err = IssueTxsToAdvanceChain(ctx, chainIDInt, fundedKey, client, 2)
+	Expect(err).Should(BeNil())
 }
 
 // Adapted from [subnetEvmUtils.IssueTxsToActivateProposerVMFork]
@@ -690,25 +690,27 @@ func IssueTxsToAdvanceChain(
 	ctx context.Context,
 	chainID *big.Int,
 	fundedKey *ecdsa.PrivateKey,
-	client ethclient.Client,
+	client *ethclient.Client,
 	numTriggerTxs int,
 ) error {
 	addr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 	nonce, err := client.NonceAt(ctx, addr, nil)
 	Expect(err).Should(BeNil())
 
-	newHeads := make(chan *types.Header, 1)
-	sub, err := client.SubscribeNewHead(ctx, newHeads)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
 	to := common.HexToAddress(string(common.Big1.Bytes()))
 	gasFeeCap := big.NewInt(0).SetUint64(225_000_000_000)
 
 	txSigner := types.LatestSignerForChainID(chainID)
+	queryTicker := time.NewTicker(200 * time.Millisecond)
+	defer queryTicker.Stop()
+
 	for i := 0; i < numTriggerTxs; i++ {
+		// Get current block number before sending transaction
+		currentBlockNumber, err := client.BlockNumber(ctx)
+		if err != nil {
+			return err
+		}
+
 		tx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
 			Nonce:     nonce,
@@ -725,7 +727,24 @@ func IssueTxsToAdvanceChain(
 		if err := client.SendTransaction(ctx, triggerTx); err != nil {
 			return err
 		}
-		<-newHeads // wait for block to be accepted
+
+		// Poll until block number increases
+		for {
+			newBlockNumber, err := client.BlockNumber(ctx)
+			if err != nil {
+				return err
+			}
+			if newBlockNumber > currentBlockNumber {
+				break
+			}
+
+			// Wait for the next polling interval or context cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-queryTicker.C:
+			}
+		}
 		nonce++
 	}
 	log.Info(

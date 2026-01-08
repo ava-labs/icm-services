@@ -1806,11 +1806,10 @@ func AdvanceProposerVM(
 	blocks int,
 ) {
 	log.Info("Advancing proposer VM")
-	// TODO: Issue txs elsehow
-	// for i := 0; i < blocks; i++ {
-	// 	err := subnetEvmUtils.IssueTxsToActivateProposerVMFork(
-	// 		ctx, l1.EVMChainID, fundedKey, l1.WSClient,
-	// 	)
-	// 	Expect(err).Should(BeNil())
-	// }
+	for i := 0; i < blocks; i++ {
+		err := IssueTxsToAdvanceChain(
+			ctx, l1.EVMChainID, fundedKey, l1.RPCClient, 2,
+		)
+		Expect(err).Should(BeNil())
+	}
 }
