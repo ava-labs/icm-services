@@ -24,7 +24,6 @@ func DeployValidatorSetSig(
 ) (common.Address, *validatorsetsig.ValidatorSetSig) {
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, contractL1.EVMChainID)
 	Expect(err).Should(BeNil())
-	opts.GasLimit = 10_000_000
 	log.Info("Deploying ValidatorSetSig contract",
 		zap.Any("opts.GasFeeCap", opts.GasFeeCap),
 		zap.Any("opts.GasTipCap", opts.GasTipCap),

@@ -591,7 +591,6 @@ func AddNativeMinterAdmin(
 
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
-	opts.GasLimit = 10_000_000
 	tx, err := nativeMinterPrecompile.SetAdmin(opts, address)
 	Expect(err).Should(BeNil())
 	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())

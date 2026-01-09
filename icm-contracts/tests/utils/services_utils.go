@@ -566,7 +566,6 @@ func DeployBatchCrossChainMessenger(
 	opts, err := bind.NewKeyedTransactorWithChainID(
 		senderKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
-	opts.GasLimit = 10_000_000
 	address, tx, exampleMessenger, err := batchcrosschainmessenger.DeployBatchCrossChainMessenger(
 		opts,
 		l1.RPCClient,

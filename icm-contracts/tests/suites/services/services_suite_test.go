@@ -20,7 +20,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/units"
 	servicesFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/services"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
-	contractUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -38,7 +38,7 @@ var (
 	log logging.Logger
 
 	localNetworkInstance *network.LocalAvalancheNetwork
-	teleporterInfo       contractUtils.TeleporterTestInfo
+	teleporterInfo       utils.TeleporterTestInfo
 
 	decider *exec.Cmd
 
@@ -83,13 +83,13 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	)
 
 	log.Info("Building all ICM service executables")
-	contractUtils.BuildAllExecutables(ctx, log)
+	utils.BuildAllExecutables(ctx, log)
 
 	teleporterContractAddress,
 		teleporterDeployerAddress,
-		teleporterDeployedByteCode := contractUtils.TeleporterDeploymentValues()
+		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
 
-	teleporterDeployerTransaction := contractUtils.TeleporterDeployerTransaction()
+	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
 
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
@@ -124,7 +124,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
-	contractUtils.DeployWithNicksMethod(
+	utils.DeployWithNicksMethod(
 		networkStartCtx,
 		localNetworkInstance.GetPrimaryNetworkInfo(),
 		teleporterDeployerTransaction,
@@ -133,7 +133,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		fundedKey,
 	)
 
-	teleporterInfo = contractUtils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
+	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
 	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
 		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
@@ -145,7 +145,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		localNetworkInstance.ConvertSubnet(
 			networkStartCtx,
 			subnet,
-			contractUtils.PoAValidatorManager,
+			utils.PoAValidatorManager,
 			[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
 			[]uint64{defaultBalance, defaultBalance, defaultBalance, minimumL1ValidatorBalance - 1},
 			fundedKey,
