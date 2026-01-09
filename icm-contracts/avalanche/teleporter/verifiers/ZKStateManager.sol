@@ -1,4 +1,12 @@
-// SPDX-License-Identifier: Apache-2.0
+// (c) 2025, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+// SPDX-License-Identifier: LicenseRef-Ecosystem
+
+// Based on code from: https://github.com/boundless-xyz/boundless-transceiver
+// Modifications: Builds a State Manager for the Ethereum beacon chain, including storing beacon state roots, 
+// execution state roots, and receipt roots, on top of the infrastructure provided by the boundless-transceiver repository.
+
 pragma solidity ^0.8.30;
 
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
@@ -57,7 +65,9 @@ contract ZKStateManager is AccessControl {
     event Transitioned(
         uint64 indexed preEpoch, uint64 indexed postEpoch, ConsensusState preState, ConsensusState postState
     );
-    event Confirmed(uint64 indexed slot, bytes32 indexed root);
+    event ConfirmedBeaconState(uint64 indexed slot, bytes32 indexed root);
+    event ConfirmedExecutionState(uint64 indexed slot, bytes32 indexed root);
+    event ConfirmedReceiptsState(uint64 indexed slot, bytes32 indexed root);
     event ImageIDUpdated(bytes32 indexed newImageID, bytes32 indexed oldImageID);
     event PermissibleTimespanUpdated(uint24 indexed permissibleTimespan);
 
@@ -109,9 +119,9 @@ contract ZKStateManager is AccessControl {
         if (!_compareConsensusState(currentState, journal.preState)) {
             revert InvalidPreState();
         }
-        if (!_permissibleTransition(journal.preState, journal.postState)) {
-            revert PermissibleTimespanLapsed();
-        }
+        // if (!_permissibleTransition(journal.preState, journal.postState)) {
+        //     revert PermissibleTimespanLapsed();
+        // }
 
         // Verify the consensus state transition using the ZK proof. 
         bytes32 journalHash = sha256(journalData);
@@ -240,7 +250,6 @@ contract ZKStateManager is AccessControl {
 
     
     /// @notice Checks if a receipt root is trusted.
-    /// @dev The caller must provide the slot hint to avoid expensive iteration.
     /// @param slot The beacon chain slot where this root was finalized.
     /// @param root The receipt root to validate.
     function isValidReceiptsRoot(uint64 slot, bytes32 root) external view returns (bool) {
@@ -253,14 +262,8 @@ contract ZKStateManager is AccessControl {
         _transitionBeaconState(journal, finalizedSlot);
     }
 
-    /**
-     * @notice the root associated with the provided `slot`. If the confirmation level isn't met or the root is not
-     * set, `valid` will be false
-     *
-     * TODO: Add in link ref to confirmation levels
-     *
-     * @param slot the beacon chain slot to look up
-     */
+    /// @notice the block root associated with the provided `slot`.
+    /// @param slot the beacon chain slot to look up
     function blockRoot(uint64 slot) external view returns (bytes32 root, bool valid) {
         root = allowedBeaconStates[slot];
         if (root == UNDEFINED_ROOT) {
@@ -309,21 +312,21 @@ contract ZKStateManager is AccessControl {
         if (allowedBeaconStates[slot] == UNDEFINED_ROOT) {
             allowedBeaconStates[slot] = root;
         }
-        emit Confirmed(slot, root);
+        emit ConfirmedBeaconState(slot, root);
     }
 
     function _confirmExecutionState(uint64 slot, bytes32 root) internal {
         if (allowedExecutionStates[slot] == UNDEFINED_ROOT) {
             allowedExecutionStates[slot] = root;
         }
-        /// TODO: Add confirmed event for execution root
+        emit ConfirmedExecutionState(slot, root);
     }
 
     function _confirmReceiptsRoot(uint64 slot, bytes32 root) internal {
         if (allowedReceiptRoots[slot] == UNDEFINED_ROOT) {
             allowedReceiptRoots[slot] = root;
         }
-        /// TODO: Add confirmed event for receipts root
+        emit ConfirmedReceiptsState(slot, root);
     }
 
     function _compareConsensusState(ConsensusState memory a, ConsensusState memory b) internal pure returns (bool) {
@@ -335,23 +338,23 @@ contract ZKStateManager is AccessControl {
         return a.epoch == b.epoch && a.root == b.root;
     }
 
-    /// TODO: Fix this 
-    function _permissibleTransition(
-        ConsensusState memory pre,
-        ConsensusState memory post
-    )
-        internal
-        view
-        returns (bool)
-    {
-        // uint256 transitionTimespan = block.timestamp
-        //     - Beacon.epochTimestamp(Beacon.ETHEREUM_GENESIS_BEACON_BLOCK_TIMESTAMP, post.finalizedCheckpoint.epoch);
-        // TODO: Come back to this logic.
-        // uint256 transitionTimespan = Beacon.epochTimestamp(Beacon.ETHEREUM_GENESIS_BEACON_BLOCK_TIMESTAMP, post.finalizedCheckpoint.epoch)
-        // - Beacon.epochTimestamp(Beacon.ETHEREUM_GENESIS_BEACON_BLOCK_TIMESTAMP, pre.finalizedCheckpoint.epoch);
-        // return transitionTimespan <= uint256(permissibleTimespan);
-        return true;
-    }
+    // /// TODO: Update this 
+    // function _permissibleTransition(
+    //     ConsensusState memory pre,
+    //     ConsensusState memory post
+    // )
+    //     internal
+    //     view
+    //     returns (bool)
+    // {
+    //     // uint256 transitionTimespan = block.timestamp
+    //     //     - Beacon.epochTimestamp(Beacon.ETHEREUM_GENESIS_BEACON_BLOCK_TIMESTAMP, post.finalizedCheckpoint.epoch);
+    //     // TODO: Come back to this
+    //     // uint256 transitionTimespan = Beacon.epochTimestamp(Beacon.ETHEREUM_GENESIS_BEACON_BLOCK_TIMESTAMP, post.finalizedCheckpoint.epoch)
+    //     // - Beacon.epochTimestamp(Beacon.ETHEREUM_GENESIS_BEACON_BLOCK_TIMESTAMP, pre.finalizedCheckpoint.epoch);
+    //     // return transitionTimespan <= uint256(permissibleTimespan);
+    //     return true;
+    // }
 
     /// @notice Generates a unique hash for block that was included in the chain at the given slot
     function _checkpointHash(uint64 slot, bytes32 root) internal pure returns (bytes32 hash) {
