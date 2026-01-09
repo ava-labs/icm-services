@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+/**
+ * THIS IS LIBRARY IS UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
 struct FieldPoint2 {
     bytes32[2] u;
     bytes32[2] uI;
