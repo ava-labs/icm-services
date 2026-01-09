@@ -479,6 +479,63 @@ library BLST {
         return res;
     }
 
+    /*
+     * @notice Convert a public key (a G1 point) to its compressed format.
+     * @dev We drop, the y-coordinate then add a 3 bit mask in the three
+     * most significant bits.
+     *  - The first bit is 1 to indicate compression,
+     *  - The second bit indicates if it is the point at infinity
+     *  - The third bit indicates if the negation is lexicographically larger than self
+     */
+    function compressPublicKey(
+        bytes memory pk
+    ) internal pure returns (bytes memory) {
+        bytes memory xCoord = new bytes(48);
+        bytes memory yCoord = new bytes(48);
+        if (pk.length == 128) {
+            assembly ("memory-safe") {
+                mstore(add(xCoord, 0x20), mload(add(pk, 0x30)))
+                mstore(add(xCoord, 0x30), mload(add(pk, 0x40)))
+                mstore(add(yCoord, 0x20), mload(add(pk, 0x70)))
+                mstore(add(yCoord, 0x30), mload(add(pk, 0x80)))
+            }
+        } else {
+            revert("Unexpected public key length");
+        }
+        uint8 mask = 1 << 7;
+        // check if the point at infinity
+        bool inf = true;
+        for (uint256 i = 0; i < 48; i++) {
+            if (xCoord[i] != 0) {
+                inf = false;
+                break;
+            }
+        }
+        if (inf) {
+            mask = mask | 1 << 6;
+        }
+        // if not inf, check if the y-coord of this point is larger than the y-coord of the
+        // negation of this point, i.e. y >= 1 + (q - 1) / 2
+        // 1 + (q - 1) / 2
+        bytes memory halfModulus =
+            hex"0d0088f51cbff34d258dd3db21a5d66bb23ba5c279c2895fb39869507b587b120f55ffff58a9ffffdcff7fffffffd556";
+        if (!inf) {
+            for (uint256 i = 0; i < 48; i++) {
+                if (yCoord[i] < halfModulus[i]) {
+                    break;
+                } else if (yCoord[i] > halfModulus[i]) {
+                    mask = mask | 1 << 5;
+                    break;
+                }
+                if (i == 47) {
+                    mask = mask | 1 << 5;
+                }
+            }
+        }
+        xCoord[0] = bytes1(uint8(xCoord[0]) | mask);
+        return xCoord;
+    }
+
     /**
      * @notice Computes a field point from a message
      * @dev Follows https://datatracker.ietf.org/doc/html/rfc9380#section-5.3
