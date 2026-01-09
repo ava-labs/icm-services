@@ -19,7 +19,7 @@ import (
 // Tests Teleporter message ID calculation
 func CalculateMessageID(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1Info := network.GetPrimaryNetworkInfo()

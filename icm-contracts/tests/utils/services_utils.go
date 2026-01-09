@@ -262,7 +262,7 @@ func FundRelayers(
 		fundRelayerTx := CreateNativeTransferTransaction(
 			ctx, subnetInfo, fundedKey, relayerAddress, fundAmount,
 		)
-		SendTransactionAndWaitForSuccess(ctx, subnetInfo, fundRelayerTx)
+		SendTransactionAndWaitForSuccess(ctx, subnetInfo.RPCClient, fundRelayerTx)
 	}
 }
 
@@ -577,7 +577,7 @@ func DeployBatchCrossChainMessenger(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, exampleMessenger
 }

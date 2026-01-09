@@ -36,7 +36,7 @@ func DeployExampleERC20(
 	)
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, source, tx.Hash())
+	WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 
 	// Check that the deployer has the expected initial balance
 	senderAddress := crypto.PubkeyToAddress(senderKey.PublicKey)
@@ -64,5 +64,5 @@ func ERC20Approve(
 		zap.String("txHash", tx.Hash().Hex()),
 	)
 
-	WaitForTransactionSuccess(ctx, source, tx.Hash())
+	WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
 }

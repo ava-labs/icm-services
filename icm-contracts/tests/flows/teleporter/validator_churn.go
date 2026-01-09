@@ -24,7 +24,7 @@ const (
 
 func ValidatorChurn(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
@@ -145,7 +145,7 @@ func ValidatorChurn(
 	)
 
 	log.Info("Sending transaction to destination chain")
-	utils.SendTransactionAndWaitForFailure(ctx, l1BInfo, signedTx)
+	utils.SendTransactionAndWaitForFailure(ctx, l1BInfo.RPCClient, signedTx)
 
 	// Verify the message was not delivered
 	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
@@ -166,7 +166,7 @@ func ValidatorChurn(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt = utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
 
 	teleporter.RelayTeleporterMessage(
 		ctx,

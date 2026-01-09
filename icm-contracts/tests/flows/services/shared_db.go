@@ -8,7 +8,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
 )
@@ -19,13 +18,13 @@ const relayerCfgFnameB = "relayer-config-b.json"
 func SharedDatabaseAccess(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-	err := testUtils.ClearRelayerStorage()
+	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
 
 	//
@@ -38,14 +37,14 @@ func SharedDatabaseAccess(
 	relayerKeyB, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
 
-	testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyA)
-	testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyB)
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyA)
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyB)
 
 	//
 	// Set up relayer config
 	//
 	// Relayer A will relay messages from Subnet A to Subnet B
-	relayerConfigA := testUtils.CreateDefaultRelayerConfig(
+	relayerConfigA := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo},
@@ -54,7 +53,7 @@ func SharedDatabaseAccess(
 		relayerKeyA,
 	)
 	// Relayer B will relay messages from Subnet B to Subnet A
-	relayerConfigB := testUtils.CreateDefaultRelayerConfig(
+	relayerConfigB := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1BInfo},
@@ -65,12 +64,12 @@ func SharedDatabaseAccess(
 	relayerConfigB.APIPort = 8081
 	relayerConfigB.MetricsPort = 9091
 
-	relayerConfigPathA := testUtils.WriteRelayerConfig(
+	relayerConfigPathA := utils.WriteRelayerConfig(
 		log,
 		relayerConfigA,
 		relayerCfgFnameA,
 	)
-	relayerConfigPathB := testUtils.WriteRelayerConfig(
+	relayerConfigPathB := utils.WriteRelayerConfig(
 		log,
 		relayerConfigB,
 		relayerCfgFnameB,
@@ -82,14 +81,14 @@ func SharedDatabaseAccess(
 	log.Info("Test Relaying from Subnet A to Subnet B")
 
 	log.Info("Starting the relayers")
-	relayerCleanupA, readyChanA := testUtils.RunRelayerExecutable(
+	relayerCleanupA, readyChanA := utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPathA,
 		relayerConfigA,
 	)
 	defer relayerCleanupA()
-	relayerCleanupB, readyChanB := testUtils.RunRelayerExecutable(
+	relayerCleanupB, readyChanB := utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPathB,
@@ -110,7 +109,7 @@ func SharedDatabaseAccess(
 	wg.Wait()
 
 	log.Info("Sending transaction from Subnet A to Subnet B")
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -124,7 +123,7 @@ func SharedDatabaseAccess(
 	// Test Relaying from Subnet B to Subnet A
 	//
 	log.Info("Test Relaying from Subnet B to Subnet A")
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -138,7 +137,7 @@ func SharedDatabaseAccess(
 
 	// Test processing missed blocks on both relayers.
 	log.Info("Testing processing missed blocks on Subnet A")
-	testUtils.TriggerProcessMissedBlocks(
+	utils.TriggerProcessMissedBlocks(
 		ctx,
 		log,
 		teleporter,
@@ -151,7 +150,7 @@ func SharedDatabaseAccess(
 	)
 
 	log.Info("Testing processing missed blocks on Subnet B")
-	testUtils.TriggerProcessMissedBlocks(
+	utils.TriggerProcessMissedBlocks(
 		ctx,
 		log,
 		teleporter,

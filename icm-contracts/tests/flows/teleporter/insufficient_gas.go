@@ -12,7 +12,7 @@ import (
 
 func InsufficientGas(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -55,7 +55,7 @@ func InsufficientGas(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,

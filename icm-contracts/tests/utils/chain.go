@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -76,6 +78,35 @@ type Node struct {
 // URL utils
 //
 
+func TeleporterDeploymentValues() (
+	teleporterContractAddress common.Address,
+	teleporterDeployerAddress common.Address,
+	teleporterDeployedByteCode string,
+) {
+	teleporterContractAddress = common.HexToAddress(
+		ReadHexTextFile("./tests/utils/UniversalTeleporterMessengerContractAddress.txt"),
+	)
+	teleporterDeployerAddress = common.HexToAddress(
+		ReadHexTextFile("./tests/utils/UniversalTeleporterDeployerAddress.txt"),
+	)
+	teleporterDeployedByteCode = ReadHexTextFile(
+		"./tests/utils/UniversalTeleporterDeployedBytecode.txt",
+	)
+
+	return teleporterContractAddress, teleporterDeployerAddress, teleporterDeployedByteCode
+}
+
+func TeleporterDeployerTransaction() []byte {
+	teleporterDeployerTransactionStr := ReadHexTextFile(
+		"./tests/utils/UniversalTeleporterDeployerTransaction.txt",
+	)
+	teleporterDeployerTransaction, err := hex.DecodeString(
+		utils.SanitizeHexString(teleporterDeployerTransactionStr),
+	)
+	Expect(err).Should(BeNil())
+	return teleporterDeployerTransaction
+}
+
 func HttpToWebsocketURI(uri string, blockchainID string) string {
 	return fmt.Sprintf("ws://%s/ext/bc/%s/ws", strings.TrimPrefix(uri, "http://"), blockchainID)
 }
@@ -121,7 +152,7 @@ func CreateNativeTransferTransaction(
 	amount *big.Int,
 ) *types.Transaction {
 	fromAddress := crypto.PubkeyToAddress(fromKey.PublicKey)
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, fromAddress)
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, fromAddress)
 
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -144,80 +175,80 @@ func SendNativeTransfer(
 	amount *big.Int,
 ) *types.Receipt {
 	tx := CreateNativeTransferTransaction(ctx, l1Info, fromKey, recipient, amount)
-	return SendTransactionAndWaitForSuccess(ctx, l1Info, tx)
+	return SendTransactionAndWaitForSuccess(ctx, l1Info.RPCClient, tx)
 }
 
 // Sends a tx, and waits for it to be mined.
 // Asserts Receipt.status equals success.
 func sendAndWaitForTransaction(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	tx *types.Transaction,
 	success bool,
 ) *types.Receipt {
-	err := l1Info.RPCClient.SendTransaction(ctx, tx)
+	err := client.SendTransaction(ctx, tx)
 	Expect(err).Should(BeNil())
 
-	return waitForTransaction(ctx, l1Info, tx.Hash(), success)
+	return waitForTransaction(ctx, client, tx.Hash(), success)
 }
 
 // Sends a tx, and waits for it to be mined.
 // Asserts Receipt.status equals false.
 func SendTransactionAndWaitForFailure(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	tx *types.Transaction,
 ) *types.Receipt {
-	return sendAndWaitForTransaction(ctx, l1Info, tx, false)
+	return sendAndWaitForTransaction(ctx, client, tx, false)
 }
 
 // Sends a tx, and waits for it to be mined.
 // Asserts Receipt.status equals true.
 func SendTransactionAndWaitForSuccess(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	tx *types.Transaction,
 ) *types.Receipt {
-	return sendAndWaitForTransaction(ctx, l1Info, tx, true)
+	return sendAndWaitForTransaction(ctx, client, tx, true)
 }
 
 // Waits for a transaction to be mined.
 // Asserts Receipt.status equals true.
 func WaitForTransactionSuccess(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	txHash common.Hash,
 ) *types.Receipt {
-	return waitForTransaction(ctx, l1Info, txHash, true)
+	return waitForTransaction(ctx, client, txHash, true)
 }
 
 // Waits for a transaction to be mined.
 // Asserts Receipt.status equals false.
 func WaitForTransactionFailure(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	txHash common.Hash,
 ) *types.Receipt {
-	return waitForTransaction(ctx, l1Info, txHash, false)
+	return waitForTransaction(ctx, client, txHash, false)
 }
 
 // Waits for a transaction to be mined.
 // Asserts Receipt.status equals success.
 func waitForTransaction(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	txHash common.Hash,
 	success bool,
 ) *types.Receipt {
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	receipt, err := WaitMined(cctx, l1Info.RPCClient, txHash)
+	receipt, err := WaitMined(cctx, client, txHash)
 	Expect(err).Should(BeNil())
 
 	if success {
 		if receipt.Status == types.ReceiptStatusFailed {
-			TraceTransactionAndExit(ctx, l1Info.RPCClient, receipt.TxHash)
+			TraceTransactionAndExit(ctx, client, receipt.TxHash)
 		}
 	} else {
 		Expect(receipt.Status).Should(Equal(types.ReceiptStatusFailed))
@@ -268,18 +299,18 @@ func SignTransaction(tx *types.Transaction, key *ecdsa.PrivateKey, chainID *big.
 // Returns the gasFeeCap, gasTipCap, and nonce the be used when constructing a transaction from fundedAddress
 func CalculateTxParams(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	fundedAddress common.Address,
 ) (*big.Int, *big.Int, uint64) {
-	block, err := l1Info.RPCClient.BlockByNumber(ctx, nil)
+	block, err := client.BlockByNumber(ctx, nil)
 	Expect(err).Should(BeNil())
 
 	baseFee := block.BaseFee()
 
-	gasTipCap, err := l1Info.RPCClient.SuggestGasTipCap(ctx)
+	gasTipCap, err := client.SuggestGasTipCap(ctx)
 	Expect(err).Should(BeNil())
 
-	nonce, err := l1Info.RPCClient.NonceAt(ctx, fundedAddress, nil)
+	nonce, err := client.NonceAt(ctx, fundedAddress, nil)
 	Expect(err).Should(BeNil())
 
 	gasFeeCap := baseFee.Mul(baseFee, big.NewInt(gasUtils.BaseFeeFactor))
@@ -386,12 +417,12 @@ func waitForBlockHeight(
 func GetEventFromLogsOrTrace[T any](
 	ctx context.Context,
 	receipt *types.Receipt,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	parser func(log types.Log) (T, error),
 ) T {
 	log, err := GetEventFromLogs(receipt.Logs, parser)
 	if err != nil {
-		TraceTransactionAndExit(ctx, l1Info.RPCClient, receipt.TxHash)
+		TraceTransactionAndExit(ctx, client, receipt.TxHash)
 	}
 	return log
 }
@@ -563,7 +594,7 @@ func AddNativeMinterAdmin(
 	opts.GasLimit = 10_000_000
 	tx, err := nativeMinterPrecompile.SetAdmin(opts, address)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 // Blocks until all validators specified in nodeURIs have reached the specified block height
@@ -598,10 +629,10 @@ func WaitForAllValidatorsToAcceptBlock(ctx context.Context, nodeURIs []string, b
 func ExtractWarpMessageFromLog(
 	ctx context.Context,
 	sourceReceipt *types.Receipt,
-	source interfaces.L1TestInfo,
+	client *ethclient.Client,
 ) *avalancheWarp.UnsignedMessage {
 	log.Info("Fetching relevant warp logs from the newly produced block")
-	logs, err := source.RPCClient.FilterLogs(ctx, ethereum.FilterQuery{
+	logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
 		BlockHash: &sourceReceipt.BlockHash,
 		Addresses: []common.Address{warp.Module.Address},
 	})
@@ -625,7 +656,7 @@ func ConstructSignedWarpMessage(
 	justification []byte,
 	signatureAggregator *SignatureAggregator,
 ) *avalancheWarp.Message {
-	unsignedMsg := ExtractWarpMessageFromLog(ctx, sourceReceipt, source)
+	unsignedMsg := ExtractWarpMessageFromLog(ctx, sourceReceipt, source.RPCClient)
 
 	// Loop over each client on source chain to ensure they all have time to accept the block.
 	// Note: if we did not confirm this here, the next stage could be racy since it assumes every node

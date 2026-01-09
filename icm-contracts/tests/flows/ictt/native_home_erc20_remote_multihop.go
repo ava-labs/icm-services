@@ -9,7 +9,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/crypto"
-
 	. "github.com/onsi/gomega"
 )
 
@@ -22,7 +21,7 @@ import (
  */
 func NativeTokenHomeERC20TokenRemoteMultiHop(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()

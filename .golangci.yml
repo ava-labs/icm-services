@@ -26,6 +26,7 @@ linters:
     - unused
     - whitespace
     - lll
+    - gci
 
 linters-settings:
   gofmt:

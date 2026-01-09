@@ -37,7 +37,7 @@ func DeployValidatorSetSig(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, contractL1, tx.Hash())
+	WaitForTransactionSuccess(ctx, contractL1.RPCClient, tx.Hash())
 
 	return address, validatorSetSig
 }
@@ -67,9 +67,9 @@ func ExecuteValidatorSetSigCallAndVerify(
 
 	// Wait for tx to be accepted and verify events emitted
 	if expectSuccess {
-		return SendTransactionAndWaitForSuccess(ctx, destination, signedPredicateTx)
+		return SendTransactionAndWaitForSuccess(ctx, destination.RPCClient, signedPredicateTx)
 	}
-	return SendTransactionAndWaitForFailure(ctx, destination, signedPredicateTx)
+	return SendTransactionAndWaitForFailure(ctx, destination.RPCClient, signedPredicateTx)
 }
 
 func InitOffChainMessageChainConfigValidatorSetSig(

@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -40,13 +39,13 @@ const numKeys = 4
 func AllowedAddresses(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
-	err := testUtils.ClearRelayerStorage()
+	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
 
 	//
@@ -56,7 +55,7 @@ func AllowedAddresses(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	// Create distinct key/address pairs to be used in the configuration, and fund them
 	var allowedKeys []*ecdsa.PrivateKey
@@ -67,7 +66,7 @@ func AllowedAddresses(
 		allowedKey, err := crypto.GenerateKey()
 		Expect(err).Should(BeNil())
 		allowedAddress := crypto.PubkeyToAddress(allowedKey.PublicKey)
-		testUtils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, allowedKey)
+		utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, allowedKey)
 		allowedKeys = append(allowedKeys, allowedKey)
 		allowedAddresses = append(allowedAddresses, allowedAddress)
 		allowedAddressesStr = append(allowedAddressesStr, allowedAddress.String())
@@ -87,7 +86,7 @@ func AllowedAddresses(
 
 	// All sources -> All destinations
 	// Will send from allowed Address 0 -> 0
-	relayerConfig1 := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig1 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -98,7 +97,7 @@ func AllowedAddresses(
 
 	// Specific source -> All destinations
 	// Will send from allowed Address 1 -> 0
-	relayerConfig2 := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig2 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -114,7 +113,7 @@ func AllowedAddresses(
 
 	// All sources -> Specific destination
 	// Will send from allowed Address 2 -> 0
-	relayerConfig3 := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig3 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -141,7 +140,7 @@ func AllowedAddresses(
 
 	// Specific source -> Specific destination
 	// Will send from allowed Address 3 -> 0
-	relayerConfig4 := testUtils.CreateDefaultRelayerConfig(
+	relayerConfig4 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
 		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
@@ -168,10 +167,10 @@ func AllowedAddresses(
 	relayerConfig4.APIPort = 8083
 	relayerConfig4.MetricsPort = 9093
 
-	relayerConfigPath1 := testUtils.WriteRelayerConfig(log, relayerConfig1, relayerCfgFname1)
-	relayerConfigPath2 := testUtils.WriteRelayerConfig(log, relayerConfig2, relayerCfgFname2)
-	relayerConfigPath3 := testUtils.WriteRelayerConfig(log, relayerConfig3, relayerCfgFname3)
-	relayerConfigPath4 := testUtils.WriteRelayerConfig(log, relayerConfig4, relayerCfgFname4)
+	relayerConfigPath1 := utils.WriteRelayerConfig(log, relayerConfig1, relayerCfgFname1)
+	relayerConfigPath2 := utils.WriteRelayerConfig(log, relayerConfig2, relayerCfgFname2)
+	relayerConfigPath3 := utils.WriteRelayerConfig(log, relayerConfig3, relayerCfgFname3)
+	relayerConfigPath4 := utils.WriteRelayerConfig(log, relayerConfig4, relayerCfgFname4)
 
 	//
 	// Test Relaying from Subnet A to Subnet B
@@ -180,7 +179,7 @@ func AllowedAddresses(
 
 	// Test Relayer 1
 	log.Info("Testing Relayer 1: All sources -> All destinations")
-	relayerCleanup, readyChan := testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan := utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath1,
@@ -192,10 +191,10 @@ func AllowedAddresses(
 	log.Info("Waiting for the relayer to start up")
 	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	// Allowed by Relayer 1
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -212,7 +211,7 @@ func AllowedAddresses(
 
 	// Test Relayer 2
 	log.Info("Testing Relayer 2: Specific source -> All destinations")
-	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan = utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath2,
@@ -224,10 +223,10 @@ func AllowedAddresses(
 	log.Info("Waiting for the relayer to start up")
 	startupCtx, startupCancel = context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	// Disallowed by Relayer 2
-	_, _, id := testUtils.SendBasicTeleporterMessage(
+	_, _, id := utils.SendBasicTeleporterMessage(
 		ctx,
 		log,
 		teleporter,
@@ -245,7 +244,7 @@ func AllowedAddresses(
 	}, 10*time.Second, 500*time.Millisecond).Should(BeFalse())
 
 	// Allowed by Relayer 2
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -262,7 +261,7 @@ func AllowedAddresses(
 
 	// Test Relayer 3
 	log.Info("Testing Relayer 3: All sources -> Specific destination")
-	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan = utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath3,
@@ -274,10 +273,10 @@ func AllowedAddresses(
 	log.Info("Waiting for the relayer to start up")
 	startupCtx, startupCancel = context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	// Disallowed by Relayer 3
-	_, _, id = testUtils.SendBasicTeleporterMessage(
+	_, _, id = utils.SendBasicTeleporterMessage(
 		ctx,
 		log,
 		teleporter,
@@ -295,7 +294,7 @@ func AllowedAddresses(
 	}, 10*time.Second, 500*time.Millisecond).Should(BeFalse())
 
 	// Allowed by Relayer 3
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -312,7 +311,7 @@ func AllowedAddresses(
 
 	// Test Relayer 4
 	log.Info("Testing Relayer 4: Specific source -> Specific destination")
-	relayerCleanup, readyChan = testUtils.RunRelayerExecutable(
+	relayerCleanup, readyChan = utils.RunRelayerExecutable(
 		ctx,
 		log,
 		relayerConfigPath4,
@@ -323,10 +322,10 @@ func AllowedAddresses(
 	// Wait for relayer to start up
 	startupCtx, startupCancel = context.WithTimeout(ctx, 15*time.Second)
 	defer startupCancel()
-	testUtils.WaitForChannelClose(startupCtx, readyChan)
+	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	// Disallowed by Relayer 4
-	_, _, id = testUtils.SendBasicTeleporterMessage(
+	_, _, id = utils.SendBasicTeleporterMessage(
 		ctx,
 		log,
 		teleporter,
@@ -344,7 +343,7 @@ func AllowedAddresses(
 	}, 10*time.Second, 500*time.Millisecond).Should(BeFalse())
 
 	// Allowed by Relayer 4
-	testUtils.RelayBasicMessage(
+	utils.RelayBasicMessage(
 		ctx,
 		log,
 		teleporter,
@@ -398,7 +397,7 @@ func AllowedAddresses(
 		),
 	)
 	relayerKeys := []database.RelayerID{relayerID1, relayerID2, relayerID3, relayerID4}
-	jsonDB, err := database.NewJSONFileStorage(logging.NoLog{}, testUtils.StorageLocation, relayerKeys)
+	jsonDB, err := database.NewJSONFileStorage(logging.NoLog{}, utils.StorageLocation, relayerKeys)
 	Expect(err).Should(BeNil())
 
 	// Fetch the checkpointed heights from the shared database

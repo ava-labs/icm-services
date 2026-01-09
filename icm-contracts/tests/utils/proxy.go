@@ -34,7 +34,7 @@ func DeployTransparentUpgradeableProxy(
 		[]byte{},
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	proxyAdminEvent, err := GetEventFromLogs(receipt.Logs, proxy.ParseAdminChanged)
 	Expect(err).Should(BeNil())
 

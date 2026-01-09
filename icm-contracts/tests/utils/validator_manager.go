@@ -36,10 +36,9 @@ import (
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/subnet-evm/warp/messages"
+	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
-
-	. "github.com/onsi/gomega"
 )
 
 const (
@@ -86,7 +85,7 @@ func DeployValidatorManager(
 	)
 	Expect(err).Should(BeNil())
 
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	var proxyAdmin *proxyadmin.ProxyAdmin
 	if proxy {
@@ -121,7 +120,7 @@ func InitializeValidatorManager(
 		},
 	)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func DeployAndInitializeValidatorManagerSpecialization(
@@ -152,7 +151,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			0, // ICMInitializable.Allowed
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 		if proxy {
 			// Overwrite the manager address with the proxy address
@@ -190,7 +189,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			erc20Address,
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	case NativeTokenStakingManager:
 		// Reset the global binary data for better test isolation
 		nativetokenstakingmanager.NativeTokenStakingManagerBin =
@@ -203,7 +202,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			0, // ICMInitializable.Allowed
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 		if proxy {
 			// Overwrite the manager address with the proxy address
@@ -252,7 +251,7 @@ func DeployAndInitializeValidatorManagerSpecialization(
 			validatorManagerAddress,
 		)
 		Expect(err).Should(BeNil())
-		WaitForTransactionSuccess(ctx, l1, tx.Hash())
+		WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	}
 	return address, proxyAdmin
 }
@@ -273,7 +272,7 @@ func DeployExampleRewardCalculator(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	return address, calculator
 }
@@ -413,7 +412,7 @@ func InitiateNativeValidatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	acp99Manager, err := acp99manager.NewACP99Manager(validatorManagerAddress, l1.RPCClient)
 	Expect(err).Should(BeNil())
 	registrationInitiatedEvent, err := GetEventFromLogs(
@@ -460,7 +459,7 @@ func InitiateERC20ValidatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	acp99Manager, err := acp99manager.NewACP99Manager(validatorManagerAddress, l1.RPCClient)
 	Expect(err).Should(BeNil())
 	registrationInitiatedEvent, err := GetEventFromLogs(
@@ -492,7 +491,7 @@ func InitiatePoAValidatorRegistration(
 		node.Weight,
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	acp99Manager, err := acp99manager.NewACP99Manager(validatorManagerAddress, l1.RPCClient)
 	Expect(err).Should(BeNil())
 	registrationInitiatedEvent, err := GetEventFromLogs(
@@ -534,7 +533,7 @@ func CallWarpReceiver(
 	contract common.Address,
 	signedMessageBytes []byte,
 ) *types.Receipt {
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1.RPCClient, PrivateKeyToAddress(senderKey))
 
 	registrationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1.EVMChainID,
@@ -554,7 +553,7 @@ func CallWarpReceiver(
 	})
 
 	signedRegistrationTx := SignTransaction(registrationTx, senderKey, l1.EVMChainID)
-	return SendTransactionAndWaitForSuccess(ctx, l1, signedRegistrationTx)
+	return SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, signedRegistrationTx)
 }
 
 func InitiateAndCompleteNativeValidatorRegistration(
@@ -802,7 +801,7 @@ func InitiateEndPoSValidation(
 		0,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func ForceInitiateEndPoSValidation(
@@ -821,7 +820,7 @@ func ForceInitiateEndPoSValidation(
 		0,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func ConstructUptimeProofMessage(
@@ -931,7 +930,7 @@ func InitiateEndPoAValidation(
 		validationID,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func CompleteEndPoAValidation(
@@ -1005,7 +1004,7 @@ func InitiateERC20DelegatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	_, err = GetEventFromLogs(
 		receipt.Logs,
 		stakingManager.ParseInitiatedDelegatorRegistration,
@@ -1032,7 +1031,7 @@ func InitiateNativeDelegatorRegistration(
 		common.HexToAddress(DefaultRewardRecipientAddress),
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 	_, err = GetEventFromLogs(
 		receipt.Logs,
 		stakingManager.ParseInitiatedDelegatorRegistration,
@@ -1082,7 +1081,7 @@ func InitiateDelegatorRemoval(
 		0,
 	)
 	Expect(err).Should(BeNil())
-	return WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	return WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 }
 
 func CompleteDelegatorRemoval(
@@ -1143,7 +1142,7 @@ func InitiateAndCompleteEndInitialPoSValidation(
 
 	// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 	// (Sending to the P-Chain will be skipped for now)
-	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info)
+	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info.RPCClient)
 	signedWarpMessage, err := signatureAggregator.CreateSignedMessage(
 		unsignedMessage,
 		nil,
@@ -1243,7 +1242,7 @@ func InitiateAndCompleteEndPoSValidation(
 	Expect(validatorRemovalEvent.Weight).Should(Equal(node.Weight))
 
 	// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
-	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info)
+	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info.RPCClient)
 	signedWarpMessage, err := signatureAggregator.CreateSignedMessage(
 		unsignedMessage,
 		nil,
@@ -1325,7 +1324,7 @@ func InitiateAndCompleteEndInitialPoAValidation(
 
 	// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 	// (Sending to the P-Chain will be skipped for now)
-	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info)
+	unsignedMessage := ExtractWarpMessageFromLog(ctx, receipt, l1Info.RPCClient)
 	signedWarpMessage, err := signatureAggregator.CreateSignedMessage(
 		unsignedMessage,
 		nil,

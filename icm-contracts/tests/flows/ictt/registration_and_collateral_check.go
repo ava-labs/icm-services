@@ -23,7 +23,7 @@ import (
  */
 func RegistrationAndCollateralCheck(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
@@ -167,7 +167,7 @@ func RegistrationAndCollateralCheck(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, cChainInfo.RPCClient, tx.Hash())
 	event, err := utils.GetEventFromLogs(receipt.Logs, erc20TokenHome.ParseTokensSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Sender).Should(Equal(crypto.PubkeyToAddress(fundedKey.PublicKey)))
