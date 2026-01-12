@@ -539,14 +539,10 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 		"X-API-Key":     "secret-key",
 	}
 
-	var mu sync.Mutex
 	requestCount := 0
 	receivedHeaders := make([]map[string]string, 0)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-
 		headers := make(map[string]string)
 		for key := range httpHeaders {
 			headers[key] = r.Header.Get(key)
@@ -575,8 +571,7 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
 	}
 
-	logger := logging.NoLog{}
-	client, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
+	client, err := NewDestinationClient(logging.NoLog{}, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -584,9 +579,6 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	ethClient.BlockNumber(ctx)
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
-
-	mu.Lock()
-	defer mu.Unlock()
 
 	require.Greater(t, len(receivedHeaders), 0, "No requests were made")
 	for i, headers := range receivedHeaders {
