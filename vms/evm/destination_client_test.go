@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -476,14 +475,10 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 		"api-key": "secret-key-789",
 	}
 
-	var mu sync.Mutex
 	requestCount := 0
 	receivedParams := make([]map[string]string, 0)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-
 		params := make(map[string]string)
 		for key := range queryParams {
 			params[key] = r.URL.Query().Get(key)
@@ -512,8 +507,7 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
 	}
 
-	logger := logging.NoLog{}
-	client, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
+	client, err := NewDestinationClient(logging.NoLog{}, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
 	ctx := t.Context()
