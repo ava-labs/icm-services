@@ -1,6 +1,6 @@
 # Authenticating ICM Messages
 
-Authenticating ICM messages will be handled by contracts implementing the `IMessageVerifier` interface, as described in the [Teleporter architecture](teleporter_contracts.md). The `Teleporter` protocol is complelely agnostic to the details of how messages are authenticated. It is up to applications to decide how to authenticate messages.
+Authenticating ICM messages will be handled by contracts implementing the `IMessageVerifier` interface, as described in the [Teleporter architecture](teleporter_contracts.md). The `Teleporter` protocol is completely agnostic to the details of how messages are authenticated. It is up to applications to decide how to authenticate messages. How applications do this depends on which proposal below is chosen: either they opt to use a `TeleporterV2`instance implementing an authentication scheme they support, or they directly choose the `IMessageVerifier` implementation they want to use.
 
 For internal interoperability, all message authentication is handled by the `Warp` pre-compile contract. New contracts will be written to wrap this pre-compile so that it is compatible with the `TeleporterV2` contract / architecture. Furthermore, for external EVM chains, it is expected that many applications will authenticate messages by checking a quorum of validator signatures. The contract implementing this logic is detailed [here](origin_avalanche/validator_set_registry.md). Other verification schemes may be developed, and the architecture is designed to support them.
 
