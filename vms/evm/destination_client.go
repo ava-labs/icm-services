@@ -145,10 +145,10 @@ func NewDestinationClient(
 		destinationBlockchain.RPCEndpoint.HTTPHeaders,
 		destinationBlockchain.RPCEndpoint.QueryParams,
 	)
-	ethClient := ethclient.NewClient(rpcClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial rpc endpoint: %w", err)
 	}
+	ethClient := ethclient.NewClient(rpcClient)
 
 	evmChainID, err := ethClient.ChainID(context.Background())
 	if err != nil {

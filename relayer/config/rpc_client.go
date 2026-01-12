@@ -6,7 +6,6 @@ package config
 import (
 	"context"
 
-	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/rpc"
 	"github.com/ava-labs/subnet-evm/params"
@@ -35,8 +34,5 @@ func (rc *rpcClient) ChainConfig(ctx context.Context) (*params.ChainConfigWithUp
 func (rc *rpcClient) LatestHeader(ctx context.Context) (*types.Header, error) {
 	var header *types.Header
 	err := rc.c.CallContext(ctx, &header, "eth_getBlockByNumber", "latest", false)
-	if err != nil {
-		err = ethereum.NotFound
-	}
 	return header, err
 }
