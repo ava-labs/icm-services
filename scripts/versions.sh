@@ -35,6 +35,7 @@ export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'8ebe57a20bba73840804778d44f714aa821b4131'}
 #SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/subnet-evm)")}
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-'7fc05124d976a3247dc1c32f87c5e4003ed6fb6b'}
+LIBEVM_VERSION=${LIBEVM_VERSION:-'865e03ca6a282bf81cc72ca52c4501708ac6ca21'}
 
 # Extract the Solidity version from foundry.toml
 AVALANCHE_ICM_PATH=${BASE_PATH}/icm-contracts/avalanche
