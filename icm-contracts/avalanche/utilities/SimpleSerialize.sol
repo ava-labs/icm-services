@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-// Reference: This is core logic from the Succinct Telepathy Library, which can be found at https://github.com/succinctlabs/telepathy-contracts/blob/main/src/libraries/SimpleSerialize.sol 
+// Reference: This is core logic from the Succinct Telepathy Library, which can be found at https://github.com/succinctlabs/telepathy-contracts/blob/main/src/libraries/SimpleSerialize.sol
 pragma solidity ^0.8.30;
 
 library SSZ {
@@ -11,11 +11,11 @@ library SSZ {
     /// @param leaf The leaf data to verify (e.g., beaconStateRoot)
     /// @param index The Generalized Index (gIndex) of the leaf
     /// @param proof The Merkle proof (array of sibling hashes)
-    function restoreMerkleRoot(bytes32 leaf, uint256 index, bytes32[] memory proof)
-        internal
-        pure
-        returns (bytes32)
-    {
+    function restoreMerkleRoot(
+        bytes32 leaf,
+        uint256 index,
+        bytes32[] memory proof
+    ) internal pure returns (bytes32) {
         bytes32 value = leaf;
         uint256 i = 0;
         while (index != 1) {
@@ -33,11 +33,12 @@ library SSZ {
     }
 
     /// @notice Verifies that a Merkle proof correctly connects a leaf to a root
-    function isValidMerkleProof(bytes32 leaf, uint256 index, bytes32[] memory proof, bytes32 root)
-        internal
-        pure
-        returns (bool)
-    {
+    function isValidMerkleProof(
+        bytes32 leaf,
+        uint256 index,
+        bytes32[] memory proof,
+        bytes32 root
+    ) internal pure returns (bool) {
         return restoreMerkleRoot(leaf, index, proof) == root;
     }
 }

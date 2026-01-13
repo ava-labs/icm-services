@@ -7,10 +7,10 @@
 pragma solidity 0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
-import { SSZ } from "../SimpleSerialize.sol";
+import {SSZ} from "../SimpleSerialize.sol";
 
 contract SSZTest is Test {
-    function test_FinalityProof_WhenEthereum() public pure {
+    function testFinalityProofWhenEthereum() public pure {
         uint256 index = 105;
         bytes32[] memory branch = new bytes32[](6);
         branch[0] = bytes32(0xe424020000000000000000000000000000000000000000000000000000000000);
