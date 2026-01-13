@@ -12,13 +12,10 @@ pragma solidity ^0.8.30;
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 import { IRiscZeroVerifier } from "@risc0/contracts/IRiscZeroVerifier.sol";
 import { ConsensusState, Checkpoint } from "./tseth.sol";
-import {MerkleProof} from "@openzeppelin/contracts//utils/cryptography/MerkleProof.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import { SSZ } from "../../utilities/SimpleSerialize.sol";
 
-contract ZKStateManager is AccessControl {
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 constant UNDEFINED_ROOT = bytes32(0);
-
-    /// @notice Contains the complete state transition data for verification
+/// @notice Contains the complete state transition data for verification
     /// @dev Used as journal data in RISC Zero proofs to validate beacon state transitions
     struct Journal {
         /// @dev The consensus state before the transition
@@ -27,7 +24,14 @@ contract ZKStateManager is AccessControl {
         ConsensusState postState;
         /// @dev The beacon chain slot that was finalized in this transition
         uint64 finalizedSlot;
-    }
+}
+
+contract ZKStateManager is AccessControl {
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 constant UNDEFINED_ROOT = bytes32(0);
+
+    // CONSTANT: The Generalized Index for the 'state_root' in a BeaconBlock is always 11
+    uint256 constant BEACON_STATE_ROOT_GINDEX = 11;
 
     /// @notice Number of slots per epoch in the beacon chain
     uint64 SLOT_PER_EPOCH = 32;
@@ -44,15 +48,19 @@ contract ZKStateManager is AccessControl {
 
     /// @notice The address of the RISC Zero verifier contract
     /// @dev Used to validate zero-knowledge proofs of beacon state transitions
-    address public immutable VERIFIER;
+    address public VERIFIER;
 
     /// @notice Maximum allowed time span for state transitions in seconds
     /// @dev Used to prevent acceptance of stale beacon state transitions
     uint24 public permissibleTimespan;
 
+    /// @notice Maps a beacon chain slot to its verified beacon block root 
+    /// @dev Used to track the beacon chain slots that are trusted and finalized through verified state transitions
+    mapping(uint64 slot => bytes32 beaconBlockRoot) public allowedBeaconBlocks;
+
     /// @notice Maps a beacon chain slot to its verified beacon state root 
     /// @dev Used to track the beacon chain slots that are trusted and finalized through verified state transitions
-    mapping(uint64 slot => bytes32 beaconRoot) public allowedBeaconStates;
+    mapping(uint64 slot => bytes32 beaconStateRoot) public allowedBeaconStates;
 
     /// @notice Maps a beacon chain slot to its verified execution state root 
     /// @dev Used to track the execution state slots that are trusted and finalized against verified beacon state roots 
@@ -65,6 +73,7 @@ contract ZKStateManager is AccessControl {
     event Transitioned(
         uint64 indexed preEpoch, uint64 indexed postEpoch, ConsensusState preState, ConsensusState postState
     );
+    event ConfirmedBeaconBlock(uint64 indexed slot, bytes32 indexed root);
     event ConfirmedBeaconState(uint64 indexed slot, bytes32 indexed root);
     event ConfirmedExecutionState(uint64 indexed slot, bytes32 indexed root);
     event ConfirmedReceiptsState(uint64 indexed slot, bytes32 indexed root);
@@ -78,6 +87,7 @@ contract ZKStateManager is AccessControl {
     error UnauthorizedEmitterAddress();
     error InvalidBeaconState(); 
     error InvalidProof();
+    error InvalidSSZProof();
 
     /// @notice Initializes the ZKStateManager contract with all required parameters
     /// @dev Sets up the initial consensus state, configures verification parameters, and establishes cross-chain
@@ -104,6 +114,154 @@ contract ZKStateManager is AccessControl {
         imageID = imageID_;
         VERIFIER = verifier;
     }
+
+    /// @notice Performs a full state transition from a trusted beacon checkpoint to a new finalized state.
+    /// @dev The function performs the following steps:
+    /// 1. Verifies the ZK proof of the beacon (consensus) state transition to the new finalized checkpoint.
+    /// 2. Validates the Merkle chain of execution state roots from the prior epoch boundary to the new finalized execution state root.
+    /// 3. Verifies that all receipt roots are included in their respective execution state roots using Merkle proofs.
+    /// 4. Updates the global state to reflect the new trusted consensus, execution, and receipt roots.
+    /// @param journalData Encoded Journal struct containing pre- and post-consensus states and finalized slot
+    /// @param seal The ZK proof validating the beacon state transition
+    /// @param finalizedSlot The beacon chain slot corresponding to the new finalized checkpoint
+    /// @param finalizedExecutionStateRoot The claimed execution state root at the epoch boundary to be verified
+    /// @param finalizedExecutionStateProof Merkle proof for the finalized execution state root inclusion
+    /// @param executionStateRootsInEpoch The ordered list of intermediate execution state roots within the epoch
+    /// @param executionStateProofsInEpoch Merkle proofs for each intermediate execution state root
+    /// @param receiptRootsInEpoch The ordered list of claimed receipt roots for the epoch
+    /// @param receiptRootProofsInEpoch Merkle proofs for each receipt root
+    function transition(
+        bytes calldata journalData,
+        bytes calldata seal,
+        uint64 finalizedSlot,
+        bytes32 finalizedBeaconStateRoot, 
+        bytes32[] calldata finalizedBeaconStateProof,
+        bytes32 finalizedExecutionStateRoot,
+        bytes32[] calldata finalizedExecutionStateProof,
+        bytes32[] calldata executionStateRootsInEpoch,
+        bytes32[][] calldata executionStateProofsInEpoch,
+        bytes32[] calldata receiptRootsInEpoch, 
+        bytes32[][] calldata receiptRootProofsInEpoch
+    ) external {
+        // Decode the journal data. 
+        Journal memory journal = abi.decode(journalData, (Journal));
+        
+        // Transition the consensus state to the new finalized checkpoint after verifying the ZK proof.
+        _verifyBeaconStateTransition(journalData, seal, finalizedBeaconStateRoot, finalizedBeaconStateProof);
+        
+        // Verify the execution state of the new finalized checkpoint, along with the intermediate execution states in the latest epoch.
+        _verifyExecutionStateTransition({
+            finalizedBeaconStateRoot: journal.postState.finalizedCheckpoint.root,
+            endExecutionStateRoot: finalizedExecutionStateRoot,
+            endExecutionStateProof: finalizedExecutionStateProof,
+            executionStateRootsInEpoch: executionStateRootsInEpoch,
+            executionStateProofsInEpoch: executionStateProofsInEpoch,
+            startSlot: journal.preState.finalizedCheckpoint.epoch * SLOT_PER_EPOCH
+        });
+
+        // Verify the receipts roots against the execution state roots.
+        _verifyReceiptRoots(executionStateRootsInEpoch, receiptRootProofsInEpoch, receiptRootsInEpoch);
+        
+        // Finally, update the global state to reflect the new trusted consensus, execution, and receipts states. 
+        _transitionBeaconState(journal, finalizedSlot, finalizedBeaconStateRoot); 
+        _transitionExecutionState(journal.preState.finalizedCheckpoint.epoch * SLOT_PER_EPOCH + 1, executionStateRootsInEpoch);
+        _transitionReceiptRootsState(journal.preState.finalizedCheckpoint.epoch * SLOT_PER_EPOCH + 1, receiptRootsInEpoch);
+    }
+
+    function updateImageID(bytes32 newImageID) external onlyRole(ADMIN_ROLE) {
+        if (newImageID == imageID) revert InvalidArgument();
+        imageID = newImageID;
+    }
+
+    function updatePermissibleTimespan(uint24 newPermissibleTimespan) external onlyRole(ADMIN_ROLE) {
+        if (newPermissibleTimespan == permissibleTimespan) {
+            revert InvalidArgument();
+        }
+        permissibleTimespan = newPermissibleTimespan;
+    }
+
+    /// @notice Checks if a receipt root is trusted.
+    /// @param slot The beacon chain slot where this root was finalized.
+    /// @param root The receipt root to validate.
+    function isValidReceiptsRoot(uint64 slot, bytes32 root) external view returns (bool) {
+        return (root != bytes32(0) && allowedReceiptRoots[slot] == root);
+    }
+
+    // Perform a manual transition of the consensus state. This function is restricted to ADMIN_ROLE.
+    // TODO: Come back to this
+    // function manualTransition(bytes calldata journalData, uint64 finalizedSlot) external onlyRole(ADMIN_ROLE) {
+    //     Journal memory journal = abi.decode(journalData, (Journal));
+    //     _transitionBeaconState(journal, finalizedSlot);
+    // }
+
+    /// @notice the block root associated with the provided `slot`.
+    /// @param slot the beacon chain slot to look up
+    function getBeaconBlockRoot(uint64 slot) external view returns (bytes32 root, bool valid) {
+        root = allowedBeaconBlocks[slot];
+        if (root == UNDEFINED_ROOT) {
+            valid = false;
+        }
+    }
+    function getBeaconStateRoot(uint64 slot) external view returns (bytes32 root, bool valid) {
+        root = allowedBeaconStates[slot];
+        if (root == UNDEFINED_ROOT) {
+            valid = false;
+        }
+    }
+
+    function _transitionBeaconState(Journal memory journal, uint64 finalizedSlot, bytes32 finalizedBeaconStateRoot) internal {
+        currentState = journal.postState;
+        emit Transitioned(
+            journal.preState.finalizedCheckpoint.epoch,
+            journal.postState.finalizedCheckpoint.epoch,
+            journal.preState,
+            journal.postState
+        );
+
+        bytes32 finalizedBeaconBlockRoot = journal.postState.finalizedCheckpoint.root;
+        _confirmBeaconBlock(finalizedSlot, finalizedBeaconBlockRoot);
+        _confirmBeaconState(finalizedSlot, finalizedBeaconStateRoot);
+    }
+
+    function _transitionExecutionState(uint64 startSlot, bytes32[] memory execRoots) internal {
+        for (uint64 i = 0; i < execRoots.length; i++) {
+            _confirmExecutionState(startSlot + uint64(i), execRoots[i]);
+        }
+    }
+
+    function _transitionReceiptRootsState(uint64 startSlot, bytes32[] memory receiptRoots) internal {
+        for (uint64 i = 0; i < receiptRoots.length; i++) {
+            _confirmReceiptsRoot(startSlot + uint64(i), receiptRoots[i]);
+        }
+    }
+
+    function _confirmBeaconBlock(uint64 slot, bytes32 root) internal {
+        if (allowedBeaconBlocks[slot] == UNDEFINED_ROOT) {
+            allowedBeaconBlocks[slot] = root;
+        }
+        emit ConfirmedBeaconBlock(slot, root);
+    }
+
+    function _confirmBeaconState(uint64 slot, bytes32 root) internal {
+        if (allowedBeaconStates[slot] == UNDEFINED_ROOT) {
+            allowedBeaconStates[slot] = root;
+        }
+        emit ConfirmedBeaconState(slot, root);
+    }
+
+    function _confirmExecutionState(uint64 slot, bytes32 root) internal {
+        if (allowedExecutionStates[slot] == UNDEFINED_ROOT) {
+            allowedExecutionStates[slot] = root;
+        }
+        emit ConfirmedExecutionState(slot, root);
+    }
+
+    function _confirmReceiptsRoot(uint64 slot, bytes32 root) internal {
+        if (allowedReceiptRoots[slot] == UNDEFINED_ROOT) {
+            allowedReceiptRoots[slot] = root;
+        }
+        emit ConfirmedReceiptsState(slot, root);
+    }
      
     /// @notice Validates and applies a beacon state transition using RISC Zero proof
     /// @dev Performs a consensus state transition by verifying that the transition from journal.preState to journal.postState is valid using the ZK proof. 
@@ -112,9 +270,18 @@ contract ZKStateManager is AccessControl {
     /// In other words, the checkpoint that was previously justified is now finalized, and the checkpoint that was previously unconfirmed is now justified.
     /// @param journalData Encoded Journal struct containing pre/post states and finalized slot
     /// @param seal RISC Zero cryptographic proof validating the state transition
-    function _verifyBeaconStateTransition(bytes calldata journalData, bytes calldata seal) internal view {
+    /// @param beaconStateRoot The beacon state root to verify against the finalized beacon block root in postState
+    /// @param beaconStateProof The SSZ Merkle Proof authenticating the beacon state root inclusion against the finalized beacon block root
+    function _verifyBeaconStateTransition(
+        bytes calldata journalData, 
+        bytes calldata seal,
+        bytes32 beaconStateRoot,
+        bytes32[] calldata beaconStateProof
+    ) internal view {
+        
         Journal memory journal = abi.decode(journalData, (Journal));
 
+        // 1. Safety checks 
         // Check if the consensus state transition is allowed; i.e., that the preState matches the current state and that the timespan is permissible.
         if (!_compareConsensusState(currentState, journal.preState)) {
             revert InvalidPreState();
@@ -123,9 +290,21 @@ contract ZKStateManager is AccessControl {
         //     revert PermissibleTimespanLapsed();
         // }
 
-        // Verify the consensus state transition using the ZK proof. 
+        // 2. ZK Proof verification
+        // Verify the consensus state transition using the ZK proof, confirming that journal.postState.finalizedCheckpoint.root is a valid beacon block root
         bytes32 journalHash = sha256(journalData);
         IRiscZeroVerifier(VERIFIER).verify(seal, imageID, journalHash);
+
+        // 3. Verify the SSZ Merkle Proof
+        // Proves that the beacon state is valid against the finalized beacon block root
+        if (!SSZ.isValidMerkleProof(
+            beaconStateRoot,
+            BEACON_STATE_ROOT_GINDEX,
+            beaconStateProof,
+            journal.postState.finalizedCheckpoint.root
+        )) {
+            revert InvalidSSZProof();
+        }
     }
 
     /// @notice Validates and applies an execution state transition using Merkle proof authentication
@@ -195,138 +374,6 @@ contract ZKStateManager is AccessControl {
                 revert InvalidProof();
             }
         }
-    }
-
-    /// @notice Performs a full state transition from a trusted beacon checkpoint to a new finalized state.
-    /// @dev The function performs the following steps:
-    /// 1. Verifies the ZK proof of the beacon (consensus) state transition to the new finalized checkpoint.
-    /// 2. Validates the Merkle chain of execution state roots from the prior epoch boundary to the new finalized execution state root.
-    /// 3. Verifies that all receipt roots are included in their respective execution state roots using Merkle proofs.
-    /// 4. Updates the global state to reflect the new trusted consensus, execution, and receipt roots.
-    /// @param journalData Encoded Journal struct containing pre- and post-consensus states and finalized slot
-    /// @param seal The ZK proof validating the beacon state transition
-    /// @param finalizedSlot The beacon chain slot corresponding to the new finalized checkpoint
-    /// @param finalizedExecutionStateRoot The claimed execution state root at the epoch boundary to be verified
-    /// @param finalizedExecutionStateProof Merkle proof for the finalized execution state root inclusion
-    /// @param executionStateRootsInEpoch The ordered list of intermediate execution state roots within the epoch
-    /// @param executionStateProofsInEpoch Merkle proofs for each intermediate execution state root
-    /// @param receiptRootsInEpoch The ordered list of claimed receipt roots for the epoch
-    /// @param receiptRootProofsInEpoch Merkle proofs for each receipt root
-    function transition(
-        bytes calldata journalData,
-        bytes calldata seal,
-        uint64 finalizedSlot,
-        bytes32 finalizedExecutionStateRoot,
-        bytes32[] calldata finalizedExecutionStateProof,
-        bytes32[] calldata executionStateRootsInEpoch,
-        bytes32[][] calldata executionStateProofsInEpoch,
-        bytes32[] calldata receiptRootsInEpoch, 
-        bytes32[][] calldata receiptRootProofsInEpoch
-    ) external {
-        // Decode the journal data. 
-        Journal memory journal = abi.decode(journalData, (Journal));
-        
-        // Transition the consensus state to the new finalized checkpoint after verifying the ZK proof.
-        _verifyBeaconStateTransition(journalData, seal);
-        
-        // Verify the execution state of the new finalized checkpoint, along with the intermediate execution states in the latest epoch.
-        _verifyExecutionStateTransition({
-            finalizedBeaconStateRoot: journal.postState.finalizedCheckpoint.root,
-            endExecutionStateRoot: finalizedExecutionStateRoot,
-            endExecutionStateProof: finalizedExecutionStateProof,
-            executionStateRootsInEpoch: executionStateRootsInEpoch,
-            executionStateProofsInEpoch: executionStateProofsInEpoch,
-            startSlot: journal.preState.finalizedCheckpoint.epoch * SLOT_PER_EPOCH
-        });
-
-        // Verify the receipts roots against the execution state roots.
-        _verifyReceiptRoots(executionStateRootsInEpoch, receiptRootProofsInEpoch, receiptRootsInEpoch);
-        
-        // Finally, update the global state to reflect the new trusted consensus, execution, and receipts states. 
-        _transitionBeaconState(journal, finalizedSlot); 
-        _transitionExecutionState(journal.preState.finalizedCheckpoint.epoch * SLOT_PER_EPOCH + 1, executionStateRootsInEpoch);
-        _transitionReceiptRootsState(journal.preState.finalizedCheckpoint.epoch * SLOT_PER_EPOCH + 1, receiptRootsInEpoch);
-    }
-
-    
-    /// @notice Checks if a receipt root is trusted.
-    /// @param slot The beacon chain slot where this root was finalized.
-    /// @param root The receipt root to validate.
-    function isValidReceiptsRoot(uint64 slot, bytes32 root) external view returns (bool) {
-        return (root != bytes32(0) && allowedReceiptRoots[slot] == root);
-    }
-
-    // Perform a manual transition of the consensus state. This function is restricted to ADMIN_ROLE.
-    function manualTransition(bytes calldata journalData, uint64 finalizedSlot) external onlyRole(ADMIN_ROLE) {
-        Journal memory journal = abi.decode(journalData, (Journal));
-        _transitionBeaconState(journal, finalizedSlot);
-    }
-
-    /// @notice the block root associated with the provided `slot`.
-    /// @param slot the beacon chain slot to look up
-    function blockRoot(uint64 slot) external view returns (bytes32 root, bool valid) {
-        root = allowedBeaconStates[slot];
-        if (root == UNDEFINED_ROOT) {
-            valid = false;
-        }
-    }
-
-    function updateImageID(bytes32 newImageID) external onlyRole(ADMIN_ROLE) {
-        if (newImageID == imageID) revert InvalidArgument();
-        imageID = newImageID;
-    }
-
-    function updatePermissibleTimespan(uint24 newPermissibleTimespan) external onlyRole(ADMIN_ROLE) {
-        if (newPermissibleTimespan == permissibleTimespan) {
-            revert InvalidArgument();
-        }
-        permissibleTimespan = newPermissibleTimespan;
-    }
-
-    function _transitionBeaconState(Journal memory journal, uint64 finalizedSlot) internal {
-        currentState = journal.postState;
-        emit Transitioned(
-            journal.preState.finalizedCheckpoint.epoch,
-            journal.postState.finalizedCheckpoint.epoch,
-            journal.preState,
-            journal.postState
-        );
-
-        Checkpoint memory finalizedCheckpoint = journal.postState.finalizedCheckpoint;
-        _confirmBeaconState(finalizedSlot, finalizedCheckpoint.root);
-    }
-
-    function _transitionExecutionState(uint64 startSlot, bytes32[] memory execRoots) internal {
-        for (uint64 i = 0; i < execRoots.length; i++) {
-            _confirmExecutionState(startSlot + uint64(i), execRoots[i]);
-        }
-    }
-
-    function _transitionReceiptRootsState(uint64 startSlot, bytes32[] memory receiptRoots) internal {
-        for (uint64 i = 0; i < receiptRoots.length; i++) {
-            _confirmReceiptsRoot(startSlot + uint64(i), receiptRoots[i]);
-        }
-    }
-
-    function _confirmBeaconState(uint64 slot, bytes32 root) internal {
-        if (allowedBeaconStates[slot] == UNDEFINED_ROOT) {
-            allowedBeaconStates[slot] = root;
-        }
-        emit ConfirmedBeaconState(slot, root);
-    }
-
-    function _confirmExecutionState(uint64 slot, bytes32 root) internal {
-        if (allowedExecutionStates[slot] == UNDEFINED_ROOT) {
-            allowedExecutionStates[slot] = root;
-        }
-        emit ConfirmedExecutionState(slot, root);
-    }
-
-    function _confirmReceiptsRoot(uint64 slot, bytes32 root) internal {
-        if (allowedReceiptRoots[slot] == UNDEFINED_ROOT) {
-            allowedReceiptRoots[slot] = root;
-        }
-        emit ConfirmedReceiptsState(slot, root);
     }
 
     function _compareConsensusState(ConsensusState memory a, ConsensusState memory b) internal pure returns (bool) {
