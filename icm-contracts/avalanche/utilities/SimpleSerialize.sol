@@ -8,7 +8,7 @@ pragma solidity ^0.8.30;
 
 library SSZ {
     /// @notice Computes the Merkle Root using a leaf, its index, and the proof
-    /// @param leaf The leaf data to verify 
+    /// @param leaf The leaf data to verify
     /// @param index The Generalized Index (gIndex) of the leaf
     /// @param proof The Merkle proof (array of sibling hashes)
     /// @return bytes32 The reconstructed Merkle Root.
