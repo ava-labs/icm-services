@@ -10,10 +10,7 @@ contract BLSTUtilsTest is Test {
      * checks, i.e. self-consistency. Creating a signature vs. an aggregate with
      * a single key should produce the same results.
      */
-    function testCreateAndVerifySignature(
-        bytes calldata message
-    ) public view {
-        uint256 secretKey = 273952;
+    function testCreateAndVerifySignature(bytes calldata message, uint256 secretKey) public view {
         bytes memory pk = BLST.getPublicKeyFromSecret(secretKey);
         bytes memory sig = BLST.createSignature(secretKey, message);
         bool valid = BLST.verifySignature(pk, sig, message);
@@ -32,11 +29,13 @@ contract BLSTUtilsTest is Test {
      * keys.
      */
     function testCreateAndVerifyAggregateSignature(
-        bytes calldata message
+        bytes calldata message,
+        uint256 secretKey1,
+        uint256 secretKey2
     ) public view {
         uint256[] memory secretKeys = new uint256[](2);
-        secretKeys[0] = 273952;
-        secretKeys[1] = 93293485;
+        secretKeys[0] = secretKey1;
+        secretKeys[1] = secretKey2;
         bytes[] memory pks = new bytes[](2);
         pks[0] = BLST.getPublicKeyFromSecret(secretKeys[0]);
         pks[1] = BLST.getPublicKeyFromSecret(secretKeys[1]);
