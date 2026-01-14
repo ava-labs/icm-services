@@ -40,8 +40,9 @@ const (
 var (
 	log logging.Logger
 
-	localNetworkInstance *network.LocalNetwork
-	teleporterInfo       teleporterTestUtils.TeleporterTestInfo
+	localNetworkInstance         *network.LocalNetwork
+	localEthereumNetworkInstance *network.LocalEthereumNetwork
+	teleporterInfo               teleporterTestUtils.TeleporterTestInfo
 
 	decider  *exec.Cmd
 	cancelFn context.CancelFunc
@@ -134,7 +135,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			},
 		},
 		4,
-		4,
+		6, // Extra nodes: 4 for L1 validators + 2 for validator set updater test
 		e2eFlags,
 	)
 	teleporterInfo = teleporterTestUtils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
@@ -189,6 +190,10 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}()
 	log.Info("Started decider service")
 
+	// Connect to local Ethereum network (must be started separately)
+	localEthereumNetworkInstance = network.NewLocalEthereumNetwork(ctx)
+	log.Info("Connected to local Ethereum network")
+
 	log.Info("Set up ginkgo before suite")
 
 	ginkgo.AddReportEntry(
@@ -202,6 +207,10 @@ func cleanup() {
 	cancelFn()
 	if decider != nil {
 		decider = nil
+	}
+	if localEthereumNetworkInstance != nil {
+		localEthereumNetworkInstance.TearDownNetwork()
+		localEthereumNetworkInstance = nil
 	}
 	if localNetworkInstance != nil {
 		localNetworkInstance.TearDownNetwork()
@@ -261,5 +270,10 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
 			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("External EVM Validator Set Updater",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.ValidatorSetUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
 })

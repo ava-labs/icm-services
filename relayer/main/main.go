@@ -11,6 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"math/big"
+
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
@@ -32,6 +34,7 @@ import (
 	sigAggMetrics "github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
+	evmClient "github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/plugin/evm"
@@ -319,6 +322,24 @@ func main() {
 
 		return nil
 	})
+
+	// Start the validator set updater if external EVM destinations are configured
+	if len(cfg.ExternalEVMDestinations) > 0 {
+		validatorSetUpdater, err := createValidatorSetUpdater(
+			logger,
+			network.GetValidatorManager(),
+			signatureAggregator,
+			cfg,
+		)
+		if err != nil {
+			logger.Fatal("Failed to create validator set updater", zap.Error(err))
+			os.Exit(1)
+		}
+		errGroup.Go(func() error {
+			return validatorSetUpdater.Start(ctx)
+		})
+		logger.Info("Started validator set updater")
+	}
 
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
@@ -650,4 +671,83 @@ func createHealthTrackers(cfg *config.Config) map[ids.ID]*atomic.Bool {
 		healthTrackers[sourceBlockchain.GetBlockchainID()] = atomic.NewBool(true)
 	}
 	return healthTrackers
+}
+
+// createValidatorSetUpdater creates and configures the validator set updater
+func createValidatorSetUpdater(
+	logger logging.Logger,
+	validatorManager *peers.ValidatorManager,
+	signatureAggregator *aggregator.SignatureAggregator,
+	cfg *config.Config,
+) (*relayer.ValidatorSetUpdater, error) {
+	// Create external EVM clients from top-level config
+	externalEVMClients := make(map[string]*evmClient.ExternalEVMDestinationClient)
+	for _, dest := range cfg.ExternalEVMDestinations {
+		var maxBaseFee, suggestedPriorityFeeBuffer, maxPriorityFeePerGas *big.Int
+		if dest.MaxBaseFee > 0 {
+			maxBaseFee = new(big.Int).SetUint64(dest.MaxBaseFee)
+		}
+		if dest.SuggestedPriorityFeeBuffer > 0 {
+			suggestedPriorityFeeBuffer = new(big.Int).SetUint64(dest.SuggestedPriorityFeeBuffer)
+		}
+		if dest.MaxPriorityFeePerGas > 0 {
+			maxPriorityFeePerGas = new(big.Int).SetUint64(dest.MaxPriorityFeePerGas)
+		}
+		client, err := evmClient.NewExternalEVMDestinationClient(
+			logger,
+			dest.ChainID,
+			dest.RPCEndpoint.BaseURL,
+			dest.GetRegistryAddress(),
+			dest.AccountPrivateKeys,
+			dest.BlockGasLimit,
+			maxBaseFee,
+			suggestedPriorityFeeBuffer,
+			maxPriorityFeePerGas,
+			dest.TxInclusionTimeoutSeconds,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create external EVM client for chain %s: %w", dest.ChainID, err)
+		}
+		externalEVMClients[dest.ChainID] = client
+		logger.Info("Created external EVM client",
+			zap.String("chainID", dest.ChainID),
+			zap.Stringer("registryAddress", dest.GetRegistryAddress()),
+		)
+	}
+
+	// Derive source subnet IDs and blockchain IDs from source-blockchains config
+	sourceSubnetIDs := make([]ids.ID, 0, len(cfg.SourceBlockchains))
+	sourceBlockchainIDs := make(map[ids.ID]ids.ID)
+	seenSubnets := make(map[ids.ID]bool)
+
+	for _, sourceBlockchain := range cfg.SourceBlockchains {
+		subnetID := sourceBlockchain.GetSubnetID()
+		if !seenSubnets[subnetID] {
+			sourceSubnetIDs = append(sourceSubnetIDs, subnetID)
+			seenSubnets[subnetID] = true
+		}
+		sourceBlockchainIDs[subnetID] = sourceBlockchain.GetBlockchainID()
+	}
+
+	// Get network ID from info API
+	infoClient := info.NewClient(cfg.GetInfoAPI().BaseURL)
+	networkID, err := infoClient.GetNetworkID(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network ID: %w", err)
+	}
+
+	// Create P-chain client for fetching block timestamps
+	pChainClient := platformvm.NewClient(cfg.GetPChainAPI().BaseURL)
+
+	return relayer.NewValidatorSetUpdater(
+		logger,
+		validatorManager,
+		signatureAggregator,
+		networkID,
+		pChainClient,
+		externalEVMClients,
+		sourceSubnetIDs,
+		sourceBlockchainIDs,
+		config.DefaultValidatorSetUpdaterPollIntervalSeconds,
+	)
 }

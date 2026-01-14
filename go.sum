@@ -106,8 +106,8 @@ github.com/ashanbrown/forbidigo v1.6.0 h1:D3aewfM37Yb3pxHujIPSpTf6oQk9sc9WZi8ger
 github.com/ashanbrown/forbidigo v1.6.0/go.mod h1:Y8j9jy9ZYAEHXdu723cUlraTqbzjKF1MUyfOKL+AjcU=
 github.com/ashanbrown/makezero v1.2.0 h1:/2Lp1bypdmK9wDIq7uWBlDF1iMUpIIS4A+pF6C9IEUU=
 github.com/ashanbrown/makezero v1.2.0/go.mod h1:dxlPhHbDMC6N6xICzFBSK+4njQDdK8euNO0qjQMtGY4=
-github.com/ava-labs/avalanchego v1.14.1-db-metrics-fix h1:urul9QaWdulG5w4jl0xujnbzz+kOy2ZPMcaiTuPOP+c=
-github.com/ava-labs/avalanchego v1.14.1-db-metrics-fix/go.mod h1:7sYTcQknONY5x5qzS+GrN+UtyB8kX7Q5ClHhGj1DgXg=
+github.com/ava-labs/avalanchego v1.14.1-db-metrics-fix.0.20251230161751-468066817539 h1:L+IdH9hKjPJdy78wF+P+ObZltl7rD31oQSHhGwSy1Sw=
+github.com/ava-labs/avalanchego v1.14.1-db-metrics-fix.0.20251230161751-468066817539/go.mod h1:7sYTcQknONY5x5qzS+GrN+UtyB8kX7Q5ClHhGj1DgXg=
 github.com/ava-labs/coreth v0.16.0-rc.0 h1:nPvkDbxaH8N9f/wQe7B+IGMhPISMuW5CU0cDYuU8iCw=
 github.com/ava-labs/coreth v0.16.0-rc.0/go.mod h1:uGr1C7BP0+dWhvsIouhuH0yCyI8YDgS6sfEFIExs0iI=
 github.com/ava-labs/firewood-go-ethhash/ffi v0.0.13 h1:obPwnVCkF5+B2f8WbTepHj0ZgiW21vKUgFCtATuAYNY=

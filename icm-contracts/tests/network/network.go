@@ -472,13 +472,19 @@ func (n *LocalNetwork) GetValidatorManager(subnetID ids.ID) (ProxyAddress, Proxy
 }
 
 func (n *LocalNetwork) GetSignatureAggregator() *utils.SignatureAggregator {
+	return n.GetSignatureAggregatorWithPort(utils.DEFAULT_API_PORT)
+}
+
+// GetSignatureAggregatorWithPort returns a signature aggregator with a custom API port
+func (n *LocalNetwork) GetSignatureAggregatorWithPort(apiPort int) *utils.SignatureAggregator {
 	var subnetIDs []ids.ID
 	for _, l1 := range n.GetL1Infos() {
 		subnetIDs = append(subnetIDs, l1.SubnetID)
 	}
-	return utils.NewSignatureAggregator(
+	return utils.NewSignatureAggregatorWithPort(
 		n.GetPrimaryNetworkInfo().NodeURIs[0],
 		subnetIDs,
+		apiPort,
 	)
 }
 

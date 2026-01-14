@@ -34,5 +34,17 @@
       },
       "account-private-key": "0x7493..."
     }
+  ],
+  "external-evm-destinations": [
+    {
+      "chain-id": "11155111",
+      "rpc-endpoint": {
+        "base-url": "https://sepolia.infura.io/v3/YOUR_KEY"
+      },
+      "registry-address": "0x...",
+      "account-private-key": "0x...",
+      "block-gas-limit": 15000000,
+      "tx-inclusion-timeout-seconds": 60
+    }
   ]
 }

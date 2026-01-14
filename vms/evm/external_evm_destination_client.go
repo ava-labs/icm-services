@@ -16,8 +16,10 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/AvalancheValidatorSetRegistry"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/client"
+	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
@@ -30,6 +32,8 @@ const (
 	externalEVMDefaultBaseFeeFactor = 3
 	// externalEVMPoolTxsPerAccount limits pending txs per account in mempool
 	externalEVMPoolTxsPerAccount = 16
+	// gasLimitForSimulation is the gas limit used when simulating calls
+	gasLimitForSimulation = 2_000_000
 )
 
 // ExternalEVMDestinationClient handles communication with external EVM chains
@@ -53,9 +57,6 @@ type ExternalEVMDestinationClient struct {
 
 	// Concurrent senders for transaction processing
 	concurrentSenders []*externalEVMConcurrentSender
-
-	// TODO: Add registry contract binding for GetPChainHeightForDestination()
-	// registryContract *validatorregistry.AvalancheValidatorSetRegistry
 }
 
 // externalEVMConcurrentSender handles transaction signing and sending for one private key.
@@ -430,22 +431,197 @@ func (s *externalEVMConcurrentSender) waitForReceipt(
 	}
 }
 
+// SimulateCall simulates a contract call and returns the revert reason if it fails.
+// This is useful for debugging why a transaction might fail before sending it.
+func (c *ExternalEVMDestinationClient) SimulateCall(
+	ctx context.Context,
+	toAddress string,
+	callData []byte,
+) ([]byte, error) {
+	to := common.HexToAddress(toAddress)
+
+	// Use the first sender's address as the "from" address for simulation
+	var fromAddress common.Address
+	if len(c.concurrentSenders) > 0 {
+		fromAddress = c.concurrentSenders[0].address
+	}
+
+	callMsg := ethereum.CallMsg{
+		From: fromAddress,
+		To:   &to,
+		Gas:  gasLimitForSimulation, // Use same gas limit as actual transactions
+		Data: callData,
+	}
+
+	result, err := c.client.CallContract(ctx, callMsg, nil) // nil = latest block
+	if err != nil {
+		// Try to extract revert reason from error
+		c.logger.Debug("SimulateCall error details",
+			zap.Error(err),
+			zap.String("errorType", fmt.Sprintf("%T", err)),
+		)
+	}
+	return result, err
+}
+
+// SimulateCallAtBlock simulates a contract call at a specific block number.
+func (c *ExternalEVMDestinationClient) SimulateCallAtBlock(
+	ctx context.Context,
+	toAddress string,
+	callData []byte,
+	blockNumber *big.Int,
+) ([]byte, error) {
+	to := common.HexToAddress(toAddress)
+
+	var fromAddress common.Address
+	if len(c.concurrentSenders) > 0 {
+		fromAddress = c.concurrentSenders[0].address
+	}
+
+	callMsg := ethereum.CallMsg{
+		From: fromAddress,
+		To:   &to,
+		Gas:  gasLimitForSimulation,
+		Data: callData,
+	}
+
+	result, err := c.client.CallContract(ctx, callMsg, blockNumber)
+	return result, err
+}
+
 // GetPChainHeightForDestination queries the registry contract for its known P-chain height.
 func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
 ) (uint64, error) {
-	// TODO: Implement registry contract query when ABI binding is available
-	//
-	// height, err := c.registryContract.GetCurrentPChainHeight(&bind.CallOpts{Context: ctx})
-	// if err != nil {
-	//     return 0, fmt.Errorf("failed to query registry contract: %w", err)
-	// }
-	// return height, nil
-
 	c.logger.Debug("Querying registry for P-chain height",
 		zap.String("registryAddress", c.registryAddress.Hex()))
 
-	return 0, fmt.Errorf("GetPChainHeightForDestination not implemented: requires registry ABI binding")
+	// Get current validator set to find its P-chain height
+	registryABI, err := validatorregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
+	}
+
+	// Check if any validator set exists
+	nextID, err := c.GetNextValidatorSetID(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get next validator set ID: %w", err)
+	}
+	if nextID == 0 {
+		// No validator sets registered yet
+		return 0, nil
+	}
+
+	// Get current validator set ID
+	currentID, err := c.GetCurrentValidatorSetID(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get current validator set ID: %w", err)
+	}
+
+	// Call getValidatorSet to get the validator set details
+	callData, err := registryABI.Pack("getValidatorSet", new(big.Int).SetUint64(currentID))
+	if err != nil {
+		return 0, fmt.Errorf("failed to pack getValidatorSet call: %w", err)
+	}
+
+	result, err := c.client.CallContract(ctx, ethereum.CallMsg{
+		To:   &c.registryAddress,
+		Data: callData,
+	}, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call getValidatorSet: %w", err)
+	}
+
+	// Unpack the result - ValidatorSet struct has pChainHeight at index 3
+	unpacked, err := registryABI.Unpack("getValidatorSet", result)
+	if err != nil {
+		return 0, fmt.Errorf("failed to unpack getValidatorSet result: %w", err)
+	}
+
+	// The ABI unpacker returns anonymous structs, so we need to use reflection
+	// to extract the pChainHeight field
+	if len(unpacked) > 0 {
+		// Use type assertion with anonymous struct that matches ABI unpacker output
+		validatorSet := unpacked[0].(struct {
+			AvalancheBlockchainID [32]byte `json:"avalancheBlockchainID"`
+			Validators            []struct {
+				BlsPublicKey []uint8 `json:"blsPublicKey"`
+				Weight       uint64  `json:"weight"`
+			} `json:"validators"`
+			TotalWeight     uint64 `json:"totalWeight"`
+			PChainHeight    uint64 `json:"pChainHeight"`
+			PChainTimestamp uint64 `json:"pChainTimestamp"`
+		})
+		return validatorSet.PChainHeight, nil
+	}
+
+	return 0, fmt.Errorf("unexpected result format from getValidatorSet")
+}
+
+// GetNextValidatorSetID queries the registry contract for the next validator set ID.
+// If this returns 0, no validator sets have been registered yet.
+func (c *ExternalEVMDestinationClient) GetNextValidatorSetID(ctx context.Context) (uint32, error) {
+	registryABI, err := validatorregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
+	}
+
+	callData, err := registryABI.Pack("nextValidatorSetID")
+	if err != nil {
+		return 0, fmt.Errorf("failed to pack nextValidatorSetID call: %w", err)
+	}
+
+	result, err := c.client.CallContract(ctx, ethereum.CallMsg{
+		To:   &c.registryAddress,
+		Data: callData,
+	}, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call nextValidatorSetID: %w", err)
+	}
+
+	unpacked, err := registryABI.Unpack("nextValidatorSetID", result)
+	if err != nil {
+		return 0, fmt.Errorf("failed to unpack nextValidatorSetID result: %w", err)
+	}
+
+	if len(unpacked) > 0 {
+		return unpacked[0].(uint32), nil
+	}
+
+	return 0, fmt.Errorf("unexpected result format from nextValidatorSetID")
+}
+
+// GetCurrentValidatorSetID queries the registry contract for the current validator set ID.
+func (c *ExternalEVMDestinationClient) GetCurrentValidatorSetID(ctx context.Context) (uint64, error) {
+	registryABI, err := validatorregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
+	}
+
+	callData, err := registryABI.Pack("getCurrentValidatorSetID")
+	if err != nil {
+		return 0, fmt.Errorf("failed to pack getCurrentValidatorSetID call: %w", err)
+	}
+
+	result, err := c.client.CallContract(ctx, ethereum.CallMsg{
+		To:   &c.registryAddress,
+		Data: callData,
+	}, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to call getCurrentValidatorSetID: %w", err)
+	}
+
+	unpacked, err := registryABI.Unpack("getCurrentValidatorSetID", result)
+	if err != nil {
+		return 0, fmt.Errorf("failed to unpack getCurrentValidatorSetID result: %w", err)
+	}
+
+	if len(unpacked) > 0 {
+		// Returns *big.Int, convert to uint64
+		return unpacked[0].(*big.Int).Uint64(), nil
+	}
+
+	return 0, fmt.Errorf("unexpected result format from getCurrentValidatorSetID")
 }
 
 // Client returns the underlying ethclient.
@@ -477,4 +653,9 @@ func (c *ExternalEVMDestinationClient) BlockGasLimit() uint64 {
 // GetRPCEndpointURL returns the RPC endpoint URL for this external chain.
 func (c *ExternalEVMDestinationClient) GetRPCEndpointURL() string {
 	return c.rpcEndpointURL
+}
+
+// RegistryAddress returns the registry contract address for this external chain.
+func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
+	return c.registryAddress
 }
