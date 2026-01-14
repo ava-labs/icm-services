@@ -203,56 +203,56 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 	ginkgo.It("Basic Relay",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.BasicRelay(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Manually Provided Message",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.ManualMessage(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.ManualMessage(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Shared Database",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.SharedDatabaseAccess(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.SharedDatabaseAccess(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Allowed Addresses",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.AllowedAddresses(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.AllowedAddresses(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Batch Message",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.BatchRelay(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.BatchRelay(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Relay Message API",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.RelayMessageAPI(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Warp API",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.WarpAPIRelay(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Signature Aggregator",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.SignatureAggregatorAPI(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.SignatureAggregatorAPI(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Signature Aggregator Epoch Validators",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Validators Only Network",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("External EVM Validator Set Updater",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.ValidatorSetUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
+			servicesFlows.ValidatorSetUpdater(ctx, log, localAvalancheNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
 })
