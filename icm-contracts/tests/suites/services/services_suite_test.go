@@ -36,12 +36,11 @@ const (
 var (
 	log logging.Logger
 
-	localNetworkInstance         *network.LocalAvalancheNetwork
-	localEthereumNetworkInstance *network.LocalEthereumNetwork
-	teleporterInfo               utils.TeleporterTestInfo
+	localAvalancheNetworkInstance *network.LocalAvalancheNetwork
+	localEthereumNetworkInstance  *network.LocalEthereumNetwork
+	teleporterInfo                utils.TeleporterTestInfo
 
-	decider  *exec.Cmd
-	cancelFn context.CancelFunc
+	decider *exec.Cmd
 
 	e2eFlags *e2e.FlagVars
 )
@@ -73,8 +72,6 @@ func TestServices(t *testing.T) {
 
 // Define the Relayer before and after suite functions.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
-	ctx, cancelFn = context.WithCancel(ctx)
-
 	log = logging.NewLogger(
 		"signature-aggregator",
 		logging.NewWrappedCore(
@@ -87,7 +84,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	log.Info("Building all ICM service executables")
 	utils.BuildAllExecutables(ctx, log)
 
-	// Generate the Teleporter deployment values
 	teleporterContractAddress,
 		teleporterDeployerAddress,
 		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
@@ -96,7 +92,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
-	localNetworkInstance = network.NewLocalAvalancheNetwork(
+	localAvalancheNetworkInstance = network.NewLocalAvalancheNetwork(
 		networkStartCtx,
 		"icm-off-chain-services-e2e-test",
 		warpGenesisTemplateFile,
@@ -124,22 +120,28 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		6, // Extra nodes: 4 for L1 validators + 2 for validator set updater test
 		e2eFlags,
 	)
-	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 
-	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the subnet chains.
-	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
+	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
+	_, fundedKey := localAvalancheNetworkInstance.GetFundedAccountInfo()
 	utils.DeployWithNicksMethod(
 		networkStartCtx,
-		localNetworkInstance.GetPrimaryNetworkInfo(),
+		localAvalancheNetworkInstance.GetPrimaryNetworkInfo(),
 		teleporterDeployerTransaction,
 		teleporterDeployerAddress,
 		teleporterContractAddress,
 		fundedKey,
 	)
 
+	teleporterInfo = utils.NewTeleporterTestInfo(localAvalancheNetworkInstance.GetAllL1Infos())
+	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
+	for _, subnet := range localAvalancheNetworkInstance.GetAllL1Infos() {
+		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
+		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
+	}
+
 	// Convert the subnets to sovereign L1s
-	for _, subnet := range localNetworkInstance.GetL1Infos() {
-		localNetworkInstance.ConvertSubnet(
+	for _, subnet := range localAvalancheNetworkInstance.GetL1Infos() {
+		localAvalancheNetworkInstance.ConvertSubnet(
 			networkStartCtx,
 			subnet,
 			utils.PoAValidatorManager,
@@ -150,17 +152,11 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		)
 	}
 
-	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
-	for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-		teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
-		teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
-	}
-
 	// Restart the network to attempt to refresh TLS connections
-	networkRestartCtx, cancel := context.WithTimeout(ctx, time.Duration(60*len(localNetworkInstance.Nodes))*time.Second)
+	networkRestartCtx, cancel := context.WithTimeout(ctx, time.Duration(60*len(localAvalancheNetworkInstance.Nodes))*time.Second)
 	defer cancel()
 
-	err := localNetworkInstance.Restart(networkRestartCtx)
+	err := localAvalancheNetworkInstance.Restart(networkRestartCtx)
 	Expect(err).Should(BeNil())
 
 	decider = exec.CommandContext(ctx, "./tests/cmd/decider/decider")
@@ -182,13 +178,12 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	ginkgo.AddReportEntry(
 		"network directory with node logs & configs; useful in the case of failures",
-		localNetworkInstance.Dir(),
+		localAvalancheNetworkInstance.Dir(),
 		ginkgo.ReportEntryVisibilityFailureOrVerbose,
 	)
 })
 
 func cleanup() {
-	cancelFn()
 	if decider != nil {
 		decider = nil
 	}
@@ -196,9 +191,9 @@ func cleanup() {
 		localEthereumNetworkInstance.TearDownNetwork()
 		localEthereumNetworkInstance = nil
 	}
-	if localNetworkInstance != nil {
-		localNetworkInstance.TearDownNetwork()
-		localNetworkInstance = nil
+	if localAvalancheNetworkInstance != nil {
+		localAvalancheNetworkInstance.TearDownNetwork()
+		localAvalancheNetworkInstance = nil
 	}
 }
 
