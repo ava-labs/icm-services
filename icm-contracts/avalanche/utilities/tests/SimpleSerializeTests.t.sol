@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
 // Reference: This is core logic from the Succinct Telepathy Library, which can be found at https://github.com/succinctlabs/telepathy-contracts/blob/main/test/libraries/SimpleSerialize.t.sol
-pragma solidity 0.8.30;
+pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
 import {SSZ} from "../SimpleSerialize.sol";
