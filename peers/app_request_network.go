@@ -30,13 +30,11 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/sampler"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/avalanchego/vms/platformvm"
+	"github.com/ava-labs/icm-services/peers/clients"
+	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
-
-	"github.com/ava-labs/icm-services/peers/clients"
-	sharedUtils "github.com/ava-labs/icm-services/utils"
 )
 
 const (
@@ -166,15 +164,9 @@ func NewNetwork(
 		peersMap[peer.ID] = peer
 	}
 
-	pClient := platformvm.NewClient(cfg.GetPChainAPI().BaseURL)
-	options := cfg.GetPChainAPI().Options()
+	pClient := clients.NewCanonicalValidatorClient(cfg.GetPChainAPI())
 
-	vdrs, err := pClient.GetCurrentValidators(
-		ctx,
-		constants.PrimaryNetworkID,
-		nil,
-		options...,
-	)
+	vdrs, err := pClient.GetCurrentValidators(ctx, constants.PrimaryNetworkID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current validators: %w", err)
 	}
@@ -465,7 +457,7 @@ func (n *AppRequestNetwork) GetNetworkHealthFunc(subnetIDs []ids.ID) func(contex
 			}
 			canonicalSet := n.buildCanonicalValidators(vdrs)
 
-			if !sharedUtils.CheckStakeWeightExceedsThreshold(
+			if !utils.CheckStakeWeightExceedsThreshold(
 				big.NewInt(0).SetUint64(canonicalSet.ConnectedWeight),
 				canonicalSet.ValidatorSet.TotalWeight,
 				warp.WarpDefaultQuorumNumerator,

@@ -5,7 +5,6 @@ package services_test
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,10 +20,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/units"
 	servicesFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/services"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
-	teleporterTestUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	testUtils "github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -40,9 +36,9 @@ const (
 var (
 	log logging.Logger
 
-	localNetworkInstance         *network.LocalNetwork
+	localNetworkInstance         *network.LocalAvalancheNetwork
 	localEthereumNetworkInstance *network.LocalEthereumNetwork
-	teleporterInfo               teleporterTestUtils.TeleporterTestInfo
+	teleporterInfo               utils.TeleporterTestInfo
 
 	decider  *exec.Cmd
 	cancelFn context.CancelFunc
@@ -89,28 +85,18 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	)
 
 	log.Info("Building all ICM service executables")
-	testUtils.BuildAllExecutables(ctx, log)
+	utils.BuildAllExecutables(ctx, log)
 
 	// Generate the Teleporter deployment values
-	teleporterContractAddress := common.HexToAddress(
-		testUtils.ReadHexTextFile("./tests/utils/UniversalTeleporterMessengerContractAddress.txt"),
-	)
-	teleporterDeployerAddress := common.HexToAddress(
-		testUtils.ReadHexTextFile("./tests/utils/UniversalTeleporterDeployerAddress.txt"),
-	)
-	teleporterDeployedByteCode := testUtils.ReadHexTextFile(
-		"./tests/utils/UniversalTeleporterDeployedBytecode.txt",
-	)
-	teleporterDeployerTransactionStr := testUtils.ReadHexTextFile(
-		"./tests/utils/UniversalTeleporterDeployerTransaction.txt",
-	)
-	teleporterDeployerTransaction, err := hex.DecodeString(
-		utils.SanitizeHexString(teleporterDeployerTransactionStr),
-	)
-	Expect(err).Should(BeNil())
+	teleporterContractAddress,
+		teleporterDeployerAddress,
+		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
+
+	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
+
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
-	localNetworkInstance = network.NewLocalNetwork(
+	localNetworkInstance = network.NewLocalAvalancheNetwork(
 		networkStartCtx,
 		"icm-off-chain-services-e2e-test",
 		warpGenesisTemplateFile,
@@ -138,11 +124,11 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		6, // Extra nodes: 4 for L1 validators + 2 for validator set updater test
 		e2eFlags,
 	)
-	teleporterInfo = teleporterTestUtils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
+	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the subnet chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
-	teleporterInfo.DeployTeleporterMessenger(
+	utils.DeployWithNicksMethod(
 		networkStartCtx,
 		localNetworkInstance.GetPrimaryNetworkInfo(),
 		teleporterDeployerTransaction,
@@ -151,19 +137,12 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		fundedKey,
 	)
 
-	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
-	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
-		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
-		teleporterInfo.InitializeBlockchainID(subnet, fundedKey)
-		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
-	}
-
 	// Convert the subnets to sovereign L1s
 	for _, subnet := range localNetworkInstance.GetL1Infos() {
 		localNetworkInstance.ConvertSubnet(
 			networkStartCtx,
 			subnet,
-			teleporterTestUtils.PoAValidatorManager,
+			utils.PoAValidatorManager,
 			[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
 			[]uint64{defaultBalance, defaultBalance, defaultBalance, minimumL1ValidatorBalance - 1},
 			fundedKey,
@@ -171,11 +150,17 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		)
 	}
 
+	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
+	for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+		teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+		teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
+	}
+
 	// Restart the network to attempt to refresh TLS connections
 	networkRestartCtx, cancel := context.WithTimeout(ctx, time.Duration(60*len(localNetworkInstance.Nodes))*time.Second)
 	defer cancel()
 
-	err = localNetworkInstance.Restart(networkRestartCtx)
+	err := localNetworkInstance.Restart(networkRestartCtx)
 	Expect(err).Should(BeNil())
 
 	decider = exec.CommandContext(ctx, "./tests/cmd/decider/decider")
@@ -190,7 +175,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}()
 	log.Info("Started decider service")
 
-	// Connect to local Ethereum network (must be started separately)
 	localEthereumNetworkInstance = network.NewLocalEthereumNetwork(ctx)
 	log.Info("Connected to local Ethereum network")
 

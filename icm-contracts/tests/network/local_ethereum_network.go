@@ -18,6 +18,8 @@ import (
 // It does not implement the same interface as LocalNetwork (Avalanche) since
 // the functionality is different.
 
+var _ LocalNetwork = (*LocalEthereumNetwork)(nil)
+
 type LocalEthereumNetwork struct {
 	BaseURL         string
 	Client          ethclient.Client

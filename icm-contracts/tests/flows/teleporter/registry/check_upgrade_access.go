@@ -9,13 +9,12 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-
 	. "github.com/onsi/gomega"
 )
 
 func CheckUpgradeAccess(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1Info := network.GetPrimaryNetworkInfo()
@@ -73,7 +72,7 @@ func CheckUpgradeAccess(
 	// Try to call pauseTeleporterAddress from the owner account
 	tx, err := testMessenger.PauseTeleporterAddress(ownerOpts, teleporterAddress)
 	Expect(err).Should(BeNil())
-	receipt := utils.WaitForTransactionSuccess(ctx, l1Info, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1Info.RPCClient, tx.Hash())
 	pauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessenger.ParseTeleporterAddressPaused)
 	Expect(err).Should(BeNil())
 	Expect(pauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))
@@ -85,7 +84,7 @@ func CheckUpgradeAccess(
 	// Transfer ownership to the non owner account
 	tx, err = testMessenger.TransferOwnership(ownerOpts, nonOwnerAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, l1Info, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, l1Info.RPCClient, tx.Hash())
 
 	// Try to call unpauseTeleporterAddress from the previous owner account
 	_, err = testMessenger.UnpauseTeleporterAddress(ownerOpts, teleporterAddress)
@@ -100,7 +99,7 @@ func CheckUpgradeAccess(
 	// Try to call unpauseTeleporterAddress from the non owner account now
 	tx, err = testMessenger.UnpauseTeleporterAddress(nonOwnerOpts, teleporterAddress)
 	Expect(err).Should(BeNil())
-	receipt = utils.WaitForTransactionSuccess(ctx, l1Info, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1Info.RPCClient, tx.Hash())
 	unpauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessenger.ParseTeleporterAddressUnpaused)
 	Expect(err).Should(BeNil())
 	Expect(unpauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))

@@ -10,14 +10,13 @@ import (
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"go.uber.org/zap"
-
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
 
 func RelayMessageTwice(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()

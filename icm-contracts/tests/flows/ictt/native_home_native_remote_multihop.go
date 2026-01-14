@@ -23,7 +23,7 @@ import (
 */
 func NativeTokenHomeNativeTokenRemoteMultiHop(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()

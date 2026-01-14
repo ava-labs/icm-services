@@ -14,13 +14,13 @@ source $REPO_PATH/scripts/versions.sh
 function solFormat() {
     # format solidity contracts
     echo "Formatting Solidity contracts..."
-    forge fmt --root $REPO_PATH $REPO_PATH/icm-contracts/contracts/**
+    forge fmt --root $REPO_PATH $REPO_PATH/icm-contracts/**
 }
 
 function solFormatCheck() {
     # format solidity contracts
     echo "Checking formatting of Solidity contracts..."
-    forge fmt --check --root $REPO_PATH $REPO_PATH/icm-contracts/contracts/**
+    forge fmt --check --root $REPO_PATH $REPO_PATH/icm-contracts/**
 }
 
 function solLinter() {
@@ -35,7 +35,7 @@ function solLinter() {
 function golangLinter() {
     echo "Linting Golang code..."
     cd $REPO_PATH
-    go run github.com/golangci/golangci-lint/cmd/golangci-lint run --config=$REPO_PATH/.golangci.yml --build-tags=test ./... --timeout 5m
+    go run github.com/golangci/golangci-lint/cmd/golangci-lint run --config=$REPO_PATH/.golangci.yml --build-tags=test ./... --timeout 5m --fix
     (cd proto && go run github.com/bufbuild/buf/cmd/buf lint)
 }
 

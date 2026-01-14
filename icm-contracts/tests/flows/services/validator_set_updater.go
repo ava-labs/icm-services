@@ -36,7 +36,7 @@ import (
 func ValidatorSetUpdater(
 	ctx context.Context,
 	log logging.Logger,
-	avalancheNetwork *network.LocalNetwork,
+	avalancheNetwork *network.LocalAvalancheNetwork,
 	ethereumNetwork *network.LocalEthereumNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {

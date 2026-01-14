@@ -11,7 +11,7 @@ import (
 
 func PauseTeleporter(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -46,7 +46,7 @@ func PauseTeleporter(
 	tx, err := testMessengerB.PauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
 	pauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressPaused)
 	Expect(err).Should(BeNil())
 	Expect(pauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))
@@ -76,7 +76,7 @@ func PauseTeleporter(
 	tx, err = testMessengerB.UnpauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
 	unpauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressUnpaused)
 	Expect(err).Should(BeNil())
 	Expect(unpauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))

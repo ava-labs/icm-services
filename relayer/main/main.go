@@ -19,13 +19,13 @@ import (
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/messages/teleporter"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer"
 	"github.com/ava-labs/icm-services/relayer/api"
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
@@ -39,13 +39,12 @@ import (
 	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"go.uber.org/atomic"
+	// Sets GOMAXPROCS to the CPU quota for containerized environments
+	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	// Sets GOMAXPROCS to the CPU quota for containerized environments
-	_ "go.uber.org/automaxprocs"
 )
 
 var version = "v0.0.0-dev"
@@ -261,8 +260,7 @@ func main() {
 		sigAggMetrics.NewSignatureAggregatorMetrics(
 			relayerMetricsRegistry,
 		),
-		platformvm.NewClient(cfg.GetPChainAPI().BaseURL),
-		cfg.GetPChainAPI().Options(),
+		clients.NewCanonicalValidatorClient(cfg.PChainAPI),
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
