@@ -169,7 +169,11 @@ func NewDestinationClient(
 			zap.Stringer("senderAddress", signer.Address()),
 		)
 		for {
-			pendingNonce, err = ethClient.NonceAt(context.Background(), signer.Address(), big.NewInt(int64(rpc.PendingBlockNumber)))
+			pendingNonce, err = ethClient.NonceAt(
+				context.Background(),
+				signer.Address(),
+				big.NewInt(int64(rpc.PendingBlockNumber)),
+			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get pending nonce: %w", err)
 			}

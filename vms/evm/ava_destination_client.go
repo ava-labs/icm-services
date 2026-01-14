@@ -43,7 +43,11 @@ func (c *avaDestinationClient) ChainID(ctx context.Context) (*big.Int, error) {
 	return c.ethClient.ChainID(ctx)
 }
 
-func (c *avaDestinationClient) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+func (c *avaDestinationClient) NonceAt(
+	ctx context.Context,
+	account common.Address,
+	blockNumber *big.Int,
+) (uint64, error) {
 	return c.ethClient.NonceAt(ctx, account, blockNumber)
 }
 
@@ -63,7 +67,11 @@ func (c *avaDestinationClient) BlockNumber(ctx context.Context) (uint64, error) 
 	return c.ethClient.BlockNumber(ctx)
 }
 
-func (c *avaDestinationClient) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+func (c *avaDestinationClient) CallContract(
+	ctx context.Context,
+	msg ethereum.CallMsg,
+	blockNumber *big.Int,
+) ([]byte, error) {
 	return c.ethClient.CallContract(ctx, msg, blockNumber)
 }
 

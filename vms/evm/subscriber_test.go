@@ -34,7 +34,10 @@ func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.Filter
 	return []types.Log{}, nil
 }
 
-func (c *subscriberClientStub) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
+func (c *subscriberClientStub) SubscribeNewHead(
+	ctx context.Context,
+	ch chan<- *types.Header,
+) (ethereum.Subscription, error) {
 	return nil, nil
 }
 

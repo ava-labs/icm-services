@@ -19,7 +19,6 @@ import (
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/subnet-evm/params"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-
 	// Force-load precompiles to trigger registration
 	_ "github.com/ava-labs/subnet-evm/precompile/registry"
 	"go.uber.org/zap"

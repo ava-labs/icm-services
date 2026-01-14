@@ -511,8 +511,8 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := t.Context()
+	client.client.BlockNumber(ctx)
 	ethClient := client.Client()
-	ethClient.BlockNumber(ctx)
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
 
@@ -569,8 +569,8 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
+	client.client.BlockNumber(ctx)
 	ethClient := client.Client()
-	ethClient.BlockNumber(ctx)
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
 
