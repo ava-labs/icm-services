@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+/**
+ * THIS IS LIBRARY IS UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
 struct ICMRawMessage {
     // used to distinguish between mainnet and testnets
     uint32 sourceNetworkID;
@@ -22,14 +26,13 @@ struct ICMMessage {
     bytes attestation;
 }
 
-
-
 /**
  * @title ICM
  * @notice Utility library for Interchain Messaging (ICM) messages. Mainly (de)serialization.
  * @dev This library provides helper functions for working with ICM signatures and validation
  */
 library ICM {
+    /* solhint-disable no-inline-assembly */
 
     /*
      * @notice Deserialize an ICM message from bytes
@@ -40,7 +43,7 @@ library ICM {
         ICMRawMessage memory message = parseICMRawMessage(data);
         uint256 payloadLength = message.payload.length;
         // Parse the unsigned message bytes
-        bytes memory rawMessageBytes = data[0: 82 + payloadLength];
+        bytes memory rawMessageBytes = data[0:82 + payloadLength];
         // the rest of the bytes are the attestation
         bytes memory attestation = data[82 + payloadLength:];
         return ICMMessage({
@@ -61,7 +64,6 @@ library ICM {
 
         // Parse the sourceNetworkID
         uint32 sourceNetworkID = uint32(bytes4(data[2:6]));
-
 
         // Parse the sourceBlockchainID
         bytes32 sourceBlockchainID = bytes32(data[6:38]);
@@ -89,7 +91,7 @@ library ICM {
         ICMRawMessage calldata message
     ) public pure returns (bytes memory) {
         bytes memory serialized = new bytes(
-        // the codec
+            // the codec
             2
             // the sourceNetworkID
             + 4
@@ -107,7 +109,7 @@ library ICM {
         // encode the payload length
         uint256 payloadLength = message.payload.length;
         bytes4 payloadLengthBytes = bytes4(uint32(message.payload.length));
-        assembly ("memory-safe"){
+        assembly ("memory-safe") {
             // set start after the array size
             let s := add(serialized, 32)
             // Store Codec
@@ -120,7 +122,7 @@ library ICM {
             // store the sourceAddress, shifting 12 bytes to get the 20 byte address
             mstore(add(s, 38), shl(96, calldataload(add(message, 0x40))))
             // store the verifier address, shifting 12 bytes to get the 20 byte address
-            mstore(add(s, 58),  shl(96, calldataload(add(message, 0x60))))
+            mstore(add(s, 58), shl(96, calldataload(add(message, 0x60))))
             // store the payload length
             mstore(add(s, 78), payloadLengthBytes)
             // store the payload
@@ -158,5 +160,4 @@ library ICM {
         }
         return data;
     }
-
 }

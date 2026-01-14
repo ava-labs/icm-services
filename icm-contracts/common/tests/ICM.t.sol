@@ -5,9 +5,8 @@ import {Test} from "@forge-std/Test.sol";
 import {ICM, ICMMessage, ICMRawMessage} from "../ICM.sol";
 
 contract ICMTest is Test {
-
     /*
-     * @dev Fuzz test to make sure a round trip of serialization is a no-op
+     * @dev Test to make sure a round trip of serialization is a no-op
      */
     function testRoundTripRawMessage(
         bytes4 sourceNetworkID,
@@ -33,6 +32,9 @@ contract ICMTest is Test {
         assertEq(raw.payload, deserialized.payload);
     }
 
+    /*
+     * @dev Test to make sure a round trip of serialization is a no-op
+     */
     function testRoundTripICMessage(
         bytes4 sourceNetworkID,
         bytes32 sourceBlockchainID,
@@ -51,11 +53,8 @@ contract ICMTest is Test {
 
         bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
 
-        ICMMessage memory message= ICMMessage({
-            message: raw,
-            rawMessageBytes: rawMessageBytes,
-            attestation: attestation
-        });
+        ICMMessage memory message =
+            ICMMessage({message: raw, rawMessageBytes: rawMessageBytes, attestation: attestation});
         bytes memory serialized = ICM.serializeICMMessage(message);
         ICMMessage memory deserialized = ICM.parseICMMessage(serialized);
 

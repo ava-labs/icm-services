@@ -16,10 +16,10 @@ source $REPO_PATH/scripts/versions.sh
 
 echo "Avalanche EVM Version: $AVALANCHE_EVM_VERSION"
 echo "Avalanche Solidity Version: $AVALANCHE_SOLIDITY_VERSION"
+echo "Common EVM Version: $COMMON_EVM_VERSION"
+echo "Common Solidity Version: $COMMON_SOLIDITY_VERSION"
 echo "Ethereum EVM Version: $ETHEREUM_EVM_VERSION"
 echo "Ethereum Solidity Version: $ETHEREUM_SOLIDITY_VERSION"
-
-AVALANCHE_ICM_PATH=${ICM_CONTRACTS_PATH}/avalanche
 
 export ARCH=$(uname -m)
 [ $ARCH = x86_64 ] && ARCH=amd64
@@ -29,6 +29,8 @@ DEFAULT_AVALANCHE_CONTRACT_LIST="TeleporterMessenger TeleporterRegistry ExampleE
 TokenHome TokenRemote ERC20TokenHome ERC20TokenHomeUpgradeable ERC20TokenRemote ERC20TokenRemoteUpgradeable NativeTokenHome NativeTokenHomeUpgradeable NativeTokenRemote NativeTokenRemoteUpgradeable
 WrappedNativeToken MockERC20SendAndCallReceiver MockNativeSendAndCallReceiver ExampleERC20Decimals IStakingManager ACP99Manager ValidatorManager PoAManager BatchCrossChainMessenger INativeMinter"
 
+DEFAULT_COMMON_CONTRACT_LIST=""
+
 DEFAULT_ETHEREUM_CONTRACT_LIST="AvalancheValidatorSetRegistry"
 
 PROXY_LIST="TransparentUpgradeableProxy ProxyAdmin"
@@ -37,11 +39,13 @@ ACCESS_LIST="OwnableUpgradeable"
 EXTERNAL_LIBS="ValidatorMessages"
 
 AVALANCHE_CONTRACT_LIST=
+COMMON_CONTRACT_LIST=
 ETHEREUM_CONTRACT_LIST=
 HELP=
 while [ $# -gt 0 ]; do
     case "$1" in
         -ac | --avalanche-contracts) AVALANCHE_CONTRACT_LIST=$2 ;;
+        -cc | --common-contracts) COMMON_CONTRACT_LIST=$2 ;;
         -ec | --ethereum-contracts) ETHEREUM_CONTRACT_LIST=$2 ;;
         -h | --help) HELP=true ;;
     esac
@@ -54,6 +58,7 @@ if [ "$HELP" = true ]; then
     echo ""
     echo "Options:"
     echo "  -ac, --avalanche-contracts contract1 contract2    Generate Go bindings for the contract. If empty, generate Go bindings for a default list of Avalanche contracts"
+    echo "  -cc, --common-contracts contract1 contract2       Generate Go bindings for the contract. If empty, generate Go bindings for a default list of Common contracts"
     echo "  -ec, --ethereum-contracts contract1 contract      Generate Go bindings for the contract. If empty, generate Go bindings for a default list of Ethereum contracts"
     echo "  -h, --help                              Print this help message"
     exit 0
@@ -196,6 +201,11 @@ if [[ -z "${CONTRACT_LIST}" ]]; then
     AVALANCHE_CONTRACT_LIST=($DEFAULT_AVALANCHE_CONTRACT_LIST)
 fi
 
+# If COMMON_CONTRACT_LIST is empty, use DEFAULT_COMMON_CONTRACT_LIST
+if [[ -z "${CONTRACT_LIST}" ]]; then
+    COMMON_CONTRACT_LIST=($DEFAULT_COMMON_CONTRACT_LIST)
+fi
+
 # If ETHEREUM_CONTRACT_LIST is empty, use DEFAULT_ETHEREUM_CONTRACT_LIST
 if [[ -z "${ETHEREUM_CONTRACT_LIST}" ]]; then
     ETHEREUM_CONTRACT_LIST=($DEFAULT_ETHEREUM_CONTRACT_LIST)
@@ -204,6 +214,10 @@ fi
 contract_names=(${AVALANCHE_CONTRACT_LIST[@]})
 cd $AVALANCHE_ICM_PATH
 generate_bindings "$AVALANCHE_EVM_VERSION" "" "${contract_names[@]}"
+
+contract_names=(${COMMON_CONTRACT_LIST[@]})
+cd $COMMON_ICM_PATH
+generate_bindings "$COMMON_EVM_VERSION" "" "${contract_names[@]}"
 
 contract_names=(${ETHEREUM_CONTRACT_LIST[@]})
 cd $ETHEREUM_ICM_PATH
