@@ -4,7 +4,6 @@
 package evm
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -17,7 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient.MockClient) {
+func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscriber, *mock_ethclient.MockClient) {
 	sourceSubnet := config.SourceBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
@@ -31,7 +30,7 @@ func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient
 	mockEthClient := mock_ethclient.NewMockClient(gomock.NewController(t))
 	blockchainID, err := ids.FromString(sourceSubnet.BlockchainID)
 	require.NoError(t, err)
-	subscriber := NewSubscriber(logger, blockchainID, mockEthClient, mockEthClient)
+	subscriber := NewSubscriber(logger, blockchainID, mockEthClient, mockEthClient, errChan)
 
 	return subscriber, mockEthClient
 }
@@ -39,8 +38,8 @@ func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient
 func TestProcessFromHeight(t *testing.T) {
 	testCases := []struct {
 		name   string
-		latest int64
-		input  int64
+		latest uint64
+		input  uint64
 	}{
 		{
 			name:   "zero to max blocks",
@@ -76,13 +75,9 @@ func TestProcessFromHeight(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			subscriberUnderTest, mockEthClient := makeSubscriberWithMockEthClient(t)
+			errChan := make(chan error, 1)
+			subscriberUnderTest, mockEthClient := makeSubscriberWithMockEthClient(t, errChan)
 
-			mockEthClient.
-				EXPECT().
-				BlockNumber(gomock.Any()).
-				Return(uint64(tc.latest), nil).
-				Times(1)
 			if tc.latest > tc.input {
 				expectedFilterLogCalls := (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
 				mockEthClient.EXPECT().FilterLogs(
@@ -93,16 +88,14 @@ func TestProcessFromHeight(t *testing.T) {
 					nil,
 				).Times(int(expectedFilterLogCalls))
 			}
-			done := make(chan bool, 1)
-			subscriberUnderTest.ProcessFromHeight(big.NewInt(tc.input), done)
-			result := <-done
-			require.True(t, result)
+			subscriberUnderTest.ProcessFromHeight(tc.input, tc.latest)
 
 			if tc.latest > tc.input {
 				for i := tc.input; i <= tc.latest; i++ {
 					block := <-subscriberUnderTest.ICMBlocks()
-					require.Equal(t, uint64(i), block.BlockNumber)
+					require.Equal(t, i, block.BlockNumber)
 					require.Empty(t, block.Messages)
+					require.Empty(t, errChan)
 				}
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
