@@ -643,31 +643,30 @@ func (u *ValidatorSetUpdater) sendValidatorSetUpdate(
 }
 
 // computeValidatorSetHash computes a hash of the validator set for change detection.
-// This uses the same hash computation as computeValidatorSetHashForMessage for consistency.
+// This uses the same hash computation as avalanchego's P-chain for consistency.
 func (u *ValidatorSetUpdater) computeValidatorSetHash(validatorSet validators.WarpSet) [32]byte {
-	// Validators are already in canonical order from the WarpSet
-	// Hash using uncompressed public keys and weights
-	h := sha256.New()
-	for _, v := range validatorSet.Validators {
-		// Use uncompressed public key bytes
-		if len(v.PublicKeyBytes) == bls.PublicKeyLen {
-			h.Write(v.PublicKeyBytes)
+	// Convert to message.Validator slice for codec marshaling
+	messageValidators := make([]*message.Validator, len(validatorSet.Validators))
+	for i, v := range validatorSet.Validators {
+		var uncompressedPK [96]byte
+		if len(v.PublicKeyBytes) == 96 {
+			copy(uncompressedPK[:], v.PublicKeyBytes)
 		} else if v.PublicKey != nil {
-			h.Write(bls.PublicKeyToUncompressedBytes(v.PublicKey))
+			copy(uncompressedPK[:], v.PublicKey.Serialize())
 		}
-		// Write weight as 8 bytes big-endian
-		weightBytes := make([]byte, 8)
-		weightBytes[0] = byte(v.Weight >> 56)
-		weightBytes[1] = byte(v.Weight >> 48)
-		weightBytes[2] = byte(v.Weight >> 40)
-		weightBytes[3] = byte(v.Weight >> 32)
-		weightBytes[4] = byte(v.Weight >> 24)
-		weightBytes[5] = byte(v.Weight >> 16)
-		weightBytes[6] = byte(v.Weight >> 8)
-		weightBytes[7] = byte(v.Weight)
-		h.Write(weightBytes)
+		messageValidators[i] = &message.Validator{
+			UncompressedPublicKeyBytes: uncompressedPK,
+			Weight:                     v.Weight,
+		}
 	}
-	var result [32]byte
-	copy(result[:], h.Sum(nil))
-	return result
+
+	// Marshal using the same codec as avalanchego
+	bytes, err := message.Codec.Marshal(message.CodecVersion, messageValidators)
+	if err != nil {
+		// This should never happen with valid validator data
+		u.logger.Error("failed to marshal validator set for hash computation", zap.Error(err))
+		return [32]byte{}
+	}
+
+	return sha256.Sum256(bytes)
 }
