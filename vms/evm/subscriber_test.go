@@ -4,7 +4,6 @@
 package evm
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -39,8 +38,8 @@ func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient
 func TestProcessFromHeight(t *testing.T) {
 	testCases := []struct {
 		name   string
-		latest int64
-		input  int64
+		latest uint64
+		input  uint64
 	}{
 		{
 			name:   "zero to max blocks",
@@ -81,7 +80,7 @@ func TestProcessFromHeight(t *testing.T) {
 			mockEthClient.
 				EXPECT().
 				BlockNumber(gomock.Any()).
-				Return(uint64(tc.latest), nil).
+				Return(tc.latest, nil).
 				Times(1)
 			if tc.latest > tc.input {
 				expectedFilterLogCalls := (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
@@ -94,14 +93,14 @@ func TestProcessFromHeight(t *testing.T) {
 				).Times(int(expectedFilterLogCalls))
 			}
 			done := make(chan bool, 1)
-			subscriberUnderTest.ProcessFromHeight(big.NewInt(tc.input), done)
+			subscriberUnderTest.ProcessFromHeight(tc.input, done)
 			result := <-done
 			require.True(t, result)
 
 			if tc.latest > tc.input {
 				for i := tc.input; i <= tc.latest; i++ {
 					block := <-subscriberUnderTest.ICMBlocks()
-					require.Equal(t, uint64(i), block.BlockNumber)
+					require.Equal(t, i, block.BlockNumber)
 					require.Empty(t, block.Messages)
 				}
 			}
