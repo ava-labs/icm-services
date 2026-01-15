@@ -6,9 +6,9 @@ package config
 import (
 	"context"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/params"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/rpc"
-	"github.com/ava-labs/subnet-evm/params"
 )
 
 var _ configRPCClient = (*rpcClient)(nil)

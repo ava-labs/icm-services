@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/api/info"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network"
@@ -32,7 +33,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
