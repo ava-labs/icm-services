@@ -10,8 +10,8 @@ tool (
 require (
 	github.com/alexliesenfeld/health v0.8.1
 	github.com/ava-labs/avalanchego v1.14.1
+	github.com/ava-labs/avalanchego/graft/subnet-evm v0.8.2
 	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
-	github.com/ava-labs/subnet-evm v0.8.1-0.20251111182129-7fc05124d976
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.5
 	github.com/aws/aws-sdk-go-v2/service/kms v1.49.4
@@ -37,6 +37,14 @@ require (
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.10
 )
+
+require github.com/ava-labs/avalanchego/graft/evm v0.0.0-00010101000000-000000000000 // indirect
+
+replace github.com/ava-labs/avalanchego/graft/subnet-evm => ../avalanchego/graft/subnet-evm
+
+replace github.com/ava-labs/avalanchego/graft/evm => ../avalanchego/graft/evm
+
+replace github.com/ava-labs/avalanchego/graft/coreth => ../avalanchego/graft/coreth
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
