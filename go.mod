@@ -9,7 +9,7 @@ tool (
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.14.1-db-metrics-fix
+	github.com/ava-labs/avalanchego v1.14.1
 	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
 	github.com/ava-labs/subnet-evm v0.8.1-0.20251111182129-7fc05124d976
 	github.com/aws/aws-sdk-go-v2 v1.41.0
@@ -73,7 +73,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/OpenPeeDeeP/depguard/v2 v2.2.1 // indirect
-	github.com/StephenButtolph/canoto v0.17.2 // indirect
+	github.com/StephenButtolph/canoto v0.17.3 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
 	github.com/alecthomas/go-check-sumtype v0.3.1 // indirect
 	github.com/alexkohler/nakedret/v2 v2.0.5 // indirect
@@ -83,8 +83,8 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
-	github.com/ava-labs/coreth v0.16.0-rc.0 // indirect
-	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.13 // indirect
+	github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20251203215505-70148edc6eca // indirect
+	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.18 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.5 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.16 // indirect

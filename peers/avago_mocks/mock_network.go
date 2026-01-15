@@ -188,7 +188,7 @@ func (mr *MockNetworkMockRecorder) Peers(peerID, trackedSubnets, requestAllPeers
 }
 
 // Send mocks base method.
-func (m *MockNetwork) Send(msg message.OutboundMessage, config common.SendConfig, subnetID ids.ID, allower subnets.Allower) set.Set[ids.NodeID] {
+func (m *MockNetwork) Send(msg *message.OutboundMessage, config common.SendConfig, subnetID ids.ID, allower subnets.Allower) set.Set[ids.NodeID] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Send", msg, config, subnetID, allower)
 	ret0, _ := ret[0].(set.Set[ids.NodeID])

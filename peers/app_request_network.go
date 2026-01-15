@@ -402,7 +402,7 @@ func (n *AppRequestNetwork) buildCanonicalValidators(
 }
 
 func (n *AppRequestNetwork) Send(
-	msg message.OutboundMessage,
+	msg *message.OutboundMessage,
 	nodeIDs set.Set[ids.NodeID],
 	subnetID ids.ID,
 	allower subnets.Allower,
