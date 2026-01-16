@@ -9,6 +9,11 @@ bytecode_hash = "none"
 optimizer = true
 optimizer_runs = 200
 
+[profile.common]
+src = 'icm-contracts/common/'
+solc_version = '0.8.30'
+evm_version = 'shanghai'
+
 [profile.ethereum]
 src = 'icm-contracts/ethereum/'
 solc_version = '0.8.30'

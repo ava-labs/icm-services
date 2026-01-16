@@ -33,7 +33,12 @@ jobs:
       - name: Run Ethereum unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
-          FOUNDRY_PROFILE=ethereum forge test -vvv
+          FOUNDRY_PROFILE=ethereum forge test -vvv 
+
+      - name: Run Common unit tests
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          FOUNDRY_PROFILE=common forge test -vvv
 
   unit_tests:
     name: Unit tests
