@@ -708,7 +708,6 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	chainIDInt, err := client.ChainID(ctx)
 	Expect(err).Should(BeNil())
 
-	_ = chainIDInt
 	err = IssueTxsToAdvanceChain(ctx, chainIDInt, fundedKey, client, 2)
 	Expect(err).Should(BeNil())
 }

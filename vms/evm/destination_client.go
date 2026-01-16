@@ -69,8 +69,8 @@ type Client interface {
 
 // Implements DestinationClient
 type destinationClient struct {
-	client    DestinationRPCClient
-	ethClient bind.ContractBackend
+	avaRPCClient DestinationRPCClient
+	ethClient    bind.ContractBackend
 
 	readonlyConcurrentSigners []*readonlyConcurrentSigner
 
@@ -230,7 +230,7 @@ func NewDestinationClient(
 	proposerClient := clients.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
 
 	destClient = destinationClient{
-		client:                     NewAvaDestinationClient(ethClient, rpcClient),
+		avaRPCClient:               NewAvaDestinationClient(ethClient, rpcClient),
 		ethClient:                  ethClient,
 		readonlyConcurrentSigners:  readonlyConcurrentSigners,
 		destinationBlockchainID:    destinationID,
@@ -266,7 +266,7 @@ func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 		// Get the current base fee estimation for the chain.
 		baseFeeCtx, baseFeeCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer baseFeeCtxCancel()
-		baseFee, err := c.client.EstimateBaseFee(baseFeeCtx)
+		baseFee, err := c.avaRPCClient.EstimateBaseFee(baseFeeCtx)
 		if err != nil {
 			c.logger.Error(
 				"Failed to get base fee",
@@ -280,7 +280,7 @@ func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 	// Get the suggested gas tip cap of the network
 	gasTipCapCtx, gasTipCapCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer gasTipCapCtxCancel()
-	gasTipCap, err := c.client.SuggestGasTipCap(gasTipCapCtx)
+	gasTipCap, err := c.avaRPCClient.SuggestGasTipCap(gasTipCapCtx)
 	if err != nil {
 		c.logger.Error(
 			"Failed to get gas tip cap",
@@ -466,7 +466,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	log.Info("Sending transaction")
 
-	if err := s.destinationClient.client.SendTransaction(sendTxCtx, signedTx); err != nil {
+	if err := s.destinationClient.avaRPCClient.SendTransaction(sendTxCtx, signedTx); err != nil {
 		log.Error(
 			"Failed to send transaction",
 			zap.Error(err),
@@ -498,7 +498,7 @@ func (s *concurrentSigner) waitForReceipt(
 	operation := func() (err error) {
 		callCtx, callCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer callCtxCancel()
-		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
+		receipt, err = s.destinationClient.avaRPCClient.TransactionReceipt(callCtx, txHash)
 		return err
 	}
 	notify := func(err error, duration time.Duration) {

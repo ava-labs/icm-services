@@ -106,7 +106,7 @@ func TestGetFeePerGas(t *testing.T) {
 			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			destClient := destinationClient{
 				logger:                     logging.NoLog{},
-				client:                     mockClient,
+				avaRPCClient:                     mockClient,
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: test.suggestedPriorityFeeBuffer,
 				maxPriorityFeePerGas:       test.maxPriorityFeePerGas,
@@ -224,7 +224,7 @@ func TestSendTx(t *testing.T) {
 					(*readonlyConcurrentSigner)(signer),
 				},
 				logger:                     logging.NoLog{},
-				client:                     mockClient,
+				avaRPCClient:                     mockClient,
 				evmChainID:                 big.NewInt(5),
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: big.NewInt(0),
@@ -511,7 +511,7 @@ func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := t.Context()
-	client.client.BlockNumber(ctx)
+	client.avaRPCClient.BlockNumber(ctx)
 	ethClient := client.Client()
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
@@ -569,7 +569,7 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	client.client.BlockNumber(ctx)
+	client.avaRPCClient.BlockNumber(ctx)
 	ethClient := client.Client()
 	ethClient.SuggestGasPrice(ctx)
 	ethClient.SuggestGasTipCap(ctx)
