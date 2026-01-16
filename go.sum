@@ -108,6 +108,12 @@ github.com/ashanbrown/makezero v1.2.0 h1:/2Lp1bypdmK9wDIq7uWBlDF1iMUpIIS4A+pF6C9
 github.com/ashanbrown/makezero v1.2.0/go.mod h1:dxlPhHbDMC6N6xICzFBSK+4njQDdK8euNO0qjQMtGY4=
 github.com/ava-labs/avalanchego v1.14.1 h1:955YG175dhyFibiPr1LA1rDw9x8Vt1UcLuNwRLOk1kM=
 github.com/ava-labs/avalanchego v1.14.1/go.mod h1:TWuYmX/Wmfdd+9KvFZJHGldQ6SXq0jZ334T0kUOaJsM=
+github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260105172535-1a59a6f646ef h1:nEkBQEvAJYn2XR8k+fErTCzT+M/3ieERZ6o28pL46i4=
+github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260105172535-1a59a6f646ef/go.mod h1:4MyhlWkDuSoIuEiYH5ROkdxqMoVZq7r7uQc5TtoeTBw=
+github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260105172535-1a59a6f646ef h1:0gxnb3e52FIQuFEnd3xEt+X2RHAK86EohJHEaUzo6eU=
+github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260105172535-1a59a6f646ef/go.mod h1:md/bvhc+ackO3enSZxN+i+gv/5hj6EoZT/Slh2S7anA=
+github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260105172535-1a59a6f646ef h1:u5cOcD3LbMjceJCo0BprUNq6Agl1vG25dROtXxToBXo=
+github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260105172535-1a59a6f646ef/go.mod h1:abXA3WHk4X3mqXSqp/pXfvCHb3F1DQ0gxQ9n2Gl07SY=
 github.com/ava-labs/firewood-go-ethhash/ffi v0.0.18 h1:Lk4yxNL3iZMRxKZlTKVCHp0Rg7i5QclRei0ZKCgtPac=
 github.com/ava-labs/firewood-go-ethhash/ffi v0.0.18/go.mod h1:hR/JSGXxST9B9olwu/NpLXHAykfAyNGfyKnYQqiiOeE=
 github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28 h1:HgSr7pbKlzqCfXryyzla0mXG1LDgDqPXcybciLmU2bI=

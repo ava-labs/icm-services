@@ -40,11 +40,11 @@ require (
 
 require github.com/ava-labs/avalanchego/graft/evm v0.0.0-00010101000000-000000000000 // indirect
 
-replace github.com/ava-labs/avalanchego/graft/subnet-evm => ../avalanchego/graft/subnet-evm
+replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260105172535-1a59a6f646ef
 
-replace github.com/ava-labs/avalanchego/graft/evm => ../avalanchego/graft/evm
+replace github.com/ava-labs/avalanchego/graft/evm => github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260105172535-1a59a6f646ef
 
-replace github.com/ava-labs/avalanchego/graft/coreth => ../avalanchego/graft/coreth
+replace github.com/ava-labs/avalanchego/graft/coreth => github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260105172535-1a59a6f646ef
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
@@ -91,7 +91,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
-	github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20251203215505-70148edc6eca // indirect
+	github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260105172535-70148edc6eca // indirect
 	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.18 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.5 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
