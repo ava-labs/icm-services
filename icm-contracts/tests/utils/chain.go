@@ -348,7 +348,7 @@ func TraceTransaction(ctx context.Context, rpcClient *ethclient.Client, txHash c
 // WaitMined waits for tx to be mined on the blockchain.
 // It stops waiting when the context is canceled.
 // Takes a tx hash instead of the full tx in the subnet-evm version of this function.
-// Copied and modified from https://github.com/ava-labs/avalanchego/graft/subnet-evm/blob/v0.6.0-fuji/accounts/abi/bind/util.go#L42
+// Copied and modified from https://github.com/ava-labs/subnet-evm/blob/v0.6.0-fuji/accounts/abi/bind/util.go#L42
 func WaitMined(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
 	now := time.Now()
 	receipt, err := waitForTransactionReceipt(ctx, rpcClient, txHash)
