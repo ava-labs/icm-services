@@ -12,7 +12,7 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/eth/tracers"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +25,7 @@ var (
 	debug             bool
 	rpcEndpoint       string
 	teleporterAddress common.Address
-	client            ethclient.Client
+	client            *ethclient.Client
 )
 
 var transactionCmd = &cobra.Command{

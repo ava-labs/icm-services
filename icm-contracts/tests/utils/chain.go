@@ -26,16 +26,15 @@ import (
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/eth/tracers"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/nativeminter"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -183,7 +182,7 @@ func SendNativeTransfer(
 // Asserts Receipt.status equals success.
 func sendAndWaitForTransaction(
 	ctx context.Context,
-	client ethclient.Client,
+	client *ethclient.Client,
 	tx *types.Transaction,
 	success bool,
 ) *types.Receipt {
@@ -197,7 +196,7 @@ func sendAndWaitForTransaction(
 // Asserts Receipt.status equals false.
 func SendTransactionAndWaitForFailure(
 	ctx context.Context,
-	client ethclient.Client,
+	client *ethclient.Client,
 	tx *types.Transaction,
 ) *types.Receipt {
 	return sendAndWaitForTransaction(ctx, client, tx, false)
@@ -207,7 +206,7 @@ func SendTransactionAndWaitForFailure(
 // Asserts Receipt.status equals true.
 func SendTransactionAndWaitForSuccess(
 	ctx context.Context,
-	client ethclient.Client,
+	client *ethclient.Client,
 	tx *types.Transaction,
 ) *types.Receipt {
 	return sendAndWaitForTransaction(ctx, client, tx, true)
@@ -217,7 +216,7 @@ func SendTransactionAndWaitForSuccess(
 // Asserts Receipt.status equals true.
 func WaitForTransactionSuccess(
 	ctx context.Context,
-	client ethclient.Client,
+	client *ethclient.Client,
 	txHash common.Hash,
 ) *types.Receipt {
 	return waitForTransaction(ctx, client, txHash, true)
@@ -227,7 +226,7 @@ func WaitForTransactionSuccess(
 // Asserts Receipt.status equals false.
 func WaitForTransactionFailure(
 	ctx context.Context,
-	client ethclient.Client,
+	client *ethclient.Client,
 	txHash common.Hash,
 ) *types.Receipt {
 	return waitForTransaction(ctx, client, txHash, false)
@@ -237,7 +236,7 @@ func WaitForTransactionFailure(
 // Asserts Receipt.status equals success.
 func waitForTransaction(
 	ctx context.Context,
-	client ethclient.Client,
+	client *ethclient.Client,
 	txHash common.Hash,
 	success bool,
 ) *types.Receipt {
@@ -261,7 +260,7 @@ func waitForTransaction(
 // either a transaction receipt returned, or the context is cancelled or expired.
 func waitForTransactionReceipt(
 	cctx context.Context,
-	rpcClient ethclient.Client,
+	rpcClient *ethclient.Client,
 	txHash common.Hash,
 ) (*types.Receipt, error) {
 	queryTicker := time.NewTicker(200 * time.Millisecond)
@@ -300,11 +299,13 @@ func SignTransaction(tx *types.Transaction, key *ecdsa.PrivateKey, chainID *big.
 // Returns the gasFeeCap, gasTipCap, and nonce the be used when constructing a transaction from fundedAddress
 func CalculateTxParams(
 	ctx context.Context,
-	client ethclient.Client,
+	client *ethclient.Client,
 	fundedAddress common.Address,
 ) (*big.Int, *big.Int, uint64) {
-	baseFee, err := client.EstimateBaseFee(ctx)
+	block, err := client.BlockByNumber(ctx, nil)
 	Expect(err).Should(BeNil())
+
+	baseFee := block.BaseFee()
 
 	gasTipCap, err := client.SuggestGasTipCap(ctx)
 	Expect(err).Should(BeNil())
@@ -324,11 +325,11 @@ func CalculateTxParams(
 }
 
 // Gomega will print the transaction trace and exit
-func TraceTransactionAndExit(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) {
+func TraceTransactionAndExit(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) {
 	Expect(TraceTransaction(ctx, rpcClient, txHash)).Should(Equal(""))
 }
 
-func TraceTransaction(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) string {
+func TraceTransaction(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) string {
 	var result interface{}
 	ct := "callTracer"
 	err := rpcClient.Client().Call(&result, "debug_traceTransaction", txHash.String(), tracers.TraceConfig{Tracer: &ct})
@@ -348,7 +349,7 @@ func TraceTransaction(ctx context.Context, rpcClient ethclient.Client, txHash co
 // It stops waiting when the context is canceled.
 // Takes a tx hash instead of the full tx in the subnet-evm version of this function.
 // Copied and modified from https://github.com/ava-labs/subnet-evm/blob/v0.6.0-fuji/accounts/abi/bind/util.go#L42
-func WaitMined(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
+func WaitMined(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
 	now := time.Now()
 	receipt, err := waitForTransactionReceipt(ctx, rpcClient, txHash)
 	if err != nil {
@@ -380,7 +381,7 @@ func WaitMined(ctx context.Context, rpcClient ethclient.Client, txHash common.Ha
 // is cancelled or expired.
 func waitForBlockHeight(
 	cctx context.Context,
-	rpcClient ethclient.Client,
+	rpcClient *ethclient.Client,
 	expectedBlockNumber uint64,
 ) error {
 	queryTicker := time.NewTicker(2 * time.Second)
@@ -416,7 +417,7 @@ func waitForBlockHeight(
 func GetEventFromLogsOrTrace[T any](
 	ctx context.Context,
 	receipt *types.Receipt,
-	client ethclient.Client,
+	client *ethclient.Client,
 	parser func(log types.Log) (T, error),
 ) T {
 	log, err := GetEventFromLogs(receipt.Logs, parser)
@@ -446,7 +447,7 @@ func PrivateKeyToAddress(k *ecdsa.PrivateKey) common.Address {
 }
 
 // Throws a Gomega error if there is a mismatch
-func CheckBalance(ctx context.Context, addr common.Address, expectedBalance *big.Int, rpcClient ethclient.Client) {
+func CheckBalance(ctx context.Context, addr common.Address, expectedBalance *big.Int, rpcClient *ethclient.Client) {
 	bal, err := rpcClient.BalanceAt(ctx, addr, nil)
 	Expect(err).Should(BeNil())
 	ExpectBigEqual(bal, expectedBalance)
@@ -627,7 +628,7 @@ func WaitForAllValidatorsToAcceptBlock(ctx context.Context, nodeURIs []string, b
 func ExtractWarpMessageFromLog(
 	ctx context.Context,
 	sourceReceipt *types.Receipt,
-	client ethclient.Client,
+	client *ethclient.Client,
 ) *avalancheWarp.UnsignedMessage {
 	log.Info("Fetching relevant warp logs from the newly produced block")
 	logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
@@ -707,7 +708,7 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	chainIDInt, err := client.ChainID(ctx)
 	Expect(err).Should(BeNil())
 
-	err = subnetEvmUtils.IssueTxsToActivateProposerVMFork(ctx, chainIDInt, fundedKey, client)
+	err = IssueTxsToAdvanceChain(ctx, chainIDInt, fundedKey, client, 2)
 	Expect(err).Should(BeNil())
 }
 
@@ -718,25 +719,27 @@ func IssueTxsToAdvanceChain(
 	ctx context.Context,
 	chainID *big.Int,
 	fundedKey *ecdsa.PrivateKey,
-	client ethclient.Client,
+	client *ethclient.Client,
 	numTriggerTxs int,
 ) error {
 	addr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 	nonce, err := client.NonceAt(ctx, addr, nil)
 	Expect(err).Should(BeNil())
 
-	newHeads := make(chan *types.Header, 1)
-	sub, err := client.SubscribeNewHead(ctx, newHeads)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
 	to := common.HexToAddress(string(common.Big1.Bytes()))
 	gasFeeCap := big.NewInt(0).SetUint64(225_000_000_000)
 
 	txSigner := types.LatestSignerForChainID(chainID)
+	queryTicker := time.NewTicker(200 * time.Millisecond)
+	defer queryTicker.Stop()
+
 	for i := 0; i < numTriggerTxs; i++ {
+		// Get current block number before sending transaction
+		currentBlockNumber, err := client.BlockNumber(ctx)
+		if err != nil {
+			return err
+		}
+
 		tx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
 			Nonce:     nonce,
@@ -753,7 +756,24 @@ func IssueTxsToAdvanceChain(
 		if err := client.SendTransaction(ctx, triggerTx); err != nil {
 			return err
 		}
-		<-newHeads // wait for block to be accepted
+
+		// Poll until block number increases
+		for {
+			newBlockNumber, err := client.BlockNumber(ctx)
+			if err != nil {
+				return err
+			}
+			if newBlockNumber > currentBlockNumber {
+				break
+			}
+
+			// Wait for the next polling interval or context cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-queryTicker.C:
+			}
+		}
 		nonce++
 	}
 	log.Info(

@@ -163,7 +163,7 @@ func (s *DestinationBlockchain) initializeWarpConfigs(ctx context.Context) error
 		return nil
 	}
 
-	client, err := utils.NewEthClientWithConfig(
+	client, err := utils.DialWithConfig(
 		ctx,
 		s.RPCEndpoint.BaseURL,
 		s.RPCEndpoint.HTTPHeaders,
@@ -173,7 +173,7 @@ func (s *DestinationBlockchain) initializeWarpConfigs(ctx context.Context) error
 	if err != nil {
 		return fmt.Errorf("failed to dial destination blockchain %s: %w", blockchainID, err)
 	}
-	subnetWarpConfig, err := getWarpConfig(client)
+	subnetWarpConfig, err := getWarpConfig(&rpcClient{c: client})
 	if err != nil {
 		return fmt.Errorf("failed to fetch warp config for blockchain %s: %w", blockchainID, err)
 	}
