@@ -425,6 +425,11 @@ func (n *AppRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID
 	return n.validatorManager.GetSubnetID(ctx, blockchainID)
 }
 
+// GetValidatorManager returns the validator manager for external use
+func (n *AppRequestNetwork) GetValidatorManager() *ValidatorManager {
+	return n.validatorManager
+}
+
 // GetNetworkHealthFunc returns a health check function for the network
 func (n *AppRequestNetwork) GetNetworkHealthFunc(subnetIDs []ids.ID) func(context.Context) error {
 	return func(ctx context.Context) error {
