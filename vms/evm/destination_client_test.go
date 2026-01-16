@@ -106,7 +106,7 @@ func TestGetFeePerGas(t *testing.T) {
 			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			destClient := destinationClient{
 				logger:                     logging.NoLog{},
-				avaRPCClient:                     mockClient,
+				avaRPCClient:               mockClient,
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: test.suggestedPriorityFeeBuffer,
 				maxPriorityFeePerGas:       test.maxPriorityFeePerGas,
@@ -224,7 +224,7 @@ func TestSendTx(t *testing.T) {
 					(*readonlyConcurrentSigner)(signer),
 				},
 				logger:                     logging.NoLog{},
-				avaRPCClient:                     mockClient,
+				avaRPCClient:               mockClient,
 				evmChainID:                 big.NewInt(5),
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: big.NewInt(0),

@@ -101,7 +101,7 @@ func TestProcessFromHeight(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t)
 
-			stubRPCClient.blockNumber = uint64(tc.latest)
+			stubRPCClient.blockNumber = tc.latest
 			var expectedFilterLogCalls uint64
 			if tc.latest > tc.input {
 				expectedFilterLogCalls = (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
