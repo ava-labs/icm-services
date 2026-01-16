@@ -14,6 +14,7 @@ struct ICMRawMessage {
     address sourceAddress;
     // Address of verifying contract on the receiving blockchain
     address verifierAddress;
+    // The message payload
     bytes payload;
 }
 
@@ -34,6 +35,9 @@ struct ICMMessage {
 library ICM {
     /* solhint-disable no-inline-assembly */
 
+    uint256 private constant SOURCE_NETWORK_ID_LENGTH = 4;
+    uint256 private constant MESSAGE_METADATA_LENGTH = 82;
+
     /*
      * @notice Deserialize an ICM message from bytes
      */
@@ -43,9 +47,9 @@ library ICM {
         ICMRawMessage memory message = parseICMRawMessage(data);
         uint256 payloadLength = message.payload.length;
         // Parse the unsigned message bytes
-        bytes memory rawMessageBytes = data[0:82 + payloadLength];
+        bytes memory rawMessageBytes = data[0:MESSAGE_METADATA_LENGTH + payloadLength];
         // the rest of the bytes are the attestation
-        bytes memory attestation = data[82 + payloadLength:];
+        bytes memory attestation = data[MESSAGE_METADATA_LENGTH + payloadLength:];
         return ICMMessage({
             message: message,
             rawMessageBytes: rawMessageBytes,
@@ -63,7 +67,7 @@ library ICM {
         require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
 
         // Parse the sourceNetworkID
-        uint32 sourceNetworkID = uint32(bytes4(data[2:6]));
+        uint32 sourceNetworkID = uint32(bytes4(data[2:2 + SOURCE_NETWORK_ID_LENGTH]));
 
         // Parse the sourceBlockchainID
         bytes32 sourceBlockchainID = bytes32(data[6:38]);
@@ -73,8 +77,8 @@ library ICM {
         address verifierAddress = address(bytes20(data[58:78]));
 
         // Parse the payload
-        uint32 payloadLength = uint32(bytes4(data[78:82]));
-        bytes memory payload = data[82:82 + payloadLength];
+        uint32 payloadLength = uint32(bytes4(data[78:MESSAGE_METADATA_LENGTH]));
+        bytes memory payload = data[MESSAGE_METADATA_LENGTH:MESSAGE_METADATA_LENGTH + payloadLength];
         return ICMRawMessage({
             sourceNetworkID: sourceNetworkID,
             sourceBlockchainID: sourceBlockchainID,
@@ -90,48 +94,19 @@ library ICM {
     function serializeICMRawMessage(
         ICMRawMessage calldata message
     ) public pure returns (bytes memory) {
-        bytes memory serialized = new bytes(
-            // the codec
-            2
-            // the sourceNetworkID
-            + 4
-            // the sourceBlockchainID
-            + 32
-            // the sourceAddress
-            + 20
-            // the verifierAddress
-            + 20
-            // the payload length
-            + 4
-            // the message payload
-            + message.payload.length
-        );
         // encode the payload length
-        uint256 payloadLength = message.payload.length;
-        bytes4 payloadLengthBytes = bytes4(uint32(message.payload.length));
-        assembly ("memory-safe") {
-            // set start after the array size
-            let s := add(serialized, 32)
-            // Store Codec
-            mstore(s, 0x0000)
-            // store the sourceNetworkID
-            // the shift is to transform a 32 byte value to a 4 byte value
-            mstore(add(s, 2), shl(224, calldataload(message)))
-            // store the sourceBlockchainID
-            mstore(add(s, 6), calldataload(add(message, 0x20)))
-            // store the sourceAddress, shifting 12 bytes to get the 20 byte address
-            mstore(add(s, 38), shl(96, calldataload(add(message, 0x40))))
-            // store the verifier address, shifting 12 bytes to get the 20 byte address
-            mstore(add(s, 58), shl(96, calldataload(add(message, 0x60))))
-            // store the payload length
-            mstore(add(s, 78), payloadLengthBytes)
-            // store the payload
-            let payloadOffset := calldataload(add(message, 0x80))
-            let payload := add(add(message, payloadOffset), 0x20)
-            calldatacopy(add(s, 82), payload, payloadLength)
-        }
-
-        return serialized;
+        bytes2 codec = bytes2(0);
+        uint32 sourceNetworkID = uint32(message.sourceNetworkID);
+        uint32 payloadLength = uint32(message.payload.length);
+        return abi.encodePacked(
+            codec,
+            sourceNetworkID,
+            message.sourceBlockchainID,
+            message.sourceAddress,
+            message.verifierAddress,
+            payloadLength,
+            message.payload
+        );
     }
 
     /**
@@ -140,24 +115,6 @@ library ICM {
     function serializeICMMessage(
         ICMMessage calldata message
     ) public pure returns (bytes memory) {
-        bytes memory data = new bytes(
-            // unsigned message length
-            message.rawMessageBytes.length
-            // the length of the attestation
-            + message.attestation.length
-        );
-        uint256 rawMessageLength = message.rawMessageBytes.length;
-        uint256 attestationLength = message.attestation.length;
-        assembly ("memory-safe") {
-            // store the raw message bytes
-            let rawMessageOffset := calldataload(add(message, 0x20))
-            let rawMessage := add(add(message, rawMessageOffset), 0x20)
-            calldatacopy(add(data, 0x20), rawMessage, rawMessageLength)
-            // store the attestation bytes
-            let attestationOffset := calldataload(add(message, 0x40))
-            let attestation := add(add(message, attestationOffset), 0x20)
-            calldatacopy(add(data, add(0x20, rawMessageLength)), attestation, attestationLength)
-        }
-        return data;
+        return abi.encodePacked(message.rawMessageBytes, message.attestation);
     }
 }
