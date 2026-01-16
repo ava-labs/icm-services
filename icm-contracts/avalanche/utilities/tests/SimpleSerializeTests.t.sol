@@ -23,6 +23,7 @@ contract SSZTest is Test {
         bytes32 leaf = bytes32(0xd85d3181f1178b07e89691aa2bfcd4d88837f011fcda3326b4ce9a68ec6d9e44);
         assertTrue(SSZ.isValidMerkleProof(leaf, index, branch, root));
     }
+
     function testMerkleizeLeavesBalanced() public pure {
         // Define leaves
         bytes32[] memory leaves = new bytes32[](8);
@@ -45,5 +46,5 @@ contract SSZTest is Test {
         bytes32 expectedRoot = sha256(bytes.concat(h0123, h4567));
         bytes32 computedRoot = SSZ.merkleize(leaves);
         assertEq(expectedRoot, computedRoot, "Merkleize mismatch");
-    } 
+    }
 }
