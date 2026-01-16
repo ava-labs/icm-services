@@ -16,7 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient.MockClient) {
+func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscriber, *mock_ethclient.MockClient) {
 	sourceSubnet := config.SourceBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
@@ -25,12 +25,10 @@ func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *mock_ethclient
 		},
 	}
 
-	logger := logging.NoLog{}
-
 	mockEthClient := mock_ethclient.NewMockClient(gomock.NewController(t))
 	blockchainID, err := ids.FromString(sourceSubnet.BlockchainID)
 	require.NoError(t, err)
-	subscriber := NewSubscriber(logger, blockchainID, mockEthClient, mockEthClient)
+	subscriber := NewSubscriber(logging.NoLog{}, blockchainID, mockEthClient, mockEthClient, errChan)
 
 	return subscriber, mockEthClient
 }
@@ -75,7 +73,8 @@ func TestProcessFromHeight(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			subscriberUnderTest, mockEthClient := makeSubscriberWithMockEthClient(t)
+			errChan := make(chan error, 1)
+			subscriberUnderTest, mockEthClient := makeSubscriberWithMockEthClient(t, errChan)
 
 			mockEthClient.
 				EXPECT().
@@ -92,10 +91,8 @@ func TestProcessFromHeight(t *testing.T) {
 					nil,
 				).Times(int(expectedFilterLogCalls))
 			}
-			done := make(chan bool, 1)
-			subscriberUnderTest.ProcessFromHeight(tc.input, done)
-			result := <-done
-			require.True(t, result)
+			subscriberUnderTest.ProcessFromHeight(tc.input)
+			require.Empty(t, errChan)
 
 			if tc.latest > tc.input {
 				for i := tc.input; i <= tc.latest; i++ {
