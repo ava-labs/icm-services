@@ -6,7 +6,6 @@ package relayer
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"math/rand"
 	"time"
 
@@ -137,7 +136,7 @@ func newListener(
 	// Process historical blocks in a separate goroutine so that the main processing loop can
 	// start processing new blocks as soon as possible. Otherwise, it's possible for
 	// ProcessFromHeight to overload the message queue and cause a deadlock.
-	go sub.ProcessFromHeight(big.NewInt(0).SetUint64(startingHeight), lstnr.catchUpResultChan)
+	go sub.ProcessFromHeight(startingHeight, lstnr.catchUpResultChan)
 
 	return &lstnr, nil
 }

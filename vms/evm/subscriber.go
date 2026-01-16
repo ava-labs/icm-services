@@ -73,13 +73,8 @@ func NewSubscriber(
 // `MaxBlocksPerRequest`; if processing more than that, multiple eth_getLogs
 // requests will be made.
 // Writes true to the done channel when finished, or false if an error occurs
-func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
+func (s *Subscriber) ProcessFromHeight(height uint64, done chan bool) {
 	defer close(done)
-	if height == nil {
-		s.logger.Error("Cannot process logs from nil height")
-		done <- false
-		return
-	}
 
 	// Grab the latest block before filtering logs so we don't miss any before updating the db
 	latestBlockHeightCtx, latestBlockHeightCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
@@ -92,23 +87,12 @@ func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 	}
 	s.logger.Info(
 		"Processing historical logs",
-		zap.Uint64("fromBlockHeight", height.Uint64()),
+		zap.Uint64("fromBlockHeight", height),
 		zap.Uint64("latestBlockHeight", latestBlockHeight),
 	)
 
-	bigLatestBlockHeight := big.NewInt(0).SetUint64(latestBlockHeight)
-
-	//nolint:lll
-	for fromBlock := big.NewInt(0).Set(height); fromBlock.Cmp(bigLatestBlockHeight) <= 0; fromBlock.Add(fromBlock, big.NewInt(MaxBlocksPerRequest)) {
-		toBlock := big.NewInt(0).Add(fromBlock, big.NewInt(MaxBlocksPerRequest-1))
-
-		// clamp to latest known block because we've already subscribed
-		// to new blocks and we don't want to double-process any blocks
-		// created after that subscription but before the determination
-		// of this "latest"
-		if toBlock.Cmp(bigLatestBlockHeight) > 0 {
-			toBlock.Set(bigLatestBlockHeight)
-		}
+	for fromBlock := height; fromBlock <= latestBlockHeight; fromBlock += MaxBlocksPerRequest {
+		toBlock := min(fromBlock+MaxBlocksPerRequest-1, latestBlockHeight)
 
 		err = s.processBlockRange(fromBlock, toBlock)
 		if err != nil {
@@ -122,12 +106,12 @@ func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
 
 // Process Warp messages from the block range [fromBlock, toBlock], inclusive
 func (s *Subscriber) processBlockRange(
-	fromBlock, toBlock *big.Int,
+	fromBlock, toBlock uint64,
 ) error {
 	s.logger.Info(
 		"Processing block range",
-		zap.Uint64("fromBlockHeight", fromBlock.Uint64()),
-		zap.Uint64("toBlockHeight", toBlock.Uint64()),
+		zap.Uint64("fromBlockHeight", fromBlock),
+		zap.Uint64("toBlockHeight", toBlock),
 	)
 	logs, err := s.getFilterLogsByBlockRangeRetryable(fromBlock, toBlock)
 	if err != nil {
@@ -139,7 +123,7 @@ func (s *Subscriber) processBlockRange(
 		s.logger.Error("Failed to convert logs to blocks", zap.Error(err))
 		return err
 	}
-	for i := fromBlock.Uint64(); i <= toBlock.Uint64(); i++ {
+	for i := fromBlock; i <= toBlock; i++ {
 		if block, ok := blocksWithICMMessages[i]; ok {
 			s.icmBlocks <- block
 		} else {
@@ -153,7 +137,7 @@ func (s *Subscriber) processBlockRange(
 	return nil
 }
 
-func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.Int) ([]types.Log, error) {
+func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock uint64) ([]types.Log, error) {
 	var logs []types.Log
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
@@ -161,8 +145,8 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 		logs, err = s.rpcClient.FilterLogs(cctx, ethereum.FilterQuery{
 			Topics:    [][]common.Hash{{relayerTypes.WarpPrecompileLogFilter}},
 			Addresses: []common.Address{warp.ContractAddress},
-			FromBlock: fromBlock,
-			ToBlock:   toBlock,
+			FromBlock: new(big.Int).SetUint64(fromBlock),
+			ToBlock:   new(big.Int).SetUint64(toBlock),
 		})
 		return err
 	}
