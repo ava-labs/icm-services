@@ -428,7 +428,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 			for response := range responseChan {
 				log.Debug(
 					"Processing response from node",
-					zap.Stringer("nodeID", response.NodeID()),
+					zap.Stringer("nodeID", response.NodeID),
 				)
 				var relevant bool
 				signedMsg, relevant, err = s.handleResponse(
@@ -707,14 +707,14 @@ func (s *SignatureAggregator) handleResponse(
 	defer response.OnFinishedHandling()
 
 	// Check if this is an expected response.
-	m := response.Message()
+	m := response.Message
 	rcvReqID, ok := message.GetRequestID(m)
 	if !ok {
 		// This should never occur, since inbound message validity is already checked by the inbound handler
 		log.Error("Could not get requestID from message")
 		return nil, false, nil
 	}
-	nodeID := response.NodeID()
+	nodeID := response.NodeID
 	if !sentTo.Contains(nodeID) || rcvReqID != requestID {
 		log.Debug("Skipping irrelevant app response")
 		return nil, false, nil
@@ -722,7 +722,7 @@ func (s *SignatureAggregator) handleResponse(
 
 	// If we receive an AppRequestFailed, then the request timed out.
 	// This is still a relevant response, since we are no longer expecting a response from that node.
-	if response.Op() == message.AppErrorOp {
+	if response.Op == message.AppErrorOp {
 		log.Debug("Request timed out")
 		s.metrics.ValidatorTimeouts.Inc()
 		return nil, true, nil
@@ -825,14 +825,14 @@ func (s *SignatureAggregator) isValidSignatureResponse(
 	response message.InboundMessage,
 	pubKey *bls.PublicKey,
 ) (blsSignatureBuf, bool) {
-	log = log.With(zap.Stringer("nodeID", response.NodeID()))
+	log = log.With(zap.Stringer("nodeID", response.NodeID))
 	// If the handler returned an error response, count the response and continue
-	if response.Op() == message.AppErrorOp {
+	if response.Op == message.AppErrorOp {
 		log.Debug("Relayer async response failed")
 		return blsSignatureBuf{}, false
 	}
 
-	appResponse, ok := response.Message().(*p2p.AppResponse)
+	appResponse, ok := response.Message.(*p2p.AppResponse)
 	if !ok {
 		log.Debug("Relayer async response was not an AppResponse")
 		return blsSignatureBuf{}, false
