@@ -25,10 +25,15 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
-      - name: Run unit tests
+      - name: Run Avalanche unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin
           forge test -vvv
+
+      - name: Run Ethereum unit tests
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          FOUNDRY_PROFILE=ethereum forge test -vvv
 
   unit_tests:
     name: Unit tests

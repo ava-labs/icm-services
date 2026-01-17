@@ -9,6 +9,11 @@ bytecode_hash = "none"
 optimizer = true
 optimizer_runs = 200
 
+[profile.ethereum]
+src = 'icm-contracts/ethereum/'
+solc_version = '0.8.30'
+evm_version = 'prague'
+
 [fmt]
 line_length = 100
 tab_width = 4
