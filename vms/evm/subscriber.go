@@ -46,6 +46,7 @@ func NewSubscriber(
 	blockchainID ids.ID,
 	wsClient ethclient.Client,
 	rpcClient ethclient.Client,
+	errChan chan error,
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID: blockchainID,
@@ -54,7 +55,7 @@ func NewSubscriber(
 		logger:       logger,
 		icmBlocks:    make(chan *relayerTypes.WarpBlockInfo, maxClientSubscriptionBuffer),
 		headers:      make(chan *types.Header, maxClientSubscriptionBuffer),
-		errChan:      make(chan error),
+		errChan:      errChan,
 	}
 	go subscriber.blocksInfoFromHeaders()
 	return subscriber
@@ -65,35 +66,30 @@ func NewSubscriber(
 // `MaxBlocksPerRequest`; if processing more than that, multiple eth_getLogs
 // requests will be made.
 // Writes true to the done channel when finished, or false if an error occurs
-func (s *Subscriber) ProcessFromHeight(height uint64, done chan bool) {
-	defer close(done)
-
+func (s *Subscriber) ProcessFromHeight(height uint64) {
 	// Grab the latest block before filtering logs so we don't miss any before updating the db
 	latestBlockHeightCtx, latestBlockHeightCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer latestBlockHeightCtxCancel()
 	latestBlockHeight, err := s.rpcClient.BlockNumber(latestBlockHeightCtx)
 	if err != nil {
-		s.logger.Error("Failed to get latest block", zap.Error(err))
-		done <- false
+		s.errChan <- fmt.Errorf("failed to get latest block: %w", err)
 		return
 	}
-	s.logger.Info(
-		"Processing historical logs",
+	log := s.logger.With(
 		zap.Uint64("fromBlockHeight", height),
-		zap.Uint64("latestBlockHeight", latestBlockHeight),
 	)
+	log.Info("Processing historical logs")
 
 	for fromBlock := height; fromBlock <= latestBlockHeight; fromBlock += MaxBlocksPerRequest {
 		toBlock := min(fromBlock+MaxBlocksPerRequest-1, latestBlockHeight)
 
 		err = s.processBlockRange(fromBlock, toBlock)
 		if err != nil {
-			s.logger.Error("Failed to process block range", zap.Error(err))
-			done <- false
+			s.errChan <- fmt.Errorf("failed to process block range: %w", err)
 			return
 		}
 	}
-	done <- true
+	log.Info("Finished processing historical logs")
 }
 
 // Process Warp messages from the block range [fromBlock, toBlock], inclusive
