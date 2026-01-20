@@ -76,11 +76,6 @@ func TestProcessFromHeight(t *testing.T) {
 			errChan := make(chan error, 1)
 			subscriberUnderTest, mockEthClient := makeSubscriberWithMockEthClient(t, errChan)
 
-			mockEthClient.
-				EXPECT().
-				BlockNumber(gomock.Any()).
-				Return(tc.latest, nil).
-				Times(1)
 			if tc.latest > tc.input {
 				expectedFilterLogCalls := (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
 				mockEthClient.EXPECT().FilterLogs(
@@ -91,7 +86,7 @@ func TestProcessFromHeight(t *testing.T) {
 					nil,
 				).Times(int(expectedFilterLogCalls))
 			}
-			subscriberUnderTest.ProcessFromHeight(tc.input)
+			subscriberUnderTest.ProcessFromHeight(tc.input, tc.latest)
 			require.Empty(t, errChan)
 
 			if tc.latest > tc.input {

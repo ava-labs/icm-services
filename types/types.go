@@ -31,6 +31,7 @@ var (
 type WarpBlockInfo struct {
 	BlockNumber uint64
 	Messages    []*WarpMessageInfo
+	IsCatchup   bool
 }
 
 // WarpMessageInfo describes the transaction information for the Warp message
@@ -92,6 +93,7 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 	return &WarpBlockInfo{
 		BlockNumber: header.Number.Uint64(),
 		Messages:    messages,
+		IsCatchup:   false,
 	}, nil
 }
 
@@ -142,6 +144,7 @@ func LogsToBlocks(logs []types.Log) (map[uint64]*WarpBlockInfo, error) {
 			blocks[log.BlockNumber] = &WarpBlockInfo{
 				BlockNumber: log.BlockNumber,
 				Messages:    []*WarpMessageInfo{warpMessageInfo},
+				IsCatchup:   true,
 			}
 		}
 	}
