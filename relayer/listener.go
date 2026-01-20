@@ -28,15 +28,15 @@ const (
 
 // Listener handles all messages sent from a given source chain
 type Listener struct {
-	Subscriber         *evm.Subscriber
-	currentRequestID   uint32
-	logger             logging.Logger
-	sourceBlockchain   config.SourceBlockchain
-	healthStatus       *atomic.Bool
-	ethClient          *ethclient.Client
-	messageCoordinator *MessageCoordinator
-	maxConcurrentMsg   uint64
-	errChan            chan error
+	Subscriber                   *evm.Subscriber
+	currentRequestID             uint32
+	logger                       logging.Logger
+	sourceBlockchain             config.SourceBlockchain
+	healthStatus                 *atomic.Bool
+	ethClient                    *ethclient.Client
+	messageCoordinator           *MessageCoordinator
+	maxConcurrentMsg             uint64
+	errChan                      chan error
 	lastSubscriberBlockProcessed uint64
 }
 
