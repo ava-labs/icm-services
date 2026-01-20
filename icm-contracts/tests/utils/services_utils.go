@@ -27,10 +27,10 @@ import (
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
 	signatureaggregatorcfg "github.com/ava-labs/icm-services/signature-aggregator/config"
 	relayerUtils "github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )

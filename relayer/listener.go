@@ -14,7 +14,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 )
@@ -28,15 +28,15 @@ const (
 
 // Listener handles all messages sent from a given source chain
 type Listener struct {
-	Subscriber                   *evm.Subscriber
-	currentRequestID             uint32
-	logger                       logging.Logger
-	sourceBlockchain             config.SourceBlockchain
-	healthStatus                 *atomic.Bool
-	ethClient                    ethclient.Client
-	messageCoordinator           *MessageCoordinator
-	maxConcurrentMsg             uint64
-	errChan                      chan error
+	Subscriber         *evm.Subscriber
+	currentRequestID   uint32
+	logger             logging.Logger
+	sourceBlockchain   config.SourceBlockchain
+	healthStatus       *atomic.Bool
+	ethClient          *ethclient.Client
+	messageCoordinator *MessageCoordinator
+	maxConcurrentMsg   uint64
+	errChan            chan error
 	lastSubscriberBlockProcessed uint64
 }
 
@@ -46,7 +46,7 @@ func RunListener(
 	ctx context.Context,
 	logger logging.Logger,
 	sourceBlockchain config.SourceBlockchain,
-	ethRPCClient ethclient.Client,
+	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
 	startingHeight uint64,
 	messageCoordinator *MessageCoordinator,
@@ -84,7 +84,7 @@ func newListener(
 	ctx context.Context,
 	logger logging.Logger,
 	sourceBlockchain config.SourceBlockchain,
-	ethRPCClient ethclient.Client,
+	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
 	startingHeight uint64,
 	messageCoordinator *MessageCoordinator,

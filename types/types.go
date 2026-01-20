@@ -15,7 +15,6 @@ import (
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 )
@@ -25,6 +24,12 @@ var (
 	ErrInvalidLog           = errors.New("invalid warp message log")
 	ErrFailedToProcessLogs  = errors.New("failed to process logs")
 )
+
+// FilterLogsClient defines the minimal interface for clients that can filter logs.
+// This interface is used by NewWarpBlockInfo to fetch logs for a specific block.
+type FilterLogsClient interface {
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+}
 
 // WarpBlockInfo describes the block height and logs needed to process Warp messages.
 // WarpBlockInfo instances are populated by the subscriber, and forwarded to the Listener to process.
@@ -45,7 +50,7 @@ type WarpMessageInfo struct {
 }
 
 // Extract Warp logs from the block, if they exist
-func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethclient.Client) (*WarpBlockInfo, error) {
+func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient FilterLogsClient) (*WarpBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
