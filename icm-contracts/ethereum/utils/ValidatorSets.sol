@@ -224,6 +224,26 @@ library ValidatorSets {
     }
 
     /*
+     * @notice Deserialize bytes into `ValidatorSetSignature`
+     */
+    function parseValidatorSetSignature(
+        bytes calldata signatureBytes
+    ) public pure returns (ValidatorSetSignature memory) {
+        bytes memory signers = signatureBytes[0:signatureBytes.length - BLST.BLS_SIGNATURE_LENGTH];
+        bytes memory signature = signatureBytes[signatureBytes.length - BLST.BLS_SIGNATURE_LENGTH:];
+        return ValidatorSetSignature({signers: signers, signature: signature});
+    }
+
+    /*
+     * @notice Serialize `ValidatorSetSigntature` to bytes
+     */
+    function serializeValidatorSetSignature(
+        ValidatorSetSignature memory signature
+    ) public pure returns (bytes memory) {
+        return abi.encodePacked(signature.signers, signature.signature);
+    }
+
+    /*
      * @dev Traverse the bits in signers from right to left, using it as bitvector to determine
      * which validators to select from the provided list.
      * @return The aggregate public key and stake weight of the filtered validators
