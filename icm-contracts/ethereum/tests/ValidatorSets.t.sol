@@ -167,6 +167,25 @@ contract ValidatorSetsTest is Test {
     }
 
     /*
+     * @dev Test to make sure a round trip of serialization is a no-op
+     */
+    function testRoundTripValidatorSetSignature(
+        bytes memory signers,
+        bytes32[6] memory signature
+    ) public pure {
+        bytes memory sig = abi.encodePacked(
+            signature[0], signature[1], signature[2], signature[3], signature[4], signature[5]
+        );
+        ValidatorSetSignature memory validatorSetSig =
+            ValidatorSetSignature({signers: signers, signature: sig});
+        bytes memory serialized = ValidatorSets.serializeValidatorSetSignature(validatorSetSig);
+        ValidatorSetSignature memory deserialized =
+            ValidatorSets.parseValidatorSetSignature(serialized);
+        assertEq(deserialized.signers, signers);
+        assertEq(deserialized.signature, sig);
+    }
+
+    /*
      * @dev Test util to generate a set of validators. Returns validators and total staking weight
      * N.B. These validators are not sorted by key, so any test requiring that should not use this
      * function

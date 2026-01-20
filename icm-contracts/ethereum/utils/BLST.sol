@@ -17,6 +17,7 @@ struct FieldPoint2 {
 library BLST {
     /* solhint-disable no-inline-assembly */
     uint256 public constant BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH = 96;
+    uint256 public constant BLS_SIGNATURE_LENGTH = 192;
 
     address public constant BLS12381_G1_ADD_PRECOMPILE =
         address(0x000000000000000000000000000000000000000b);
@@ -279,7 +280,7 @@ library BLST {
     ) internal view returns (bool) {
         // Check the input lengths
         require(publicKey.length == 128, "Invalid public key length");
-        require(signature.length == 192, "Invalid signature length");
+        require(signature.length == BLS_SIGNATURE_LENGTH, "Invalid signature length");
 
         // Hash the message to the G2 curve
         bytes memory messageG2 = hashToG2(message, dst);
@@ -424,7 +425,7 @@ library BLST {
     function padUncompressedBLSTSignature(
         bytes memory signature
     ) internal pure returns (bytes memory) {
-        require(signature.length == 192, "Invalid input signature length");
+        require(signature.length == BLS_SIGNATURE_LENGTH, "Invalid input signature length");
         bytes memory res = new bytes(256);
 
         assembly ("memory-safe") {
@@ -456,7 +457,7 @@ library BLST {
         bytes memory signature
     ) internal pure returns (bytes memory) {
         require(signature.length == 256, "Invalid input signature length");
-        bytes memory res = new bytes(192);
+        bytes memory res = new bytes(BLS_SIGNATURE_LENGTH);
 
         // COPY X0
         for (uint256 i = 0; i < 48; i++) {
