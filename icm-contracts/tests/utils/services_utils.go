@@ -532,6 +532,8 @@ func TriggerProcessMissedBlocks(
 	defer startupCancel()
 	WaitForChannelClose(startupCtx, readyChan)
 
+	// Send a native transfer to trigger block production
+	SendNativeTransfer(ctx, sourceL1Info, fundedKey, fundedAddress, big.NewInt(1))
 	log.Info("Waiting for a new block confirmation on the destination")
 	<-newHeads
 

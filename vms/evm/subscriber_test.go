@@ -105,7 +105,7 @@ func TestProcessFromHeight(t *testing.T) {
 			if tc.latest > tc.input {
 				expectedFilterLogCalls = (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
 			}
-			subscriberUnderTest.ProcessFromHeight(tc.input)
+			subscriberUnderTest.ProcessFromHeight(tc.input, tc.latest)
 			require.Empty(t, errChan)
 
 			if tc.latest > tc.input {
