@@ -144,6 +144,8 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			lstnr.logger.Error("Listener received error", zap.Error(err))
 			return fmt.Errorf("listener received error: %w", err)
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
+			// Catchup should run on startup, and after any reconnects. It will wait for the first block
+			// received from the subscriber, so that it has an accurate bound on which blocks to process.
 			if needsCatchup && !icmBlockInfo.IsCatchup {
 				needsCatchup = false
 				go lstnr.Subscriber.ProcessFromHeight(
