@@ -32,11 +32,11 @@ type Listener struct {
 	currentRequestID   uint32
 	logger             logging.Logger
 	sourceBlockchain   config.SourceBlockchain
-	catchUpResultChan  chan bool
 	healthStatus       *atomic.Bool
 	ethClient          *ethclient.Client
 	messageCoordinator *MessageCoordinator
 	maxConcurrentMsg   uint64
+	errChan            chan error
 }
 
 // RunListener creates a Listener instance and the ApplicationRelayers for a subnet.
@@ -103,15 +103,8 @@ func newListener(
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to node via WS: %w", err)
 	}
-	sub := evm.NewSubscriber(logger, blockchainID, ethWSClient, ethRPCClient)
-
-	// Marks when the listener has finished the catch-up process on startup.
-	// Until that time, we do not know the order in which messages are processed,
-	// since the catch-up process occurs concurrently with normal message processing
-	// via the subscriber's Subscribe method. As a result, we cannot safely write the
-	// latest processed block to the database without risking missing a block in a fault
-	// scenario.
-	catchUpResultChan := make(chan bool, 1)
+	errChan := make(chan error, maxConcurrentMsg)
+	sub := evm.NewSubscriber(logger, blockchainID, ethWSClient, ethRPCClient, errChan)
 
 	logger.Info("Creating relayer")
 	lstnr := Listener{
@@ -119,7 +112,7 @@ func newListener(
 		currentRequestID:   rand.Uint32(), // Initialize to a random value to mitigate requestID collision
 		logger:             logger,
 		sourceBlockchain:   sourceBlockchain,
-		catchUpResultChan:  catchUpResultChan,
+		errChan:            errChan,
 		healthStatus:       relayerHealth,
 		ethClient:          ethRPCClient,
 		messageCoordinator: messageCoordinator,
@@ -136,7 +129,7 @@ func newListener(
 	// Process historical blocks in a separate goroutine so that the main processing loop can
 	// start processing new blocks as soon as possible. Otherwise, it's possible for
 	// ProcessFromHeight to overload the message queue and cause a deadlock.
-	go sub.ProcessFromHeight(startingHeight, lstnr.catchUpResultChan)
+	go sub.ProcessFromHeight(startingHeight)
 
 	return &lstnr, nil
 }
@@ -146,39 +139,18 @@ func newListener(
 // Exits if context is cancelled by another goroutine.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
 	// Error channel for application relayer errors
-	errChan := make(chan error, lstnr.maxConcurrentMsg)
 	for {
 		select {
-		case err := <-errChan:
+		case err := <-lstnr.errChan:
 			lstnr.healthStatus.Store(false)
-			lstnr.logger.Error("Received error from application relayer", zap.Error(err))
-		case catchUpResult, ok := <-lstnr.catchUpResultChan:
-			// As soon as we've received anything on the channel, there are no more values expected.
-			// The expected case is that the channel is closed by the subscriber after writing a value to it,
-			// but we also defensively handle an unexpected close.
-			lstnr.catchUpResultChan = nil
-
-			// Mark the relayer as unhealthy if the catch-up process fails or if the catch-up channel is unexpectedly closed.
-			if !ok {
-				lstnr.healthStatus.Store(false)
-				lstnr.logger.Error("Catch-up channel unexpectedly closed. Exiting listener goroutine.")
-				return fmt.Errorf("catch-up channel unexpectedly closed")
-			}
-			if !catchUpResult {
-				lstnr.healthStatus.Store(false)
-				lstnr.logger.Error("Failed to catch up on historical blocks. Exiting listener goroutine.")
-				return fmt.Errorf("failed to catch up on historical blocks")
-			}
+			lstnr.logger.Error("Listener received error", zap.Error(err))
+			return fmt.Errorf("listener received error: %w", err)
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
 			go lstnr.messageCoordinator.ProcessBlock(
 				icmBlockInfo,
 				lstnr.sourceBlockchain.GetBlockchainID(),
-				errChan,
+				lstnr.errChan,
 			)
-		case err := <-lstnr.Subscriber.Err():
-			lstnr.healthStatus.Store(false)
-			lstnr.logger.Error("Error processing logs. Relayer goroutine exiting", zap.Error(err))
-			return fmt.Errorf("error processing logs: %w", err)
 		case subError := <-lstnr.Subscriber.SubscribeErr():
 			lstnr.logger.Info("Received error from subscribed node", zap.Error(subError))
 			subError = lstnr.reconnectToSubscriber()

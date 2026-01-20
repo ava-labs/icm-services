@@ -40,7 +40,7 @@ func (c *subscriberClientStub) SubscribeNewHead(
 	return nil, nil
 }
 
-func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *subscriberClientStub) {
+func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscriber, *subscriberClientStub) {
 	sourceSubnet := config.SourceBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
 		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
@@ -49,12 +49,10 @@ func makeSubscriberWithMockEthClient(t *testing.T) (*Subscriber, *subscriberClie
 		},
 	}
 
-	logger := logging.NoLog{}
-
 	stubRPCClient := &subscriberClientStub{}
 	blockchainID, err := ids.FromString(sourceSubnet.BlockchainID)
 	require.NoError(t, err)
-	subscriber := NewSubscriber(logger, blockchainID, stubRPCClient, stubRPCClient)
+	subscriber := NewSubscriber(logging.NoLog{}, blockchainID, stubRPCClient, stubRPCClient, errChan)
 
 	return subscriber, stubRPCClient
 }
@@ -99,17 +97,16 @@ func TestProcessFromHeight(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t)
+			errChan := make(chan error, 1)
+			subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
 
 			stubRPCClient.blockNumber = tc.latest
 			var expectedFilterLogCalls uint64
 			if tc.latest > tc.input {
 				expectedFilterLogCalls = (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
 			}
-			done := make(chan bool, 1)
-			subscriberUnderTest.ProcessFromHeight(tc.input, done)
-			result := <-done
-			require.True(t, result)
+			subscriberUnderTest.ProcessFromHeight(tc.input)
+			require.Empty(t, errChan)
 
 			if tc.latest > tc.input {
 				for i := tc.input; i <= tc.latest; i++ {
