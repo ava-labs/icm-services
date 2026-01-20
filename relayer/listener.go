@@ -14,7 +14,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm"
-	"github.com/ava-labs/subnet-evm/ethclient"
+	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 )
@@ -33,7 +33,7 @@ type Listener struct {
 	logger             logging.Logger
 	sourceBlockchain   config.SourceBlockchain
 	healthStatus       *atomic.Bool
-	ethClient          ethclient.Client
+	ethClient          *ethclient.Client
 	messageCoordinator *MessageCoordinator
 	maxConcurrentMsg   uint64
 	errChan            chan error
@@ -45,7 +45,7 @@ func RunListener(
 	ctx context.Context,
 	logger logging.Logger,
 	sourceBlockchain config.SourceBlockchain,
-	ethRPCClient ethclient.Client,
+	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
 	startingHeight uint64,
 	messageCoordinator *MessageCoordinator,
@@ -83,7 +83,7 @@ func newListener(
 	ctx context.Context,
 	logger logging.Logger,
 	sourceBlockchain config.SourceBlockchain,
-	ethRPCClient ethclient.Client,
+	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
 	startingHeight uint64,
 	messageCoordinator *MessageCoordinator,

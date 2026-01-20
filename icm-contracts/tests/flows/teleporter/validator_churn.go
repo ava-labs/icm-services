@@ -11,8 +11,8 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -127,7 +127,7 @@ func ValidatorChurn(
 	// proposer VM is updated on all L1s.
 	for _, l1Info := range network.GetL1Infos() {
 		err = utils.IssueTxsToAdvanceChain(
-			ctx, l1Info.EVMChainID, fundedKey, l1Info.WSClient, 5,
+			ctx, l1Info.EVMChainID, fundedKey, l1Info.RPCClient, 5,
 		)
 		Expect(err).Should(BeNil())
 	}

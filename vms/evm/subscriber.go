@@ -16,7 +16,6 @@ import (
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 )
@@ -27,9 +26,18 @@ const (
 	MaxBlocksPerRequest         = 200
 )
 
+type SubscriberRPCClient interface {
+	BlockNumber(ctx context.Context) (uint64, error)
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+}
+
+type SubscriberWSClient interface {
+	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+}
+
 type Subscriber struct {
-	wsClient     ethclient.Client
-	rpcClient    ethclient.Client
+	wsClient     SubscriberWSClient
+	rpcClient    SubscriberRPCClient
 	blockchainID ids.ID
 	headers      chan *types.Header
 	icmBlocks    chan *relayerTypes.WarpBlockInfo
@@ -44,8 +52,8 @@ type Subscriber struct {
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
-	wsClient ethclient.Client,
-	rpcClient ethclient.Client,
+	wsClient SubscriberWSClient,
+	rpcClient SubscriberRPCClient,
 	errChan chan error,
 ) *Subscriber {
 	subscriber := &Subscriber{
