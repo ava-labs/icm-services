@@ -69,29 +69,22 @@ func NewSubscriber(
 	return subscriber
 }
 
-// Process logs from the given block height to the latest block. Limits the
+// Process logs from the starting block to the ending block, inclusive. Limits the
 // number of blocks retrieved in a single eth_getLogs request to
 // `MaxBlocksPerRequest`; if processing more than that, multiple eth_getLogs
 // requests will be made.
-// Writes true to the done channel when finished, or false if an error occurs
-func (s *Subscriber) ProcessFromHeight(height uint64) {
-	// Grab the latest block before filtering logs so we don't miss any before updating the db
-	latestBlockHeightCtx, latestBlockHeightCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-	defer latestBlockHeightCtxCancel()
-	latestBlockHeight, err := s.rpcClient.BlockNumber(latestBlockHeightCtx)
-	if err != nil {
-		s.errChan <- fmt.Errorf("failed to get latest block: %w", err)
-		return
-	}
+// Writes to the error channel if an error occurs
+func (s *Subscriber) ProcessFromHeight(startingHeight uint64, endingHeight uint64) {
 	log := s.logger.With(
-		zap.Uint64("fromBlockHeight", height),
+		zap.Uint64("fromBlockHeight", startingHeight),
+		zap.Uint64("toBlockHeight", endingHeight),
 	)
 	log.Info("Processing historical logs")
 
-	for fromBlock := height; fromBlock <= latestBlockHeight; fromBlock += MaxBlocksPerRequest {
-		toBlock := min(fromBlock+MaxBlocksPerRequest-1, latestBlockHeight)
+	for fromBlock := startingHeight; fromBlock <= endingHeight; fromBlock += MaxBlocksPerRequest {
+		toBlock := min(fromBlock+MaxBlocksPerRequest-1, endingHeight)
 
-		err = s.processBlockRange(fromBlock, toBlock)
+		err := s.processBlockRange(fromBlock, toBlock)
 		if err != nil {
 			s.errChan <- fmt.Errorf("failed to process block range: %w", err)
 			return
@@ -127,6 +120,7 @@ func (s *Subscriber) processBlockRange(
 			s.icmBlocks <- &relayerTypes.WarpBlockInfo{
 				BlockNumber: i,
 				Messages:    []*relayerTypes.WarpMessageInfo{},
+				IsCatchup:   true,
 			}
 		}
 	}
