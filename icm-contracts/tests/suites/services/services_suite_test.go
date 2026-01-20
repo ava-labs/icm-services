@@ -36,8 +36,9 @@ const (
 var (
 	log logging.Logger
 
-	localNetworkInstance *network.LocalAvalancheNetwork
-	teleporterInfo       utils.TeleporterTestInfo
+	localAvalancheNetworkInstance *network.LocalAvalancheNetwork
+	localEthereumNetworkInstance  *network.LocalEthereumNetwork
+	teleporterInfo                utils.TeleporterTestInfo
 
 	decider *exec.Cmd
 
@@ -91,7 +92,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
-	localNetworkInstance = network.NewLocalAvalancheNetwork(
+	localAvalancheNetworkInstance = network.NewLocalAvalancheNetwork(
 		networkStartCtx,
 		"icm-off-chain-services-e2e-test",
 		warpGenesisTemplateFile,
@@ -116,31 +117,31 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			},
 		},
 		4,
-		4,
+		6, // Extra nodes: 4 for L1 validators + 2 for validator set updater test
 		e2eFlags,
 	)
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
-	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
+	_, fundedKey := localAvalancheNetworkInstance.GetFundedAccountInfo()
 	utils.DeployWithNicksMethod(
 		networkStartCtx,
-		localNetworkInstance.GetPrimaryNetworkInfo(),
+		localAvalancheNetworkInstance.GetPrimaryNetworkInfo(),
 		teleporterDeployerTransaction,
 		teleporterDeployerAddress,
 		teleporterContractAddress,
 		fundedKey,
 	)
 
-	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
+	teleporterInfo = utils.NewTeleporterTestInfo(localAvalancheNetworkInstance.GetAllL1Infos())
 	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
-	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
+	for _, subnet := range localAvalancheNetworkInstance.GetAllL1Infos() {
 		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
 		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
 	}
 
 	// Convert the subnets to sovereign L1s
-	for _, subnet := range localNetworkInstance.GetL1Infos() {
-		localNetworkInstance.ConvertSubnet(
+	for _, subnet := range localAvalancheNetworkInstance.GetL1Infos() {
+		localAvalancheNetworkInstance.ConvertSubnet(
 			networkStartCtx,
 			subnet,
 			utils.PoAValidatorManager,
@@ -152,10 +153,10 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}
 
 	// Restart the network to attempt to refresh TLS connections
-	networkRestartCtx, cancel := context.WithTimeout(ctx, time.Duration(60*len(localNetworkInstance.Nodes))*time.Second)
+	networkRestartCtx, cancel := context.WithTimeout(ctx, time.Duration(60*len(localAvalancheNetworkInstance.Nodes))*time.Second)
 	defer cancel()
 
-	err := localNetworkInstance.Restart(networkRestartCtx)
+	err := localAvalancheNetworkInstance.Restart(networkRestartCtx)
 	Expect(err).Should(BeNil())
 
 	decider = exec.CommandContext(ctx, "./tests/cmd/decider/decider")
@@ -170,11 +171,14 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}()
 	log.Info("Started decider service")
 
+	localEthereumNetworkInstance = network.NewLocalEthereumNetwork(ctx)
+	log.Info("Connected to local Ethereum network")
+
 	log.Info("Set up ginkgo before suite")
 
 	ginkgo.AddReportEntry(
 		"network directory with node logs & configs; useful in the case of failures",
-		localNetworkInstance.Dir(),
+		localAvalancheNetworkInstance.Dir(),
 		ginkgo.ReportEntryVisibilityFailureOrVerbose,
 	)
 })
@@ -183,9 +187,13 @@ func cleanup() {
 	if decider != nil {
 		decider = nil
 	}
-	if localNetworkInstance != nil {
-		localNetworkInstance.TearDownNetwork()
-		localNetworkInstance = nil
+	if localEthereumNetworkInstance != nil {
+		localEthereumNetworkInstance.TearDownNetwork()
+		localEthereumNetworkInstance = nil
+	}
+	if localAvalancheNetworkInstance != nil {
+		localAvalancheNetworkInstance.TearDownNetwork()
+		localAvalancheNetworkInstance = nil
 	}
 }
 
@@ -195,51 +203,56 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 	ginkgo.It("Basic Relay",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.BasicRelay(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Manually Provided Message",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.ManualMessage(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.ManualMessage(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Shared Database",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.SharedDatabaseAccess(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.SharedDatabaseAccess(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Allowed Addresses",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.AllowedAddresses(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.AllowedAddresses(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Batch Message",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.BatchRelay(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.BatchRelay(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Relay Message API",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.RelayMessageAPI(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Warp API",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.WarpAPIRelay(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Signature Aggregator",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.SignatureAggregatorAPI(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.SignatureAggregatorAPI(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Signature Aggregator Epoch Validators",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
 		})
 	ginkgo.It("Validators Only Network",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
+			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localAvalancheNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("External EVM Validator Set Updater",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.ValidatorSetUpdater(ctx, log, localAvalancheNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
 })
