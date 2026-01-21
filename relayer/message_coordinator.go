@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/database"
@@ -17,8 +18,7 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
+	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
 
@@ -30,14 +30,14 @@ type MessageCoordinator struct {
 	// Maps Source blockchain ID and protocol address to a Message Handler Factory
 	messageHandlerFactories map[ids.ID]map[common.Address]messages.MessageHandlerFactory
 	applicationRelayers     map[common.Hash]*ApplicationRelayer
-	sourceClients           map[ids.ID]ethclient.Client
+	sourceClients           map[ids.ID]*ethclient.Client
 }
 
 func NewMessageCoordinator(
 	logger logging.Logger,
 	messageHandlerFactories map[ids.ID]map[common.Address]messages.MessageHandlerFactory,
 	applicationRelayers map[common.Hash]*ApplicationRelayer,
-	sourceClients map[ids.ID]ethclient.Client,
+	sourceClients map[ids.ID]*ethclient.Client,
 ) *MessageCoordinator {
 	return &MessageCoordinator{
 		logger:                  logger,
@@ -286,7 +286,7 @@ func (mc *MessageCoordinator) ProcessBlock(
 }
 
 func FetchWarpMessage(
-	ethClient ethclient.Client,
+	ethClient *ethclient.Client,
 	warpID ids.ID,
 	blockNum *big.Int,
 ) (*relayerTypes.WarpMessageInfo, error) {

@@ -21,6 +21,8 @@ echo "Common Solidity Version: $COMMON_SOLIDITY_VERSION"
 echo "Ethereum EVM Version: $ETHEREUM_EVM_VERSION"
 echo "Ethereum Solidity Version: $ETHEREUM_SOLIDITY_VERSION"
 
+AVALANCHE_ICM_PATH=${ICM_CONTRACTS_PATH}/avalanche
+
 export ARCH=$(uname -m)
 [ $ARCH = x86_64 ] && ARCH=amd64
 echo "ARCH set to $ARCH"
@@ -84,10 +86,8 @@ if ! [[ "$extracted_version" == "$AVALANCHE_SOLIDITY_VERSION" ]]; then
 fi
 
 # Install abigen
-# Temporarily hardcode the version to v0.7.8 since cmd/abigen is removed in the following versions.
-# TODO: Remove the hardcoded version and switch to using libevm abigen once the rest of the code is updated to use it. 
-echo "Building subnet-evm abigen"
-go install github.com/ava-labs/subnet-evm/cmd/abigen@v0.7.8
+echo "Building libevm abigen"
+go install github.com/ava-labs/libevm/cmd/abigen@$LIBEVM_VERSION
 
 # Solc does not recursively expand remappings, so we must construct them manually
 remappings=$(cat $REPO_PATH/remappings.txt)

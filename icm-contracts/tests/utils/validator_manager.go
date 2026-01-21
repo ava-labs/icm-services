@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/warp/messages"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/proto/pb/platformvm"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
@@ -30,13 +32,10 @@ import (
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
-	"github.com/ava-labs/subnet-evm/warp/messages"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -1807,8 +1806,8 @@ func AdvanceProposerVM(
 ) {
 	log.Info("Advancing proposer VM")
 	for i := 0; i < blocks; i++ {
-		err := subnetEvmUtils.IssueTxsToActivateProposerVMFork(
-			ctx, l1.EVMChainID, fundedKey, l1.WSClient,
+		err := IssueTxsToAdvanceChain(
+			ctx, l1.EVMChainID, fundedKey, l1.RPCClient, 2,
 		)
 		Expect(err).Should(BeNil())
 	}

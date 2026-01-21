@@ -27,10 +27,10 @@ import (
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
 	signatureaggregatorcfg "github.com/ava-labs/icm-services/signature-aggregator/config"
 	relayerUtils "github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -532,6 +532,8 @@ func TriggerProcessMissedBlocks(
 	defer startupCancel()
 	WaitForChannelClose(startupCtx, readyChan)
 
+	// Send a native transfer to trigger block production
+	SendNativeTransfer(ctx, sourceL1Info, fundedKey, fundedAddress, big.NewInt(1))
 	log.Info("Waiting for a new block confirmation on the destination")
 	<-newHeads
 

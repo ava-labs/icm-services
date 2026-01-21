@@ -14,6 +14,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/rpc"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
@@ -25,11 +27,11 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
+	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	"github.com/ava-labs/subnet-evm/rpc"
+	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 )
@@ -46,14 +48,29 @@ const (
 	epochCacheKey = "epoch"
 )
 
+// Client interface represents the minimal interface needed for the destination client
+type DestinationRPCClient interface {
+	BlockByNumber(ctx context.Context, blockNumber *big.Int) (*types.Block, error)
+	ChainID(ctx context.Context) (*big.Int, error)
+	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
+	SuggestGasTipCap(ctx context.Context) (*big.Int, error)
+	SendTransaction(ctx context.Context, tx *types.Transaction) error
+	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	BlockNumber(ctx context.Context) (uint64, error)
+	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
+
+	EstimateBaseFee(ctx context.Context) (*big.Int, error)
+}
+
 // Client interface wraps the ethclient.Client interface for mocking purposes.
 type Client interface {
-	ethclient.Client
+	bind.ContractBackend
 }
 
 // Implements DestinationClient
 type destinationClient struct {
-	client ethclient.Client
+	avaRPCClient DestinationRPCClient
+	ethClient    bind.ContractBackend
 
 	readonlyConcurrentSigners []*readonlyConcurrentSigner
 
@@ -122,7 +139,7 @@ func NewDestinationClient(
 	}
 
 	// Dial the destination RPC endpoint
-	client, err := utils.NewEthClientWithConfig(
+	rpcClient, err := utils.DialWithConfig(
 		context.Background(),
 		destinationBlockchain.RPCEndpoint.BaseURL,
 		destinationBlockchain.RPCEndpoint.HTTPHeaders,
@@ -131,8 +148,9 @@ func NewDestinationClient(
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial rpc endpoint: %w", err)
 	}
+	ethClient := ethclient.NewClient(rpcClient)
 
-	evmChainID, err := client.ChainID(context.Background())
+	evmChainID, err := ethClient.ChainID(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chain ID from destination chain endpoint: %w", err)
 	}
@@ -151,12 +169,16 @@ func NewDestinationClient(
 			zap.Stringer("senderAddress", signer.Address()),
 		)
 		for {
-			pendingNonce, err = client.NonceAt(context.Background(), signer.Address(), big.NewInt(int64(rpc.PendingBlockNumber)))
+			pendingNonce, err = ethClient.NonceAt(
+				context.Background(),
+				signer.Address(),
+				big.NewInt(int64(rpc.PendingBlockNumber)),
+			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get pending nonce: %w", err)
 			}
 
-			currentNonce, err = client.NonceAt(context.Background(), signer.Address(), nil)
+			currentNonce, err = ethClient.NonceAt(context.Background(), signer.Address(), nil)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get current nonce: %w", err)
 			}
@@ -208,7 +230,8 @@ func NewDestinationClient(
 	proposerClient := clients.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
 
 	destClient = destinationClient{
-		client:                     client,
+		avaRPCClient:               NewAvaDestinationClient(ethClient, rpcClient),
+		ethClient:                  ethClient,
 		readonlyConcurrentSigners:  readonlyConcurrentSigners,
 		destinationBlockchainID:    destinationID,
 		rpcEndpointURL:             destinationBlockchain.RPCEndpoint.BaseURL,
@@ -243,7 +266,7 @@ func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 		// Get the current base fee estimation for the chain.
 		baseFeeCtx, baseFeeCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer baseFeeCtxCancel()
-		baseFee, err := c.client.EstimateBaseFee(baseFeeCtx)
+		baseFee, err := c.avaRPCClient.EstimateBaseFee(baseFeeCtx)
 		if err != nil {
 			c.logger.Error(
 				"Failed to get base fee",
@@ -257,7 +280,7 @@ func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 	// Get the suggested gas tip cap of the network
 	gasTipCapCtx, gasTipCapCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer gasTipCapCtxCancel()
-	gasTipCap, err := c.client.SuggestGasTipCap(gasTipCapCtx)
+	gasTipCap, err := c.avaRPCClient.SuggestGasTipCap(gasTipCapCtx)
 	if err != nil {
 		c.logger.Error(
 			"Failed to get gas tip cap",
@@ -443,7 +466,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	log.Info("Sending transaction")
 
-	if err := s.destinationClient.client.SendTransaction(sendTxCtx, signedTx); err != nil {
+	if err := s.destinationClient.avaRPCClient.SendTransaction(sendTxCtx, signedTx); err != nil {
 		log.Error(
 			"Failed to send transaction",
 			zap.Error(err),
@@ -475,7 +498,7 @@ func (s *concurrentSigner) waitForReceipt(
 	operation := func() (err error) {
 		callCtx, callCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer callCtxCancel()
-		receipt, err = s.destinationClient.client.TransactionReceipt(callCtx, txHash)
+		receipt, err = s.destinationClient.avaRPCClient.TransactionReceipt(callCtx, txHash)
 		return err
 	}
 	notify := func(err error, duration time.Duration) {
@@ -507,8 +530,8 @@ func (s *concurrentSigner) waitForReceipt(
 	}
 }
 
-func (c *destinationClient) Client() ethclient.Client {
-	return c.client
+func (c *destinationClient) Client() Client {
+	return c.ethClient
 }
 
 func (c *destinationClient) SenderAddresses() []common.Address {

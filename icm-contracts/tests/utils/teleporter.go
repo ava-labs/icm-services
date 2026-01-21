@@ -10,6 +10,8 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/rpc"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -23,13 +25,11 @@ import (
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	"github.com/ava-labs/subnet-evm/rpc"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -95,14 +95,6 @@ func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, l1 int
 	info := t[l1.BlockchainID]
 	info.TeleporterRegistryAddress = address
 	info.TeleporterRegistry = teleporterRegistry
-}
-
-func (t TeleporterTestInfo) InitializeBlockchainID(l1 interfaces.L1TestInfo, fundedKey *ecdsa.PrivateKey) {
-	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
-	Expect(err).Should(BeNil())
-	tx, err := t.TeleporterMessenger(l1).InitializeBlockchainID(opts)
-	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(context.Background(), l1.RPCClient, tx.Hash())
 }
 
 func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
@@ -344,7 +336,7 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 // Deployment utils
 //
 
-func DeployTeleporterMessenger(
+func DeployWithNicksMethod(
 	ctx context.Context,
 	l1 interfaces.L1TestInfo,
 	transactionBytes []byte,
@@ -399,7 +391,7 @@ func DeployNewTeleporterVersion(
 	)
 	Expect(err).Should(BeNil())
 
-	DeployTeleporterMessenger(
+	DeployWithNicksMethod(
 		ctx,
 		l1,
 		teleporterDeployerTransaction,

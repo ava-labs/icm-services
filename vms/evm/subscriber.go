@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	relayerTypes "github.com/ava-labs/icm-services/types"
@@ -16,8 +17,6 @@ import (
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 )
 
@@ -27,9 +26,18 @@ const (
 	MaxBlocksPerRequest         = 200
 )
 
+type SubscriberRPCClient interface {
+	BlockNumber(ctx context.Context) (uint64, error)
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+}
+
+type SubscriberWSClient interface {
+	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+}
+
 type Subscriber struct {
-	wsClient     ethclient.Client
-	rpcClient    ethclient.Client
+	wsClient     SubscriberWSClient
+	rpcClient    SubscriberRPCClient
 	blockchainID ids.ID
 	headers      chan *types.Header
 	icmBlocks    chan *relayerTypes.WarpBlockInfo
@@ -44,8 +52,9 @@ type Subscriber struct {
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
-	wsClient ethclient.Client,
-	rpcClient ethclient.Client,
+	wsClient SubscriberWSClient,
+	rpcClient SubscriberRPCClient,
+	errChan chan error,
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID: blockchainID,
@@ -54,72 +63,44 @@ func NewSubscriber(
 		logger:       logger,
 		icmBlocks:    make(chan *relayerTypes.WarpBlockInfo, maxClientSubscriptionBuffer),
 		headers:      make(chan *types.Header, maxClientSubscriptionBuffer),
-		errChan:      make(chan error),
+		errChan:      errChan,
 	}
 	go subscriber.blocksInfoFromHeaders()
 	return subscriber
 }
 
-// Process logs from the given block height to the latest block. Limits the
+// Process logs from the starting block to the ending block, inclusive. Limits the
 // number of blocks retrieved in a single eth_getLogs request to
 // `MaxBlocksPerRequest`; if processing more than that, multiple eth_getLogs
 // requests will be made.
-// Writes true to the done channel when finished, or false if an error occurs
-func (s *Subscriber) ProcessFromHeight(height *big.Int, done chan bool) {
-	defer close(done)
-	if height == nil {
-		s.logger.Error("Cannot process logs from nil height")
-		done <- false
-		return
-	}
-
-	// Grab the latest block before filtering logs so we don't miss any before updating the db
-	latestBlockHeightCtx, latestBlockHeightCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-	defer latestBlockHeightCtxCancel()
-	latestBlockHeight, err := s.rpcClient.BlockNumber(latestBlockHeightCtx)
-	if err != nil {
-		s.logger.Error("Failed to get latest block", zap.Error(err))
-		done <- false
-		return
-	}
-	s.logger.Info(
-		"Processing historical logs",
-		zap.Uint64("fromBlockHeight", height.Uint64()),
-		zap.Uint64("latestBlockHeight", latestBlockHeight),
+// Writes to the error channel if an error occurs
+func (s *Subscriber) ProcessFromHeight(startingHeight uint64, endingHeight uint64) {
+	log := s.logger.With(
+		zap.Uint64("fromBlockHeight", startingHeight),
+		zap.Uint64("toBlockHeight", endingHeight),
 	)
+	log.Info("Processing historical logs")
 
-	bigLatestBlockHeight := big.NewInt(0).SetUint64(latestBlockHeight)
+	for fromBlock := startingHeight; fromBlock <= endingHeight; fromBlock += MaxBlocksPerRequest {
+		toBlock := min(fromBlock+MaxBlocksPerRequest-1, endingHeight)
 
-	//nolint:lll
-	for fromBlock := big.NewInt(0).Set(height); fromBlock.Cmp(bigLatestBlockHeight) <= 0; fromBlock.Add(fromBlock, big.NewInt(MaxBlocksPerRequest)) {
-		toBlock := big.NewInt(0).Add(fromBlock, big.NewInt(MaxBlocksPerRequest-1))
-
-		// clamp to latest known block because we've already subscribed
-		// to new blocks and we don't want to double-process any blocks
-		// created after that subscription but before the determination
-		// of this "latest"
-		if toBlock.Cmp(bigLatestBlockHeight) > 0 {
-			toBlock.Set(bigLatestBlockHeight)
-		}
-
-		err = s.processBlockRange(fromBlock, toBlock)
+		err := s.processBlockRange(fromBlock, toBlock)
 		if err != nil {
-			s.logger.Error("Failed to process block range", zap.Error(err))
-			done <- false
+			s.errChan <- fmt.Errorf("failed to process block range: %w", err)
 			return
 		}
 	}
-	done <- true
+	log.Info("Finished processing historical logs")
 }
 
 // Process Warp messages from the block range [fromBlock, toBlock], inclusive
 func (s *Subscriber) processBlockRange(
-	fromBlock, toBlock *big.Int,
+	fromBlock, toBlock uint64,
 ) error {
 	s.logger.Info(
 		"Processing block range",
-		zap.Uint64("fromBlockHeight", fromBlock.Uint64()),
-		zap.Uint64("toBlockHeight", toBlock.Uint64()),
+		zap.Uint64("fromBlockHeight", fromBlock),
+		zap.Uint64("toBlockHeight", toBlock),
 	)
 	logs, err := s.getFilterLogsByBlockRangeRetryable(fromBlock, toBlock)
 	if err != nil {
@@ -131,7 +112,7 @@ func (s *Subscriber) processBlockRange(
 		s.logger.Error("Failed to convert logs to blocks", zap.Error(err))
 		return err
 	}
-	for i := fromBlock.Uint64(); i <= toBlock.Uint64(); i++ {
+	for i := fromBlock; i <= toBlock; i++ {
 		if block, ok := blocksWithICMMessages[i]; ok {
 			s.icmBlocks <- block
 		} else {
@@ -139,13 +120,14 @@ func (s *Subscriber) processBlockRange(
 			s.icmBlocks <- &relayerTypes.WarpBlockInfo{
 				BlockNumber: i,
 				Messages:    []*relayerTypes.WarpMessageInfo{},
+				IsCatchup:   true,
 			}
 		}
 	}
 	return nil
 }
 
-func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.Int) ([]types.Log, error) {
+func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock uint64) ([]types.Log, error) {
 	var logs []types.Log
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
@@ -153,8 +135,8 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock *big.
 		logs, err = s.rpcClient.FilterLogs(cctx, ethereum.FilterQuery{
 			Topics:    [][]common.Hash{{relayerTypes.WarpPrecompileLogFilter}},
 			Addresses: []common.Address{warp.ContractAddress},
-			FromBlock: fromBlock,
-			ToBlock:   toBlock,
+			FromBlock: new(big.Int).SetUint64(fromBlock),
+			ToBlock:   new(big.Int).SetUint64(toBlock),
 		})
 		return err
 	}
