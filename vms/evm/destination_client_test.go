@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -101,10 +103,10 @@ func TestGetFeePerGas(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			mockClient := mock_ethclient.NewMockClient(ctrl)
+			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			destClient := destinationClient{
 				logger:                     logging.NoLog{},
-				client:                     mockClient,
+				avaRPCClient:               mockClient,
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: test.suggestedPriorityFeeBuffer,
 				maxPriorityFeePerGas:       test.maxPriorityFeePerGas,
@@ -216,13 +218,13 @@ func TestSendTx(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			mockClient := mock_ethclient.NewMockClient(ctrl)
+			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			destClient = destinationClient{
 				readonlyConcurrentSigners: []*readonlyConcurrentSigner{
 					(*readonlyConcurrentSigner)(signer),
 				},
 				logger:                     logging.NoLog{},
-				client:                     mockClient,
+				avaRPCClient:               mockClient,
 				evmChainID:                 big.NewInt(5),
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: big.NewInt(0),
@@ -262,5 +264,321 @@ func TestSendTx(t *testing.T) {
 				require.NoError(t, err)
 			}
 		})
+	}
+}
+
+// TestDestinationClient_QueryParamsForwarding verifies that query parameters are forwarded correctly
+func TestDestinationClient_QueryParamsForwarding(t *testing.T) {
+	tests := []struct {
+		name        string
+		queryParams map[string]string
+	}{
+		{
+			name: "single query param",
+			queryParams: map[string]string{
+				"token": "test-token-123",
+			},
+		},
+		{
+			name: "multiple query params",
+			queryParams: map[string]string{
+				"token":   "test-token-456",
+				"api-key": "secret-key-789",
+			},
+		},
+		{
+			name: "query params with special characters",
+			queryParams: map[string]string{
+				"token": "token-with-dashes_and_underscores",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Track received query params
+			receivedParams := make(map[string]string)
+
+			// Create test server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Capture query params
+				for key := range tt.queryParams {
+					receivedParams[key] = r.URL.Query().Get(key)
+				}
+
+				// Return a valid JSON-RPC response for ChainID call
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+			}))
+			defer server.Close()
+
+			// Create destination blockchain config with query params
+			destinationBlockchain := config.DestinationBlockchain{
+				SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+				BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+				RPCEndpoint: basecfg.APIConfig{
+					BaseURL:     server.URL,
+					QueryParams: tt.queryParams,
+				},
+				AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+			}
+
+			// Create destination client (this will make ChainID call)
+			logger := logging.NoLog{}
+			_, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
+			require.NoError(t, err)
+
+			// Verify all query params were received
+			for key, expectedValue := range tt.queryParams {
+				actualValue := receivedParams[key]
+				require.Equal(t, expectedValue, actualValue,
+					"Query param %s: expected %s, got %s", key, expectedValue, actualValue)
+			}
+		})
+	}
+}
+
+// TestDestinationClient_HTTPHeadersForwarding verifies that HTTP headers are forwarded correctly
+func TestDestinationClient_HTTPHeadersForwarding(t *testing.T) {
+	tests := []struct {
+		name        string
+		httpHeaders map[string]string
+	}{
+		{
+			name: "authorization header",
+			httpHeaders: map[string]string{
+				"Authorization": "Bearer test-token",
+			},
+		},
+		{
+			name: "multiple headers",
+			httpHeaders: map[string]string{
+				"Authorization": "Bearer test-token",
+				"X-API-Key":     "secret-key",
+				"X-Custom":      "custom-value",
+			},
+		},
+		{
+			name: "headers with special values",
+			httpHeaders: map[string]string{
+				"X-Token": "token-with-dashes-123",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Track received headers
+			receivedHeaders := make(map[string]string)
+
+			// Create test server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Capture headers
+				for key := range tt.httpHeaders {
+					receivedHeaders[key] = r.Header.Get(key)
+				}
+
+				// Return a valid JSON-RPC response for ChainID call
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+			}))
+			defer server.Close()
+
+			// Create destination blockchain config with headers
+			destinationBlockchain := config.DestinationBlockchain{
+				SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+				BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+				RPCEndpoint: basecfg.APIConfig{
+					BaseURL:     server.URL,
+					HTTPHeaders: tt.httpHeaders,
+				},
+				AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+			}
+
+			// Create destination client (this will make ChainID call)
+			logger := logging.NoLog{}
+			_, err := NewDestinationClient(logger, &destinationBlockchain, time.Minute)
+			require.NoError(t, err)
+
+			// Verify all headers were received
+			for key, expectedValue := range tt.httpHeaders {
+				actualValue := receivedHeaders[key]
+				require.Equal(t, expectedValue, actualValue,
+					"Header %s: expected %s, got %s", key, expectedValue, actualValue)
+			}
+		})
+	}
+}
+
+// TestDestinationClient_CombinedQueryParamsAndHeaders verifies both work together
+func TestDestinationClient_CombinedQueryParamsAndHeaders(t *testing.T) {
+	queryParams := map[string]string{
+		"token":   "query-token",
+		"api-key": "query-key",
+	}
+	httpHeaders := map[string]string{
+		"Authorization": "Bearer header-token",
+		"X-API-Key":     "header-key",
+	}
+
+	// Track what the server receives
+	receivedParams := make(map[string]string)
+	receivedHeaders := make(map[string]string)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for key := range queryParams {
+			receivedParams[key] = r.URL.Query().Get(key)
+		}
+
+		for key := range httpHeaders {
+			receivedHeaders[key] = r.Header.Get(key)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+	}))
+	defer server.Close()
+
+	destinationBlockchain := config.DestinationBlockchain{
+		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+		RPCEndpoint: basecfg.APIConfig{
+			BaseURL:     server.URL,
+			QueryParams: queryParams,
+			HTTPHeaders: httpHeaders,
+		},
+		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+	}
+
+	_, err := NewDestinationClient(logging.NoLog{}, &destinationBlockchain, time.Minute)
+	require.NoError(t, err)
+
+	for key, expectedValue := range queryParams {
+		require.Equal(t, expectedValue, receivedParams[key],
+			"Query param %s not forwarded correctly", key)
+	}
+
+	for key, expectedValue := range httpHeaders {
+		require.Equal(t, expectedValue, receivedHeaders[key],
+			"Header %s not forwarded correctly", key)
+	}
+}
+
+// TestDestinationClient_AllRPCCallsForwardQueryParams verifies that ALL RPC calls
+// made by the EVM client correctly forward query parameters
+func TestDestinationClient_AllRPCCallsForwardQueryParams(t *testing.T) {
+	queryParams := map[string]string{
+		"token":   "test-token-123",
+		"api-key": "secret-key-789",
+	}
+
+	requestCount := 0
+	receivedParams := make([]map[string]string, 0)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		params := make(map[string]string)
+		for key := range queryParams {
+			params[key] = r.URL.Query().Get(key)
+		}
+		receivedParams = append(receivedParams, params)
+		requestCount++
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if requestCount == 1 {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+		} else {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x0"}`))
+		}
+	}))
+	defer server.Close()
+
+	destinationBlockchain := config.DestinationBlockchain{
+		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+		RPCEndpoint: basecfg.APIConfig{
+			BaseURL:     server.URL,
+			QueryParams: queryParams,
+		},
+		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+	}
+
+	client, err := NewDestinationClient(logging.NoLog{}, &destinationBlockchain, time.Minute)
+	require.NoError(t, err)
+
+	ctx := t.Context()
+	client.avaRPCClient.BlockNumber(ctx)
+	ethClient := client.Client()
+	ethClient.SuggestGasPrice(ctx)
+	ethClient.SuggestGasTipCap(ctx)
+
+	require.Greater(t, len(receivedParams), 0, "No requests were made")
+	for i, params := range receivedParams {
+		for key, expectedValue := range queryParams {
+			require.Equal(t, expectedValue, params[key],
+				"Request %d: query param %s not forwarded correctly", i, key)
+		}
+	}
+}
+
+// TestDestinationClient_AllRPCCallsForwardHTTPHeaders verifies that ALL RPC calls
+// made by the EVM client correctly forward HTTP headers
+func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
+	httpHeaders := map[string]string{
+		"Authorization": "Bearer test-token",
+		"X-API-Key":     "secret-key",
+	}
+
+	requestCount := 0
+	receivedHeaders := make([]map[string]string, 0)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers := make(map[string]string)
+		for key := range httpHeaders {
+			headers[key] = r.Header.Get(key)
+		}
+		receivedHeaders = append(receivedHeaders, headers)
+		requestCount++
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if requestCount == 1 {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+		} else {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x0"}`))
+		}
+	}))
+	defer server.Close()
+
+	destinationBlockchain := config.DestinationBlockchain{
+		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
+		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
+		RPCEndpoint: basecfg.APIConfig{
+			BaseURL:     server.URL,
+			HTTPHeaders: httpHeaders,
+		},
+		AccountPrivateKeys: []string{"56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"},
+	}
+
+	client, err := NewDestinationClient(logging.NoLog{}, &destinationBlockchain, time.Minute)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	client.avaRPCClient.BlockNumber(ctx)
+	ethClient := client.Client()
+	ethClient.SuggestGasPrice(ctx)
+	ethClient.SuggestGasTipCap(ctx)
+
+	require.Greater(t, len(receivedHeaders), 0, "No requests were made")
+	for i, headers := range receivedHeaders {
+		for key, expectedValue := range httpHeaders {
+			require.Equal(t, expectedValue, headers[key],
+				"Request %d: header %s not forwarded correctly", i, key)
+		}
 	}
 }
