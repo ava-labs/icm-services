@@ -14,6 +14,28 @@ import { IRiscZeroVerifier } from "@risc0/contracts/IRiscZeroVerifier.sol";
 import { ConsensusState, Checkpoint } from "./tseth.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import { SSZ } from "../../utilities/SimpleSerialize.sol";
+import { MerklePatricia, StorageValue } from "@solidity-merkle-trees/MerklePatricia.sol";
+import {RLPReader} from "@solidity-merkle-trees/trie/ethereum/RLPReader.sol";
+import { RLPUtils } from "./RLPUtils.sol";
+
+/// @notice Information about an imported event from the beacon chain.
+struct ZKEventInfo {
+    uint256 sourceChainId;     
+    uint256 beaconSlot;        
+    bytes32 executionRoot;     
+    uint256 logIndex;    
+    bytes logData;            
+}
+
+/// @notice Contains all the data required to prove a specific log was emitted.
+struct LogProof {
+    bytes[] proof;           // The Merkle Patricia Trie inclusion proof (array of rlp-encoded nodes).
+    bytes key;               // The RLP-encoded transaction index
+    bytes value;             // The RLP-encoded receipt data
+    uint256 logIndex;        // The specific index of the log in the receipt
+    address expectedEmitter; // Contract address that should have emitted the log
+    bytes32 expectedTopic0;  // The event signature (keccak256("Event(args)"))
+}
 
 /// @notice Contains the public state transition data for the ZK proof
 /// @dev The ZK proof attests that `postState` is the valid successor to `preState` according to consensus rules.
@@ -64,6 +86,9 @@ struct ExecutionProof {
 }
 
 contract ZKStateManager is AccessControl {
+
+    using RLPReader for bytes;
+
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 constant UNDEFINED_ROOT = bytes32(0);
 
@@ -73,6 +98,8 @@ contract ZKStateManager is AccessControl {
     uint256 constant G_INDEX_BASE_STATE_ROOTS = 38; // BeaconState -> StateRoots Vector
     uint256 constant STATE_ROOTS_DEPTH = 13;                  // Depth of StateRoots Vector (8192 entries)
     uint256 constant G_INDEX_RECEIPTS_ROOT = 1795; // ExecutionPayload -> ReceiptsRoot
+
+    uint256 public immutable SOURCE_CHAIN_ID;
     
     /// @notice Number of slots per epoch in the beacon chain
     uint64 SLOT_PER_EPOCH = 32;
@@ -112,6 +139,13 @@ contract ZKStateManager is AccessControl {
     event ConfirmedReceiptsState(uint64 indexed slot, bytes32 indexed root);
     event ImageIDUpdated(bytes32 indexed newImageID, bytes32 indexed oldImageID);
     event PermissibleTimespanUpdated(uint24 indexed permissibleTimespan);
+    event ZKEventImported(
+        uint256 indexed sourceChainId,
+        uint256 indexed beaconSlot,   
+        address indexed emitter,      
+        bytes32 executionRoot,        
+        uint256 logIndex
+    );
 
     error InvalidArgument();
     error InvalidPreState();
@@ -120,6 +154,7 @@ contract ZKStateManager is AccessControl {
     /// @notice Initializes the ZKStateManager contract with all required parameters
     /// @dev Sets up the initial consensus state, configures verification parameters, and establishes cross-chain
     /// communication
+    /// @param _sourceChainId The ID of the chain this contract will track
     /// @param startingState The initial consensus state of the beacon chain
     /// @param permissibleTimespan_ Maximum allowed time span for state transitions in seconds
     /// @param verifier Address of the RISC Zero verifier contract for proof validation
@@ -127,6 +162,7 @@ contract ZKStateManager is AccessControl {
     /// @param admin Address to be granted the ADMIN_ROLE
     /// @param superAdmin Address to be granted the DEFAULT_ADMIN_ROLE
     constructor(
+        uint256 _sourceChainId,
         ConsensusState memory startingState,
         uint24 permissibleTimespan_,
         address verifier,
@@ -134,6 +170,9 @@ contract ZKStateManager is AccessControl {
         address admin,
         address superAdmin
     ) {
+        require(_sourceChainId != 0, "Invalid Chain ID");
+        SOURCE_CHAIN_ID = _sourceChainId;
+
         _grantRole(ADMIN_ROLE, admin);
         _grantRole(DEFAULT_ADMIN_ROLE, superAdmin);
 
@@ -158,6 +197,48 @@ contract ZKStateManager is AccessControl {
         _verifyConsensusTransition(journal, consensus);
         // Finally, update the global state to reflect the new trusted consensus, execution, and receipts states. 
         _transitionConsensusState(journal, consensus.finalizedSlot);
+    }
+
+    /// @notice Proves that a specific log was emitted on the beacon chain and executes application logic.
+    /// @dev This is the main entry point for bridging events. It performs two key verifications:
+    /// 1. Execution Verification: Validates that the provided `targetReceiptsRoot` is part of the canonical beacon chain history using the `execProof`.
+    /// 2. Log Verification: Uses the validated `targetReceiptsRoot` to verify the inclusion  of a specific Receipt (and Log) via the `logProof`.
+    /// Once verified, it emits a `ZKEventImported` event and passes the verified data to the internal `_onEventImport` handler for application-specific processing.
+    /// @param execProof The execution proof linking a receipt root to a trusted beacon block root.
+    /// @param logProof The log proof establishing the receipt and log inclusion against a trusted receipts root.
+    function proveLogAndExecute(
+        ExecutionProof calldata execProof, 
+        LogProof calldata logProof
+    ) external {
+        // Verify the execution state proof, proving that the contained receipts root is legitimate against a stored beacon block root. 
+        _verifyExecutionState(execProof);
+
+        // Extract the trusted receipts root to be used. 
+        bytes32 trustedReceiptsRoot = execProof.targetReceiptsRoot;
+
+        // Verify the receipt and log, and extract the log data.
+        bytes memory logData = _verifyReceiptAndLog(trustedReceiptsRoot, logProof);
+
+        // Emit the event. 
+        emit ZKEventImported(
+            SOURCE_CHAIN_ID,
+            execProof.targetSlot,
+            logProof.expectedEmitter,
+            execProof.targetExecutionHeaderRoot,
+            logProof.logIndex
+        );
+
+        // Construct the event info struct. 
+        ZKEventInfo memory info = ZKEventInfo({
+            sourceChainId: SOURCE_CHAIN_ID,
+            beaconSlot: execProof.targetSlot,
+            executionRoot: execProof.targetExecutionHeaderRoot,
+            logIndex: logProof.logIndex,
+            logData: logData
+        });
+
+        // Hand off the event to application logic.
+        _onEventImport(info);
     }
 
     function updateImageID(bytes32 newImageID) external onlyRole(ADMIN_ROLE) {
@@ -193,6 +274,11 @@ contract ZKStateManager is AccessControl {
         if (root == UNDEFINED_ROOT) {
             valid = false;
         }
+    }
+
+     /// @notice Application-specific logic to handle the imported event.
+    function _onEventImport(ZKEventInfo memory eventInfo) internal virtual {
+        // Placeholder for application logic to handle the imported event.
     }
 
     /// @notice Transitions and updates the consensus state of the contract to the new post-state. 
@@ -293,90 +379,40 @@ contract ZKStateManager is AccessControl {
         require(validReceiptsRoot, "Invalid receipts root");
     }
 
-    // /**
-    //  * @notice Verifies that a specific Receipt exists in the Receipts Root
-    //  * AND that it contains a specific Log.
-    //  * @param trustedReceiptsRoot The root we verified against the Beacon State earlier.
-    //  * @param proof The MPT inclusion proof (array of rlp-encoded nodes).
-    //  * @param key The RLP encoded index of the transaction (e.g. rlp(5)).
-    //  * @param value The specific Receipt data (RLP encoded).
-    //  * @param expectedEmitter The address that should have emitted the log.
-    //  * @param expectedTopic0 The event signature (keccak256("Event(args)")).
-    //  * @return logData The non-indexed data from the log (for the caller to decode).
-    //  */
-    // function _verifyReceiptAndLog(
-    //     bytes32 trustedReceiptsRoot,
-    //     bytes[] calldata proof,
-    //     bytes calldata key,
-    //     bytes calldata value,
-    //     address expectedEmitter,
-    //     bytes32 expectedTopic0
-    // ) internal pure returns (bytes memory) {
+    /**
+     * @notice Verifies that a specific receipt exists in the receipts Merkle trie and that it contains a specific log. 
+     * @param trustedReceiptsRoot A trusted receipts root to verify against. 
+     * @param logProof The log proof establishing the receipt and log inclusion against a trusted receipts root.
+     * @return logData The non-indexed data from the log (for the caller to decode).
+     */
+    function _verifyReceiptAndLog(bytes32 trustedReceiptsRoot, LogProof calldata logProof) internal pure returns (bytes memory) {
         
-    //     // ------------------------------------------------------------------
-    //     // STEP 1: Verify Inclusion in the Trie
-    //     // ------------------------------------------------------------------
-    //     // "Does this specific 'value' (Receipt) exist at 'key' (Index) 
-    //     //  inside the 'trustedReceiptsRoot'?"
-    //     bool valid = MerkleTrie.verifyInclusionProof(
-    //         key,    // Path (rlp encoded tx index)
-    //         value,  // Leaf (the receipt data)
-    //         proof,  // The witnesses
-    //         trustedReceiptsRoot
-    //     );
-    //     require(valid, "Invalid MPT inclusion proof");
+        // Construct the key of the trie receipt proof.
+        bytes[] memory keys = new bytes[](1);
+        keys[0] = logProof.key; // The RLP encoded index passed by the caller
 
-    //     // ------------------------------------------------------------------
-    //     // STEP 2: Handle EIP-2718 (Transaction Types)
-    //     // ------------------------------------------------------------------
-    //     // Receipts can be "Legacy" (RLP List) or "Typed" (TypeByte + RLP List).
-    //     // If the first byte is <= 0x7f, it is a Type Byte. We must slice it off
-    //     // to get to the actual RLP data.
-    //     bytes memory rlpEncodedReceipt;
-    //     if (value.length > 0 && uint8(value[0]) <= 0x7f) {
-    //         // Typed Receipt: Slice off the first byte
-    //         rlpEncodedReceipt = value[1:]; 
-    //     } else {
-    //         // Legacy Receipt: Use as is
-    //         rlpEncodedReceipt = value;
-    //     }
+        // Verify the trie proof against the receipts root.
+        StorageValue[] memory results = MerklePatricia.VerifyEthereumProof(
+            trustedReceiptsRoot, 
+            logProof.proof, 
+            keys
+        );
+        require(results.length == 1, "Invalid number of results in receipt proof");
+        require(results[0].value.length > 0, "Invalid receipt proof");
+        require(keccak256(results[0].value) == keccak256(logProof.value), "Proven value does not match expected receipt");
 
-    //     // ------------------------------------------------------------------
-    //     // STEP 3: Parse the Receipt to find Logs
-    //     // ------------------------------------------------------------------
-    //     // Receipt Structure (EIP-658): [status, cum_gas, bloom, logs]
-    //     RLPReader.RLPItem[] memory receiptFields = rlpEncodedReceipt.toRlpItem().toList();
-        
-    //     // Logs are usually at index 3
-    //     require(receiptFields.length == 4, "Invalid receipt structure");
-    //     RLPReader.RLPItem memory logsList = receiptFields[3];
-    //     RLPReader.RLPItem[] memory logs = logsList.toList();
+        // Decode the receipt. 
+        RLPUtils.EVMReceipt memory receipt = RLPUtils.decodeReceipt(results[0].value.toRlpItem());
+        require(logProof.logIndex < receipt.logs.length, "Invalid log index");
 
-    //     // ------------------------------------------------------------------
-    //     // STEP 4: Iterate Logs to find match
-    //     // ------------------------------------------------------------------
-    //     for (uint256 i = 0; i < logs.length; i++) {
-    //         // Log Structure: [address, [topics...], data]
-    //         RLPReader.RLPItem[] memory logFields = logs[i].toList();
-            
-    //         // A. Check Emitter Address (Field 0)
-    //         address logAddress = logFields[0].toAddress();
-    //         if (logAddress != expectedEmitter) continue;
+        // Verify the log within the receipt.
+        RLPUtils.EVMLog memory log = receipt.logs[logProof.logIndex];
+        require(log.loggerAddress == logProof.expectedEmitter, "Invalid log emitter");
+        require(log.topics.length > 0, "Log has no topics");
+        require(log.topics[0] == logProof.expectedTopic0, "Invalid event signature");
 
-    //         // B. Check Topic 0 (Field 1 is a list of topics)
-    //         RLPReader.RLPItem[] memory topics = logFields[1].toList();
-    //         if (topics.length == 0) continue;
-            
-    //         bytes32 logTopic0 = bytes32(topics[0].toUint());
-    //         if (logTopic0 != expectedTopic0) continue;
-
-    //         // C. Match Found! Return the data (Field 2)
-    //         return logFields[2].toBytes();
-    //     }
-
-    //     revert("Log not found in receipt");
-    // }
-
+        return log.data;
+    }
 
     /// @notice Compares two consensus states structs for equality. 
     function _compareConsensusState(ConsensusState memory a, ConsensusState memory b) internal pure returns (bool) {
