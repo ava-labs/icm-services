@@ -41,3 +41,6 @@ LIBEVM_VERSION=${LIBEVM_VERSION:-$(extract_commit "$(getDepVersion github.com/av
 AVALANCHE_ICM_PATH=${BASE_PATH}/icm-contracts/avalanche
 AVALANCHE_SOLIDITY_VERSION=$(awk -v profile=default -v key=solc_version -f scripts/parse_config.awk foundry.toml)
 AVALANCHE_EVM_VERSION=$(awk -v profile=default -v key=evm_version -f scripts/parse_config.awk foundry.toml)
+ETHEREUM_ICM_PATH=${BASE_PATH}/icm-contracts/ethereum
+ETHEREUM_SOLIDITY_VERSION=$(awk -v profile=ethereum -v key=solc_version -f scripts/parse_config.awk foundry.toml)
+ETHEREUM_EVM_VERSION=$(awk -v profile=ethereum -v key=evm_version -f scripts/parse_config.awk foundry.toml)
