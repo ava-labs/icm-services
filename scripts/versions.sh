@@ -44,3 +44,6 @@ AVALANCHE_EVM_VERSION=$(awk -v profile=default -v key=evm_version -f scripts/par
 ETHEREUM_ICM_PATH=${BASE_PATH}/icm-contracts/ethereum
 ETHEREUM_SOLIDITY_VERSION=$(awk -v profile=ethereum -v key=solc_version -f scripts/parse_config.awk foundry.toml)
 ETHEREUM_EVM_VERSION=$(awk -v profile=ethereum -v key=evm_version -f scripts/parse_config.awk foundry.toml)
+COMMON_ICM_PATH=${BASE_PATH}/icm-contracts/common
+COMMON_SOLIDITY_VERSION=$(awk -v profile=common -v key=solc_version -f scripts/parse_config.awk foundry.toml)
+COMMON_EVM_VERSION=$(awk -v profile=common -v key=evm_version -f scripts/parse_config.awk foundry.toml)
