@@ -91,21 +91,29 @@ library ValidatorSets {
         // Parse the validators
         Validator[] memory validators = new Validator[](numValidators);
         uint64 totalWeight = 0;
-        uint256 offset = 6;
+        // The position in the bytes were are currently parsing
+        uint256 currentPosition = 6;
+        // we will require that public keys appear in increasing order,
+        // lexicographically sorted as bytes
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
+
 
         for (uint32 i = 0; i < numValidators; i++) {
             bytes memory unformattedPublicKey =
-                data[offset:offset + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH];
+                data[currentPosition:currentPosition + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH];
             require(
                 BLST.comparePublicKeys(unformattedPublicKey, previousPublicKey) > 0,
                 "BLS public key must be greater than the latest public key"
             );
+            // A serialized validator consists of
+            // VALIDATOR_BYTES = BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH + VALIDATOR_WEIGHT_LENGTH
+            // bytes. To get the the weight, we skip the first  BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH
+            // bytes up to VALIDATOR_BYTES from the current byte position.
             uint64 weight = uint64(
                 bytes8(
                     data[
-                        offset + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:
-                            offset + VALIDATOR_BYTES
+                        currentPosition + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:
+                            currentPosition + VALIDATOR_BYTES
                     ]
                 )
             );
@@ -116,7 +124,8 @@ library ValidatorSets {
             });
             previousPublicKey = unformattedPublicKey;
             totalWeight += weight;
-            offset += VALIDATOR_BYTES;
+            // move the current position past the bytes of this validator
+            currentPosition += VALIDATOR_BYTES;
         }
         return (validators, totalWeight);
     }
