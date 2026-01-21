@@ -17,8 +17,8 @@ updates:
         patterns:
           - "github.com/ava-labs/*"
       weekly-ext-updates:
-        exclude-patterns::
-          - "github.com/ava-labs/*"
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
