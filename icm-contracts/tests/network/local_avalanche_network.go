@@ -14,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/genesis"
+	subnetEvmTestUtils "github.com/ava-labs/avalanchego/graft/subnet-evm/tests/utils"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
@@ -37,7 +38,6 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
-	subnetEvmTestUtils "github.com/ava-labs/subnet-evm/tests/utils"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )

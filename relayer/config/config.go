@@ -12,15 +12,15 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/params"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
+	// Force-load precompiles to trigger registration
+	_ "github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/registry"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/peers"
-	"github.com/ava-labs/subnet-evm/params"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	// Force-load precompiles to trigger registration
-	_ "github.com/ava-labs/subnet-evm/precompile/registry"
 	"go.uber.org/zap"
 )
 

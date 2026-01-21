@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/ava-labs/avalanchego/api/info"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/plugin/evm"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network/peer"
@@ -34,7 +35,6 @@ import (
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/ethclient"
-	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"go.uber.org/atomic"
 	// Sets GOMAXPROCS to the CPU quota for containerized environments
 	_ "go.uber.org/automaxprocs"
