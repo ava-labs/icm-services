@@ -97,10 +97,10 @@ library ValidatorSets {
         // lexicographically sorted as bytes
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
 
-
         for (uint32 i = 0; i < numValidators; i++) {
-            bytes memory unformattedPublicKey =
-                data[currentPosition:currentPosition + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH];
+            bytes memory unformattedPublicKey = data[
+                currentPosition:currentPosition + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH
+            ];
             require(
                 BLST.comparePublicKeys(unformattedPublicKey, previousPublicKey) > 0,
                 "BLS public key must be greater than the latest public key"
