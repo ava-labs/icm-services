@@ -82,7 +82,7 @@ contract ValidatorSetsTest is Test {
         ValidatorSetSignature memory signature =
             ValidatorSetSignature({signers: signers, signature: sig});
         bool res = ValidatorSets.verifyValidatorSetSignature(signature, message, validatorSet);
-        assert(!res);
+        assertFalse(res);
     }
 
     /*
