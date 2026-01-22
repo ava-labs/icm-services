@@ -106,14 +106,9 @@ source "$REPO_PATH"/scripts/versions.sh
 
 BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 
-cwd=$(pwd)
-# Install the avalanchego and subnet-evm binaries
+# Install the avalanchego binary
 rm -rf $BASEDIR/avalanchego
 BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
-BASEDIR=$BASEDIR "${REPO_PATH}/scripts/install_subnetevm_release.sh"
-
-cp ${BASEDIR}/subnet-evm/subnet-evm ${BASEDIR}/avalanchego/plugins/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
-echo "Copied ${BASEDIR}/subnet-evm/subnet-evm binary to ${BASEDIR}/avalanchego/plugins/"
 
 export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
 export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
