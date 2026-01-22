@@ -35,8 +35,15 @@ export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'8ebe57a20bba73840804778d44f714aa821b4131'}
 #SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/subnet-evm)")}
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-'7fc05124d976a3247dc1c32f87c5e4003ed6fb6b'}
+LIBEVM_VERSION=${LIBEVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/libevm)")}
 
 # Extract the Solidity version from foundry.toml
 AVALANCHE_ICM_PATH=${BASE_PATH}/icm-contracts/avalanche
 AVALANCHE_SOLIDITY_VERSION=$(awk -v profile=default -v key=solc_version -f scripts/parse_config.awk foundry.toml)
 AVALANCHE_EVM_VERSION=$(awk -v profile=default -v key=evm_version -f scripts/parse_config.awk foundry.toml)
+ETHEREUM_ICM_PATH=${BASE_PATH}/icm-contracts/ethereum
+ETHEREUM_SOLIDITY_VERSION=$(awk -v profile=ethereum -v key=solc_version -f scripts/parse_config.awk foundry.toml)
+ETHEREUM_EVM_VERSION=$(awk -v profile=ethereum -v key=evm_version -f scripts/parse_config.awk foundry.toml)
+COMMON_ICM_PATH=${BASE_PATH}/icm-contracts/common
+COMMON_SOLIDITY_VERSION=$(awk -v profile=common -v key=solc_version -f scripts/parse_config.awk foundry.toml)
+COMMON_EVM_VERSION=$(awk -v profile=common -v key=evm_version -f scripts/parse_config.awk foundry.toml)

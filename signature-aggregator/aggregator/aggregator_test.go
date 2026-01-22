@@ -425,7 +425,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				subnets.NoOpAllower,
 			).Times(1).DoAndReturn(
 				func(
-					outboundMsg message.OutboundMessage,
+					outboundMsg *message.OutboundMessage,
 					config interface{},
 					subnetID ids.ID,
 					allower interface{},

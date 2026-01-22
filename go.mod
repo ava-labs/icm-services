@@ -9,16 +9,16 @@ tool (
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.14.1-db-metrics-fix
-	github.com/ava-labs/libevm v1.13.15-0.20251016142715-1bccf4f2ddb2
-	github.com/ava-labs/subnet-evm v0.8.1-0.20251111182129-7fc05124d976
-	github.com/aws/aws-sdk-go-v2 v1.41.0
-	github.com/aws/aws-sdk-go-v2/config v1.32.5
-	github.com/aws/aws-sdk-go-v2/service/kms v1.49.4
+	github.com/ava-labs/avalanchego v1.14.1
+	github.com/ava-labs/avalanchego/graft/subnet-evm v0.8.2
+	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
+	github.com/aws/aws-sdk-go-v2 v1.41.1
+	github.com/aws/aws-sdk-go-v2/config v1.32.7
+	github.com/aws/aws-sdk-go-v2/service/kms v1.49.5
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/onsi/ginkgo/v2 v2.27.3
-	github.com/onsi/gomega v1.38.3
+	github.com/onsi/ginkgo/v2 v2.27.5
+	github.com/onsi/gomega v1.39.0
 	github.com/pingcap/errors v0.11.4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
@@ -33,10 +33,21 @@ require (
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/sync v0.19.0
-	golang.org/x/tools v0.40.0
-	google.golang.org/grpc v1.77.0
-	google.golang.org/protobuf v1.36.10
+	golang.org/x/tools v0.41.0
+	google.golang.org/grpc v1.78.0
+	google.golang.org/protobuf v1.36.11
 )
+
+// This is a placeholder require directive since the replacement below is necessary and for replacement to work, the require directive must be present. Separating it out here since it's an indirect requirement.
+
+require github.com/ava-labs/avalanchego/graft/evm v0.0.0-00010101000000-000000000000 // indirect
+
+// These are manual replacements pointing to the same commit as the avalanchego module. They must be updated whenever the avalanchego version is updated. Version is ignored but the short commit hash and the timestamp must be accepted by go mod tidy.
+replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260105172535-1a59a6f646ef
+
+replace github.com/ava-labs/avalanchego/graft/evm => github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260105172535-1a59a6f646ef
+
+replace github.com/ava-labs/avalanchego/graft/coreth => github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260105172535-1a59a6f646ef
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
@@ -73,7 +84,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/OpenPeeDeeP/depguard/v2 v2.2.1 // indirect
-	github.com/StephenButtolph/canoto v0.17.2 // indirect
+	github.com/StephenButtolph/canoto v0.17.3 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
 	github.com/alecthomas/go-check-sumtype v0.3.1 // indirect
 	github.com/alexkohler/nakedret/v2 v2.0.5 // indirect
@@ -83,19 +94,19 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
-	github.com/ava-labs/coreth v0.16.0-rc.0 // indirect
-	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.13 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.5 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.16 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.16 // indirect
+	github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260105172535-70148edc6eca // indirect
+	github.com/ava-labs/firewood-go-ethhash/ffi v0.0.18 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.7 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.17 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.16 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.0.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.30.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.12 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.41.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.0.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.13 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6 // indirect
 	github.com/aws/smithy-go v1.24.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
@@ -364,19 +375,19 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250210185358-939b2ce775ac // indirect
-	golang.org/x/mod v0.31.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/term v0.38.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/term v0.39.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gonum.org/v1/gonum v0.16.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20251022142026-3a174f9686a8 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20251029180050-ab9386a59fda // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
