@@ -17,6 +17,7 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/common"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -55,12 +56,6 @@ func TestTeleporter(t *testing.T) {
 
 // Define the Teleporter before and after suite functions.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
-	teleporterContractAddress,
-		teleporterDeployerAddress,
-		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
-
-	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
-
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer cancel()
@@ -73,18 +68,12 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			{
 				Name:                         "A",
 				EVMChainID:                   12345,
-				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
-				TeleporterDeployerAddress:    teleporterDeployerAddress,
 				NodeCount:                    5,
 				RequirePrimaryNetworkSigners: true,
 			},
 			{
 				Name:                         "B",
 				EVMChainID:                   54321,
-				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
-				TeleporterDeployerAddress:    teleporterDeployerAddress,
 				NodeCount:                    5,
 				RequirePrimaryNetworkSigners: true,
 			},
@@ -98,21 +87,15 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the l1 chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
+	var teleporterContractAddress common.Address
 	if e2eFlags.NetworkDir() == "" {
-		utils.DeployWithNicksMethod(
-			ctx,
-			localNetworkInstance.GetPrimaryNetworkInfo(),
-			teleporterDeployerTransaction,
-			teleporterDeployerAddress,
-			teleporterContractAddress,
-			fundedKey,
-		)
 		balance := 100 * units.Avax
-		for _, subnet := range localNetworkInstance.GetL1Infos() {
+		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+			teleporterContractAddress = utils.DeployTeleporterV2(ctx, l1, fundedKey)
 			// Choose weights such that we can test validator churn
 			localNetworkInstance.ConvertSubnet(
 				ctx,
-				subnet,
+				l1,
 				utils.PoAValidatorManager,
 				[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
 				[]uint64{balance, balance, balance, balance, balance},
@@ -132,6 +115,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		localNetworkInstance.SaveValidatorAddress(validatorAddressesFile)
 	} else {
 		// Read the Teleporter registry address from the file
+		// TODO this is broken right now
 		utils.SetTeleporterInfoFromFile(
 			teleporterRegistryAddressFile,
 			teleporterContractAddress,

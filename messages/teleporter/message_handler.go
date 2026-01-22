@@ -276,7 +276,9 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		return common.Hash{}, err
 	}
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
-	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
+	callData, err := teleportermessenger.PackReceiveCrossChainMessageV2(
+		*m.teleporterMessage,
+		m.unsignedMessage.SourceChainID,
 		0,
 		common.HexToAddress(m.messageConfig.RewardAddress),
 	)

@@ -33,7 +33,9 @@ contract WarpAdapter is IMessageSender, IMessageVerifier {
     // having the TeleporterMessage struct is more clear for now.
     // We should also consider having the warp message just be the hash of the teleporter message to save gas.
     // As-is, we need to pass the full teleporter message in the transaction predicate, and the transaction data.
-    function sendMessage(TeleporterMessage calldata message) external override {
+    function sendMessage(
+        TeleporterMessage calldata message
+    ) external override {
         // Submit the message to the AWM precompile.
         WARP_MESSENGER.sendWarpMessage(abi.encode(message));
     }
@@ -42,8 +44,10 @@ contract WarpAdapter is IMessageSender, IMessageVerifier {
     // just going to do either.
     // We should pass in the hash of the unsigned message instead of the full message to save gas. I'm
     // going to leave the type as is for now for clarity of what exactly is being verified.
-    function verifyMessage(ICMMessage calldata message) external view override returns (bool) {
-        uint32 messageIndex =  abi.decode(message.attestation, (uint32));
+    function verifyMessage(
+        ICMMessage calldata message
+    ) external view override returns (bool) {
+        uint32 messageIndex = abi.decode(message.attestation, (uint32));
 
         // Verify and parse the cross chain message included in the transaction access list
         // using the warp message precompile.
@@ -66,7 +70,7 @@ contract WarpAdapter is IMessageSender, IMessageVerifier {
             "WarpAdapter: invalid source blockchain ID"
         );
 
-        bytes32 warpHash = keccak256(abi.encode(warpMessage.payload));
+        bytes32 warpHash = keccak256(warpMessage.payload);
         bytes32 inputHash = keccak256(abi.encode(message.unsignedMessage));
 
         return (warpHash == inputHash);

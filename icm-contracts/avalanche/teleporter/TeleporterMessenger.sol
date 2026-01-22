@@ -7,6 +7,7 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
+import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {
     TeleporterMessageReceipt,
     TeleporterMessageInput,
@@ -43,6 +44,12 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
         bytes32 messageHash;
         TeleporterFeeInfo feeInfo;
     }
+
+    /**
+     * @notice Warp precompile used for sending and receiving Warp messages.
+     */
+    IWarpMessenger public constant WARP_MESSENGER =
+        IWarpMessenger(0x0200000000000000000000000000000000000005);
 
     IMessageSender public immutable messageSender;
     IMessageVerifier public immutable messageVerifier;
@@ -110,7 +117,7 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
     constructor(
         address verifierSender
     ) {
-        blockchainID = bytes32(0); // TODO decide how to set this for external chains
+        blockchainID = WARP_MESSENGER.getBlockchainID(); // TODO decide how to set this for external chains
         messageVerifier = IMessageVerifier(verifierSender);
         messageSender = IMessageSender(verifierSender);
     }
@@ -244,14 +251,17 @@ contract TeleporterMessenger is ITeleporterMessenger, ReentrancyGuards {
      *
      * @inheritdoc ITeleporterMessenger
      */
-    function receiveCrossChainMessage(ICMMessage calldata message, address relayerRewardAddress) external receiverNonReentrant {
+    function receiveCrossChainMessage(
+        ICMMessage calldata message,
+        address relayerRewardAddress
+    ) external receiverNonReentrant {
         require(
             messageVerifier.verifyMessage(message),
             "TeleporterMessenger: message verification failed"
         );
 
         TeleporterMessage calldata teleporterMessage = message.unsignedMessage;
-        
+
         // Require that the message was intended for this blockchain.
         require(
             teleporterMessage.destinationBlockchainID == blockchainID,

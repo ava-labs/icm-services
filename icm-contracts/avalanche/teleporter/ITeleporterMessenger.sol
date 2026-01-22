@@ -13,12 +13,12 @@ struct TeleporterMessageReceipt {
 }
 
 struct ICMMessage {
-	TeleporterMessage unsignedMessage;
-	// The blockchain on which the message originated. This needs to be checked by the verifier contract.
-	bytes32 sourceBlockchainID;
-	// Arbitrary data. Used by `IMessageVerifier` contracts to 
-	// to authenticate the message
-	bytes attestation;
+    TeleporterMessage unsignedMessage;
+    // The blockchain on which the message originated. This needs to be checked by the verifier contract.
+    bytes32 sourceBlockchainID;
+    // Arbitrary data. Used by `IMessageVerifier` contracts to
+    // to authenticate the message
+    bytes attestation;
 }
 
 // Represents all of the information required for submitting a Teleporter message
@@ -59,13 +59,17 @@ struct TeleporterFeeInfo {
 }
 
 interface IMessageVerifier {
-	function verifyMessage(ICMMessage calldata message) external returns (bool);
+    function verifyMessage(
+        ICMMessage calldata message
+    ) external returns (bool);
 }
 
 // This function signature can be changed to accept bytes to make it more generic, but I think
 // having the TeleporterMessage struct is more clear for now.
 interface IMessageSender {
-	function sendMessage(TeleporterMessage calldata message) external;
+    function sendMessage(
+        TeleporterMessage calldata message
+    ) external;
 }
 
 /**
@@ -177,7 +181,10 @@ interface ITeleporterMessenger {
     /**
      * @notice Receives a cross-chain message, and marks the `relayerRewardAddress` for fee reward for a successful delivery.
      */
-    function receiveCrossChainMessage(ICMMessage calldata message, address relayerRewardAddress) external;
+    function receiveCrossChainMessage(
+        ICMMessage calldata message,
+        address relayerRewardAddress
+    ) external;
 
     /**
      * @notice Retries the execution of a previously delivered message by verifying the payload matches
