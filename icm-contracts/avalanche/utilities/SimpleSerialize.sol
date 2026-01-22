@@ -23,13 +23,12 @@ library SSZ {
         // Allocate the stack to store intermediate nodes
         uint256 depth = Math.log2(count, Math.Rounding.Floor);
         bytes32[] memory stack = new bytes32[](depth + 1);
-        uint256 topLevel = 0;
         // Loop through every leaf
         for (uint256 i = 0; i < count; i++) {
             bytes32 node = leaves[i];
             // Merge up logic.
-            // If the current index is odd, it means we just finished a right child.
-            // We must hash it with the left child waiting in the stack.
+            // If the current index is odd, it means we just finished a right child
+            // We must hash it with the left child waiting in the stack
             uint256 size = i + 1;
             uint256 level = 0;
             // While size is even, we are a right sibling, then merge up
@@ -40,12 +39,9 @@ library SSZ {
             }
             // Store the pending node, waiting for its right sibling
             stack[level] = node;
-            if (level > topLevel) {
-                topLevel = level;
-            }
         }
-        // The final root is at the top level
-        return stack[topLevel];
+        // Return the root
+        return stack[depth];
     }
 
     /// @notice Computes the Merkle Root using a leaf, its index, and the proof
