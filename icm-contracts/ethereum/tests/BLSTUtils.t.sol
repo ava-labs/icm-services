@@ -245,6 +245,7 @@ contract BLSTUtilsTest is Test {
 
     /*
      * @dev Create 96 bytes from three 32 bytes words
+     * N.B. These are not real public keys. They are intended for testing key-sorting tests
      */
     function _createPublicKeyFromWords(
         uint256 x,
