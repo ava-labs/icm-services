@@ -265,7 +265,7 @@ library ValidatorSets {
         uint64 aggregateWeight = 0;
 
         if (validators.length == 0) {
-            return (aggregatePublicKey, aggregateWeight);
+            revert("Cannot validate against an empty list of validators");
         }
 
         uint256 byteIndex = (validators.length - 1) / 8;
