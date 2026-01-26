@@ -8,7 +8,7 @@ import {
     ValidatorSet,
     ValidatorSets,
     ValidatorSetSignature,
-ValidatorSetMetadata,
+    ValidatorSetMetadata,
     ValidatorSetShard
 } from "../utils/ValidatorSets.sol";
 
@@ -119,7 +119,7 @@ contract ValidatorSetsTest is Test {
      * @dev Test to make sure a round trip of serialization is a no-op
      */
     function testRoundTripValidatorSet(
-       uint256 numValidators
+        uint256 numValidators
     ) public pure {
         vm.assume(numValidators < 10);
         uint64 totalWeight = 0;
@@ -162,9 +162,9 @@ contract ValidatorSetsTest is Test {
             totalValidators: totalValidators,
             shardHashes: shardHashes
         });
-        bytes memory serialized = ValidatorSets.serializeValidatorSetStatePayload(payload);
+        bytes memory serialized = ValidatorSets.serializeValidatorSetMetadata(payload);
         ValidatorSetMetadata memory deserialized =
-            ValidatorSets.parseValidatorSetStatePayload(serialized);
+            ValidatorSets.parseValidatorSetMetadata(serialized);
         assertEq(payload.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(payload.pChainHeight, deserialized.pChainHeight);
         assertEq(payload.pChainTimestamp, deserialized.pChainTimestamp);
@@ -198,14 +198,12 @@ contract ValidatorSetsTest is Test {
         uint64 shardNumber,
         bytes32 avalancheBlockchainID
     ) public pure {
-        ValidatorSetShard memory validatorSetShard =
-            ValidatorSetShard({
-                shardNumber: shardNumber,
-                avalancheBlockchainID: avalancheBlockchainID
-            });
+        ValidatorSetShard memory validatorSetShard = ValidatorSetShard({
+            shardNumber: shardNumber,
+            avalancheBlockchainID: avalancheBlockchainID
+        });
         bytes memory serialized = ValidatorSets.serializeValidatorSetShard(validatorSetShard);
-        ValidatorSetShard memory deserialized =
-            ValidatorSets.parseValidatorSetShard(serialized);
+        ValidatorSetShard memory deserialized = ValidatorSets.parseValidatorSetShard(serialized);
 
         assertEq(deserialized.shardNumber, shardNumber);
         assertEq(deserialized.avalancheBlockchainID, avalancheBlockchainID);
