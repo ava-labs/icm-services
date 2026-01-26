@@ -351,9 +351,9 @@ func DeployWithNicksMethod(
 	)
 	SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, fundDeployerTx)
 
-	log.Info("Finished funding Teleporter deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
+	log.Info("Finished funding contract deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
 
-	// Deploy Teleporter contract
+	// Deploy contract
 	rpcClient, err := rpc.DialContext(
 		ctx,
 		HttpToRPCURI(l1.NodeURIs[0], l1.BlockchainID.String()),
@@ -366,9 +366,9 @@ func DeployWithNicksMethod(
 	Expect(err).Should(BeNil())
 	WaitForTransactionSuccess(ctx, l1.RPCClient, txHash)
 
-	teleporterCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
+	contractCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
 	Expect(err).Should(BeNil())
-	Expect(len(teleporterCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
+	Expect(len(contractCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
 }
 
 // Deploys a new version of Teleporter and returns its address
@@ -380,12 +380,12 @@ func DeployNewTeleporterVersion(
 	teleporterByteCodeFile string,
 ) common.Address {
 	contractCreationGasPrice := new(big.Int).Add(deploymentUtils.GetDefaultContractCreationGasPrice(), big.NewInt(1))
-	teleporterDeployerTransaction,
-		_,
-		teleporterDeployerAddress,
-		teleporterContractAddress,
-		err := deploymentUtils.ConstructKeylessTransaction(
-		teleporterByteCodeFile,
+
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(teleporterByteCodeFile)
+	Expect(err).Should(BeNil())
+
+	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
+		byteCode,
 		false,
 		contractCreationGasPrice,
 	)
@@ -394,13 +394,13 @@ func DeployNewTeleporterVersion(
 	DeployWithNicksMethod(
 		ctx,
 		l1,
-		teleporterDeployerTransaction,
-		teleporterDeployerAddress,
-		teleporterContractAddress,
+		transactionBytes,
+		deployerAddress,
+		contractAddress,
 		fundedKey,
 	)
 
-	return teleporterContractAddress
+	return contractAddress
 }
 
 func DeployTestMessenger(
