@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Initializable} from "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 import {IAvalancheValidatorSetRegistry} from "./interfaces/IAvalancheValidatorSetRegistry.sol";
 import {ICMMessage} from "../common/ICM.sol";
 import {
@@ -25,7 +24,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     // Used to allow updating validator sets across multiple transactions
     mapping(bytes32 => PartialValidatorSet) private _partialValidatorSets;
 
-
     constructor(
         uint32 avalancheNetworkID_,
         // The metadata about the initial validator set. This is used
@@ -46,7 +44,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             numValidators: 0,
             partialWeight: 0
         });
-        // warm up the storage slots
+        // pre-allocate the storage slots
         _validatorSets[pChainID] = ValidatorSet({
             avalancheBlockchainID: initialValidatorSetData.avalancheBlockchainID,
             pChainHeight: initialValidatorSetData.pChainHeight,
@@ -54,25 +52,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             validators: new Validator[](initialValidatorSetData.totalValidators),
             totalWeight: 0
         });
-    }
-
-    /**
-     * @notice Apply a shard as part of initializing the very first P-chain validator set
-     */
-    function updateInitialPChainValidatorSet(
-        ValidatorSetShard calldata pChainShard,
-        bytes memory validatorBytes
-    ) public  {
-        require(!_pChainInitialized(), "The initial P-chain validator set is already initialized");
-        _applyShard(pChainShard, validatorBytes);
-    }
-
-    /**
-     * @notice Gets the Avalanche network ID
-     * @return The Avalanche network ID
-     */
-    function getAvalancheNetworkID() external view returns (uint32) {
-        return avalancheNetworkID;
     }
 
     /**
@@ -90,7 +69,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     ) external override {
         // Check the network ID and signature
         // N.B. this message should be signed by the currently registered P-chain validator set
-        verifyICMMessage(message,  pChainID);
+        verifyICMMessage(message, pChainID);
 
         // Parse and validate the validator set payload
         (
@@ -111,6 +90,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             for (uint256 i = 0; i < validators.length; i++) {
                 valSet[i] = validators[i];
             }
+
             // initialize the partial validator set and store it
             _partialValidatorSets[validatorSetMetadata.avalancheBlockchainID] = PartialValidatorSet({
                 pChainHeight: validatorSetMetadata.pChainHeight,
@@ -143,11 +123,39 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             });
             // Store the validator set.
             _validatorSets[validatorSet.avalancheBlockchainID] = validatorSet;
-            emit ValidatorSetRegistered( validatorSet.avalancheBlockchainID);
+            emit ValidatorSetRegistered(validatorSet.avalancheBlockchainID);
         }
     }
 
-    /*
+    /**
+     * @notice Gets the Avalanche network ID
+     * @return The Avalanche network ID
+     */
+    function getAvalancheNetworkID() external view returns (uint32) {
+        return avalancheNetworkID;
+    }
+
+    /**
+     * @notice Apply a shard as part of initializing the very first P-chain validator set
+     */
+    function updateInitialPChainValidatorSet(
+        ValidatorSetShard calldata pChainShard,
+        bytes memory validatorBytes
+    ) public {
+        require(!pChainInitialized(), "The initial P-chain validator set is already initialized");
+        _applyShard(pChainShard, validatorBytes);
+    }
+
+    /**
+     * @dev Check if a P-chain validator set has been completely registered.
+     * Until is has, no functions other than adding to this validator set are
+     * permitted.
+     */
+    function pChainInitialized() public view returns (bool) {
+        return _validatorSets[pChainID].totalWeight != 0;
+    }
+
+    /**
      * @notice Verify that the message is
      *   1. Check that the contracts root of trust has been initialized completely
      *   2. Intended for this network ID
@@ -158,17 +166,71 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ICMMessage calldata message,
         bytes32 avalancheBlockchainID
     ) public view {
-        require(_pChainInitialized(), "Cannot verify ICM Messages until a complete P-chain validator set has been registered");
+        require(
+            pChainInitialized(),
+            "A complete P-chain validator must be registered to verify ICM messages"
+        );
         require(
             _isRegistered(avalancheBlockchainID),
             "No validator set is registered for the provided Avalanche blockchain ID"
         );
         require(message.message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
-        ValidatorSetSignature memory sig = ValidatorSets.parseValidatorSetSignature(message.attestation);
+        ValidatorSetSignature memory sig =
+            ValidatorSets.parseValidatorSetSignature(message.attestation);
         require(
-            ValidatorSets.verifyValidatorSetSignature(sig, message.rawMessageBytes, _validatorSets[avalancheBlockchainID]),
+            ValidatorSets.verifyValidatorSetSignature(
+                sig, message.rawMessageBytes, _validatorSets[avalancheBlockchainID]
+            ),
             "Could not register validator set: Signature checks failed"
         );
+    }
+
+    /**
+     * @dev Apply a shard to a partial validator set. If the set is completed by this shard, copy
+     * it over to the `_validatorSets` mapping.
+     */
+    function _applyShard(ValidatorSetShard calldata shard, bytes memory validatorBytes) private {
+        bytes32 avalancheBlockchainID = shard.avalancheBlockchainID;
+        require(
+            _partialValidatorSets[avalancheBlockchainID].shardsReceived + 1 == shard.shardNumber,
+            "Received shard out of order"
+        );
+        require(
+            _partialValidatorSets[avalancheBlockchainID].shardHashes[shard.shardNumber - 1]
+                == sha256(validatorBytes),
+            "Unexpected shard hash"
+        );
+        // Parse the validators.
+        (Validator[] memory validators, uint64 validatorWeight) =
+            ValidatorSets.parseValidators(validatorBytes);
+        require(validators.length > 0, "Validator set cannot be empty");
+        require(validatorWeight > 0, "Total weight must be greater than 0");
+
+        // update the partial validator set
+        uint256 offset = _partialValidatorSets[avalancheBlockchainID].numValidators;
+        for (uint256 i = 0; i < validators.length; i++) {
+            _partialValidatorSets[avalancheBlockchainID].validators[offset + i] = validators[i];
+        }
+        _partialValidatorSets[avalancheBlockchainID].numValidators += validators.length;
+        _partialValidatorSets[avalancheBlockchainID].partialWeight += validatorWeight;
+        _partialValidatorSets[avalancheBlockchainID].shardsReceived += 1;
+
+        // We have received all shards. Place this validator set into the mapping
+        if (shard.shardNumber == _partialValidatorSets[avalancheBlockchainID].shardHashes.length) {
+            _validatorSets[avalancheBlockchainID].validators =
+                _partialValidatorSets[avalancheBlockchainID].validators;
+            _validatorSets[avalancheBlockchainID].totalWeight =
+                _partialValidatorSets[avalancheBlockchainID].partialWeight;
+        }
+    }
+
+    /**
+     * @dev Check if a validator set is already registered under the given `avalancheBlockchainID`.
+     */
+    function _isRegistered(
+        bytes32 avalancheBlockchainID
+    ) private view returns (bool) {
+        return _validatorSets[avalancheBlockchainID].totalWeight != 0;
     }
 
     /**
@@ -184,81 +246,24 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     function _parseAndValidateValidatorSetPayload(
         ICMMessage calldata icmMessage,
         bytes calldata validatorBytes
-    ) private pure returns (ValidatorSetMetadata memory, Validator[] memory, uint64 ) {
+    ) private pure returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
         // Validate that the source address is empty.
         require(icmMessage.message.sourceAddress == address(0), "Source address must be empty");
 
         // Parse the validator set state payload.
         ValidatorSetMetadata memory validatorSetStatePayload =
-                ValidatorSets.parseValidatorSetStatePayload(icmMessage.message.payload);
+            ValidatorSets.parseValidatorSetMetadata(icmMessage.message.payload);
         // Check that the first validator set shard hash matches the hash of the serialized validator set.
         require(
             validatorSetStatePayload.shardHashes[0] == sha256(validatorBytes),
             "Validator set hash mismatch"
         );
         // Parse the validators.
-        (Validator[] memory validators, uint64 totalWeight) = ValidatorSets.parseValidators(validatorBytes);
+        (Validator[] memory validators, uint64 totalWeight) =
+            ValidatorSets.parseValidators(validatorBytes);
 
         require(validators.length > 0, "Validator set cannot be empty");
         require(totalWeight > 0, "Total weight must be greater than 0");
-        return (validatorSetStatePayload, validators,  totalWeight);
+        return (validatorSetStatePayload, validators, totalWeight);
     }
-
-    /**
-     * @dev Apply a shard to a partial validator set. If the set is completed by this shard, copy
-     * it over to the `_validatorSets` mapping.
-     */
-    function _applyShard(
-        ValidatorSetShard calldata shard,
-        bytes memory validatorBytes
-    ) private  {
-        bytes32 avalancheBlockchainID = shard.avalancheBlockchainID;
-        require(
-            _partialValidatorSets[avalancheBlockchainID].shardsReceived + 1 == shard.shardNumber,
-            "Received shard out of order"
-        );
-        require(
-            _partialValidatorSets[avalancheBlockchainID].shardHashes[shard.shardNumber] == sha256(validatorBytes),
-            "Unexpected shard hash"
-        );
-        // Parse the validators.
-        (Validator[] memory validators, uint64 validatorWeight) = ValidatorSets.parseValidators(validatorBytes);
-        require(validators.length > 0, "Validator set cannot be empty");
-        require(validatorWeight > 0, "Total weight must be greater than 0");
-
-        // update the partial validator set
-        uint256 offset = _partialValidatorSets[avalancheBlockchainID].numValidators;
-        for (uint256 i = 0; i < validators.length; i++) {
-            _partialValidatorSets[avalancheBlockchainID].validators[offset + i] = validators[i];
-        }
-        _partialValidatorSets[avalancheBlockchainID].numValidators += validators.length;
-        _partialValidatorSets[avalancheBlockchainID].partialWeight += validatorWeight;
-        _partialValidatorSets[avalancheBlockchainID].shardsReceived += 1;
-
-        // We have received all shards. Place this validator set into the mapping
-        if (shard.shardNumber == _partialValidatorSets[avalancheBlockchainID].shardHashes.length) {
-            _validatorSets[avalancheBlockchainID].validators = _partialValidatorSets[avalancheBlockchainID].validators;
-            _validatorSets[avalancheBlockchainID].totalWeight = _partialValidatorSets[avalancheBlockchainID].partialWeight;
-        }
-
-    }
-
-    /**
-     * @dev Check if a P-chain validator set has been completely registered.
-     * Until is has, no functions other than adding to this validator set are
-     * permitted.
-     */
-    function _pChainInitialized() private view returns (bool) {
-        return _validatorSets[pChainID].totalWeight != 0;
-    }
-
-    /**
-     * @dev Check if a validator set is already registered under the given `avalancheBlockchainID`.
-     */
-    function _isRegistered(
-        bytes32 avalancheBlockchainID
-    ) private view returns (bool) {
-        return _validatorSets[avalancheBlockchainID].totalWeight != 0;
-    }
-
 }
