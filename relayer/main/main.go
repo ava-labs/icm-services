@@ -36,6 +36,7 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/atomic"
+
 	// Sets GOMAXPROCS to the CPU quota for containerized environments
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
@@ -272,6 +273,7 @@ func main() {
 		context.Background(),
 		logger,
 		relayer.NewApplicationRelayerMetrics(relayerMetricsRegistry),
+		checkpoint.NewCheckpointManagerMetrics(relayerMetricsRegistry),
 		db,
 		ticker,
 		network,
@@ -479,6 +481,7 @@ func createApplicationRelayers(
 	ctx context.Context,
 	logger logging.Logger,
 	relayerMetrics *relayer.ApplicationRelayerMetrics,
+	checkpointMetrics *checkpoint.CheckpointManagerMetrics,
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
 	network *peers.AppRequestNetwork,
@@ -505,6 +508,7 @@ func createApplicationRelayers(
 			ctx,
 			logger,
 			relayerMetrics,
+			checkpointMetrics,
 			db,
 			ticker,
 			*sourceBlockchain,
@@ -534,6 +538,7 @@ func createApplicationRelayersForSourceChain(
 	ctx context.Context,
 	logger logging.Logger,
 	metrics *relayer.ApplicationRelayerMetrics,
+	checkpointMetrics *checkpoint.CheckpointManagerMetrics,
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
 	sourceBlockchain config.SourceBlockchain,
@@ -588,6 +593,7 @@ func createApplicationRelayersForSourceChain(
 
 		checkpointManager, err := checkpoint.NewCheckpointManager(
 			logger,
+			checkpointMetrics,
 			db,
 			ticker.Subscribe(),
 			relayerID,
