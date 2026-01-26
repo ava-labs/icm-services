@@ -36,7 +36,6 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/atomic"
-
 	// Sets GOMAXPROCS to the CPU quota for containerized environments
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"

@@ -20,14 +20,14 @@ func NewCheckpointManagerMetrics(registerer prometheus.Registerer) *CheckpointMa
 				Name: "checkpoint_pending_commits_heap_length",
 				Help: "Number of pending commits in the heap",
 			},
-			[]string{"destination_blockchain_id", "source_blockchain_id"},
+			[]string{"relayer_id", "destination_blockchain_id", "source_blockchain_id"},
 		),
 		committedHeight: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "checkpoint_committed_height",
 				Help: "Current committed block height",
 			},
-			[]string{"destination_blockchain_id", "source_blockchain_id"},
+			[]string{"relayer_id", "destination_blockchain_id", "source_blockchain_id"},
 		),
 	}
 
@@ -39,6 +39,7 @@ func NewCheckpointManagerMetrics(registerer prometheus.Registerer) *CheckpointMa
 
 func (m *CheckpointManagerMetrics) UpdatePendingCommitsHeapLength(relayerID database.RelayerID, length int) {
 	m.pendingCommitsHeapLength.WithLabelValues(
+		relayerID.ID.String(),
 		relayerID.DestinationBlockchainID.String(),
 		relayerID.SourceBlockchainID.String(),
 	).Set(float64(length))
@@ -46,6 +47,7 @@ func (m *CheckpointManagerMetrics) UpdatePendingCommitsHeapLength(relayerID data
 
 func (m *CheckpointManagerMetrics) UpdateCommittedHeight(relayerID database.RelayerID, height uint64) {
 	m.committedHeight.WithLabelValues(
+		relayerID.ID.String(),
 		relayerID.DestinationBlockchainID.String(),
 		relayerID.SourceBlockchainID.String(),
 	).Set(float64(height))
