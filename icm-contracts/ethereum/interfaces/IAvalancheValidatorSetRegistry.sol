@@ -10,13 +10,9 @@ import {ICMMessage} from "../../common/ICM.sol";
  * from a given validator set.
  */
 interface IAvalancheValidatorSetRegistry {
-    event ValidatorSetRegistered(
-        bytes32 indexed avalancheBlockchainID
-    );
+    event ValidatorSetRegistered(bytes32 indexed avalancheBlockchainID);
 
-    event ValidatorSetUpdated(
-        bytes32 indexed avalancheBlockchainID
-    );
+    event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID);
 
     /**
      * @notice Registers a new validator set

@@ -30,7 +30,7 @@ struct ValidatorSetMetadata {
     uint64 totalValidators;
     // A list of hashes for each shard. These are expected to arrive
     // in order
-    bytes32[]  shardHashes;
+    bytes32[] shardHashes;
 }
 
 // A shard to add to a validator set for which partial data has already
@@ -222,7 +222,7 @@ library ValidatorSets {
      * - 32 bytes: Hash of validator set
      * @return ValidatorSetStatePayload instance
      */
-    function parseValidatorSetStatePayload(
+    function parseValidatorSetMetadata(
         bytes calldata data
     ) public pure returns (ValidatorSetMetadata memory) {
         // Check the codec ID is 0
@@ -265,7 +265,7 @@ library ValidatorSets {
     /*
      * @notice Serialize a ValidatorSetStatePayload
      */
-    function serializeValidatorSetStatePayload(
+    function serializeValidatorSetMetadata(
         ValidatorSetMetadata memory payload
     ) public pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
@@ -322,7 +322,7 @@ library ValidatorSets {
     function serializeValidatorSetShard(
         ValidatorSetShard memory shard
     ) public pure returns (bytes memory) {
-        return abi.encodePacked( shard.shardNumber, shard.avalancheBlockchainID);
+        return abi.encodePacked(shard.shardNumber, shard.avalancheBlockchainID);
     }
 
     /*
