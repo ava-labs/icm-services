@@ -183,7 +183,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         assertFalse(_registry.pChainInitialized());
-        _registry.updateInitialPChainValidatorSet(shard, validatorBytes);
+        _registry.updateValidatorSet(shard, validatorBytes);
         assertTrue(_registry.pChainInitialized());
     }
 
@@ -199,14 +199,14 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         assertFalse(_registry.pChainInitialized());
-        _registry.updateInitialPChainValidatorSet(shard1, validatorBytes);
+        _registry.updateValidatorSet(shard1, validatorBytes);
         assertTrue(_registry.pChainInitialized());
         ValidatorSetShard memory shard2 = ValidatorSetShard({
             shardNumber: 2,
             avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
-        vm.expectRevert(bytes("The initial P-chain validator set is already initialized"));
-        _registry.updateInitialPChainValidatorSet(shard2, validatorBytes);
+        vm.expectRevert(bytes("Cannot apply shard if registration is not in progress"));
+        _registry.updateValidatorSet(shard2, validatorBytes);
     }
 
     /**
@@ -221,7 +221,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         });
         assertFalse(_registry.pChainInitialized());
         vm.expectRevert(bytes("Received shard out of order"));
-        _registry.updateInitialPChainValidatorSet(shard, validatorBytes);
+        _registry.updateValidatorSet(shard, validatorBytes);
     }
 
     /**
@@ -246,7 +246,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         });
         assertFalse(_registry.pChainInitialized());
         vm.expectRevert(bytes("Unexpected shard hash"));
-        _registry.updateInitialPChainValidatorSet(shard, validatorBytes);
+        _registry.updateValidatorSet(shard, validatorBytes);
     }
 
     /**
@@ -292,7 +292,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             shardNumber: 1,
             avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
-        _registry.updateInitialPChainValidatorSet(shard, validatorBytes);
+        _registry.updateValidatorSet(shard, validatorBytes);
     }
 
     /**
