@@ -17,6 +17,13 @@ interface IAvalancheValidatorSetRegistry {
     event ValidatorSetUpdated(
         uint256 indexed validatorSetID, bytes32 indexed avalancheBlockchainID
     );
+    event ValidatorSetDiffApplied(
+        uint256 indexed validatorSetID,
+        bytes32 indexed avalancheBlockchainID,
+        uint256 numAdded,
+        uint256 numRemoved,
+        uint256 numModified
+    );
 
     /**
      * @notice Registers a new validator set
@@ -48,6 +55,21 @@ interface IAvalancheValidatorSetRegistry {
         uint256 validatorSetID,
         ICMMessage calldata message,
         bytes memory validatorBytes
+    ) external;
+
+    /**
+     * @notice Updates a validator set using an incremental diff
+     * @dev This is more gas-efficient than updateValidatorSet when only a few validators change.
+     * Uses the "cryptographic sandwich" technique to verify correctness:
+     * 1. Verifies previous hash matches current state (state continuity)
+     * 2. Applies the diff to compute new state
+     * 3. Verifies resulting hash matches signed commitment (tamper detection)
+     * @param validatorSetID The ID of the validator set to update
+     * @param message The ICM message containing the ValidatorSetDiff payload
+     */
+    function updateValidatorSetWithDiff(
+        uint256 validatorSetID,
+        ICMMessage calldata message
     ) external;
 
     /**

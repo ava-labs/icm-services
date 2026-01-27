@@ -6,6 +6,8 @@ import {
     Validator,
     ValidatorSet,
     ValidatorSetStatePayload,
+    ValidatorSetDiffPayload,
+    ValidatorChange,
     ValidatorSets
 } from "./utils/ValidatorSets.sol";
 import {ICMMessage} from "@avalabs/avalanche-contracts/teleporter/ITeleporterMessenger.sol";
@@ -157,6 +159,100 @@ contract AvalancheValidatorSetRegistry is
         });
 
         emit ValidatorSetUpdated(validatorSetID, validatorSetStatePayload.avalancheBlockchainID);
+    }
+
+    /**
+     * @notice Updates a validator set using a diff (incremental update)
+     * @dev This is more gas-efficient than updateValidatorSet when only a few validators change.
+     * The diff is verified using the "cryptographic sandwich" technique:
+     * 1. Verify the message was signed by the current validator set
+     * 2. Verify the previous hash matches our current state
+     * 3. Apply the diff to get the new validator set
+     * 4. Verify the resulting hash matches the signed current hash
+     * @param validatorSetID The ID of the validator set to update
+     * @param message The ICM message containing the ValidatorSetDiff payload
+     */
+    function updateValidatorSetWithDiff(
+        uint256 validatorSetID,
+        ICMMessage calldata message
+    ) external {
+        require(validatorSetID < nextValidatorSetID, "Validator set does not exist");
+
+        ValidatorSet storage currentValidatorSet = _validatorSets[validatorSetID];
+
+        // Verify the ICM message using the current validator set (at previousHeight)
+        ICM.verifyICMMessage(message, avalancheNetworkID, avalancheBlockChainID, currentValidatorSet);
+
+        // Parse the addressed call and validate that the source address is empty
+        AddressedCall memory addressedCall = ICM.parseAddressedCall(message.unsignedMessage.payload);
+        require(addressedCall.sourceAddress.length == 0, "Source address must be empty");
+
+        // Parse the ValidatorSetDiff payload
+        ValidatorSetDiffPayload memory diffPayload = ValidatorSets.parseValidatorSetDiffPayload(addressedCall.payload);
+
+        // Verify blockchain ID matches
+        require(
+            diffPayload.avalancheBlockchainID == currentValidatorSet.avalancheBlockchainID,
+            "Blockchain ID mismatch"
+        );
+
+        // Step 1: Verify previous hash matches current state (state continuity check)
+        bytes memory currentValidatorsBytes = ValidatorSets.serializeValidators(currentValidatorSet.validators);
+        bytes32 currentHash = sha256(currentValidatorsBytes);
+        require(
+            currentHash == diffPayload.previousValidatorSetHash,
+            "Previous validator set hash mismatch - state out of sync"
+        );
+
+        // Verify height progression
+        require(
+            diffPayload.previousHeight == currentValidatorSet.pChainHeight,
+            "Previous height must match current validator set height"
+        );
+        require(
+            diffPayload.currentHeight > currentValidatorSet.pChainHeight,
+            "Current height must be greater than previous height"
+        );
+
+        // Verify timestamp progression
+        require(
+            diffPayload.currentTimestamp > currentValidatorSet.pChainTimestamp,
+            "Current timestamp must be greater than previous timestamp"
+        );
+
+        // Step 2: Apply the diff to get new validators
+        (Validator[] memory newValidators, uint64 newTotalWeight) = ValidatorSets.applyDiff(
+            currentValidatorSet.validators,
+            diffPayload
+        );
+
+        require(newValidators.length > 0, "Resulting validator set cannot be empty");
+        require(newTotalWeight > 0, "Total weight must be greater than 0");
+
+        // Step 3: Verify resulting hash matches signed commitment (tamper detection)
+        bytes memory newValidatorsBytes = ValidatorSets.serializeValidators(newValidators);
+        bytes32 newHash = sha256(newValidatorsBytes);
+        require(
+            newHash == diffPayload.currentValidatorSetHash,
+            "Resulting validator set hash mismatch - diff application error or tampering"
+        );
+
+        // Update the validator set
+        _validatorSets[validatorSetID] = ValidatorSet({
+            avalancheBlockchainID: diffPayload.avalancheBlockchainID,
+            validators: newValidators,
+            totalWeight: newTotalWeight,
+            pChainHeight: diffPayload.currentHeight,
+            pChainTimestamp: diffPayload.currentTimestamp
+        });
+
+        emit ValidatorSetDiffApplied(
+            validatorSetID,
+            diffPayload.avalancheBlockchainID,
+            diffPayload.added.length,
+            diffPayload.removed.length,
+            diffPayload.modified.length
+        );
     }
 
     /**

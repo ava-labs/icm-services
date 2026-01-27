@@ -558,6 +558,27 @@ func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactorSes
 	return _AvalancheValidatorSetRegistry.Contract.UpdateValidatorSet(&_AvalancheValidatorSetRegistry.TransactOpts, validatorSetID, message, validatorBytes)
 }
 
+// UpdateValidatorSetWithDiff is a paid mutator transaction binding the contract method.
+//
+// Solidity: function updateValidatorSetWithDiff(uint256 validatorSetID, ((uint32,bytes32,bytes),bytes,(bytes,bytes)) message) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactor) UpdateValidatorSetWithDiff(opts *bind.TransactOpts, validatorSetID *big.Int, message ICMMessage) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.contract.Transact(opts, "updateValidatorSetWithDiff", validatorSetID, message)
+}
+
+// UpdateValidatorSetWithDiff is a paid mutator transaction binding the contract method.
+//
+// Solidity: function updateValidatorSetWithDiff(uint256 validatorSetID, ((uint32,bytes32,bytes),bytes,(bytes,bytes)) message) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) UpdateValidatorSetWithDiff(validatorSetID *big.Int, message ICMMessage) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.UpdateValidatorSetWithDiff(&_AvalancheValidatorSetRegistry.TransactOpts, validatorSetID, message)
+}
+
+// UpdateValidatorSetWithDiff is a paid mutator transaction binding the contract method.
+//
+// Solidity: function updateValidatorSetWithDiff(uint256 validatorSetID, ((uint32,bytes32,bytes),bytes,(bytes,bytes)) message) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactorSession) UpdateValidatorSetWithDiff(validatorSetID *big.Int, message ICMMessage) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.UpdateValidatorSetWithDiff(&_AvalancheValidatorSetRegistry.TransactOpts, validatorSetID, message)
+}
+
 // AvalancheValidatorSetRegistryValidatorSetRegisteredIterator is returned from FilterValidatorSetRegistered and is used to iterate over the raw logs and unpacked data for ValidatorSetRegistered events raised by the AvalancheValidatorSetRegistry contract.
 type AvalancheValidatorSetRegistryValidatorSetRegisteredIterator struct {
 	Event *AvalancheValidatorSetRegistryValidatorSetRegistered // Event containing the contract specifics and raw log

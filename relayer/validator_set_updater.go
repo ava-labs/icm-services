@@ -36,6 +36,14 @@ const (
 	defaultQuorumPercentage = 67
 )
 
+// previousValidatorState stores the state needed to compute diffs
+type previousValidatorState struct {
+	height       uint64
+	timestamp    uint64
+	hash         ids.ID
+	validatorSet validators.WarpSet
+}
+
 // ValidatorSetUpdater monitors P-chain validator sets and posts updates
 // to external EVM chains' AvalancheValidatorSetRegistry contracts.
 type ValidatorSetUpdater struct {
@@ -63,6 +71,13 @@ type ValidatorSetUpdater struct {
 	// Per-source-subnet tracking to avoid redundant updates
 	lastPostedHeights map[ids.ID]uint64   // sourceSubnetID -> P-chain height
 	lastPostedHashes  map[ids.ID][32]byte // sourceSubnetID -> hash of validator set
+
+	// Per-source-subnet tracking for diff computation
+	// Stores the previous state needed to create diff messages
+	previousStates map[ids.ID]*previousValidatorState
+
+	// Configuration for diff vs full updates
+	useDiffUpdates bool // Whether to prefer diff updates over full updates
 }
 
 // NewValidatorSetUpdater creates a new validator set updater.
@@ -99,6 +114,8 @@ func NewValidatorSetUpdater(
 		pollIntervalSeconds: pollIntervalSeconds,
 		lastPostedHeights:   make(map[ids.ID]uint64),
 		lastPostedHashes:    make(map[ids.ID][32]byte),
+		previousStates:      make(map[ids.ID]*previousValidatorState),
+		useDiffUpdates:      true, // Enable diff updates by default
 	}, nil
 }
 
@@ -264,44 +281,124 @@ func (u *ValidatorSetUpdater) updateSubnetValidators(
 		return fmt.Errorf("no blockchain ID found for subnet %s", subnetID)
 	}
 
-	// Step 1: Create unsigned Warp message with validator set update payload
-	unsignedMessage, validatorsBytes, validatorSetHash, err := u.createValidatorSetUpdateMessage(
-		ctx,
-		blockchainID,
-		currentPChainHeight,
-		validatorSet,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create validator set update message: %w", err)
+	// Determine whether to use diff or full update
+	// Use full update for initial registration or when diff updates are disabled
+	useDiff := u.useDiffUpdates && registryPChainHeight > 0 && u.shouldUseDiffUpdate(subnetID, validatorSet)
+
+	var signedMessage *warp.Message
+	var validatorsBytes []byte
+	var validatorSetHash ids.ID
+	var currentTimestamp uint64
+
+	if useDiff {
+		// Use diff update (more gas efficient)
+		u.logger.Info("Using diff update for validator set",
+			zap.String("chainID", chainID),
+			zap.Stringer("subnetID", subnetID),
+		)
+
+		previousState := u.previousStates[subnetID]
+
+		// Create diff message
+		unsignedMessage, err := u.createValidatorSetDiffMessage(
+			ctx,
+			blockchainID,
+			previousState,
+			currentPChainHeight,
+			validatorSet,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create validator set diff message: %w", err)
+		}
+
+		// Sign message using validators at previous height
+		signedMsg, err := u.signMessage(ctx, unsignedMessage, subnetID, previousState.height)
+		if err != nil {
+			return fmt.Errorf("failed to sign diff message: %w", err)
+		}
+		signedMessage = signedMsg
+
+		// Send diff update
+		err = u.sendValidatorSetDiffUpdate(ctx, client, signedMessage)
+		if err != nil {
+			// If diff update fails, fall back to full update
+			u.logger.Warn("Diff update failed, falling back to full update",
+				zap.String("chainID", chainID),
+				zap.Stringer("subnetID", subnetID),
+				zap.Error(err),
+			)
+			useDiff = false
+		} else {
+			// Get values for state tracking
+			var err error
+			validatorSetHash, err = u.computeValidatorSetHashForMessage(validatorSet)
+			if err != nil {
+				return fmt.Errorf("failed to compute validator set hash: %w", err)
+			}
+			currentTimestamp, err = u.getPChainBlockTimestamp(ctx, currentPChainHeight)
+			if err != nil {
+				return fmt.Errorf("failed to get P-chain block timestamp: %w", err)
+			}
+		}
 	}
 
-	// Step 2: Sign message using P-chain validators via signature aggregation
-	// For initial registration (registryPChainHeight == 0), use current P-chain height
-	// For updates, use the registry's known P-chain height to maintain update chain continuity
-	signingHeight := registryPChainHeight
-	if signingHeight == 0 {
-		signingHeight = currentPChainHeight
-	}
-	signedMessage, err := u.signMessage(ctx, unsignedMessage, subnetID, signingHeight)
-	if err != nil {
-		return fmt.Errorf("failed to sign message: %w", err)
-	}
+	if !useDiff {
+		// Use full update (initial registration or fallback)
+		u.logger.Info("Using full update for validator set",
+			zap.String("chainID", chainID),
+			zap.Stringer("subnetID", subnetID),
+		)
 
-	// Step 3: Send to external EVM via SendTx
-	err = u.sendValidatorSetUpdate(ctx, client, signedMessage, validatorsBytes)
-	if err != nil {
-		return fmt.Errorf("failed to send validator set update: %w", err)
+		// Step 1: Create unsigned Warp message with validator set update payload
+		unsignedMessage, vBytes, vsHash, err := u.createValidatorSetUpdateMessage(
+			ctx,
+			blockchainID,
+			currentPChainHeight,
+			validatorSet,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create validator set update message: %w", err)
+		}
+		validatorsBytes = vBytes
+		validatorSetHash = vsHash
+
+		// Step 2: Sign message using P-chain validators via signature aggregation
+		signingHeight := registryPChainHeight
+		if signingHeight == 0 {
+			signingHeight = currentPChainHeight
+		}
+		signedMsg, err := u.signMessage(ctx, unsignedMessage, subnetID, signingHeight)
+		if err != nil {
+			return fmt.Errorf("failed to sign message: %w", err)
+		}
+		signedMessage = signedMsg
+
+		// Step 3: Send to external EVM via SendTx
+		err = u.sendValidatorSetUpdate(ctx, client, signedMessage, validatorsBytes)
+		if err != nil {
+			return fmt.Errorf("failed to send validator set update: %w", err)
+		}
+
+		// Get timestamp for state tracking
+		currentTimestamp, err = u.getPChainBlockTimestamp(ctx, currentPChainHeight)
+		if err != nil {
+			return fmt.Errorf("failed to get P-chain block timestamp: %w", err)
+		}
 	}
 
 	// Update tracking state after successful send
 	u.lastPostedHeights[subnetID] = currentPChainHeight
 	u.lastPostedHashes[subnetID] = validatorHash
 
+	// Update previous state for future diff computation
+	u.updatePreviousState(subnetID, currentPChainHeight, currentTimestamp, validatorSetHash, validatorSet)
+
 	u.logger.Info("Successfully sent validator set update",
 		zap.String("chainID", chainID),
 		zap.Stringer("subnetID", subnetID),
 		zap.Uint64("pChainHeight", currentPChainHeight),
 		zap.Stringer("validatorSetHash", validatorSetHash),
+		zap.Bool("usedDiff", useDiff),
 	)
 
 	return nil
@@ -560,6 +657,7 @@ func (u *ValidatorSetUpdater) sendValidatorSetUpdate(
 	var callData []byte
 	if nextID == 0 {
 		// No validator sets registered yet - use registerValidatorSet
+		// TODO: call registerValiatorSet is for testing purposes. We should assume the validator set is already registered.
 		u.logger.Info("No existing validator set, using registerValidatorSet")
 		callData, err = registryABI.Pack("registerValidatorSet", icmMessage, validatorsBytes)
 		if err != nil {
@@ -669,4 +767,321 @@ func (u *ValidatorSetUpdater) computeValidatorSetHash(validatorSet validators.Wa
 	}
 
 	return sha256.Sum256(bytes)
+}
+
+// computeValidatorSetDiff computes the differences between two validator sets.
+// Returns slices of added, removed, and modified validators.
+func (u *ValidatorSetUpdater) computeValidatorSetDiff(
+	previous validators.WarpSet,
+	current validators.WarpSet,
+) (added, removed, modified []message.ValidatorChange) {
+	// Build maps for efficient lookup
+	prevMap := make(map[string]*validators.Warp) // key is string of public key bytes
+	currMap := make(map[string]*validators.Warp)
+
+	for _, v := range previous.Validators {
+		key := string(v.PublicKeyBytes)
+		prevMap[key] = v
+	}
+	for _, v := range current.Validators {
+		key := string(v.PublicKeyBytes)
+		currMap[key] = v
+	}
+
+	// Find additions and modifications
+	for key, currValidator := range currMap {
+		var pkBytes [96]byte
+		if len(currValidator.PublicKeyBytes) == 96 {
+			copy(pkBytes[:], currValidator.PublicKeyBytes)
+		} else if currValidator.PublicKey != nil {
+			copy(pkBytes[:], currValidator.PublicKey.Serialize())
+		}
+
+		// Get first NodeID if available (validators may have multiple NodeIDs)
+		var nodeID ids.NodeID
+		if len(currValidator.NodeIDs) > 0 {
+			nodeID = currValidator.NodeIDs[0]
+		}
+
+		prevValidator, existedBefore := prevMap[key]
+		if !existedBefore {
+			// Addition
+			added = append(added, message.ValidatorChange{
+				NodeID:                     nodeID,
+				UncompressedPublicKeyBytes: pkBytes,
+				PreviousWeight:             0,
+				CurrentWeight:              currValidator.Weight,
+			})
+		} else if prevValidator.Weight != currValidator.Weight {
+			// Modification
+			modified = append(modified, message.ValidatorChange{
+				NodeID:                     nodeID,
+				UncompressedPublicKeyBytes: pkBytes,
+				PreviousWeight:             prevValidator.Weight,
+				CurrentWeight:              currValidator.Weight,
+			})
+		}
+	}
+
+	// Find removals
+	for key, prevValidator := range prevMap {
+		if _, existsNow := currMap[key]; !existsNow {
+			var pkBytes [96]byte
+			if len(prevValidator.PublicKeyBytes) == 96 {
+				copy(pkBytes[:], prevValidator.PublicKeyBytes)
+			} else if prevValidator.PublicKey != nil {
+				copy(pkBytes[:], prevValidator.PublicKey.Serialize())
+			}
+
+			// Get first NodeID if available
+			var nodeID ids.NodeID
+			if len(prevValidator.NodeIDs) > 0 {
+				nodeID = prevValidator.NodeIDs[0]
+			}
+
+			removed = append(removed, message.ValidatorChange{
+				NodeID:                     nodeID,
+				UncompressedPublicKeyBytes: pkBytes,
+				PreviousWeight:             prevValidator.Weight,
+				CurrentWeight:              0,
+			})
+		}
+	}
+
+	return added, removed, modified
+}
+
+// createValidatorSetDiffMessage creates an unsigned Warp message for a validator set diff update.
+// This uses the ValidatorSetDiff message type which is more gas-efficient than full updates.
+func (u *ValidatorSetUpdater) createValidatorSetDiffMessage(
+	ctx context.Context,
+	blockchainID ids.ID,
+	previousState *previousValidatorState,
+	currentHeight uint64,
+	currentValidatorSet validators.WarpSet,
+) (*warp.UnsignedMessage, error) {
+	// Get the current P-chain block timestamp
+	currentTimestamp, err := u.getPChainBlockTimestamp(ctx, currentHeight)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current P-chain block timestamp: %w", err)
+	}
+
+	// Compute the current validator set hash
+	currentHash, err := u.computeValidatorSetHashForMessage(currentValidatorSet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute current validator set hash: %w", err)
+	}
+
+	// Compute the diff
+	added, removed, modified := u.computeValidatorSetDiff(previousState.validatorSet, currentValidatorSet)
+
+	u.logger.Debug("Creating ValidatorSetDiff message",
+		zap.Stringer("blockchainID", blockchainID),
+		zap.Uint64("previousHeight", previousState.height),
+		zap.Uint64("currentHeight", currentHeight),
+		zap.Stringer("previousHash", previousState.hash),
+		zap.Stringer("currentHash", currentHash),
+		zap.Int("added", len(added)),
+		zap.Int("removed", len(removed)),
+		zap.Int("modified", len(modified)),
+	)
+
+	// Create ValidatorSetDiff payload using avalanchego's message package
+	validatorSetDiff, err := message.NewValidatorSetDiff(
+		blockchainID,
+		previousState.height,
+		previousState.timestamp,
+		previousState.hash,
+		currentHeight,
+		currentTimestamp,
+		currentHash,
+		added,
+		removed,
+		modified,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ValidatorSetDiff: %w", err)
+	}
+
+	// Create AddressedCall with empty source address
+	addressedCall, err := payload.NewAddressedCall(nil, validatorSetDiff.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create addressed call: %w", err)
+	}
+
+	// Create the unsigned Warp message
+	unsignedMessage, err := warp.NewUnsignedMessage(
+		u.networkID,
+		ids.Empty, // P-chain messages use empty source chain ID
+		addressedCall.Bytes(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create unsigned message: %w", err)
+	}
+
+	u.logger.Debug("Created validator set diff message",
+		zap.Stringer("messageID", unsignedMessage.ID()),
+		zap.Stringer("blockchainID", blockchainID),
+		zap.Int("payloadLen", len(unsignedMessage.Payload)),
+	)
+
+	return unsignedMessage, nil
+}
+
+// shouldUseDiffUpdate determines whether to use diff or full update based on the diff size.
+// Returns true if diff update would be more efficient.
+func (u *ValidatorSetUpdater) shouldUseDiffUpdate(
+	subnetID ids.ID,
+	currentValidatorSet validators.WarpSet,
+) bool {
+	// Check if we have previous state to compute diff from
+	previousState, hasPrevious := u.previousStates[subnetID]
+	if !hasPrevious {
+		u.logger.Debug("No previous state for diff, using full update",
+			zap.Stringer("subnetID", subnetID),
+		)
+		return false
+	}
+
+	// Compute the diff to see its size
+	added, removed, modified := u.computeValidatorSetDiff(previousState.validatorSet, currentValidatorSet)
+	diffSize := len(added) + len(removed) + len(modified)
+	fullSize := len(currentValidatorSet.Validators)
+
+	// Use diff if it's significantly smaller than full set
+	// Threshold: use diff if it would be less than 30% of full set size
+	threshold := float64(fullSize) * 0.3
+	useDiff := float64(diffSize) < threshold && diffSize > 0
+
+	u.logger.Debug("Evaluating diff vs full update",
+		zap.Stringer("subnetID", subnetID),
+		zap.Int("diffSize", diffSize),
+		zap.Int("fullSize", fullSize),
+		zap.Float64("threshold", threshold),
+		zap.Bool("useDiff", useDiff),
+	)
+
+	return useDiff
+}
+
+// sendValidatorSetDiffUpdate sends a diff update to the external EVM.
+func (u *ValidatorSetUpdater) sendValidatorSetDiffUpdate(
+	ctx context.Context,
+	client *evm.ExternalEVMDestinationClient,
+	signedMessage *warp.Message,
+) error {
+	// Get the ABI for packing the call data
+	registryABI, err := avalanchevalidatorsetregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
+	if err != nil {
+		return fmt.Errorf("failed to get registry ABI: %w", err)
+	}
+
+	// Convert warp.Message to ICMMessage format
+	bitSetSig, ok := signedMessage.Signature.(*warp.BitSetSignature)
+	if !ok {
+		return fmt.Errorf("unexpected signature type: %T", signedMessage.Signature)
+	}
+
+	// Convert the 96-byte compressed signature to 192-byte uncompressed format
+	sig, err := bls.SignatureFromBytes(bitSetSig.Signature[:])
+	if err != nil {
+		return fmt.Errorf("failed to parse signature: %w", err)
+	}
+	uncompressedSig := sig.Serialize()
+
+	icmMessage := avalanchevalidatorsetregistry.ICMMessage{
+		UnsignedMessage: avalanchevalidatorsetregistry.ICMUnsignedMessage{
+			AvalancheNetworkID:          u.networkID,
+			AvalancheSourceBlockchainID: signedMessage.UnsignedMessage.SourceChainID,
+			Payload:                     signedMessage.UnsignedMessage.Payload,
+		},
+		UnsignedMessageBytes: signedMessage.UnsignedMessage.Bytes(),
+		Signature: avalanchevalidatorsetregistry.ICMSignature{
+			Signers:   bitSetSig.Signers,
+			Signature: uncompressedSig,
+		},
+	}
+
+	// Get the current validator set ID
+	currentID, err := client.GetCurrentValidatorSetID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current validator set ID: %w", err)
+	}
+
+	u.logger.Info("Sending validator set diff update",
+		zap.Uint64("validatorSetID", currentID),
+		zap.Stringer("messageID", signedMessage.ID()),
+	)
+
+	// Pack the call data for updateValidatorSetWithDiff
+	validatorSetID := new(big.Int).SetUint64(currentID)
+	callData, err := registryABI.Pack("updateValidatorSetWithDiff", validatorSetID, icmMessage)
+	if err != nil {
+		return fmt.Errorf("failed to pack updateValidatorSetWithDiff call data: %w", err)
+	}
+
+	u.logger.Info("Sending validator set diff transaction",
+		zap.Stringer("registryAddress", client.RegistryAddress()),
+		zap.Int("callDataLen", len(callData)),
+		zap.Stringer("messageID", signedMessage.ID()),
+	)
+
+	// Simulate the call first
+	_, simErr := client.SimulateCall(ctx, client.RegistryAddress().Hex(), callData)
+	if simErr != nil {
+		u.logger.Error("Diff update simulation failed",
+			zap.Error(simErr),
+			zap.Stringer("registryAddress", client.RegistryAddress()),
+		)
+		return fmt.Errorf("diff update simulation failed: %w", simErr)
+	}
+
+	// Send the transaction
+	receipt, err := client.SendTx(
+		signedMessage,
+		nil,
+		client.RegistryAddress().Hex(),
+		gasLimit,
+		callData,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to send diff update transaction: %w", err)
+	}
+	if receipt == nil {
+		return fmt.Errorf("no receipt returned for diff update")
+	}
+
+	if receipt.Status != 1 {
+		blockNum := new(big.Int).SetUint64(receipt.BlockNumber.Uint64() - 1)
+		_, revertErr := client.SimulateCallAtBlock(ctx, client.RegistryAddress().Hex(), callData, blockNum)
+		u.logger.Error("Diff update transaction reverted",
+			zap.Stringer("txHash", receipt.TxHash),
+			zap.Uint64("gasUsed", receipt.GasUsed),
+			zap.Error(revertErr),
+		)
+		return fmt.Errorf("diff update transaction failed with status %d: %v", receipt.Status, revertErr)
+	}
+
+	u.logger.Info("Validator set diff update confirmed",
+		zap.Stringer("txHash", receipt.TxHash),
+		zap.Uint64("gasUsed", receipt.GasUsed),
+	)
+
+	return nil
+}
+
+// updatePreviousState stores the current state for future diff computation.
+func (u *ValidatorSetUpdater) updatePreviousState(
+	subnetID ids.ID,
+	height uint64,
+	timestamp uint64,
+	hash ids.ID,
+	validatorSet validators.WarpSet,
+) {
+	u.previousStates[subnetID] = &previousValidatorState{
+		height:       height,
+		timestamp:    timestamp,
+		hash:         hash,
+		validatorSet: validatorSet,
+	}
 }
