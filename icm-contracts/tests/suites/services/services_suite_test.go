@@ -83,12 +83,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	log.Info("Building all ICM service executables")
 	utils.BuildAllExecutables(ctx, log)
 
-	teleporterContractAddress,
-		teleporterDeployerAddress,
-		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
-
-	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
-
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*2*time.Second)
 	defer networkStartCancel()
 	localNetworkInstance = network.NewLocalAvalancheNetwork(
@@ -99,18 +93,12 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			{
 				Name:                         "A",
 				EVMChainID:                   12345,
-				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
-				TeleporterDeployerAddress:    teleporterDeployerAddress,
 				NodeCount:                    2,
 				RequirePrimaryNetworkSigners: true,
 			},
 			{
 				Name:                         "B",
 				EVMChainID:                   54321,
-				TeleporterContractAddress:    teleporterContractAddress,
-				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
-				TeleporterDeployerAddress:    teleporterDeployerAddress,
 				NodeCount:                    2,
 				RequirePrimaryNetworkSigners: true,
 			},
@@ -122,27 +110,20 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
-	utils.DeployWithNicksMethod(
-		networkStartCtx,
-		localNetworkInstance.GetPrimaryNetworkInfo(),
-		teleporterDeployerTransaction,
-		teleporterDeployerAddress,
-		teleporterContractAddress,
-		fundedKey,
-	)
 
 	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
-	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
-		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
-		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
+	for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+		teleporterContractAddress := utils.DeployTeleporterV2(ctx, l1, fundedKey)
+		teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+		teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
 	}
 
 	// Convert the subnets to sovereign L1s
-	for _, subnet := range localNetworkInstance.GetL1Infos() {
+	for _, l1 := range localNetworkInstance.GetL1Infos() {
 		localNetworkInstance.ConvertSubnet(
 			networkStartCtx,
-			subnet,
+			l1,
 			utils.PoAValidatorManager,
 			[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
 			[]uint64{defaultBalance, defaultBalance, defaultBalance, minimumL1ValidatorBalance - 1},

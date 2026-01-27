@@ -58,12 +58,6 @@ func TestICTT(t *testing.T) {
 
 // Define the Teleporter before and after suite functions.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
-	teleporterContractAddress,
-		teleporterDeployerAddress,
-		teleporterDeployedByteCode := utils.TeleporterDeploymentValues()
-
-	teleporterDeployerTransaction := utils.TeleporterDeployerTransaction()
-
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
@@ -73,20 +67,14 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		warpGenesisTemplateFile,
 		[]localnetwork.L1Spec{
 			{
-				Name:                       "A",
-				EVMChainID:                 12345,
-				TeleporterContractAddress:  teleporterContractAddress,
-				TeleporterDeployedBytecode: teleporterDeployedByteCode,
-				TeleporterDeployerAddress:  teleporterDeployerAddress,
-				NodeCount:                  2,
+				Name:       "A",
+				EVMChainID: 12345,
+				NodeCount:  2,
 			},
 			{
-				Name:                       "B",
-				EVMChainID:                 54321,
-				TeleporterContractAddress:  teleporterContractAddress,
-				TeleporterDeployedBytecode: teleporterDeployedByteCode,
-				TeleporterDeployerAddress:  teleporterDeployerAddress,
-				NodeCount:                  2,
+				Name:       "B",
+				EVMChainID: 54321,
+				NodeCount:  2,
 			},
 		},
 		2,
@@ -99,18 +87,10 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
 
+	var teleporterContractAddress common.Address
 	if e2eFlags.NetworkDir() == "" {
-		// Only deploy Teleporter if we are not reusing an existing network
-		utils.DeployWithNicksMethod(
-			ctx,
-			localNetworkInstance.GetPrimaryNetworkInfo(),
-			teleporterDeployerTransaction,
-			teleporterDeployerAddress,
-			teleporterContractAddress,
-			fundedKey,
-		)
-
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
+			teleporterContractAddress = utils.DeployTeleporterV2(ctx, l1, fundedKey)
 			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
 			teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
 		}

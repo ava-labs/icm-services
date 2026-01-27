@@ -23,6 +23,7 @@ func init() {
 	teleporterMessageType, err = abi.NewType("tuple", "struct Overloader.F", []abi.ArgumentMarshaling{
 		{Name: "messageNonce", Type: "uint256"},
 		{Name: "originSenderAddress", Type: "address"},
+		{Name: "originTeleporterAddress", Type: "address"},
 		{Name: "destinationBlockchainID", Type: "bytes32"},
 		{Name: "destinationAddress", Type: "address"},
 		{Name: "requiredGasLimit", Type: "uint256"},
@@ -89,6 +90,29 @@ func PackReceiveCrossChainMessage(messageIndex uint32, relayerRewardAddress comm
 	}
 
 	return abi.Pack("receiveCrossChainMessage", messageIndex, relayerRewardAddress)
+}
+
+// PackReceiveCrossChainMessage packs a ReceiveCrossChainMessageInput to form
+// a call to the receiveCrossChainMessage function
+func PackReceiveCrossChainMessageV2(
+	teleporterMessage TeleporterMessage,
+	sourceBlockChainID ids.ID,
+	messageIndex uint64,
+	relayerRewardAddress common.Address,
+) ([]byte, error) {
+	tabi, err := TeleporterMessengerMetaData.GetAbi()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get abi")
+	}
+
+	attestation := make([]byte, 32)
+	big.NewInt(int64(messageIndex)).FillBytes(attestation)
+
+	return tabi.Pack("receiveCrossChainMessage", ICMMessage{
+		UnsignedMessage:    teleporterMessage,
+		SourceBlockchainID: sourceBlockChainID,
+		Attestation:        attestation,
+	}, relayerRewardAddress)
 }
 
 // PackCalculateMessageID packs input to form a call to the calculateMessageID function
