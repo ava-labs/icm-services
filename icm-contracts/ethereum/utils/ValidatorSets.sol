@@ -253,7 +253,7 @@ library ValidatorSets {
     }
 
     /*
-     * @dev Traverse the bits in signers from right to left, using it as bitvector to determine
+     * @dev Traverse the bits in signers from left to right, using it as bitvector to determine
      * which validators to select from the provided list.
      * @return The aggregate public key and stake weight of the filtered validators
      */
@@ -263,13 +263,12 @@ library ValidatorSets {
     ) internal view returns (bytes memory, uint64) {
         bytes memory aggregatePublicKey;
         uint64 aggregateWeight = 0;
-
         if (validators.length == 0) {
             revert("Cannot validate against an empty list of validators");
         }
 
-        uint256 byteIndex = (validators.length - 1) / 8;
-        uint8 bitMask = 1;
+        uint256 byteIndex = 0;
+        uint8 bitMask = 1 << 7;
         uint8 currentByte = uint8(signers[byteIndex]);
 
         // we traverse the validator set from left to right
@@ -285,12 +284,12 @@ library ValidatorSets {
                 aggregateWeight += validator.weight;
             }
 
-            // shift one bit to the left
-            bitMask = bitMask << 1;
+            // shift one bit to the right
+            bitMask = bitMask >> 1;
             if (bitMask == 0) {
-                byteIndex -= 1;
+                byteIndex += 1;
                 currentByte = uint8(signers[byteIndex]);
-                bitMask = 1;
+                bitMask = 1 << 7;
             }
         }
         return (aggregatePublicKey, aggregateWeight);
