@@ -80,12 +80,12 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
 
         // Check the registration status of the source blockchain ID and verify the
         // message signature appropriately
-        if (_isInitialRegistration(message.message.sourceBlockchainID)) {
+        if (isRegistrationInProgress(message.message.sourceBlockchainID)) {
+            // check if we are interrupting an existing registration
+            revert("Can't register to a blockchain ID while another registration is in progress");
+        } else if (!isRegistered(message.message.sourceBlockchainID)) {
             // N.B. this message should be signed by the currently registered P-chain validator set
             verifyICMMessage(message, pChainID);
-        } else if (_isRegistrationInProgress(message.message.sourceBlockchainID)) {
-            // check if we are interrupting an existing registration
-            revert("Cant register to a blockchain ID while another registration is in progress");
         } else {
             // This blockchain ID has an existing validator set registered to it which should
             // have signed this message
@@ -119,14 +119,16 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
                 partialWeight: validatorWeight,
                 inProgress: true
             });
-            // pre-allocate storage for the completed validator set
-            _validatorSets[validatorSetMetadata.avalancheBlockchainID] = ValidatorSet({
-                avalancheBlockchainID: validatorSetMetadata.avalancheBlockchainID,
-                pChainHeight: validatorSetMetadata.pChainHeight,
-                pChainTimestamp: validatorSetMetadata.pChainTimestamp,
-                validators: new Validator[](validatorSetMetadata.totalValidators),
-                totalWeight: 0
-            });
+            if (!isRegistered(message.message.sourceBlockchainID)) {
+                // pre-allocate storage for the completed validator set
+                _validatorSets[validatorSetMetadata.avalancheBlockchainID] = ValidatorSet({
+                    avalancheBlockchainID: validatorSetMetadata.avalancheBlockchainID,
+                    pChainHeight: validatorSetMetadata.pChainHeight,
+                    pChainTimestamp: validatorSetMetadata.pChainTimestamp,
+                    validators: new Validator[](validatorSetMetadata.totalValidators),
+                    totalWeight: 0
+                });
+            }
         } else {
             // Construct the validator set
             ValidatorSet memory validatorSet = ValidatorSet({
@@ -157,7 +159,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         bytes memory shardBytes
     ) external {
         require(
-            _isRegistrationInProgress(shard.avalancheBlockchainID),
+            isRegistrationInProgress(shard.avalancheBlockchainID),
             "Cannot apply shard if registration is not in progress"
         );
         _applyShard(shard, shardBytes);
@@ -199,7 +201,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             "A complete P-chain validator must be registered to verify ICM messages"
         );
         require(
-            _isRegistered(avalancheBlockchainID),
+            isRegistered(avalancheBlockchainID),
             "No validator set is registered for the provided Avalanche blockchain ID"
         );
         require(message.message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
@@ -209,8 +211,26 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             ValidatorSets.verifyValidatorSetSignature(
                 sig, message.rawMessageBytes, _validatorSets[avalancheBlockchainID]
             ),
-            "Could not register validator set: Signature checks failed"
+            "Could not verify ICM message: Signature checks failed"
         );
+    }
+
+    /**
+     * @notice Check if a **complete** validator set is registered (not just a partial).
+     */
+    function isRegistered(
+        bytes32 avalancheBlockchainID
+    ) public view returns (bool) {
+        return _validatorSets[avalancheBlockchainID].totalWeight != 0;
+    }
+
+    /**
+     * @notice Check if a validator set is registered but awaiting further updates.
+     */
+    function isRegistrationInProgress(
+        bytes32 avalancheBlockchainID
+    ) public view returns (bool) {
+        return _partialValidatorSets[avalancheBlockchainID].inProgress;
     }
 
     /**
@@ -252,33 +272,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             _validatorSets[avalancheBlockchainID].totalWeight =
                 _partialValidatorSets[avalancheBlockchainID].partialWeight;
         }
-    }
-
-    /**
-     * @dev Check if a validator set is already registered under the given `avalancheBlockchainID`.
-     */
-    function _isInitialRegistration(
-        bytes32 avalancheBlockchainID
-    ) private view returns (bool) {
-        return _validatorSets[avalancheBlockchainID].totalWeight == 0;
-    }
-
-    /**
-     * @dev Check if a validator set is registered.
-     */
-    function _isRegistered(
-        bytes32 avalancheBlockchainID
-    ) private view returns (bool) {
-        return _validatorSets[avalancheBlockchainID].totalWeight != 0;
-    }
-
-    /**
-     * @dev Check if a validator set is registered but awaiting further updates.
-     */
-    function _isRegistrationInProgress(
-        bytes32 avalancheBlockchainID
-    ) private view returns (bool) {
-        return _partialValidatorSets[avalancheBlockchainID].inProgress;
     }
 
     /**
