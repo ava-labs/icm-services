@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"slices"
@@ -501,7 +502,7 @@ func GetChainConfigWithOffChainMessages(offChainMessages []avalancheWarp.Unsigne
 		hexOffChainMessages = append(hexOffChainMessages, hexutil.Encode(message.Bytes()))
 	}
 
-	chainConfig := WarpEnabledChainConfig
+	chainConfig := maps.Clone(WarpEnabledChainConfig)
 	chainConfig["warp-off-chain-messages"] = hexOffChainMessages
 
 	// Marshal the map to JSON

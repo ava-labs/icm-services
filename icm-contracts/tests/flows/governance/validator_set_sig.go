@@ -128,7 +128,6 @@ func ValidatorSetSig(ctx context.Context, network *localnetwork.LocalAvalancheNe
 	offchainMessages, icmEnabledChainConfigWithMsg := utils.InitOffChainMessageChainConfigValidatorSetSig(
 		networkID,
 		L1B,
-		validatorSetSigContractAddress,
 		[]validatorsetsig.ValidatorSetSigMessage{vssMessage1, vssMessage2, vssMessage3},
 	)
 

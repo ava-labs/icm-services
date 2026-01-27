@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"maps"
 	"os"
 	"sort"
 	"time"
@@ -107,7 +108,7 @@ func newTmpnetNetwork(
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
 			),
-			utils.WarpEnabledChainConfig,
+			maps.Clone(utils.WarpEnabledChainConfig),
 			initialL1Bootstrapper,
 		)
 		l1.OwningKey = globalFundedKey
@@ -121,12 +122,13 @@ func newTmpnetNetwork(
 
 	// Create new network
 	network := &tmpnet.Network{
-		Owner:        name,
-		DefaultFlags: defaultFlags,
-		Nodes:        bootstrapNodes,
-		Subnets:      l1s,
+		Owner:               name,
+		DefaultFlags:        defaultFlags,
+		Nodes:               bootstrapNodes,
+		Subnets:             l1s,
+		PrimarySubnetConfig: maps.Clone(utils.WarpEnabledChainConfig),
 		PrimaryChainConfigs: map[string]tmpnet.ConfigMap{
-			"C": utils.WarpEnabledChainConfig,
+			"C": maps.Clone(utils.WarpEnabledChainConfig),
 		},
 	}
 
