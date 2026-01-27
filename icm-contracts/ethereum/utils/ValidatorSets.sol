@@ -61,6 +61,8 @@ struct PartialValidatorSet {
     uint256 numValidators;
     // The weight of the above validators
     uint64 partialWeight;
+    // A flag to indicate that this is now a complete validator set
+    bool inProgress;
 }
 
 struct ValidatorSetSignature {
