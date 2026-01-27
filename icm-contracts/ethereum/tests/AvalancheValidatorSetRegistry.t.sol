@@ -57,13 +57,13 @@ contract AvalancheValidatorSetRegistryCommon is Test {
     }
 
     /**
-     * @dev A fixture that returns a validator set along with an ICM message to register a
-     * this set to a new chain ID. This set is split into two shards with one validator each.
+     * @dev A fixture that returns a validator set along with a raw ICM message to register
+     * this set. This set is split into two shard with one validator each.
      */
     function registerValidatorSetFixture()
         public
         view
-        returns (Validator[] memory, ICMMessage memory)
+        returns (Validator[] memory, ICMRawMessage memory)
     {
         // create the total validator set and two shards
         Validator[] memory validators = new Validator[](2);
@@ -107,10 +107,42 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             verifierAddress: address(0),
             payload: ValidatorSets.serializeValidatorSetMetadata(metadata)
         });
+
+        return (validators, raw);
+    }
+
+    /**
+     * @dev If this validator set is being registered for the first time, it must be signed
+     * by the P-chain
+     */
+    function registerValidatorSetInitialFixture()
+        public
+        view
+        returns (Validator[] memory, ICMMessage memory)
+    {
+        (Validator[] memory validators, ICMRawMessage memory raw) = registerValidatorSetFixture();
         bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
         // sign the message
         bytes memory signature = dummyPChainValidatorSetSign(rawMessageBytes);
+        ICMMessage memory message =
+            ICMMessage({message: raw, rawMessageBytes: rawMessageBytes, attestation: signature});
 
+        return (validators, message);
+    }
+
+    /**
+     * @dev If this validator set is not being registered for the first time, it must be signed
+     * by the validator set previously registered to this blockchain ID
+     */
+    function registerValidatorSetAgainFixture()
+        public
+        view
+        returns (Validator[] memory, ICMMessage memory)
+    {
+        (Validator[] memory validators, ICMRawMessage memory raw) = registerValidatorSetFixture();
+        bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
+        // sign the message
+        bytes memory signature = l1ValidatorSetSign(rawMessageBytes);
         ICMMessage memory message =
             ICMMessage({message: raw, rawMessageBytes: rawMessageBytes, attestation: signature});
 
@@ -134,20 +166,35 @@ contract AvalancheValidatorSetRegistryCommon is Test {
     }
 
     /**
+     * @dev Sign the input payload with the L1 validator set of blockchain ID
+     * 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7
+     */
+    function l1ValidatorSetSign(
+        bytes memory payload
+    ) public view returns (bytes memory) {
+        uint256[] memory secretKeys = new uint256[](2);
+        secretKeys[0] = 2;
+        secretKeys[1] = 3;
+        bytes memory rawSig = BLST.createAggregateSignature(secretKeys, payload);
+        ValidatorSetSignature memory signature = ValidatorSetSignature({
+            //  both validators sign
+            signers: hex"C0",
+            signature: rawSig
+        });
+        return ValidatorSets.serializeValidatorSetSignature(signature);
+    }
+
+    /**
      * @dev A fixture holding the secret keys of the P-chain validator set. These are sorted
      * so that their public counterparts are in increasing order
      */
     function dummyPChainValidatorSetSecretKeys() public pure returns (uint256[] memory) {
         uint256[] memory secretKeys = new uint256[](5);
-        /* solhint-disable-next-line no-inline-assembly */
-        assembly {
-            mstore(secretKeys, 5)
-            mstore(add(secretKeys, 0x20), 2)
-            mstore(add(secretKeys, 0x40), 3)
-            mstore(add(secretKeys, 0x60), 4)
-            mstore(add(secretKeys, 0x80), 5)
-            mstore(add(secretKeys, 0xA0), 1)
-        }
+        secretKeys[0] = 2;
+        secretKeys[1] = 3;
+        secretKeys[2] = 4;
+        secretKeys[3] = 5;
+        secretKeys[4] = 1;
         return secretKeys;
     }
 }
@@ -254,7 +301,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
      * attempts to register other validator sets fails.
      */
     function testRegisterBeforeInitializationFails() public {
-        (Validator[] memory validators, ICMMessage memory message) = registerValidatorSetFixture();
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
         Validator[] memory validatorShard = new Validator[](1);
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
@@ -299,10 +347,151 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
      * @dev Test registering a new chain
      */
     function testRegisterNewChain() public {
-        (Validator[] memory validators, ICMMessage memory message) = registerValidatorSetFixture();
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
+        Validator[] memory validatorShard = new Validator[](1);
+        validatorShard[0] = validators[0];
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        // check that no validator set has ever been registered to this blockchain ID before
+        assertFalse(_registry.isRegistered(message.message.sourceBlockchainID));
+        _registry.registerValidatorSet(message, validatorBytes);
+        // check that a registration has started but is still in progress
+        assertTrue(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+        // check that no complete registration has occurred for this blockchain ID
+        assertFalse(_registry.isRegistered(message.message.sourceBlockchainID));
+    }
+
+    /**
+     * @dev Test that we can register a new chain across two shards.
+     */
+    function testRegisterNewChainMultipleShards() public {
+        // same setup as above test, so we skip the assertions done there
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
         Validator[] memory validatorShard = new Validator[](1);
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         _registry.registerValidatorSet(message, validatorBytes);
+
+        // add the second shard
+        validatorShard[0] = validators[1];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 2,
+            avalancheBlockchainID: message.message.sourceBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        // We should not have a fully registered validator set
+        assertTrue(_registry.isRegistered(message.message.sourceBlockchainID));
+        // There should be no registrations in progress
+        assertFalse(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+    }
+
+    /**
+     * @dev Test that if we try register a validator set to a blockchain ID that is currently
+     * awaiting updates from a previous registration, the tx reverts
+     */
+    function testInterruptingRegistrationFails() public {
+        // same setup as `testRegisterNewChain`, so we skip the assertions done there
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
+        Validator[] memory validatorShard = new Validator[](1);
+        validatorShard[0] = validators[0];
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        _registry.registerValidatorSet(message, validatorBytes);
+
+        // check that the interruption is caught and rejected
+        vm.expectRevert(
+            bytes("Can't register to a blockchain ID while another registration is in progress")
+        );
+        _registry.registerValidatorSet(message, validatorBytes);
+    }
+
+    /**
+     * @dev Test that if we try to register a chain that has been registered before, if the message is
+     * signed by the p-chain, it is rejected
+     */
+    function testRegisterChainWronglySignedByPChain() public {
+        // register a full validator set
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
+        Validator[] memory validatorShard = new Validator[](1);
+        validatorShard[0] = validators[0];
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        _registry.registerValidatorSet(message, validatorBytes);
+
+        // add the second shard
+        validatorShard[0] = validators[1];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 2,
+            avalancheBlockchainID: message.message.sourceBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+
+        // Try to register this set again, still signed by the P-chain
+        validatorShard[0] = validators[0];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        vm.expectRevert(bytes("Could not verify ICM message: Signature checks failed"));
+        _registry.registerValidatorSet(message, validatorBytes);
+    }
+
+    /**
+     * @dev Test that if we try to register a chain that has not been registered before, if the message is
+     * not signed by the p-chain, it is rejected
+     */
+    function testRegisterChainWronglySignedByL1() public {
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetAgainFixture();
+        Validator[] memory validatorShard = new Validator[](1);
+        validatorShard[0] = validators[0];
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        vm.expectRevert(bytes("Could not verify ICM message: Signature checks failed"));
+        _registry.registerValidatorSet(message, validatorBytes);
+    }
+
+    /**
+     * @dev Test the happy path when registering a validator set to a blockchain ID
+     * which had a validator set registered to it prior
+     */
+    function testRegisterL1Again() public {
+        // register an initial set
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
+        Validator[] memory validatorShard = new Validator[](1);
+        validatorShard[0] = validators[0];
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        _registry.registerValidatorSet(message, validatorBytes);
+
+        // add the second shard
+        validatorShard[0] = validators[1];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 2,
+            avalancheBlockchainID: message.message.sourceBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+
+        // register a new set
+        (validators, message) = registerValidatorSetAgainFixture();
+        validatorShard[0] = validators[0];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        // register the first shard
+        _registry.registerValidatorSet(message, validatorBytes);
+        assertTrue(_registry.isRegistered(message.message.sourceBlockchainID));
+        // a set has been registered previously to this blockchain ID
+        // a registration is in progress
+        assertTrue(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+
+        // register the second shard
+        validatorShard[0] = validators[1];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        shard = ValidatorSetShard({
+            shardNumber: 2,
+            avalancheBlockchainID: message.message.sourceBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        // check that the registration is no longer in progress
+        assertFalse(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
     }
 }
