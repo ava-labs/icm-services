@@ -114,15 +114,21 @@ func newTmpnetNetwork(
 		l1s = append(l1s, l1)
 	}
 
-	// Create new network
-	network := subnetEvmTestUtils.NewTmpnetNetwork(
-		name,
-		bootstrapNodes,
-		tmpnet.FlagsMap{},
-		l1s...,
-	)
+	defaultFlags := tmpnet.FlagsMap{}
+	defaultFlags.SetDefaults(tmpnet.FlagsMap{
+		config.ProposerVMUseCurrentHeightKey: "true",
+	})
 
-	Expect(network).ShouldNot(BeNil())
+	// Create new network
+	network := &tmpnet.Network{
+		Owner:        name,
+		DefaultFlags: defaultFlags,
+		Nodes:        bootstrapNodes,
+		Subnets:      l1s,
+		PrimaryChainConfigs: map[string]tmpnet.ConfigMap{
+			"C": utils.WarpEnabledChainConfig,
+		},
+	}
 
 	// Specify only a subset of the nodes to be bootstrapped
 	keysToFund := []*secp256k1.PrivateKey{
