@@ -2,9 +2,9 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
-import {ICM, ICMMessage, ICMRawMessage} from "../../common/ICM.sol";
+import {ICMMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
-import {AvalancheValidatorSetRegistry} from "../AvalancheValidatorSetRegistry.sol";
+import {FullSetUpdater} from "../AvalancheValidatorSetRegistry.sol";
 import {
     Validator,
     ValidatorSet,
@@ -63,7 +63,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
     function registerValidatorSetFixture(
         uint64 pChainHeight,
         uint64 pChainTimestamp
-    ) public view returns (Validator[] memory, ICMRawMessage memory) {
+    ) public view returns (Validator[] memory, bytes memory) {
         // create the total validator set and two shards
         Validator[] memory validators = new Validator[](2);
         bytes32[] memory shardHashes = new bytes32[](2);
@@ -93,19 +93,11 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             avalancheBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            validatorSetHash: sha256(ValidatorSets.serializeValidators(validators)),
             totalValidators: 2,
             shardHashes: shardHashes
         });
 
-        // construct the ICM message
-        ICMRawMessage memory raw = ICMRawMessage({
-            sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
-            sourceAddress: address(0),
-            verifierAddress: address(0),
-            payload: ValidatorSets.serializeValidatorSetMetadata(metadata)
-        });
+        bytes memory raw = ValidatorSets.serializeValidatorSetMetadata(metadata);
 
         return (validators, raw);
     }
@@ -119,14 +111,16 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         view
         returns (Validator[] memory, ICMMessage memory)
     {
-        (Validator[] memory validators, ICMRawMessage memory raw) =
-            registerValidatorSetFixture(1, 1);
-        bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
-        // sign the message
-        bytes memory signature = dummyPChainValidatorSetSign(rawMessageBytes);
-        ICMMessage memory message =
-            ICMMessage({message: raw, rawMessageBytes: rawMessageBytes, attestation: signature});
+        (Validator[] memory validators, bytes memory raw) = registerValidatorSetFixture(1, 1);
 
+        // sign the message
+        bytes memory signature = dummyPChainValidatorSetSign(raw);
+        ICMMessage memory message = ICMMessage({
+            rawMessage: raw,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
+            attestation: signature
+        });
         return (validators, message);
     }
 
@@ -138,13 +132,16 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         uint64 pChainHeight,
         uint64 pChainTimestamp
     ) public view returns (Validator[] memory, ICMMessage memory) {
-        (Validator[] memory validators, ICMRawMessage memory raw) =
+        (Validator[] memory validators, bytes memory raw) =
             registerValidatorSetFixture(pChainHeight, pChainTimestamp);
-        bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
         // sign the message
-        bytes memory signature = l1ValidatorSetSign(rawMessageBytes);
-        ICMMessage memory message =
-            ICMMessage({message: raw, rawMessageBytes: rawMessageBytes, attestation: signature});
+        bytes memory signature = l1ValidatorSetSign(raw);
+        ICMMessage memory message = ICMMessage({
+            rawMessage: raw,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
+            attestation: signature
+        });
 
         return (validators, message);
     }
@@ -202,7 +199,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 // Test suite for testing the initialization of the first P-chain validator set before
 // engaging in normal operation
 contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetRegistryCommon {
-    AvalancheValidatorSetRegistry private _registry;
+    FullSetUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -212,11 +209,10 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
             pChainHeight: validatorSet.pChainHeight,
             pChainTimestamp: validatorSet.pChainTimestamp,
-            validatorSetHash: validatorSetHash,
             totalValidators: 5,
             shardHashes: shardHashes
         });
-        _registry = new AvalancheValidatorSetRegistry(NETWORK_ID, initialValidatorSetData);
+        _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetMetadata);
     }
 
     /**
@@ -320,7 +316,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
 
 // Test suite for functionality after the initial P-chain set has been registered
 contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSetRegistryCommon {
-    AvalancheValidatorSetRegistry private _registry;
+    FullSetUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -330,11 +326,10 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
             pChainHeight: validatorSet.pChainHeight,
             pChainTimestamp: validatorSet.pChainTimestamp,
-            validatorSetHash: validatorSetHash,
             totalValidators: 5,
             shardHashes: shardHashes
         });
-        _registry = new AvalancheValidatorSetRegistry(NETWORK_ID, initialValidatorSetData);
+        _registry = new FullSetUpdater(NETWORK_ID, initialValidatorSetData);
         // initialize the entire P-chain validator set
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
@@ -354,12 +349,12 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         // check that no validator set has ever been registered to this blockchain ID before
-        assertFalse(_registry.isRegistered(message.message.sourceBlockchainID));
+        assertFalse(_registry.isRegistered(message.sourceBlockchainID));
         _registry.registerValidatorSet(message, validatorBytes);
         // check that a registration has started but is still in progress
-        assertTrue(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+        assertTrue(_registry.isRegistrationInProgress(message.sourceBlockchainID));
         // check that no complete registration has occurred for this blockchain ID
-        assertFalse(_registry.isRegistered(message.message.sourceBlockchainID));
+        assertFalse(_registry.isRegistered(message.sourceBlockchainID));
     }
 
     /**
@@ -377,15 +372,13 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // add the second shard
         validatorShard[0] = validators[1];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 2,
-            avalancheBlockchainID: message.message.sourceBlockchainID
-        });
+        ValidatorSetShard memory shard =
+            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: message.sourceBlockchainID});
         _registry.updateValidatorSet(shard, validatorBytes);
         // We should not have a fully registered validator set
-        assertTrue(_registry.isRegistered(message.message.sourceBlockchainID));
+        assertTrue(_registry.isRegistered(message.sourceBlockchainID));
         // There should be no registrations in progress
-        assertFalse(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+        assertFalse(_registry.isRegistrationInProgress(message.sourceBlockchainID));
     }
 
     /**
@@ -424,10 +417,8 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // add the second shard
         validatorShard[0] = validators[1];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 2,
-            avalancheBlockchainID: message.message.sourceBlockchainID
-        });
+        ValidatorSetShard memory shard =
+            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: message.sourceBlockchainID});
         _registry.updateValidatorSet(shard, validatorBytes);
 
         // Try to register this set again, still signed by the P-chain
@@ -467,10 +458,8 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // add the second shard
         validatorShard[0] = validators[1];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 2,
-            avalancheBlockchainID: message.message.sourceBlockchainID
-        });
+        ValidatorSetShard memory shard =
+            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: message.sourceBlockchainID});
         _registry.updateValidatorSet(shard, validatorBytes);
 
         // register a new set
@@ -479,21 +468,19 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         // register the first shard
         _registry.registerValidatorSet(message, validatorBytes);
-        assertTrue(_registry.isRegistered(message.message.sourceBlockchainID));
+        assertTrue(_registry.isRegistered(message.sourceBlockchainID));
         // a set has been registered previously to this blockchain ID
         // a registration is in progress
-        assertTrue(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+        assertTrue(_registry.isRegistrationInProgress(message.sourceBlockchainID));
 
         // register the second shard
         validatorShard[0] = validators[1];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        shard = ValidatorSetShard({
-            shardNumber: 2,
-            avalancheBlockchainID: message.message.sourceBlockchainID
-        });
+        shard =
+            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: message.sourceBlockchainID});
         _registry.updateValidatorSet(shard, validatorBytes);
         // check that the registration is no longer in progress
-        assertFalse(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+        assertFalse(_registry.isRegistrationInProgress(message.sourceBlockchainID));
     }
 
     /**
@@ -512,10 +499,8 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // add the second shard
         validatorShard[0] = validators[1];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 2,
-            avalancheBlockchainID: message.message.sourceBlockchainID
-        });
+        ValidatorSetShard memory shard =
+            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: message.sourceBlockchainID});
         _registry.updateValidatorSet(shard, validatorBytes);
 
         // register a new set
@@ -542,10 +527,8 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // add the second shard
         validatorShard[0] = validators[1];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 2,
-            avalancheBlockchainID: message.message.sourceBlockchainID
-        });
+        ValidatorSetShard memory shard =
+            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: message.sourceBlockchainID});
         _registry.updateValidatorSet(shard, validatorBytes);
 
         // register a new set

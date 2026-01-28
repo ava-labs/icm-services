@@ -150,7 +150,6 @@ contract ValidatorSetsTest is Test {
         bytes32 avalancheBlockchainID,
         uint64 pChainHeight,
         uint64 pChainTimestamp,
-        bytes32 validatorSetHash,
         uint64 totalValidators,
         bytes32[] memory shardHashes
     ) public pure {
@@ -158,7 +157,6 @@ contract ValidatorSetsTest is Test {
             avalancheBlockchainID: avalancheBlockchainID,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            validatorSetHash: validatorSetHash,
             totalValidators: totalValidators,
             shardHashes: shardHashes
         });
@@ -168,7 +166,6 @@ contract ValidatorSetsTest is Test {
         assertEq(payload.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(payload.pChainHeight, deserialized.pChainHeight);
         assertEq(payload.pChainTimestamp, deserialized.pChainTimestamp);
-        assertEq(payload.validatorSetHash, deserialized.validatorSetHash);
         assertEq(payload.shardHashes, deserialized.shardHashes);
     }
 
