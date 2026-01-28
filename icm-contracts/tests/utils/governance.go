@@ -70,7 +70,6 @@ func ExecuteValidatorSetSigCallAndVerify(
 func InitOffChainMessageChainConfigValidatorSetSig(
 	networkID uint32,
 	l1 interfaces.L1TestInfo,
-	validatorSetSigAddress common.Address,
 	validatorSetSigMessages []validatorsetsig.ValidatorSetSigMessage,
 ) ([]avalancheWarp.UnsignedMessage, string) {
 	unsignedMessages := []avalancheWarp.UnsignedMessage{}
