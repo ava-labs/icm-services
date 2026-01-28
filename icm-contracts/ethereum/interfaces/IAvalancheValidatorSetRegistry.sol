@@ -2,10 +2,10 @@
 pragma solidity ^0.8.30;
 
 import {ICMMessage} from "../../common/ICM.sol";
-import {ValidatorSetShard} from "../utils/ValidatorSets.sol";
+import {Validator, ValidatorSetShard, ValidatorSetMetadata} from "../utils/ValidatorSets.sol";
 
 /**
- * @title IAvalancheValidatorSetRegistry
+ * @title IAvalancheValidatorRegistry
  * @notice Interface for an Avalanche Validator Registry contract
  * @dev This interface defines the events and functions for managing Avalanche validators and validating signed message
  * from a given validator set.

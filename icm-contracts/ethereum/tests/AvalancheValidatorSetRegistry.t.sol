@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {ICM, ICMMessage, ICMRawMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
-import {AvalancheValidatorSetRegistry} from "../AvalancheValidatorSetRegistry.sol";
+import {FullSetUpdater} from "../AvalancheValidatorSetRegistry.sol";
 import {
     Validator,
     ValidatorSet,
@@ -202,7 +202,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 // Test suite for testing the initialization of the first P-chain validator set before
 // engaging in normal operation
 contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetRegistryCommon {
-    AvalancheValidatorSetRegistry private _registry;
+    FullSetUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -216,7 +216,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             totalValidators: 5,
             shardHashes: shardHashes
         });
-        _registry = new AvalancheValidatorSetRegistry(NETWORK_ID, initialValidatorSetData);
+        _registry = new FullSetUpdater(NETWORK_ID, initialValidatorSetData);
     }
 
     /**
@@ -320,7 +320,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
 
 // Test suite for functionality after the initial P-chain set has been registered
 contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSetRegistryCommon {
-    AvalancheValidatorSetRegistry private _registry;
+    FullSetUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -334,7 +334,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             totalValidators: 5,
             shardHashes: shardHashes
         });
-        _registry = new AvalancheValidatorSetRegistry(NETWORK_ID, initialValidatorSetData);
+        _registry = new FullSetUpdater(NETWORK_ID, initialValidatorSetData);
         // initialize the entire P-chain validator set
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
