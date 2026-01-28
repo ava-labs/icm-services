@@ -108,7 +108,7 @@ func newTmpnetNetwork(
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
 			),
-			maps.Clone(utils.WarpEnabledChainConfig),
+			maps.Clone(utils.DefaultChainConfig()),
 			initialL1Bootstrapper,
 		)
 		l1.OwningKey = globalFundedKey
@@ -126,9 +126,9 @@ func newTmpnetNetwork(
 		DefaultFlags:        defaultFlags,
 		Nodes:               bootstrapNodes,
 		Subnets:             l1s,
-		PrimarySubnetConfig: maps.Clone(utils.WarpEnabledChainConfig),
+		PrimarySubnetConfig: maps.Clone(utils.DefaultChainConfig()),
 		PrimaryChainConfigs: map[string]tmpnet.ConfigMap{
-			"C": maps.Clone(utils.WarpEnabledChainConfig),
+			"C": maps.Clone(utils.DefaultChainConfig()),
 		},
 	}
 

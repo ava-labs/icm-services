@@ -46,7 +46,11 @@ const (
 
 var NativeTransferGas uint64 = 21_000
 
-var WarpEnabledChainConfig = map[string]any{
+func DefaultChainConfig() map[string]any {
+	return maps.Clone(warpEnabledChainConfig)
+}
+
+var warpEnabledChainConfig = map[string]any{
 	"log-level":         "debug",
 	"warp-api-enabled":  true,
 	"local-txs-enabled": true,
@@ -502,7 +506,7 @@ func GetChainConfigWithOffChainMessages(offChainMessages []avalancheWarp.Unsigne
 		hexOffChainMessages = append(hexOffChainMessages, hexutil.Encode(message.Bytes()))
 	}
 
-	chainConfig := maps.Clone(WarpEnabledChainConfig)
+	chainConfig := DefaultChainConfig()
 	chainConfig["warp-off-chain-messages"] = hexOffChainMessages
 
 	// Marshal the map to JSON
