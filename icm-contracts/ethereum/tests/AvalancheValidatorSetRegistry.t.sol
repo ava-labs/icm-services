@@ -60,11 +60,10 @@ contract AvalancheValidatorSetRegistryCommon is Test {
      * @dev A fixture that returns a validator set along with a raw ICM message to register
      * this set. This set is split into two shard with one validator each.
      */
-    function registerValidatorSetFixture()
-        public
-        view
-        returns (Validator[] memory, ICMRawMessage memory)
-    {
+    function registerValidatorSetFixture(
+        uint64 pChainHeight,
+        uint64 pChainTimestamp
+    ) public view returns (Validator[] memory, ICMRawMessage memory) {
         // create the total validator set and two shards
         Validator[] memory validators = new Validator[](2);
         bytes32[] memory shardHashes = new bytes32[](2);
@@ -92,8 +91,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 
         ValidatorSetMetadata memory metadata = ValidatorSetMetadata({
             avalancheBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
-            pChainHeight: 10,
-            pChainTimestamp: 10,
+            pChainHeight: pChainHeight,
+            pChainTimestamp: pChainTimestamp,
             validatorSetHash: sha256(ValidatorSets.serializeValidators(validators)),
             totalValidators: 2,
             shardHashes: shardHashes
@@ -120,7 +119,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         view
         returns (Validator[] memory, ICMMessage memory)
     {
-        (Validator[] memory validators, ICMRawMessage memory raw) = registerValidatorSetFixture();
+        (Validator[] memory validators, ICMRawMessage memory raw) =
+            registerValidatorSetFixture(1, 1);
         bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
         // sign the message
         bytes memory signature = dummyPChainValidatorSetSign(rawMessageBytes);
@@ -134,12 +134,12 @@ contract AvalancheValidatorSetRegistryCommon is Test {
      * @dev If this validator set is not being registered for the first time, it must be signed
      * by the validator set previously registered to this blockchain ID
      */
-    function registerValidatorSetAgainFixture()
-        public
-        view
-        returns (Validator[] memory, ICMMessage memory)
-    {
-        (Validator[] memory validators, ICMRawMessage memory raw) = registerValidatorSetFixture();
+    function registerValidatorSetAgainFixture(
+        uint64 pChainHeight,
+        uint64 pChainTimestamp
+    ) public view returns (Validator[] memory, ICMMessage memory) {
+        (Validator[] memory validators, ICMRawMessage memory raw) =
+            registerValidatorSetFixture(pChainHeight, pChainTimestamp);
         bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
         // sign the message
         bytes memory signature = l1ValidatorSetSign(rawMessageBytes);
@@ -280,6 +280,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         Validator memory removed = validatorSet.validators[4];
         Validator[] memory subset = new Validator[](4);
+        // copy over all validators but the last
         for (uint256 i = 0; i < 4; i++) {
             subset[i] = validatorSet.validators[i];
         }
@@ -442,7 +443,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
      */
     function testRegisterChainWronglySignedByL1() public {
         (Validator[] memory validators, ICMMessage memory message) =
-            registerValidatorSetAgainFixture();
+            registerValidatorSetAgainFixture(10, 10);
         Validator[] memory validatorShard = new Validator[](1);
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
@@ -473,7 +474,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         _registry.updateValidatorSet(shard, validatorBytes);
 
         // register a new set
-        (validators, message) = registerValidatorSetAgainFixture();
+        (validators, message) = registerValidatorSetAgainFixture(10, 10);
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         // register the first shard
@@ -493,5 +494,66 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         _registry.updateValidatorSet(shard, validatorBytes);
         // check that the registration is no longer in progress
         assertFalse(_registry.isRegistrationInProgress(message.message.sourceBlockchainID));
+    }
+
+    /**
+     * @dev Same as`testRegisterL1Again` but the second registration should fail
+     * because the P-chain height has not strictly increased
+     */
+    function testRegisterL1AgainBadPchainHeight() public {
+        // register an initial set
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
+        Validator[] memory validatorShard = new Validator[](1);
+        validatorShard[0] = validators[0];
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        _registry.registerValidatorSet(message, validatorBytes);
+
+        // add the second shard
+        validatorShard[0] = validators[1];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 2,
+            avalancheBlockchainID: message.message.sourceBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+
+        // register a new set
+        (validators, message) = registerValidatorSetAgainFixture(1, 2);
+        validatorShard[0] = validators[0];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        // registering the first shard should fail
+        vm.expectRevert(bytes("P-Chain height must be greater than the current validator set"));
+        _registry.registerValidatorSet(message, validatorBytes);
+    }
+
+    /**
+     * @dev Same as`testRegisterL1AgainBadPChainHeight` but we test a bad P-chain timestamp instead
+     */
+    function testRegisterL1AgainBadPchainTimestamp() public {
+        // register an initial set
+        (Validator[] memory validators, ICMMessage memory message) =
+            registerValidatorSetInitialFixture();
+        Validator[] memory validatorShard = new Validator[](1);
+        validatorShard[0] = validators[0];
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        _registry.registerValidatorSet(message, validatorBytes);
+
+        // add the second shard
+        validatorShard[0] = validators[1];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 2,
+            avalancheBlockchainID: message.message.sourceBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+
+        // register a new set
+        (validators, message) = registerValidatorSetAgainFixture(2, 1);
+        validatorShard[0] = validators[0];
+        validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+        // registering the first shard should fail
+        vm.expectRevert(bytes("P-Chain timestamp must be greater than the current validator set"));
+        _registry.registerValidatorSet(message, validatorBytes);
     }
 }
