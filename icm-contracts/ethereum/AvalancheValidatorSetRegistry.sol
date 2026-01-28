@@ -287,24 +287,33 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     function _parseAndValidateValidatorMetadata(
         ICMMessage calldata icmMessage,
         bytes calldata validatorBytes
-    ) private pure returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
+    ) private view returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
         // Validate that the source address is empty.
         require(icmMessage.message.sourceAddress == address(0), "Source address must be empty");
 
         // Parse the validator set state payload.
-        ValidatorSetMetadata memory validatorSetStatePayload =
+        ValidatorSetMetadata memory validatorSetMetadata =
             ValidatorSets.parseValidatorSetMetadata(icmMessage.message.payload);
         // Check that the first validator set shard hash matches the hash of the serialized validator set.
         require(
-            validatorSetStatePayload.shardHashes[0] == sha256(validatorBytes),
+            validatorSetMetadata.shardHashes[0] == sha256(validatorBytes),
             "Validator set hash mismatch"
         );
         // Parse the validators.
         (Validator[] memory validators, uint64 totalWeight) =
             ValidatorSets.parseValidators(validatorBytes);
-
+        bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
+        require(
+            _validatorSets[avalancheBlockchainID].pChainHeight < validatorSetMetadata.pChainHeight,
+            "P-Chain height must be greater than the current validator set"
+        );
+        require(
+            _validatorSets[avalancheBlockchainID].pChainTimestamp
+                < validatorSetMetadata.pChainTimestamp,
+            "P-Chain timestamp must be greater than the current validator set"
+        );
         require(validators.length > 0, "Validator set cannot be empty");
         require(totalWeight > 0, "Total weight must be greater than 0");
-        return (validatorSetStatePayload, validators, totalWeight);
+        return (validatorSetMetadata, validators, totalWeight);
     }
 }
