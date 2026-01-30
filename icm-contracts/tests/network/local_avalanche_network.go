@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"maps"
 	"os"
 	"sort"
 	"time"
@@ -107,22 +108,29 @@ func newTmpnetNetwork(
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
 			),
-			utils.WarpEnabledChainConfig,
+			maps.Clone(utils.DefaultChainConfig()),
 			initialL1Bootstrapper,
 		)
 		l1.OwningKey = globalFundedKey
 		l1s = append(l1s, l1)
 	}
 
-	// Create new network
-	network := subnetEvmTestUtils.NewTmpnetNetwork(
-		name,
-		bootstrapNodes,
-		tmpnet.FlagsMap{},
-		l1s...,
-	)
+	defaultFlags := tmpnet.FlagsMap{}
+	defaultFlags.SetDefaults(tmpnet.FlagsMap{
+		config.ProposerVMUseCurrentHeightKey: "true",
+	})
 
-	Expect(network).ShouldNot(BeNil())
+	// Create new network
+	network := &tmpnet.Network{
+		Owner:               name,
+		DefaultFlags:        defaultFlags,
+		Nodes:               bootstrapNodes,
+		Subnets:             l1s,
+		PrimarySubnetConfig: maps.Clone(utils.DefaultChainConfig()),
+		PrimaryChainConfigs: map[string]tmpnet.ConfigMap{
+			"C": maps.Clone(utils.DefaultChainConfig()),
+		},
+	}
 
 	// Specify only a subset of the nodes to be bootstrapped
 	keysToFund := []*secp256k1.PrivateKey{
