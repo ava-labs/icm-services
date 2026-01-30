@@ -43,7 +43,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         PartialValidatorSet memory partialValidatorSet = PartialValidatorSet({
             pChainHeight: initialValidatorSetData.pChainHeight,
             pChainTimestamp: initialValidatorSetData.pChainTimestamp,
-            validatorSetHash: initialValidatorSetData.validatorSetHash,
             shardHashes: initialValidatorSetData.shardHashes,
             shardsReceived: 0,
             validators: new Validator[](initialValidatorSetData.totalValidators),
@@ -129,7 +128,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             PartialValidatorSet memory partialValidatorSet = PartialValidatorSet({
                 pChainHeight: validatorSetMetadata.pChainHeight,
                 pChainTimestamp: validatorSetMetadata.pChainTimestamp,
-                validatorSetHash: validatorSetMetadata.validatorSetHash,
                 shardHashes: validatorSetMetadata.shardHashes,
                 shardsReceived: 1,
                 validators: valSet,

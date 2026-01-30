@@ -94,7 +94,6 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             avalancheBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            validatorSetHash: sha256(ValidatorSets.serializeValidators(validators)),
             totalValidators: 2,
             shardHashes: shardHashes
         });
@@ -214,7 +213,6 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
             pChainHeight: validatorSet.pChainHeight,
             pChainTimestamp: validatorSet.pChainTimestamp,
-            validatorSetHash: validatorSetHash,
             totalValidators: 5,
             shardHashes: shardHashes
         });
@@ -336,7 +334,6 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
             pChainHeight: validatorSet.pChainHeight,
             pChainTimestamp: validatorSet.pChainTimestamp,
-            validatorSetHash: validatorSetHash,
             totalValidators: 5,
             shardHashes: shardHashes
         });
