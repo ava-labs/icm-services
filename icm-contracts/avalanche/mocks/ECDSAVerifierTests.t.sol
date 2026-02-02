@@ -9,22 +9,22 @@ pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 import {ICMMessage, TeleporterMessageV2} from "../../common/ITeleporterMessengerV2.sol";
-import "./ECDSAVerifier.sol";
+import {ECDSAVerifier} from "./ECDSAVerifier.sol";
 
 contract ECDSAVerifierTest is Test {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
     
-    ECDSAVerifier verifier;
+    ECDSAVerifier public verifier;
     
-    uint256 signerPrivateKey;
-    address signerAddress;
+    uint256 public signerPrivateKey;
+    address public signerAddress;
     
-    uint256 attackerPrivateKey;
-    address attackerAddress;
+    uint256 public attackerPrivateKey;
+    address public attackerAddress;
 
     function setUp() public {
         (signerAddress, signerPrivateKey) = makeAddrAndKey("trustedSigner");
@@ -32,27 +32,6 @@ contract ECDSAVerifierTest is Test {
         
         // Deploy the contract with the trusted signer
         verifier = new ECDSAVerifier(signerAddress);
-    }
-
-    /**
-     * @dev Helper function to generate ECDSA signatures. 
-     */
-    function _sign(
-        TeleporterMessageV2 memory message, 
-        bytes32 chainID, 
-        uint256 privateKey
-    ) internal pure returns (bytes memory) {
-        
-        // Reconstruct the digest
-        bytes32 dataHash = keccak256(abi.encode(message, chainID));
-
-        // Apply EIP-191 prefix
-        bytes32 digest = dataHash.toEthSignedMessageHash();
-
-        // Sign the message using Foundry
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-
-        return abi.encodePacked(r, s, v);
     }
 
     function testVerifyMessageSuccess() public view {
@@ -108,7 +87,7 @@ contract ECDSAVerifierTest is Test {
         assertFalse(verifier.verifyMessage(icmMsg));
     }
 
-    function test_VerifyMessage_Fail_TamperedData() public view {
+    function testVerifyMessageFailTamperedData() public view {
         TeleporterMessageV2 memory message = TeleporterMessageV2({
             messageNonce: 1,
             originSenderAddress: address(0xABC),
@@ -145,5 +124,26 @@ contract ECDSAVerifierTest is Test {
         });
 
         assertFalse(verifier.verifyMessage(icmMsg));
+    }
+
+    /**
+     * @dev Helper function to generate ECDSA signatures. 
+     */
+    function _sign(
+        TeleporterMessageV2 memory message, 
+        bytes32 chainID, 
+        uint256 privateKey
+    ) internal pure returns (bytes memory) {
+        
+        // Reconstruct the digest
+        bytes32 dataHash = keccak256(abi.encode(message, chainID));
+
+        // Apply EIP-191 prefix
+        bytes32 digest = dataHash.toEthSignedMessageHash();
+
+        // Sign the message using Foundry
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+
+        return abi.encodePacked(r, s, v);
     }
 }

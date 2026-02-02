@@ -5,23 +5,23 @@
 
 pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import {IMessageVerifier, ICMMessage, TeleporterMessageV2} from "../../common/ITeleporterMessengerV2.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {IMessageVerifier, ICMMessage} from "../../common/ITeleporterMessengerV2.sol";
 
 contract ECDSAVerifier is IMessageVerifier {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
-    address public immutable TRUSTED_SIGNER;
+    address public immutable trustedSigner;
 
     /**
      * @notice Sets the trusted signer address at deployment time.
-     * @param _trustedSigner The address corresponding to the off-chain private key.
+     * @param signer The address corresponding to the off-chain private key.
      */
-    constructor(address _trustedSigner) {
-        require(_trustedSigner != address(0), "Invalid signer address");
-        TRUSTED_SIGNER = _trustedSigner;
+    constructor(address signer) {
+        require(signer != address(0), "Invalid signer address");
+        trustedSigner = signer;
     }
 
     /**
@@ -45,6 +45,6 @@ contract ECDSAVerifier is IMessageVerifier {
         address recoveredSigner = digest.recover(message.attestation);
 
         // Check if the recovered signer matches the trusted signer
-        return recoveredSigner == TRUSTED_SIGNER;
+        return recoveredSigner == trustedSigner;
     }
 }
