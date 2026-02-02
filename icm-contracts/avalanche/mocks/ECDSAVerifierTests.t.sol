@@ -6,9 +6,13 @@
 // Reference: This is core logic from the Succinct Telepathy Library, which can be found at https://github.com/succinctlabs/telepathy-contracts/blob/main/test/libraries/SimpleSerialize.t.sol
 pragma solidity ^0.8.30;
 
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "./ECDSAVerifier.sol";
+
 import {Test} from "@forge-std/Test.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
+import {ICMMessage, TeleporterMessageV2} from "../../common/ITeleporterMessengerV2.sol";
+import "./ECDSAVerifier.sol";
 
 contract ECDSAVerifierTest is Test {
     using ECDSA for bytes32;
@@ -34,7 +38,7 @@ contract ECDSAVerifierTest is Test {
      * @dev Helper function to generate ECDSA signatures. 
      */
     function _sign(
-        TeleporterMessage memory message, 
+        TeleporterMessageV2 memory message, 
         bytes32 chainID, 
         uint256 privateKey
     ) internal pure returns (bytes memory) {
@@ -51,49 +55,95 @@ contract ECDSAVerifierTest is Test {
         return abi.encodePacked(r, s, v);
     }
 
-    function test_VerifyMessage_Success() public {
-        TeleporterMessage memory message = TeleporterMessage(1, address(0xABC), hex"1122");
-        bytes32 chainID = bytes32(uint256(999));
-        bytes memory signature = _sign(message, chainID, signerPrivateKey);
+    function testVerifyMessageSuccess() public view {
+        TeleporterMessageV2 memory tMsg = TeleporterMessageV2({
+            messageNonce: 1,
+            originSenderAddress: address(0xABC),
+            originTeleporterAddress: address(0xDEF),
+            destinationBlockchainID: bytes32(uint256(999)),
+            destinationAddress: address(0x456),
+            requiredGasLimit: 0,
+            allowedRelayerAddresses: new address[](0),    
+            receipts: new TeleporterMessageReceipt[](0),  
+            message: hex"1122"
+        });
 
-        ICMMessage memory icmMessage = ICMMessage({
-            unsignedMessage: message,
-            sourceBlockchainID: chainID,
+        bytes32 sourceBlockchainID = bytes32(uint256(998));
+        bytes memory signature = _sign(tMsg, sourceBlockchainID, signerPrivateKey);
+
+        ICMMessage memory icmMsg = ICMMessage({
+            message: tMsg,
+            sourceNetworkID: 0, 
+            sourceBlockchainID: sourceBlockchainID,
             attestation: signature
         });
 
-        assertTrue(verifier.verifyMessage(icmMessage));
+        assertTrue(verifier.verifyMessage(icmMsg));
     }
 
-    function test_VerifyMessage_Fail_WrongSigner() public {
-        TeleporterMessage memory message = TeleporterMessage(1, address(0xABC), hex"1122");
-        bytes32 chainID = bytes32(uint256(999));
+    function testVerifyMessageFailWrongSigner() public view {
+        TeleporterMessageV2 memory tMsg = TeleporterMessageV2({
+            messageNonce: 1,
+            originSenderAddress: address(0xABC),
+            originTeleporterAddress: address(0xDEF),
+            destinationBlockchainID: bytes32(uint256(999)),
+            destinationAddress: address(0x456),
+            requiredGasLimit: 0,
+            allowedRelayerAddresses: new address[](0),    
+            receipts: new TeleporterMessageReceipt[](0),  
+            message: hex"1122"
+        });
+
+        bytes32 sourceBlockchainID = bytes32(uint256(1));
         // Sign with the wrong private key
-        bytes memory signature = _sign(message, chainID, attackerPrivateKey); 
+        bytes memory signature = _sign(tMsg, sourceBlockchainID, attackerPrivateKey); 
 
-        ICMMessage memory icmMessage = ICMMessage({
-            unsignedMessage: message,
-            sourceBlockchainID: chainID,
+        ICMMessage memory icmMsg = ICMMessage({
+            message: tMsg,
+            sourceNetworkID: 0,
+            sourceBlockchainID: sourceBlockchainID,
             attestation: signature
         });
 
-        assertFalse(verifier.verifyMessage(icmMessage));
+        assertFalse(verifier.verifyMessage(icmMsg));
     }
 
-    function test_VerifyMessage_Fail_TamperedData() public {
-        TeleporterMessage memory message = TeleporterMessage(1, address(0xABC), hex"1122");
-        bytes32 chainID = bytes32(uint256(999));
+    function test_VerifyMessage_Fail_TamperedData() public view {
+        TeleporterMessageV2 memory message = TeleporterMessageV2({
+            messageNonce: 1,
+            originSenderAddress: address(0xABC),
+            originTeleporterAddress: address(0xDEF),
+            destinationBlockchainID: bytes32(uint256(999)),
+            destinationAddress: address(0x456),
+            requiredGasLimit: 0,
+            allowedRelayerAddresses: new address[](0),    
+            receipts: new TeleporterMessageReceipt[](0),  
+            message: hex"1122"
+        });
+        
+        bytes32 sourceBlockchainID = bytes32(uint256(998));
         // Sign the real data
-        bytes memory signature = _sign(message, chainID, signerPrivateKey);
+        bytes memory signature = _sign(message, sourceBlockchainID, signerPrivateKey);
         // Create tampered data
-        TeleporterMessage memory wrongMessage = TeleporterMessage(1, address(0xABC), hex"DEADBEEF");
+        TeleporterMessageV2 memory wrongMessage = TeleporterMessageV2({
+            messageNonce: 1,
+            originSenderAddress: address(0xABC),
+            originTeleporterAddress: address(0xDEF),
+            destinationBlockchainID: bytes32(uint256(999)),
+            destinationAddress: address(0x456),
+            requiredGasLimit: 0,
+            allowedRelayerAddresses: new address[](0),    
+            receipts: new TeleporterMessageReceipt[](0),  
+            message: hex"DEADBEEF"
+        });
 
-        ICMMessage memory icmMessage = ICMMessage({
-            unsignedMessage: wrongMessage, 
-            sourceBlockchainID: chainID,
+        ICMMessage memory icmMsg = ICMMessage({
+            message: wrongMessage, 
+            sourceNetworkID: 0,
+            sourceBlockchainID: sourceBlockchainID,
             attestation: signature
         });
 
-        assertFalse(verifier.verifyMessage(icmMessage));
+        assertFalse(verifier.verifyMessage(icmMsg));
     }
 }

@@ -6,7 +6,8 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "./ECDSAVerifier.sol";
+import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {IMessageVerifier, ICMMessage, TeleporterMessageV2} from "../../common/ITeleporterMessengerV2.sol";
 
 contract ECDSAVerifier is IMessageVerifier {
     using ECDSA for bytes32;
@@ -33,7 +34,7 @@ contract ECDSAVerifier is IMessageVerifier {
         
         // Reconstruct the digest 
         bytes32 dataHash = keccak256(abi.encode(
-            message.unsignedMessage, 
+            message.message, 
             message.sourceBlockchainID
         ));
 
