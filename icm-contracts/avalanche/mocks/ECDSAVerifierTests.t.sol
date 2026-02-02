@@ -72,7 +72,7 @@ contract ECDSAVerifierTest is Test {
             message: hex"1122"
         });
 
-        bytes32 sourceBlockchainID = bytes32(uint256(1));
+        bytes32 sourceBlockchainID = bytes32(uint256(998));
         // Sign with the wrong private key
         bytes memory signature = _sign(tMsg, sourceBlockchainID, attackerPrivateKey);
 
