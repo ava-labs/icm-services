@@ -19,7 +19,9 @@ contract ECDSAVerifier is IMessageVerifier {
      * @notice Sets the trusted signer address at deployment time.
      * @param signer The address corresponding to the off-chain private key.
      */
-    constructor(address signer) {
+    constructor(
+        address signer
+    ) {
         require(signer != address(0), "Invalid signer address");
         trustedSigner = signer;
     }
@@ -31,12 +33,8 @@ contract ECDSAVerifier is IMessageVerifier {
     function verifyMessage(
         ICMMessage calldata message
     ) external view override returns (bool) {
-        
-        // Reconstruct the digest 
-        bytes32 dataHash = keccak256(abi.encode(
-            message.message, 
-            message.sourceBlockchainID
-        ));
+        // Reconstruct the digest
+        bytes32 dataHash = keccak256(abi.encode(message.message, message.sourceBlockchainID));
 
         // Apply EIP-191 prefix. See https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/ECDSA.sol#L50
         bytes32 digest = dataHash.toEthSignedMessageHash();

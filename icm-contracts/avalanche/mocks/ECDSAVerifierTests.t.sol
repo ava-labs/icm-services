@@ -6,7 +6,6 @@
 // Reference: This is core logic from the Succinct Telepathy Library, which can be found at https://github.com/succinctlabs/telepathy-contracts/blob/main/test/libraries/SimpleSerialize.t.sol
 pragma solidity ^0.8.30;
 
-
 import {Test} from "@forge-std/Test.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -17,19 +16,19 @@ import {ECDSAVerifier} from "./ECDSAVerifier.sol";
 contract ECDSAVerifierTest is Test {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
-    
+
     ECDSAVerifier public verifier;
-    
+
     uint256 public signerPrivateKey;
     address public signerAddress;
-    
+
     uint256 public attackerPrivateKey;
     address public attackerAddress;
 
     function setUp() public {
         (signerAddress, signerPrivateKey) = makeAddrAndKey("trustedSigner");
         (attackerAddress, attackerPrivateKey) = makeAddrAndKey("attacker");
-        
+
         // Deploy the contract with the trusted signer
         verifier = new ECDSAVerifier(signerAddress);
     }
@@ -42,8 +41,8 @@ contract ECDSAVerifierTest is Test {
             destinationBlockchainID: bytes32(uint256(999)),
             destinationAddress: address(0x456),
             requiredGasLimit: 0,
-            allowedRelayerAddresses: new address[](0),    
-            receipts: new TeleporterMessageReceipt[](0),  
+            allowedRelayerAddresses: new address[](0),
+            receipts: new TeleporterMessageReceipt[](0),
             message: hex"1122"
         });
 
@@ -52,7 +51,7 @@ contract ECDSAVerifierTest is Test {
 
         ICMMessage memory icmMsg = ICMMessage({
             message: tMsg,
-            sourceNetworkID: 0, 
+            sourceNetworkID: 0,
             sourceBlockchainID: sourceBlockchainID,
             attestation: signature
         });
@@ -68,14 +67,14 @@ contract ECDSAVerifierTest is Test {
             destinationBlockchainID: bytes32(uint256(999)),
             destinationAddress: address(0x456),
             requiredGasLimit: 0,
-            allowedRelayerAddresses: new address[](0),    
-            receipts: new TeleporterMessageReceipt[](0),  
+            allowedRelayerAddresses: new address[](0),
+            receipts: new TeleporterMessageReceipt[](0),
             message: hex"1122"
         });
 
         bytes32 sourceBlockchainID = bytes32(uint256(1));
         // Sign with the wrong private key
-        bytes memory signature = _sign(tMsg, sourceBlockchainID, attackerPrivateKey); 
+        bytes memory signature = _sign(tMsg, sourceBlockchainID, attackerPrivateKey);
 
         ICMMessage memory icmMsg = ICMMessage({
             message: tMsg,
@@ -95,11 +94,11 @@ contract ECDSAVerifierTest is Test {
             destinationBlockchainID: bytes32(uint256(999)),
             destinationAddress: address(0x456),
             requiredGasLimit: 0,
-            allowedRelayerAddresses: new address[](0),    
-            receipts: new TeleporterMessageReceipt[](0),  
+            allowedRelayerAddresses: new address[](0),
+            receipts: new TeleporterMessageReceipt[](0),
             message: hex"1122"
         });
-        
+
         bytes32 sourceBlockchainID = bytes32(uint256(998));
         // Sign the real data
         bytes memory signature = _sign(message, sourceBlockchainID, signerPrivateKey);
@@ -111,13 +110,13 @@ contract ECDSAVerifierTest is Test {
             destinationBlockchainID: bytes32(uint256(999)),
             destinationAddress: address(0x456),
             requiredGasLimit: 0,
-            allowedRelayerAddresses: new address[](0),    
-            receipts: new TeleporterMessageReceipt[](0),  
+            allowedRelayerAddresses: new address[](0),
+            receipts: new TeleporterMessageReceipt[](0),
             message: hex"DEADBEEF"
         });
 
         ICMMessage memory icmMsg = ICMMessage({
-            message: wrongMessage, 
+            message: wrongMessage,
             sourceNetworkID: 0,
             sourceBlockchainID: sourceBlockchainID,
             attestation: signature
@@ -127,14 +126,13 @@ contract ECDSAVerifierTest is Test {
     }
 
     /**
-     * @dev Helper function to generate ECDSA signatures. 
+     * @dev Helper function to generate ECDSA signatures.
      */
     function _sign(
-        TeleporterMessageV2 memory message, 
-        bytes32 chainID, 
+        TeleporterMessageV2 memory message,
+        bytes32 chainID,
         uint256 privateKey
     ) internal pure returns (bytes memory) {
-        
         // Reconstruct the digest
         bytes32 dataHash = keccak256(abi.encode(message, chainID));
 
