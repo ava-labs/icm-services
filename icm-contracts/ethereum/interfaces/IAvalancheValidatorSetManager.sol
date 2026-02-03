@@ -53,7 +53,8 @@ interface IAvalancheValidatorSetManager {
     /**
      * @notice Parses and validates metadata about a validator set data from an ICM message. This
      * is called when registering validator sets. It may also contain a (potentially partial) subset of
-     * the validators that are being registered.
+     * the validators that are being registered. This is always considered to be the first shard of
+     * the requisite data.
      *
      * @param icmMessage The ICM message containing the validator set metadata
      * @param shardBytes The serialized data used to construct a subset of the registered
