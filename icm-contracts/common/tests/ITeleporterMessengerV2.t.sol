@@ -2,18 +2,41 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
-import {TeleporterMessageV2, ICMMessage} from "../ITeleporterMessengerV2.sol";
+import {
+    TeleporterMessageV2,
+    TeleporterICMMessage,
+    ICMTeleporterV2
+} from "../ITeleporterMessengerV2.sol";
 import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 
 contract ICMTest is Test {
     /*
      * @dev Test to make sure a round trip of serialization is a no-op
      */
-    function testRoundTripRawMessage(
+    function testRoundTripTeleporterICMMessage(
         bytes4 sourceNetworkID,
         bytes32 sourceBlockchainID,
-        bytes memory payload
+        bytes memory payload,
+        uint8 numRelayerAddresses,
+        address relayerAddress,
+        uint8 numReceipts,
+        uint256 messageNonce
     ) public pure {
+        vm.assume(numRelayerAddresses < 10);
+        vm.assume(numReceipts < 10);
+        address[] memory allowedRelayerAddresses = new address[](numRelayerAddresses);
+        for (uint256 i = 0; i < numRelayerAddresses; i++) {
+            allowedRelayerAddresses[i] = relayerAddress;
+        }
+
+        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
+        for (uint256 i = 0; i < numReceipts; i++) {
+            receipts[i] = TeleporterMessageReceipt({
+                receivedMessageNonce: messageNonce,
+                relayerRewardAddress: relayerAddress
+            });
+        }
+
         TeleporterMessageV2 memory teleporterMessage = TeleporterMessageV2({
             messageNonce: 0,
             originSenderAddress: address(123),
@@ -21,20 +44,21 @@ contract ICMTest is Test {
             destinationBlockchainID: bytes32(hex"abcd"),
             destinationAddress: address(987),
             requiredGasLimit: 100000,
-            allowedRelayerAddresses: new address[](0),
-            receipts: new TeleporterMessageReceipt[](0),
+            allowedRelayerAddresses: allowedRelayerAddresses,
+            receipts: receipts,
             message: payload
         });
 
-        ICMMessage memory icmMessage = ICMMessage({
+        TeleporterICMMessage memory icmMessage = TeleporterICMMessage({
             message: teleporterMessage,
             sourceNetworkID: uint32(sourceNetworkID),
             sourceBlockchainID: sourceBlockchainID,
             attestation: abi.encode(1)
         });
 
-        bytes memory serialized = abi.encode(icmMessage);
-        ICMMessage memory deserializedICM = abi.decode(serialized, (ICMMessage));
+        bytes memory serialized = ICMTeleporterV2.serializeTeleporterICMMessage(icmMessage);
+        TeleporterICMMessage memory deserializedICM =
+            ICMTeleporterV2.parseTeleporterICMMessage(serialized);
         assertEq(icmMessage.sourceNetworkID, deserializedICM.sourceNetworkID);
         assertEq(icmMessage.sourceBlockchainID, deserializedICM.sourceBlockchainID);
         assertEq(icmMessage.attestation, deserializedICM.attestation);
