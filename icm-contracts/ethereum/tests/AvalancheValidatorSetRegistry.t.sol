@@ -210,7 +210,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
         bytes32[] memory shardHashes = new bytes32[](1);
         shardHashes[0] = validatorSetHash;
-        ValidatorSetMetadata memory initialValidatorSetData = ValidatorSetMetadata({
+        ValidatorSetMetadata memory initialValidatorSetMetaData = ValidatorSetMetadata({
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
             pChainHeight: validatorSet.pChainHeight,
             pChainTimestamp: validatorSet.pChainTimestamp,
