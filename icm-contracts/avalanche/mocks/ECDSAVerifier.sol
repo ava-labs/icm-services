@@ -3,7 +3,7 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.30;
+pragma solidity ^0.8.30;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
