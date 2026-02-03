@@ -219,7 +219,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         });
         _manager = new AvalancheValidatorSetManager();
         _registry = new AvalancheValidatorSetRegistry(
-            NETWORK_ID, initialValidatorSetData, address(_manager)
+            NETWORK_ID, initialValidatorSetMetaData, address(_manager)
         );
     }
 
