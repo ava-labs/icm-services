@@ -39,6 +39,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         avalancheNetworkID = avalancheNetworkID_;
         pChainID = initialValidatorSetData.avalancheBlockchainID;
         validatorSetManagerContract = validatorSetUpdaterContract_;
+        IAvalancheValidatorSetManager(validatorSetManagerContract).initialize(address(this));
 
         PartialValidatorSet memory partialValidatorSet = PartialValidatorSet({
             pChainHeight: initialValidatorSetData.pChainHeight,

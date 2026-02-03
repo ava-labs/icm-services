@@ -7,6 +7,7 @@ import {AvalancheValidatorSetManager} from "../AvalancheValidatorSetManager.sol"
 import {ICM, ICMMessage, ICMRawMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
 import {
+    PartialValidatorSet,
     Validator,
     ValidatorSet,
     ValidatorSets,
@@ -561,5 +562,87 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // registering the first shard should fail
         vm.expectRevert(bytes("P-Chain timestamp must be greater than the current validator set"));
         _registry.registerValidatorSet(message, validatorBytes);
+    }
+
+    /**
+     * @dev Test that we cannot alter state in the manager if we are not the registry
+     */
+    function testUnauthorizedTransactions() public {
+        bytes32 pChainID = _registry.pChainID();
+        assertEq(_manager.getOwner(), address(_registry));
+        assertNotEq(_manager.getOwner(), address(this));
+
+        // check setValidatorSet
+        ValidatorSet memory maliciousSet;
+        vm.expectRevert(bytes("An unauthorized address attempted to call this function"));
+        _manager.setValidatorSet(pChainID, maliciousSet);
+
+        // check setPartialValidatorSet
+        PartialValidatorSet memory maliciousPartial;
+        vm.expectRevert(bytes("An unauthorized address attempted to call this function"));
+        _manager.setPartialValidatorSet(pChainID, maliciousPartial);
+
+        // check applyShard
+        ValidatorSetShard memory shard;
+        vm.expectRevert(bytes("An unauthorized address attempted to call this function"));
+        _manager.applyShard(shard, new bytes(0));
+    }
+}
+
+// Tests that the data layer relied upon by an AvalancheValidatorSetRegistry is owned exclusively
+// by said contract and cannot be altered by any other party
+contract AvalancheValidatorSetManagerOwnership is AvalancheValidatorSetRegistryCommon {
+    AvalancheValidatorSetRegistry private _registry;
+    AvalancheValidatorSetManager private _manager;
+
+    /*
+     * @dev The owner of a manager should not have been specified at the time of deployment of
+     * a registry
+     */
+    function testInitialization() public {
+        // create a manager and give ownership to this contract
+        _manager = new AvalancheValidatorSetManager();
+        _manager.initialize(address(this));
+
+        (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
+        bytes32[] memory shardHashes = new bytes32[](1);
+        shardHashes[0] = validatorSetHash;
+        ValidatorSetMetadata memory initialValidatorSetData = ValidatorSetMetadata({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            pChainHeight: validatorSet.pChainHeight,
+            pChainTimestamp: validatorSet.pChainTimestamp,
+            totalValidators: 5,
+            shardHashes: shardHashes
+        });
+        // initializing the registry should fail
+        vm.expectRevert();
+        _registry = new AvalancheValidatorSetRegistry(
+            NETWORK_ID, initialValidatorSetData, address(_manager)
+        );
+    }
+
+    /*
+     * @dev Test that we cannot set ourselves as owner of the manager contract of a deployed
+     * registry contract. This is essentially testing that openzeppelin's initialization pattern
+     * works as advertised, but an good check nevertheless.
+     */
+    function testHostileTakeover() public {
+        (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
+        bytes32[] memory shardHashes = new bytes32[](1);
+        shardHashes[0] = validatorSetHash;
+        ValidatorSetMetadata memory initialValidatorSetData = ValidatorSetMetadata({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            pChainHeight: validatorSet.pChainHeight,
+            pChainTimestamp: validatorSet.pChainTimestamp,
+            totalValidators: 5,
+            shardHashes: shardHashes
+        });
+        _manager = new AvalancheValidatorSetManager();
+        _registry = new AvalancheValidatorSetRegistry(
+            NETWORK_ID, initialValidatorSetData, address(_manager)
+        );
+        // test that we cannot set ourselves as the owner afterwards
+        vm.expectRevert();
+        _manager.initialize(address(this));
     }
 }

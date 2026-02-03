@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {Initializable} from
+    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 import {IAvalancheValidatorSetManager} from "./interfaces/IAvalancheValidatorSetManager.sol";
 import {ICMMessage} from "../common/ICM.sol";
 import {
@@ -16,21 +18,41 @@ import {
 //
 // It further specifies that shards of validator sets is a serialized subsequence of
 // the entire validator set that has been cryptographically committed to.
-contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager {
+contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager, Initializable {
+    // This contract should only be modified by a particular contract so that malicious
+    // parties cannot alter the data stored here
+    address private _owner;
+
     // Mapping of Avalanche blockchain IDs to their complete validator set data.
     mapping(bytes32 => ValidatorSet) internal _validatorSets;
 
     // Mapping of Avalanche blockchain IDs to a subset of said validator set.
     // Used to allow updating validator sets across multiple transactions
     mapping(bytes32 => PartialValidatorSet) internal _partialValidatorSets;
+
+    modifier onlyOwner() {
+        require(msg.sender == _owner, "An unauthorized address attempted to call this function");
+        _;
+    }
+
+    /**
+     * @notice Specify the owner of this contract
+     * @dev We want to support deploying an instance of this contract first
+     * and then specifying the owner later.
+     */
+    function initialize(
+        address owner
+    ) external initializer {
+        _owner = owner;
+    }
+
     /**
      * @notice Set the **complete** validator set most recently registered
      */
-
     function setValidatorSet(
         bytes32 avalancheBlockchainID,
         ValidatorSet memory validatorSet
-    ) external {
+    ) external onlyOwner {
         _validatorSets[avalancheBlockchainID] = validatorSet;
     }
 
@@ -40,14 +62,17 @@ contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager {
     function setPartialValidatorSet(
         bytes32 avalancheBlockchainID,
         PartialValidatorSet memory partialValidatorSet
-    ) external {
+    ) external onlyOwner {
         _partialValidatorSets[avalancheBlockchainID] = partialValidatorSet;
     }
 
     /**
      * @dev Applies a set of validators to partial to a set that has been registered.
      */
-    function applyShard(ValidatorSetShard calldata shard, bytes memory shardBytes) external {
+    function applyShard(
+        ValidatorSetShard calldata shard,
+        bytes memory shardBytes
+    ) external onlyOwner {
         bytes32 avalancheBlockchainID = shard.avalancheBlockchainID;
         // Parse the validators.
         (Validator[] memory validators, uint64 validatorWeight) =
@@ -152,5 +177,12 @@ contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager {
         bytes32 avalancheBlockchainID
     ) external view returns (ValidatorSet memory) {
         return _validatorSets[avalancheBlockchainID];
+    }
+
+    /**
+     * @notice Get the owner of this contract
+     */
+    function getOwner() external view returns (address) {
+        return _owner;
     }
 }
