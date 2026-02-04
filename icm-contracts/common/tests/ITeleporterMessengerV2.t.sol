@@ -14,7 +14,7 @@ contract ICMTest is Test {
      * @dev Test to make sure a round trip of serialization is a no-op
      */
     function testRoundTripTeleporterICMMessage(
-        bytes4 sourceNetworkID,
+        uint32 sourceNetworkID,
         bytes32 sourceBlockchainID,
         bytes memory payload,
         uint8 numRelayerAddresses,
@@ -51,7 +51,7 @@ contract ICMTest is Test {
 
         TeleporterICMMessage memory icmMessage = TeleporterICMMessage({
             message: teleporterMessage,
-            sourceNetworkID: uint32(sourceNetworkID),
+            sourceNetworkID: sourceNetworkID,
             sourceBlockchainID: sourceBlockchainID,
             attestation: abi.encode(1)
         });
