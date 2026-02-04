@@ -118,6 +118,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         );
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
         // This validator set is sharded
+        require(message.message.sourceBlockchainID == avalancheBlockchainID, "Source chain ID mismatch");
         if (validatorSetMetadata.shardHashes.length > 1) {
             // pre-allocate enough storage for the whole validator set
             Validator[] memory valSet = new Validator[](validatorSetMetadata.totalValidators);
