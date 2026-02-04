@@ -46,7 +46,7 @@ interface IAvalancheValidatorSetManager {
      * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
      * it over to the `_validatorSets` mapping.
      * @param shard Indicates the sequence number of the shard and blockchain affected by this update
-     * @param shardBytes the actual data of the shard which
+     * @param shardBytes the actual data of the shard
      */
     function applyShard(ValidatorSetShard calldata shard, bytes memory shardBytes) external;
 
