@@ -35,20 +35,12 @@ contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager, Initiali
         _;
     }
 
-    /**
-     * @notice Specify the owner of this contract
-     * @dev We want to support deploying an instance of this contract first
-     * and then specifying the owner later.
-     */
     function initialize(
         address owner
     ) external initializer {
         _owner = owner;
     }
 
-    /**
-     * @notice Set the **complete** validator set most recently registered
-     */
     function setValidatorSet(
         bytes32 avalancheBlockchainID,
         ValidatorSet memory validatorSet
@@ -56,9 +48,6 @@ contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager, Initiali
         _validatorSets[avalancheBlockchainID] = validatorSet;
     }
 
-    /**
-     * @notice Set a partial validator set as most recently registered
-     */
     function setPartialValidatorSet(
         bytes32 avalancheBlockchainID,
         PartialValidatorSet memory partialValidatorSet
@@ -67,7 +56,7 @@ contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager, Initiali
     }
 
     /**
-     * @dev Applies a set of validators to partial to a set that has been registered.
+     * @dev Applies a set of validators to a partial set that has been registered.
      */
     function applyShard(
         ValidatorSetShard calldata shard,
@@ -132,37 +121,24 @@ contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager, Initiali
         return (validatorSetMetadata, validators, totalWeight);
     }
 
-    /**
-     * @notice Check if a **complete** validator set is registered (not just a partial).
-     */
     function isRegistered(
         bytes32 avalancheBlockchainID
     ) external view returns (bool) {
         return _validatorSets[avalancheBlockchainID].totalWeight != 0;
     }
 
-    /**
-     * @notice Check if a validator set is registered but awaiting further updates.
-     */
     function isRegistrationInProgress(
         bytes32 avalancheBlockchainID
     ) external view returns (bool) {
         return _partialValidatorSets[avalancheBlockchainID].inProgress;
     }
 
-    /**
-     * @notice Get the number of shards received for the most recent validator set registered
-     * to this blockchain ID
-     */
     function getShardsReceived(
         bytes32 avalancheBlockchainID
     ) external view returns (uint64) {
         return _partialValidatorSets[avalancheBlockchainID].shardsReceived;
     }
 
-    /**
-     * @notice Get the hash of the shard committed to at the requested index
-     */
     function getShardHash(
         bytes32 avalancheBlockchainID,
         uint256 index
@@ -170,9 +146,6 @@ contract AvalancheValidatorSetManager is IAvalancheValidatorSetManager, Initiali
         return _partialValidatorSets[avalancheBlockchainID].shardHashes[index];
     }
 
-    /**
-     * @notice Get the **complete** validator set most recently registered
-     */
     function getValidatorSet(
         bytes32 avalancheBlockchainID
     ) external view returns (ValidatorSet memory) {

@@ -92,12 +92,14 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         // Check the network ID and signature
         require(message.message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
 
-        // Check the registration status of the source blockchain ID and verify the
-        // message signature appropriately
+        // Check that we are not interrupting another set of updates
         if (isRegistrationInProgress(message.message.sourceBlockchainID)) {
             // check if we are interrupting an existing registration
             revert("Can't register to a blockchain ID while another registration is in progress");
-        } else if (!isRegistered(message.message.sourceBlockchainID)) {
+        }
+
+        // Check if this is the first time this blockchain is registering a validator set
+        if (!isRegistered(message.message.sourceBlockchainID)) {
             // N.B. this message should be signed by the currently registered P-chain validator set
             verifyICMMessage(message, pChainID);
         } else {
@@ -118,7 +120,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         );
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
         // This validator set is sharded
-        require(message.message.sourceBlockchainID == avalancheBlockchainID, "Source chain ID mismatch");
+        require(
+            message.message.sourceBlockchainID == avalancheBlockchainID, "Source chain ID mismatch"
+        );
         if (validatorSetMetadata.shardHashes.length > 1) {
             // pre-allocate enough storage for the whole validator set
             Validator[] memory valSet = new Validator[](validatorSetMetadata.totalValidators);
