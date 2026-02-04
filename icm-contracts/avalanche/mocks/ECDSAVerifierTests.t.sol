@@ -3,7 +3,6 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-// Reference: This is core logic from the Succinct Telepathy Library, which can be found at https://github.com/succinctlabs/telepathy-contracts/blob/main/test/libraries/SimpleSerialize.t.sol
 pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
@@ -133,15 +132,9 @@ contract ECDSAVerifierTest is Test {
         bytes32 chainID,
         uint256 privateKey
     ) internal pure returns (bytes memory) {
-        // Reconstruct the digest
         bytes32 dataHash = keccak256(abi.encode(message, chainID));
-
-        // Apply EIP-191 prefix
         bytes32 digest = dataHash.toEthSignedMessageHash();
-
-        // Sign the message using Foundry
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-
         return abi.encodePacked(r, s, v);
     }
 }

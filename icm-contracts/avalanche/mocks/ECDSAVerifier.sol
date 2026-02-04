@@ -33,16 +33,10 @@ contract ECDSAVerifier is IMessageVerifier {
     function verifyMessage(
         ICMMessage calldata message
     ) external view override returns (bool) {
-        // Reconstruct the digest
         bytes32 dataHash = keccak256(abi.encode(message.message, message.sourceBlockchainID));
-
-        // Apply EIP-191 prefix. See https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/ECDSA.sol#L50
+        // Apply EIP-191 prefix. See https://github.com/OpenZeppelin/openzeppelin-contracts/blob/75973f63b5a84dd2fc998b5f329f1e254b0fdc77/contracts/utils/cryptography/ECDSA.sol#L50
         bytes32 digest = dataHash.toEthSignedMessageHash();
-
-        // Recover the signer from the attestation
         address recoveredSigner = digest.recover(message.attestation);
-
-        // Check if the recovered signer matches the trusted signer
         return recoveredSigner == trustedSigner;
     }
 }
