@@ -17,7 +17,7 @@ import {
  */
 interface IAvalancheValidatorSetManager {
     /**
-     * @notice This contract control data that is owned by another contract. We
+     * @notice This contract controls data that is owned by another contract. We
      * specify the owner to indicate who is authorized to change the data.
      * @dev We want to support deploying an instance of this contract first
      * and then specifying the owner later.
