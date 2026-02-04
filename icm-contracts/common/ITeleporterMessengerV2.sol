@@ -58,7 +58,7 @@ interface IAdapter is IMessageSender, IMessageVerifier {}
  * @dev This structuring of the code is a filthy hack. In order for
  * `TeleporterICMMessageParsing.parseTeleporterICMMessage` to call `TeleporterMessageV2Parsing.parseTeleporterMessageV2`
  * and have the memory bytes passed in as calldata, the functions cannot belong to the same library. To hide this
- * downstream, this library consolidates all the calls in one pl0ace.
+ * downstream, this library consolidates all the calls in one place.
  */
 library ICMTeleporterV2 {
     function parseTeleporterMessageV2(
