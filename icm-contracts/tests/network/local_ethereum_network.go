@@ -9,8 +9,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/ava-labs/libevm/log"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	. "github.com/onsi/gomega"
 )
 
@@ -22,7 +22,7 @@ var _ LocalNetwork = (*LocalEthereumNetwork)(nil)
 
 type LocalEthereumNetwork struct {
 	BaseURL         string
-	Client          ethclient.Client
+	RPCClient       *ethclient.Client
 	ChainID         *big.Int
 	globalFundedKey *secp256k1.PrivateKey
 }
@@ -49,7 +49,7 @@ func NewLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 
 	return &LocalEthereumNetwork{
 		BaseURL:         localEthereumNetworkBaseURL,
-		Client:          client,
+		RPCClient:       client,
 		ChainID:         chainID,
 		globalFundedKey: globalFundedKey,
 	}
@@ -64,5 +64,5 @@ func (n *LocalEthereumNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.Pr
 func (n *LocalEthereumNetwork) TearDownNetwork() {
 	log.Info("Tearing down local Ethereum network")
 	Expect(n).ShouldNot(BeNil())
-	Expect(n.Client).ShouldNot(BeNil())
+	Expect(n.RPCClient).ShouldNot(BeNil())
 }
