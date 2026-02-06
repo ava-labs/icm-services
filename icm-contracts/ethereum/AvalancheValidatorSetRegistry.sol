@@ -41,23 +41,16 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         avalancheNetworkID = avalancheNetworkID_;
         pChainID = initialValidatorSetData.avalancheBlockchainID;
 
-        _partialValidatorSets[pChainID] = PartialValidatorSet({
-            pChainHeight: initialValidatorSetData.pChainHeight,
-            pChainTimestamp: initialValidatorSetData.pChainTimestamp,
-            shardHashes: initialValidatorSetData.shardHashes,
-            shardsReceived: 0,
-            validators: new Validator[](0),
-            partialWeight: 0,
-            inProgress: true
-        });
+        PartialValidatorSet storage partialSet = _partialValidatorSets[pChainID];
+        partialSet.pChainHeight = initialValidatorSetData.pChainHeight;
+        partialSet.pChainTimestamp = initialValidatorSetData.pChainTimestamp;
+        partialSet.shardHashes = initialValidatorSetData.shardHashes;
+        partialSet.inProgress = true;
 
-        _validatorSets[pChainID] = ValidatorSet({
-            avalancheBlockchainID: initialValidatorSetData.avalancheBlockchainID,
-            pChainHeight: initialValidatorSetData.pChainHeight,
-            pChainTimestamp: initialValidatorSetData.pChainTimestamp,
-            validators: new Validator[](0),
-            totalWeight: 0
-        });
+        ValidatorSet storage valSet = _validatorSets[pChainID];
+        valSet.avalancheBlockchainID = initialValidatorSetData.avalancheBlockchainID;
+        valSet.pChainHeight = initialValidatorSetData.pChainHeight;
+        valSet.pChainTimestamp = initialValidatorSetData.pChainTimestamp;
     }
 
     /**
@@ -110,36 +103,35 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         // This validator set is sharded
         if (validatorSetMetadata.shardHashes.length > 1) {
             // initialize the partial validator set and store it
-            _partialValidatorSets[validatorSetMetadata.avalancheBlockchainID] = PartialValidatorSet({
-                pChainHeight: validatorSetMetadata.pChainHeight,
-                pChainTimestamp: validatorSetMetadata.pChainTimestamp,
-                shardHashes: validatorSetMetadata.shardHashes,
-                shardsReceived: 1,
-                validators: validators,
-                partialWeight: validatorWeight,
-                inProgress: true
-            });
+            PartialValidatorSet storage partialSet =
+                _partialValidatorSets[validatorSetMetadata.avalancheBlockchainID];
+            partialSet.pChainHeight = validatorSetMetadata.pChainHeight;
+            partialSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
+            partialSet.shardHashes = validatorSetMetadata.shardHashes;
+            partialSet.shardsReceived = 1;
+            partialSet.partialWeight = validatorWeight;
+            partialSet.inProgress = true;
+            for (uint256 i = 0; i < validators.length; i++) {
+                partialSet.validators.push(validators[i]);
+            }
+
             if (!isRegistered(message.sourceBlockchainID)) {
-                // pre-allocate storage for the completed validator set
-                _validatorSets[validatorSetMetadata.avalancheBlockchainID] = ValidatorSet({
-                    avalancheBlockchainID: validatorSetMetadata.avalancheBlockchainID,
-                    pChainHeight: validatorSetMetadata.pChainHeight,
-                    pChainTimestamp: validatorSetMetadata.pChainTimestamp,
-                    validators: new Validator[](0),
-                    totalWeight: 0
-                });
+                ValidatorSet storage valSet =
+                    _validatorSets[validatorSetMetadata.avalancheBlockchainID];
+                valSet.avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
+                valSet.pChainHeight = validatorSetMetadata.pChainHeight;
+                valSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
             }
         } else {
-            // Construct the validator set
-            ValidatorSet memory validatorSet = ValidatorSet({
-                avalancheBlockchainID: validatorSetMetadata.avalancheBlockchainID,
-                validators: validators,
-                totalWeight: validatorWeight,
-                pChainHeight: validatorSetMetadata.pChainHeight,
-                pChainTimestamp: validatorSetMetadata.pChainTimestamp
-            });
             // Store the validator set.
-            _validatorSets[validatorSet.avalancheBlockchainID] = validatorSet;
+            ValidatorSet storage valSet = _validatorSets[validatorSetMetadata.avalancheBlockchainID];
+            valSet.avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
+            valSet.totalWeight = validatorWeight;
+            valSet.pChainHeight = validatorSetMetadata.pChainHeight;
+            valSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
+            for (uint256 i = 0; i < validators.length; i++) {
+                valSet.validators.push(validators[i]);
+            }
         }
         emit ValidatorSetRegistered(avalancheBlockchainID);
     }

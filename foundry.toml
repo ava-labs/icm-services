@@ -13,13 +13,11 @@ optimizer_runs = 200
 src = 'icm-contracts/common/'
 solc_version = '0.8.30'
 evm_version = 'shanghai'
-viaIR = true
 
 [profile.ethereum]
 src = 'icm-contracts/ethereum/'
 solc_version = '0.8.30'
 evm_version = 'prague'
-via_ir = true
 
 [fmt]
 line_length = 100
