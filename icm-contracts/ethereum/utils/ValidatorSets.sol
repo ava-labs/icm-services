@@ -211,7 +211,7 @@ library ValidatorSets {
      * - 32 bytes: Avalanche blockchain ID
      * - 8 bytes: Avalanche P-chain height
      * - 8 bytes: Avalanche P-chain timestamp
-     * - 32 bytes: Hash of validator set
+     * - the remainder is an abi-encoded array of hashes
      * @return ValidatorSetStatePayload instance
      */
     function parseValidatorSetMetadata(
