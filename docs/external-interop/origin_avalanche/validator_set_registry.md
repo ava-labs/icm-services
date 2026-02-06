@@ -70,7 +70,7 @@ struct ValidatorSetMetadata {
     bytes32[] shardHashes;
 }
 ```
-This data will be used as a cryptographic commitment to the validator set being registered. The sha256 hash of the serialized validator set should math the `validatorSetHash` field. The shard hashes are the hashes of each chunk of data that will be passed to the `updateValidatorSet` function. The included byte payload to the `registerValidatorSet` function is the first shard of the overall update.
+This data will be used as a cryptographic commitment to the validator set being registered. The sha256 hash of the serialized validator set should match the `validatorSetHash` field. The shard hashes are the hashes of each chunk of data that will be passed to the `updateValidatorSet` function. The included byte payload to the `registerValidatorSet` function is the first shard of the overall update.
 
 If this L1 does not currently have one of its validator sets registered, the ICM message containing the metadata should be signed by the current primary network validator set registered to the contract. Otherwise, the current validator registered to the L1 should sign the message.
 
