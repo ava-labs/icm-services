@@ -46,17 +46,16 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             pChainTimestamp: initialValidatorSetData.pChainTimestamp,
             shardHashes: initialValidatorSetData.shardHashes,
             shardsReceived: 0,
-            validators: new Validator[](initialValidatorSetData.totalValidators),
-            numValidators: 0,
+            validators: new Validator[](0),
             partialWeight: 0,
             inProgress: true
         });
-        // pre-allocate the storage slots
+
         _validatorSets[pChainID] = ValidatorSet({
             avalancheBlockchainID: initialValidatorSetData.avalancheBlockchainID,
             pChainHeight: initialValidatorSetData.pChainHeight,
             pChainTimestamp: initialValidatorSetData.pChainTimestamp,
-            validators: new Validator[](initialValidatorSetData.totalValidators),
+            validators: new Validator[](0),
             totalWeight: 0
         });
     }
@@ -106,23 +105,18 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             Validator[] memory validators,
             uint64 validatorWeight
         ) = parseValidatorSetMetadata(message, shardBytes);
+        bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
+        require(message.sourceBlockchainID == avalancheBlockchainID, "Source chain ID mismatch");
 
         // This validator set is sharded
         if (validatorSetMetadata.shardHashes.length > 1) {
-            // pre-allocate enough storage for the whole validator set
-            Validator[] memory valSet = new Validator[](validatorSetMetadata.totalValidators);
-            for (uint256 i = 0; i < validators.length; i++) {
-                valSet[i] = validators[i];
-            }
-
             // initialize the partial validator set and store it
             _partialValidatorSets[validatorSetMetadata.avalancheBlockchainID] = PartialValidatorSet({
                 pChainHeight: validatorSetMetadata.pChainHeight,
                 pChainTimestamp: validatorSetMetadata.pChainTimestamp,
                 shardHashes: validatorSetMetadata.shardHashes,
                 shardsReceived: 1,
-                validators: valSet,
-                numValidators: validators.length,
+                validators: validators,
                 partialWeight: validatorWeight,
                 inProgress: true
             });
@@ -132,7 +126,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
                     avalancheBlockchainID: validatorSetMetadata.avalancheBlockchainID,
                     pChainHeight: validatorSetMetadata.pChainHeight,
                     pChainTimestamp: validatorSetMetadata.pChainTimestamp,
-                    validators: new Validator[](validatorSetMetadata.totalValidators),
+                    validators: new Validator[](0),
                     totalWeight: 0
                 });
             }
@@ -148,7 +142,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             // Store the validator set.
             _validatorSets[validatorSet.avalancheBlockchainID] = validatorSet;
         }
-        emit ValidatorSetRegistered(validatorSetMetadata.avalancheBlockchainID);
+        emit ValidatorSetRegistered(avalancheBlockchainID);
     }
 
     /**
@@ -310,11 +304,9 @@ contract FullSetUpdater is AvalancheValidatorSetRegistry {
         require(validatorWeight > 0, "Total weight must be greater than 0");
 
         // update the partial validator set
-        uint256 offset = _partialValidatorSets[avalancheBlockchainID].numValidators;
         for (uint256 i = 0; i < validators.length; i++) {
-            _partialValidatorSets[avalancheBlockchainID].validators[offset + i] = validators[i];
+            _partialValidatorSets[avalancheBlockchainID].validators.push(validators[i]);
         }
-        _partialValidatorSets[avalancheBlockchainID].numValidators += validators.length;
         _partialValidatorSets[avalancheBlockchainID].partialWeight += validatorWeight;
         _partialValidatorSets[avalancheBlockchainID].shardsReceived += 1;
 
