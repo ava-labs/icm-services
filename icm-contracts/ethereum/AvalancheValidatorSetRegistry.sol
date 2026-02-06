@@ -165,36 +165,41 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     }
 
     /**
-     * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
-     * it over to the `_validatorSets` mapping.
-     * @param shard Indicates the sequence number of the shard and blockchain affected by this update
-     * @param shardBytes the actual data of the shard which
+     * @notice Updates an existing validator set by applying a diff.
+     * @dev This function ASSUMES the number of changes in the `diff` 
+     * (validators added + removed + modified) is small relative to the total validator set size.
+     * @param message The ICM message containing the ValidatorSetDiffPayload.
      */
-    /* solhint-disable-next-line no-unused-vars */
-    function applyShard(ValidatorSetShard calldata shard, bytes memory shardBytes) public virtual {
-        revert("Not implemented");
-    }
+    function updateValidatorSetWithDiff(
+        ICMMessage calldata message
+    ) external {
 
-    /**
-     * @notice Parses and validates metadata about a validator set data from an ICM message. This
-     * is called when registering validator sets. It may also contain a (potentially partially) updated set of
-     * the validators that are being registered. This is always considered to be the first shard of
-     * the requisite data.
-     *
-     * @param icmMessage The ICM message containing the validator set metadata
-     * @param shardBytes The serialized data used to construct the registered
-     * validator set
-     * @return The parsed validator set metadata
-     * @return A parsed validators array
-     * @return The total weight of the parsed validators
-     */
-    function parseValidatorSetMetadata(
-        /* solhint-disable-next-line no-unused-vars */
-        ICMMessage calldata icmMessage,
-        /* solhint-disable-next-line no-unused-vars */
-        bytes calldata shardBytes
-    ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
-        revert("Not implemented");
+        // Safety checks 
+        require(message.message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
+        bytes32 chainID = message.message.sourceBlockchainID;
+        require(isRegistered(chainID), "Validator set not registered");
+        require(!isRegistrationInProgress(chainID), "Cannot apply diff with another registration in progress");
+        verifyICMMessage(message, chainID);
+        
+        // Apply the diff
+        ValidatorSetDiffPayload memory diff = ValidatorSets.parseValidatorSetDiffPayload(message.message.payload);
+        ValidatorSet memory currentValidatorSet = IAvalancheValidatorSetManager(validatorSetManagerContract).getValidatorSet(chainID);
+        (Validator[] memory newValidators, uint64 newWeight) = ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
+
+        // Update state
+        ValidatorSet memory newValidatorSet = ValidatorSet({
+            avalancheBlockchainID: chainID,
+            pChainHeight: diff.currentHeight, 
+            pChainTimestamp: diff.currentTimestamp, 
+            validators: newValidators,
+            totalWeight: newWeight
+        });
+        IAvalancheValidatorSetManager(validatorSetManagerContract).setValidatorSet(
+            chainID, 
+            newValidatorSet
+        );
+
+        emit ValidatorSetUpdated(chainID);
     }
 
     /**

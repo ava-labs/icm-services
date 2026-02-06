@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {ByteComparator} from "./ByteComparator.sol";
+import {ByteSlicer} from "./ByteSlicer.sol";
 import {BLST} from "./BLST.sol";
 
 struct Validator {
@@ -58,6 +60,31 @@ struct PartialValidatorSet {
 struct ValidatorSetSignature {
     bytes signers;
     bytes signature;
+}
+
+// ValidatorChange represents a single validator addition, removal, or modification
+struct ValidatorChange {
+    bytes20 nodeID;           // 20 bytes
+    bytes blsPublicKey;       // 96 bytes uncompressed
+    uint64 previousWeight;    // Weight at previous height (0 for additions)
+    uint64 currentWeight;     // Weight at current height (0 for removals)
+}
+
+// ValidatorSetDiffPayload contains the diff information from a signed message
+struct ValidatorSetDiffPayload {
+    bytes32 avalancheBlockchainID;
+    // Previous state
+    uint64 previousHeight;
+    uint64 previousTimestamp;
+    bytes32 previousValidatorSetHash;
+    // Current state
+    uint64 currentHeight;
+    uint64 currentTimestamp;
+    bytes32 currentValidatorSetHash;
+    // Changes
+    ValidatorChange[] added;
+    ValidatorChange[] removed;
+    ValidatorChange[] modified;
 }
 
 library ValidatorSets {
@@ -246,6 +273,180 @@ library ValidatorSets {
         });
     }
 
+    /**
+     * @notice Parses a ValidatorSetDiff payload from serialized bytes
+     * @dev The payload type ID must be 5 for ValidatorSetDiff
+     * @param data The serialized ValidatorSetDiff payload
+     * @return The parsed ValidatorSetDiffPayload
+     */
+    function parseValidatorSetDiffPayload(
+        bytes memory data
+    ) public pure returns (ValidatorSetDiffPayload memory) {
+        // Check the codec ID is 0
+        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+
+        // Parse the payload type ID, and confirm it is 5 for ValidatorSetDiff
+        uint32 payloadTypeID = uint32(bytes4(ByteSlicer.slice(data, 2, 4)));
+        require(payloadTypeID == 5, "Invalid ValidatorSetDiff payload type ID");
+
+        uint256 offset = 6;
+
+        // Parse the avalancheBlockchainID (32 bytes)
+        bytes32 avalancheBlockchainID = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+        offset += 32;
+
+        // Parse previous state
+        uint64 previousHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        offset += 8;
+        uint64 previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        offset += 8;
+        bytes32 previousValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+        offset += 32;
+
+        // Parse current state
+        uint64 currentHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        offset += 8;
+        uint64 currentTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        offset += 8;
+        bytes32 currentValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+        offset += 32;
+
+        // Parse added validators
+        uint32 numAdded = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+        offset += 4;
+        ValidatorChange[] memory added = new ValidatorChange[](numAdded);
+        for (uint32 i = 0; i < numAdded; i++) {
+            (added[i], offset) = parseValidatorChange(data, offset);
+        }
+
+        // Parse removed validators
+        uint32 numRemoved = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+        offset += 4;
+        ValidatorChange[] memory removed = new ValidatorChange[](numRemoved);
+        for (uint32 i = 0; i < numRemoved; i++) {
+            (removed[i], offset) = parseValidatorChange(data, offset);
+        }
+
+        // Parse modified validators
+        uint32 numModified = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+        offset += 4;
+        ValidatorChange[] memory modified = new ValidatorChange[](numModified);
+        for (uint32 i = 0; i < numModified; i++) {
+            (modified[i], offset) = parseValidatorChange(data, offset);
+        }
+
+        return ValidatorSetDiffPayload({
+            avalancheBlockchainID: avalancheBlockchainID,
+            previousHeight: previousHeight,
+            previousTimestamp: previousTimestamp,
+            previousValidatorSetHash: previousValidatorSetHash,
+            currentHeight: currentHeight,
+            currentTimestamp: currentTimestamp,
+            currentValidatorSetHash: currentValidatorSetHash,
+            added: added,
+            removed: removed,
+            modified: modified
+        });
+    }
+
+    /**
+     * @notice Parses a single ValidatorChange from serialized bytes
+     * @param data The serialized data
+     * @param offset The offset to start parsing from
+     * @return change The parsed ValidatorChange
+     * @return newOffset The new offset after parsing
+     */
+    function parseValidatorChange(
+        bytes memory data,
+        uint256 offset
+    ) public pure returns (ValidatorChange memory change, uint256 newOffset) {
+        // Parse nodeID (20 bytes)
+        bytes20 nodeID = bytes20(ByteSlicer.slice(data, offset, 20));
+        offset += 20;
+
+        // Parse uncompressed BLS public key (96 bytes)
+        bytes memory unformattedPublicKey = ByteSlicer.slice(data, offset, 96);
+        bytes memory blsPublicKey = BLST.formatUncompressedBLSPublicKey(unformattedPublicKey);
+        offset += 96;
+
+        // Parse previousWeight (8 bytes)
+        uint64 previousWeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        offset += 8;
+
+        // Parse currentWeight (8 bytes)
+        uint64 currentWeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        offset += 8;
+
+        change = ValidatorChange({
+            nodeID: nodeID,
+            blsPublicKey: blsPublicKey,
+            previousWeight: previousWeight,
+            currentWeight: currentWeight
+        });
+
+        return (change, offset);
+    }
+
+    /**
+     * @notice Applies a diff to a validator array
+     * @dev Creates a new validator array with the diff applied
+     * @param currentValidators The current validator array
+     * @param diff The diff to apply
+     * @return newValidators The new validator array after applying the diff
+     * @return newTotalWeight The new total weight
+     */
+    function applyValidatorSetDiff(
+        Validator[] memory currentValidators,
+        ValidatorSetDiffPayload memory diff
+    ) public pure returns (Validator[] memory newValidators, uint64 newTotalWeight) {
+        // Calculate new size: current - removed + added
+        uint256 newSize = currentValidators.length - diff.removed.length + diff.added.length;
+        newValidators = new Validator[](newSize);
+        newTotalWeight = 0;
+
+        // Create a mapping of validators to remove (by public key hash)
+        // We'll use a simple O(n*m) approach since arrays are typically small
+        uint256 newIndex = 0;
+
+        // Copy validators that are not being removed, applying modifications
+        for (uint256 i = 0; i < currentValidators.length; i++) {
+            bytes memory currentKey = currentValidators[i].blsPublicKey;
+            bool isRemoved = false;
+            
+            // Check if this validator is being removed
+            (bool isRemoved, ) = _searchValidators(diff.removed, currentKey);
+            if (isRemoved) continue; 
+
+            // Check if this validator is being modified
+            (bool isModified, ValidatorChange memory mod) = _searchValidators(diff.modified, currentKey);
+            uint64 weight = isModified ? mod.currentWeight : currentValidators[i].weight;
+
+            // Add to new list
+            require(newIndex < newValidators.length, "Index out of bounds.");
+            newValidators[newIndex] = Validator({
+                blsPublicKey: currentKey,
+                weight: weight
+            });
+            newTotalWeight += weight;
+            newIndex++;
+        }
+
+        // Add new validators
+        for (uint256 i = 0; i < diff.added.length; i++) {
+            newValidators[newIndex] = Validator({
+                blsPublicKey: diff.added[i].blsPublicKey,
+                weight: diff.added[i].currentWeight
+            });
+            newTotalWeight += diff.added[i].currentWeight;
+            newIndex++;
+        }
+
+        // Sort validators by public key (required for canonical ordering)
+        _sortValidators(newValidators);
+
+        return (newValidators, newTotalWeight);
+    }
+
     /*
      * @notice Serialize a ValidatorSetStatePayload
      */
@@ -360,5 +561,60 @@ library ValidatorSets {
         uint256 scaledTotalWeight = QUORUM_NUM * uint256(totalWeight);
         uint256 scaledSignatureWeight = QUORUM_DEN * uint256(signatureWeight);
         return scaledTotalWeight <= scaledSignatureWeight;
+    }
+
+    /**
+     * @notice Generic Binary Search.
+     * @return found True if the key exists.
+     * @return item The ValidatorChange struct found (or empty if not found).
+     */
+    function _searchValidators(ValidatorChange[] memory list, bytes memory key) 
+        internal 
+        pure 
+        returns (bool found, ValidatorChange memory item) 
+    {
+        if (list.length == 0) return (false, item);
+        
+        uint256 low = 0;
+        uint256 high = list.length - 1;
+
+        while (low <= high) {
+            uint256 mid = (low + high) / 2;
+            int256 cmp = ByteComparator.compare(list[mid].blsPublicKey, key);
+
+            if (cmp == 0) {
+                return (true, list[mid]); 
+            } 
+            
+            if (cmp < 0) {
+                low = mid + 1;
+            } else {
+                if (mid == 0) break;
+                high = mid - 1;
+            }
+        }
+        return (false, item); 
+    }
+
+    /**
+     * @notice Sorts validators by their uncompressed public key bytes
+     * @dev Uses insertion sort which is efficient for small arrays
+     */
+    function _sortValidators(Validator[] memory validators) private pure {
+        for (uint256 i = 1; i < validators.length; i++) {
+            Validator memory key = validators[i];
+            bytes memory keyPubKey = BLST.getUncompressedBlsPublicKey(key.blsPublicKey);
+            int256 j = int256(i) - 1;
+            
+            while (j >= 0) {
+                bytes memory jPubKey = BLST.getUncompressedBlsPublicKey(validators[uint256(j)].blsPublicKey);
+                if (ByteComparator.compare(jPubKey, keyPubKey) <= 0) {
+                    break;
+                }
+                validators[uint256(j + 1)] = validators[uint256(j)];
+                j--;
+            }
+            validators[uint256(j + 1)] = key;
+        }
     }
 }
