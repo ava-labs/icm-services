@@ -319,7 +319,116 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
     function testGetAvalancheNetworkID() public view {
         assertEq(_registry.getAvalancheNetworkID(), NETWORK_ID);
     }
+
+    // /**
+    //  * @dev Test applying a valid diff that adds, removes, and modifies validators.
+    //  * This ensures the Registry correctly orchestrates the update.
+    //  */
+    // function testUpdateValidatorSetWithDiffSuccess() public {
+
+
+    //     /**
+    //  * @dev Test applying a valid diff that adds, removes, and modifies validators.
+    //  */
+    // function testUpdateValidatorSetWithDiffSuccess() public {
+
+    //     // Initialize 
+    //     (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+    //     bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+    //     ValidatorSetShard memory shard = ValidatorSetShard({
+    //         shardNumber: 1,
+    //         avalancheBlockchainID: validatorSet.avalancheBlockchainID
+    //     });
+    //     _registry.updateValidatorSet(shard, validatorBytes);
+    //     assertTrue(_registry.pChainInitialized());
+
+    //     // Removed validators 
+    //     ValidatorChange[] memory removed = new ValidatorChange[](1);
+    //     removed[0] = ValidatorChange({
+    //         nodeID: bytes20(0), 
+    //         blsPublicKey: validatorSet.validators[0].blsPublicKey,
+    //         previousWeight: validatorSet.validators[0].weight,
+    //         currentWeight: 0
+    //     });
+
+    //     // Modified validators
+    //     ValidatorChange[] memory modified = new ValidatorChange[](1);
+    //     modified[0] = ValidatorChange({
+    //         nodeID: bytes20(0),
+    //         blsPublicKey: validatorSet.validators[1].blsPublicKey,
+    //         previousWeight: validatorSet.validators[1].weight,
+    //         currentWeight: validatorSet.validators[1].weight + 1 
+    //     });
+
+    //     // Added validators
+    //     ValidatorChange[] memory added = new ValidatorChange[](1);
+
+    //     // Construct payload 
+    //     ValidatorSetDiffPayload memory payload = ValidatorSetDiffPayload({
+    //         avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+    //         previousHeight: validatorSet.pChainHeight,
+    //         previousTimestamp: validatorSet.pChainTimestamp,
+    //         previousValidatorSetHash: bytes32(0), // Mocked for test
+    //         currentHeight: validatorSet.pChainHeight + 1,
+    //         currentTimestamp: validatorSet.pChainTimestamp + 100,
+    //         currentValidatorSetHash: bytes32(0),
+    //         added: added,
+    //         removed: removed,
+    //         modified: modified
+    //     });
+        
+    //     bytes memory payloadBytes = _serializeDiffPayload(payload);
+
+    //     // Sign
+    //     ICMRawMessage memory raw = ICMRawMessage({
+    //         sourceNetworkID: NETWORK_ID,
+    //         sourceBlockchainID: validatorSet.avalancheBlockchainID,
+    //         sourceAddress: address(0),
+    //         verifierAddress: address(0),
+    //         payload: payloadBytes
+    //     });
+    //     bytes memory rawMessageBytes = ICM.serializeICMRawMessage(raw);
+    //     bytes memory signature = dummyPChainValidatorSetSign(rawMessageBytes);
+    //     ICMMessage memory message =
+    //         ICMMessage({message: raw, rawMessageBytes: rawMessageBytes, attestation: signature});
+
+    //     // Execute 
+    //     _registry.updateValidatorSetWithDiff(message);
+
+    //     ValidatorSet memory newSet = _manager.getValidatorSet(validatorSet.avalancheBlockchainID);
+
+    //     // Check Height
+    //     assertEq(newSet.pChainHeight, payload.currentHeight);
+
+    //     // Check Weight Math:
+    //     // Initial Total (1+2+3+4+5 = 15) 
+    //     // - Removed (1) 
+    //     // + Added (100) 
+    //     // + Modified Diff (3 - 2 = 1)
+    //     // Expected = 15 - 1 + 100 + 1 = 115
+    //     assertEq(newSet.totalWeight, 115);
+
+    //     // Check Validator Count:
+    //     // 5 (start) - 1 (remove) + 1 (add) = 5
+    //     assertEq(newSet.validators.length, 5);
+    // }
+        
+        
+
+
+        
+
+    }
 }
+
+
+
+
+
+
+
+
+
 
 // Test suite for functionality after the initial P-chain set has been registered
 contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSetRegistryCommon {
