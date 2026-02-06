@@ -182,4 +182,83 @@ contract BLSTUtilsTest is Test {
         assertEq(padded, BLST.padUncompressedBLSTSignature(unpadded));
         assertEq(unpadded, BLST.unPadUncompressedBLSTSignature(padded));
     }
+
+    /*
+     * @dev Test the lexicographic ordering of 96 byte uncompressed public keys
+     */
+    function testComparePublicKeys() public pure {
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(2, 1, 3), _createPublicKeyFromWords(1, 21, 4)
+            ),
+            1
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(2, 1, 3), _createPublicKeyFromWords(2, 0, 5)
+            ),
+            1
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(2, 1, 3), _createPublicKeyFromWords(2, 1, 1)
+            ),
+            1
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(1, 21, 4), _createPublicKeyFromWords(2, 1, 3)
+            ),
+            -1
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(2, 0, 5), _createPublicKeyFromWords(2, 1, 3)
+            ),
+            -1
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(2, 1, 1), _createPublicKeyFromWords(2, 1, 3)
+            ),
+            -1
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(0, 0, 1), _createPublicKeyFromWords(0, 0, 1)
+            ),
+            0
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(0, 1, 1), _createPublicKeyFromWords(0, 1, 1)
+            ),
+            0
+        );
+        assertEq(
+            BLST.comparePublicKeys(
+                _createPublicKeyFromWords(1, 1, 1), _createPublicKeyFromWords(1, 1, 1)
+            ),
+            0
+        );
+    }
+
+    /*
+     * @dev Create 96 bytes from three 32 bytes words
+     * N.B. These are not real public keys. They are intended for testing key-sorting tests
+     */
+    function _createPublicKeyFromWords(
+        uint256 x,
+        uint256 y,
+        uint256 z
+    ) private pure returns (bytes memory) {
+        bytes memory pk = new bytes(96);
+        /* solhint-disable-next-line no-inline-assembly */
+        assembly {
+            mstore(add(pk, 0x20), x)
+            mstore(add(pk, 0x40), y)
+            mstore(add(pk, 0x60), z)
+        }
+        return pk;
+    }
 }

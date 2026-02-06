@@ -17,6 +17,7 @@ struct FieldPoint2 {
 library BLST {
     /* solhint-disable no-inline-assembly */
     uint256 public constant BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH = 96;
+    uint256 public constant BLS_SIGNATURE_LENGTH = 192;
 
     address public constant BLS12381_G1_ADD_PRECOMPILE =
         address(0x000000000000000000000000000000000000000b);
@@ -279,7 +280,7 @@ library BLST {
     ) internal view returns (bool) {
         // Check the input lengths
         require(publicKey.length == 128, "Invalid public key length");
-        require(signature.length == 192, "Invalid signature length");
+        require(signature.length == BLS_SIGNATURE_LENGTH, "Invalid signature length");
 
         // Hash the message to the G2 curve
         bytes memory messageG2 = hashToG2(message, dst);
@@ -402,15 +403,13 @@ library BLST {
     ) internal pure returns (bytes memory) {
         require(publicKey.length == 128, "Invalid input public key length");
         bytes memory res = new bytes(96);
-
-        // Copy the X coordinate.
-        for (uint256 i = 0; i < 48; ++i) {
-            res[i] = publicKey[i + 16];
-        }
-
-        // Copy the Y coordinate.
-        for (uint256 i = 0; i < 48; ++i) {
-            res[48 + i] = publicKey[i + 80];
+        assembly {
+            // Copy the X coordinate.
+            mstore(add(res, 0x20), mload(add(publicKey, 0x30)))
+            mstore(add(res, 0x30), mload(add(publicKey, 0x40)))
+            // Copy the Y coordinate.
+            mstore(add(res, 0x50), mload(add(publicKey, 0x70)))
+            mstore(add(res, 0x60), mload(add(publicKey, 0x80)))
         }
 
         return res;
@@ -426,7 +425,7 @@ library BLST {
     function padUncompressedBLSTSignature(
         bytes memory signature
     ) internal pure returns (bytes memory) {
-        require(signature.length == 192, "Invalid input signature length");
+        require(signature.length == BLS_SIGNATURE_LENGTH, "Invalid input signature length");
         bytes memory res = new bytes(256);
 
         assembly ("memory-safe") {
@@ -458,7 +457,7 @@ library BLST {
         bytes memory signature
     ) internal pure returns (bytes memory) {
         require(signature.length == 256, "Invalid input signature length");
-        bytes memory res = new bytes(192);
+        bytes memory res = new bytes(BLS_SIGNATURE_LENGTH);
 
         // COPY X0
         for (uint256 i = 0; i < 48; i++) {
@@ -538,6 +537,33 @@ library BLST {
         }
         xCoord[0] = bytes1(uint8(xCoord[0]) | mask);
         return xCoord;
+    }
+
+    /*
+     * @notice Compare to uncompress (96 bytes) public keys lexicographically
+     * @param key1 first public key
+     * @param key2 second public key
+     * @return 1 if key1 > key2, 0 if equal, -1 otherwise
+     */
+    function comparePublicKeys(
+        bytes memory key1,
+        bytes memory key2
+    ) internal pure returns (int256) {
+        uint256 compare = 1;
+        if (key1.length != 96 || key2.length != 96) {
+            revert("Uncompressed public keys should by 96 bytes");
+        }
+        assembly {
+            for { let i := 1 } lt(i, 4) { i := add(i, 1) } {
+                if eq(compare, 1) {
+                    let ix := mul(0x20, i)
+
+                    if gt(mload(add(key1, ix)), mload(add(key2, ix))) { compare := 2 }
+                    if lt(mload(add(key1, ix)), mload(add(key2, ix))) { compare := 0 }
+                }
+            }
+        }
+        return int256(compare) - 1;
     }
 
     /**

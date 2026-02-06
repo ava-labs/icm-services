@@ -21,8 +21,6 @@ echo "Common Solidity Version: $COMMON_SOLIDITY_VERSION"
 echo "Ethereum EVM Version: $ETHEREUM_EVM_VERSION"
 echo "Ethereum Solidity Version: $ETHEREUM_SOLIDITY_VERSION"
 
-AVALANCHE_ICM_PATH=${ICM_CONTRACTS_PATH}/avalanche
-
 export ARCH=$(uname -m)
 [ $ARCH = x86_64 ] && ARCH=amd64
 echo "ARCH set to $ARCH"
