@@ -27,7 +27,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     // Mapping of Avalanche blockchain IDs to their complete validator set data.
     mapping(bytes32 => ValidatorSet) internal _validatorSets;
 
-    // Mapping of Avalanche blockchain IDs to a subset of said validator set.
+    // Mapping of Avalanche blockchain IDs to a partially updated validator set.
     // Used to allow updating validator sets across multiple transactions
     mapping(bytes32 => PartialValidatorSet) internal _partialValidatorSets;
 
@@ -62,15 +62,14 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
 
     /**
      * @notice Registers a new validator set for a specific Avalanche blockchain ID.
-     * A registered set may require several txs to populate due to size/gas constraints.
-     * The population process should not be interrupted with a new register call. If this
-     * function is called to register a new validator set for chain for a which a partial
-     * set exists, this function will revert.
      *
      * Emits an event that a new set has been registered.
      * @dev It may be the case that the entire validator set cannot be passed into this function.
      * If a partial validator set is provided, the chain is still considered registered. To pass
      * the rest of the validator set data, `updateValidatorSet` should be called instead.
+     *
+     * If this function is called to register a new validator set for chain for a which a partial
+     * set exists, this function will revert.
      * @param message The ICM message containing the validator set to register. The message must
      * be signed by the relevant authorizing party
      * @param shardBytes The first shard of the data needed to populate the newly registered
@@ -79,7 +78,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     function registerValidatorSet(
         ICMMessage calldata message,
         bytes calldata shardBytes
-    ) external override {
+    ) external {
         // Check the network ID and signature
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
 
@@ -146,14 +145,8 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     }
 
     /**
-     * @notice Apply a shard to a registered validator set
-     *
-     * Emits an event if a partial set becomes fully populated.
-     * @param shard indicates the shard number and blockchain ID of the partial
-     * set that is being updated.
-     * @param shardBytes The next shard of data needed to populate a registered partial
-     * validator set
-     *
+     * @dev The shard numbers contained the `shard` parameters must be processed in order
+     * or else this function will fail.
      */
     function updateValidatorSet(
         ValidatorSetShard calldata shard,
@@ -192,12 +185,12 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
 
     /**
      * @notice Parses and validates metadata about a validator set data from an ICM message. This
-     * is called when registering validator sets. It may also contain a (potentially partial) subset of
+     * is called when registering validator sets. It may also contain a (potentially partially) updated set of
      * the validators that are being registered. This is always considered to be the first shard of
      * the requisite data.
      *
      * @param icmMessage The ICM message containing the validator set metadata
-     * @param shardBytes The serialized data used to construct a subset of the registered
+     * @param shardBytes The serialized data used to construct the registered
      * validator set
      * @return The parsed validator set metadata
      * @return A parsed validators array
@@ -230,7 +223,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     }
 
     /**
-     * @notice Verify that the message is
+     * @notice Verify the message. Does the following checks
      *   1. Check that the contracts root of trust has been initialized completely
      *   2. Intended for this network ID
      *   3. Has been signed by a quorum of the provided validator set
@@ -280,7 +273,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
 
 // This contract specifies that shards of validator sets is a serialized subsequence of
 // the entire validator set that has been cryptographically committed to.
-contract FullSetUpdater is AvalancheValidatorSetRegistry {
+contract SubsetUpdater is AvalancheValidatorSetRegistry {
     constructor(
         uint32 avalancheNetworkID_,
         // The metadata about the initial validator set. This is used
