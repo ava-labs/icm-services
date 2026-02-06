@@ -31,32 +31,22 @@ To support this, there should be two main endpoints for updates to be passed to:
 
 A crucial part of the `AvalancheValidatorSetRegistry` contract is to authenticate messages received by `TeleporterV2` contracts on external EVM chains.  The `TeleporterMessenger` does this by calling into the `verifyICMMessage` function with an ICM message, which is described by the following Solidity data types:
 ```solidity
-struct ICMSignature {
+struct ValidatorSetSignature {
     bytes signers;
     bytes signature;
 }
 
-struct ICMUnsignedMessage {
-    // used to distinguish between mainnet and various testnets
-    uint32 sourceNetworkID;
-    // The blockchain on which the message originated
-    bytes32 sourceBlockchainID;
-    // The address that sent the message
-    address sourceSenderAddress;
-    // This field may not be necessary depending on the finalized design.
-    address verifierAddress;
-    bytes payload;
-}
-
 struct ICMMessage {
-    ICMUnsignedMessage unsignedMessage;
-    bytes unsignedMessageBytes;
+    //  a serialized `ValidatorSetMetadata` instance
+    bytes rawMessage;
+    uint32 sourceNetworkID;
+    bytes32 sourceBlockchainID;
     // This should contain a serialized `ICMSignature`
     bytes attestation;
 }
 ```
 
-The registry uses the `sourceBlockchainID` to look up a validator set. The `attestation` should deserialize to an `ICMSinature` instance. The `signers` field is a bit set indicating which validators have signed this message, utilizing the canonical validator ordering. The signers should represent a quorum of staking weight for the message to be verified. The `signature` is an aggregate BLS signature of the validators specified by the `signers` field. BLS computations require an EVM chain to be on EVM version `prague` or later.
+The registry uses the `sourceBlockchainID` to look up a validator set. The `attestation` should deserialize to an `ValidatorSetSignature` instance. The `signers` field is a bit set indicating which validators have signed this message, utilizing the canonical validator ordering. The signers should represent a quorum of staking weight for the message to be verified. The `signature` is an aggregate BLS signature of the validators specified by the `signers` field. BLS computations require an EVM chain to be on EVM version `prague` or later.
 
 ## Registering a validator set
 
@@ -66,7 +56,6 @@ struct ValidatorSetMetadata {
     bytes32 avalancheBlockchainID;
     uint64 pChainHeight;
     uint64 pChainTimestamp;
-    uint64 totalValidators;
     bytes32[] shardHashes;
 }
 ```
