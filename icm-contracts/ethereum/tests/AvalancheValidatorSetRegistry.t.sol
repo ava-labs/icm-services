@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {ICMMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
-import {FullSetUpdater} from "../AvalancheValidatorSetRegistry.sol";
+import {SubsetUpdater} from "../AvalancheValidatorSetRegistry.sol";
 import {
     Validator,
     ValidatorSet,
@@ -62,7 +62,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 
     /**
      * @dev A fixture that returns a validator set along with a raw ICM message to register
-     * this set. This set is split into two shard with one validator each.
+     * this set. This set is split into two shards with one validator each.
      */
     function registerValidatorSetFixture(
         uint64 pChainHeight,
@@ -165,8 +165,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
     }
 
     /**
-     * @dev Sign the input payload with the L1 validator set of blockchain ID
-     * 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7
+     * @dev Sign the input payload with the L1 validator set
      */
     function l1ValidatorSetSign(
         bytes memory payload
@@ -201,7 +200,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 // Test suite for testing the initialization of the first P-chain validator set before
 // engaging in normal operation
 contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetRegistryCommon {
-    FullSetUpdater private _registry;
+    SubsetUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -317,7 +316,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
 
 // Test suite for functionality after the initial P-chain set has been registered
 contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSetRegistryCommon {
-    FullSetUpdater private _registry;
+    SubsetUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -329,7 +328,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             pChainTimestamp: validatorSet.pChainTimestamp,
             shardHashes: shardHashes
         });
-        _registry = new FullSetUpdater(NETWORK_ID, initialValidatorSetData);
+        _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetData);
         // initialize the entire P-chain validator set
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
