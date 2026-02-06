@@ -17,6 +17,10 @@ import {
 // Common utility functions and fixtures for the suites in this file
 contract AvalancheValidatorSetRegistryCommon is Test {
     uint32 public constant NETWORK_ID = 1;
+    bytes32 public constant PCHAIN_BLOCKCHAIN_ID =
+        0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7;
+    bytes32 public constant L1_BLOCKCHAIN_ID =
+        0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef;
 
     /**
      * @dev Create a dummy set of P-chain validators to initialize the `AvalancheValidatorSetRegistry` with.
@@ -47,7 +51,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         }
 
         ValidatorSet memory validatorSet = ValidatorSet({
-            avalancheBlockchainID: bytes32(0),
+            avalancheBlockchainID: PCHAIN_BLOCKCHAIN_ID,
             validators: validators,
             totalWeight: totalWeight,
             pChainHeight: 0,
@@ -90,10 +94,9 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         }
 
         ValidatorSetMetadata memory metadata = ValidatorSetMetadata({
-            avalancheBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
+            avalancheBlockchainID: L1_BLOCKCHAIN_ID,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            totalValidators: 2,
             shardHashes: shardHashes
         });
 
@@ -118,7 +121,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         ICMMessage memory message = ICMMessage({
             rawMessage: raw,
             sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
+            sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
         });
         return (validators, message);
@@ -139,10 +142,9 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         ICMMessage memory message = ICMMessage({
             rawMessage: raw,
             sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: 0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7,
+            sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
         });
-
         return (validators, message);
     }
 
@@ -205,11 +207,10 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
         bytes32[] memory shardHashes = new bytes32[](1);
         shardHashes[0] = validatorSetHash;
-        ValidatorSetMetadata memory initialValidatorSetData = ValidatorSetMetadata({
+        ValidatorSetMetadata memory initialValidatorSetMetadata = ValidatorSetMetadata({
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
             pChainHeight: validatorSet.pChainHeight,
             pChainTimestamp: validatorSet.pChainTimestamp,
-            totalValidators: 5,
             shardHashes: shardHashes
         });
         _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetMetadata);
@@ -326,7 +327,6 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
             pChainHeight: validatorSet.pChainHeight,
             pChainTimestamp: validatorSet.pChainTimestamp,
-            totalValidators: 5,
             shardHashes: shardHashes
         });
         _registry = new FullSetUpdater(NETWORK_ID, initialValidatorSetData);
@@ -466,9 +466,11 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         (validators, message) = registerValidatorSetAgainFixture(10, 10);
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
+
         // register the first shard
         _registry.registerValidatorSet(message, validatorBytes);
         assertTrue(_registry.isRegistered(message.sourceBlockchainID));
+
         // a set has been registered previously to this blockchain ID
         // a registration is in progress
         assertTrue(_registry.isRegistrationInProgress(message.sourceBlockchainID));

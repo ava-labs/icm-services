@@ -22,9 +22,6 @@ struct ValidatorSetMetadata {
     bytes32 avalancheBlockchainID;
     uint64 pChainHeight;
     uint64 pChainTimestamp;
-    // The total number of validators in the set. Used to warm up
-    // storage slots
-    uint64 totalValidators;
     // A list of hashes for each shard. These are expected to arrive
     // in order
     bytes32[] shardHashes;
@@ -52,8 +49,6 @@ struct PartialValidatorSet {
     uint64 shardsReceived;
     // The validators received so far
     Validator[] validators;
-    // The number of validators populated so far
-    uint256 numValidators;
     // The weight of the above validators
     uint64 partialWeight;
     // A flag to indicate that this is now a complete validator set
@@ -240,17 +235,13 @@ library ValidatorSets {
         // Parse the pChainTimestamp`
         uint64 pChainTimestamp = uint64(bytes8(data[46:54]));
 
-        // Parse the totalValidators
-        uint64 totalValidators = uint64(bytes8(data[54:62]));
-
         // Parse the shardHashes
-        bytes32[] memory shardHashes = abi.decode(data[62:], (bytes32[]));
+        bytes32[] memory shardHashes = abi.decode(data[54:], (bytes32[]));
 
         return ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            totalValidators: totalValidators,
             shardHashes: shardHashes
         });
     }
@@ -269,7 +260,6 @@ library ValidatorSets {
             payload.avalancheBlockchainID,
             payload.pChainHeight,
             payload.pChainTimestamp,
-            payload.totalValidators,
             abi.encode(payload.shardHashes)
         );
     }
