@@ -150,14 +150,12 @@ contract ValidatorSetsTest is Test {
         bytes32 avalancheBlockchainID,
         uint64 pChainHeight,
         uint64 pChainTimestamp,
-        uint64 totalValidators,
         bytes32[] memory shardHashes
     ) public pure {
         ValidatorSetMetadata memory payload = ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            totalValidators: totalValidators,
             shardHashes: shardHashes
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetMetadata(payload);
