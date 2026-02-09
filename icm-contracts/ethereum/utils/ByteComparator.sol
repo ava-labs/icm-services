@@ -13,8 +13,10 @@ library ByteComparator {
     function compare(bytes memory a, bytes memory b) internal pure returns (int256) {
         if (a.length == b.length) {
              bool samePointer;
-             assembly { samePointer := eq(a, b) }
-             if (samePointer) return 0;
+             assembly { 
+                samePointer := eq(a, b) 
+            }
+            if (samePointer) return 0;
         }
 
         uint256 minLength = a.length < b.length ? a.length : b.length;
