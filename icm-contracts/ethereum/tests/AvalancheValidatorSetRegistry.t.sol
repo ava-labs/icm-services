@@ -392,6 +392,54 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         assertEq(newSet.validators.length, 5);
     }
 
+    function testUpdateValidatorSetWithDiffRevertInvalidHeight() public {
+        
+        // Initialize 
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory added = new ValidatorChange[](0);
+        ValidatorChange[] memory removed = new ValidatorChange[](0);
+        ValidatorChange[] memory modified = new ValidatorChange[](0);
+
+        // Payload
+        ValidatorSetDiffPayload memory payload = ValidatorSetDiffPayload({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight, 
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0), 
+            currentHeight: validatorSet.pChainHeight, // Invalid height 
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            added: added,
+            removed: removed,
+            modified: modified
+        });
+        bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
+
+        // Sign
+        ICMRawMessage memory rawIcmMsg = ICMRawMessage({
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: validatorSet.avalancheBlockchainID,
+            sourceAddress: address(0),
+            verifierAddress: address(0),
+            payload: payloadBytes
+        });
+        bytes memory rawIcmMsgBytes = ICM.serializeICMRawMessage(rawIcmMsg);
+        bytes memory signature = dummyPChainValidatorSetSign(rawIcmMsgBytes);
+        ICMMessage memory message = ICMMessage({message: rawIcmMsg, rawMessageBytes: rawIcmMsgBytes, attestation: signature});
+
+        // Test     
+        vm.expectRevert(bytes("Invalid blockchain height")); 
+        _registry.updateValidatorSetWithDiff(message);
+    }
+
     function testGetAvalancheNetworkID() public view {
         assertEq(_registry.getAvalancheNetworkID(), NETWORK_ID);
     }
