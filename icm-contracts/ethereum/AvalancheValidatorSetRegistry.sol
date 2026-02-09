@@ -206,38 +206,42 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
 
     /**
      * @notice Updates an existing validator set by applying a diff.
-     * @dev This function ASSUMES the number of changes in the `diff` 
+     * @dev This function ASSUMES the number of changes in the `diff`
      * (validators added + removed + modified) is small relative to the total validator set size.
      * @param message The ICM message containing the ValidatorSetDiffPayload.
      */
     function updateValidatorSetWithDiff(
         ICMMessage calldata message
     ) external {
-
-        // Safety checks 
+        // Safety checks
         require(message.message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
         bytes32 chainID = message.message.sourceBlockchainID;
         require(isRegistered(chainID), "Validator set not registered");
-        require(!isRegistrationInProgress(chainID), "Cannot apply diff with another registration in progress");
+        require(
+            !isRegistrationInProgress(chainID),
+            "Cannot apply diff with another registration in progress"
+        );
         verifyICMMessage(message, chainID);
-        
+
         // Apply the diff
-        ValidatorSetDiffPayload memory diff = ValidatorSets.parseValidatorSetDiffPayload(message.message.payload);
-        ValidatorSet memory currentValidatorSet = IAvalancheValidatorSetManager(validatorSetManagerContract).getValidatorSet(chainID);
+        ValidatorSetDiffPayload memory diff =
+            ValidatorSets.parseValidatorSetDiffPayload(message.message.payload);
+        ValidatorSet memory currentValidatorSet =
+            IAvalancheValidatorSetManager(validatorSetManagerContract).getValidatorSet(chainID);
         require(diff.currentHeight > currentValidatorSet.pChainHeight, "Invalid blockchain height");
-        (Validator[] memory newValidators, uint64 newWeight) = ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
+        (Validator[] memory newValidators, uint64 newWeight) =
+            ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
 
         // Update state
         ValidatorSet memory newValidatorSet = ValidatorSet({
             avalancheBlockchainID: chainID,
-            pChainHeight: diff.currentHeight, 
-            pChainTimestamp: diff.currentTimestamp, 
+            pChainHeight: diff.currentHeight,
+            pChainTimestamp: diff.currentTimestamp,
             validators: newValidators,
             totalWeight: newWeight
         });
         IAvalancheValidatorSetManager(validatorSetManagerContract).setValidatorSet(
-            chainID, 
-            newValidatorSet
+            chainID, newValidatorSet
         );
 
         emit ValidatorSetUpdated(chainID);
