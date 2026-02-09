@@ -18,7 +18,7 @@ library ByteSlicer {
         bytes memory target,
         bytes memory source,
         uint256 cursor
-    ) public pure returns (bytes memory, uint256){
+    ) public pure returns (bytes memory, uint256) {
         uint256 length = source.length;
         for (uint256 i = 0; i < length; i++) {
             target[cursor + i] = source[i];
@@ -33,7 +33,11 @@ library ByteSlicer {
      * @param length The number of bytes to slice.
      * @return result The sliced bytes array.
      */
-    function slice(bytes memory data, uint256 start, uint256 length) internal pure returns (bytes memory result) {
+    function slice(
+        bytes memory data,
+        uint256 start,
+        uint256 length
+    ) internal pure returns (bytes memory result) {
         require(data.length >= start + length, "ByteSlicer: out of bounds");
         result = new bytes(length);
         for (uint256 i = 0; i < length; i++) {

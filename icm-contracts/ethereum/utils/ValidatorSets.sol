@@ -69,10 +69,10 @@ struct ValidatorSetSignature {
 
 // ValidatorChange represents a single validator addition, removal, or modification
 struct ValidatorChange {
-    bytes20 nodeID;           // 20 bytes
-    bytes blsPublicKey;       // 96 bytes uncompressed
-    uint64 previousWeight;    // Weight at previous height (0 for additions)
-    uint64 currentWeight;     // Weight at current height (0 for removals)
+    bytes20 nodeID; // 20 bytes
+    bytes blsPublicKey; // 96 bytes uncompressed
+    uint64 previousWeight; // Weight at previous height (0 for additions)
+    uint64 currentWeight; // Weight at current height (0 for removals)
 }
 
 // ValidatorSetDiffPayload contains the diff information from a signed message
@@ -420,21 +420,19 @@ library ValidatorSets {
         // Copy validators that are not being removed, applying modifications
         for (uint256 i = 0; i < currentValidators.length; i++) {
             bytes memory currentKey = currentValidators[i].blsPublicKey;
-            
+
             // Check if this validator is being removed
-            (bool isRemoved, ) = _searchValidators(diff.removed, currentKey);
-            if (isRemoved) continue; 
+            (bool isRemoved,) = _searchValidators(diff.removed, currentKey);
+            if (isRemoved) continue;
 
             // Check if this validator is being modified
-            (bool isModified, ValidatorChange memory mod) = _searchValidators(diff.modified, currentKey);
+            (bool isModified, ValidatorChange memory mod) =
+                _searchValidators(diff.modified, currentKey);
             uint64 weight = isModified ? mod.currentWeight : currentValidators[i].weight;
 
             // Add to new list
             require(newIndex < newValidators.length, "Index out of bounds.");
-            newValidators[newIndex] = Validator({
-                blsPublicKey: currentKey,
-                weight: weight
-            });
+            newValidators[newIndex] = Validator({blsPublicKey: currentKey, weight: weight});
             newTotalWeight += weight;
             newIndex++;
         }
@@ -477,14 +475,14 @@ library ValidatorSets {
     /*
      * @notice Serialize a ValidatorSetDiffPayload
      */
-   function serializeValidatorSetDiffPayload(
+    function serializeValidatorSetDiffPayload(
         ValidatorSetDiffPayload memory payload
     ) public pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000005);
         bytes memory data = abi.encodePacked(
-            codec,                      
-            payloadType,                 
+            codec,
+            payloadType,
             payload.avalancheBlockchainID,
             payload.previousHeight,
             payload.previousTimestamp,
@@ -492,18 +490,18 @@ library ValidatorSets {
             payload.currentHeight,
             payload.currentTimestamp,
             payload.currentValidatorSetHash,
-            uint32(payload.added.length)    
+            uint32(payload.added.length)
         );
-        // Encode added validators 
+        // Encode added validators
         for (uint256 i = 0; i < payload.added.length; i++) {
             data = abi.encodePacked(data, serializeValidatorChange(payload.added[i]));
         }
-        // Encode removed validators 
+        // Encode removed validators
         data = abi.encodePacked(data, uint32(payload.removed.length));
         for (uint256 i = 0; i < payload.removed.length; i++) {
             data = abi.encodePacked(data, serializeValidatorChange(payload.removed[i]));
         }
-        // Encode modified validators 
+        // Encode modified validators
         data = abi.encodePacked(data, uint32(payload.modified.length));
         for (uint256 i = 0; i < payload.modified.length; i++) {
             data = abi.encodePacked(data, serializeValidatorChange(payload.modified[i]));
@@ -512,16 +510,13 @@ library ValidatorSets {
     }
 
     /**
-     * @notice Serializes a single ValidatorChange 
+     * @notice Serializes a single ValidatorChange
      */
     function serializeValidatorChange(
         ValidatorChange memory change
     ) public pure returns (bytes memory) {
         return abi.encodePacked(
-            change.nodeID,
-            change.blsPublicKey,    
-            change.previousWeight,  
-            change.currentWeight
+            change.nodeID, change.blsPublicKey, change.previousWeight, change.currentWeight
         );
     }
 
@@ -628,13 +623,12 @@ library ValidatorSets {
      * @return found True if the key exists.
      * @return item The ValidatorChange struct found (or empty if not found).
      */
-    function _searchValidators(ValidatorChange[] memory list, bytes memory key) 
-        internal 
-        pure 
-        returns (bool found, ValidatorChange memory item) 
-    {
+    function _searchValidators(
+        ValidatorChange[] memory list,
+        bytes memory key
+    ) internal pure returns (bool found, ValidatorChange memory item) {
         if (list.length == 0) return (false, item);
-        
+
         uint256 low = 0;
         uint256 high = list.length - 1;
 
@@ -643,9 +637,9 @@ library ValidatorSets {
             int256 cmp = ByteComparator.compare(list[mid].blsPublicKey, key);
 
             if (cmp == 0) {
-                return (true, list[mid]); 
-            } 
-            
+                return (true, list[mid]);
+            }
+
             if (cmp < 0) {
                 low = mid + 1;
             } else {
@@ -653,21 +647,24 @@ library ValidatorSets {
                 high = mid - 1;
             }
         }
-        return (false, item); 
+        return (false, item);
     }
 
     /**
      * @notice Sorts validators by their uncompressed public key bytes
      * @dev Uses insertion sort which is efficient for small arrays
      */
-    function _sortValidators(Validator[] memory validators) private pure {
+    function _sortValidators(
+        Validator[] memory validators
+    ) private pure {
         for (uint256 i = 1; i < validators.length; i++) {
             Validator memory key = validators[i];
             bytes memory keyPubKey = BLST.getUncompressedBlsPublicKey(key.blsPublicKey);
             int256 j = int256(i) - 1;
-            
+
             while (j >= 0) {
-                bytes memory jPubKey = BLST.getUncompressedBlsPublicKey(validators[uint256(j)].blsPublicKey);
+                bytes memory jPubKey =
+                    BLST.getUncompressedBlsPublicKey(validators[uint256(j)].blsPublicKey);
                 if (ByteComparator.compare(jPubKey, keyPubKey) <= 0) {
                     break;
                 }

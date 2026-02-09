@@ -10,12 +10,12 @@ library ByteComparator {
      * @notice Compares two byte arrays (lexicographically).
      * @return result -1 if a < b, 0 if a == b, 1 if a > b
      */
-     /* solhint-disable no-inline-assembly */
+    /* solhint-disable no-inline-assembly */
     function compare(bytes memory a, bytes memory b) internal pure returns (int256) {
         if (a.length == b.length) {
-             bool samePointer;
-             assembly { 
-                samePointer := eq(a, b) 
+            bool samePointer;
+            assembly {
+                samePointer := eq(a, b)
             }
             if (samePointer) return 0;
         }
@@ -25,7 +25,7 @@ library ByteComparator {
         uint256 bPtr;
 
         assembly {
-            aPtr := add(a, 32) 
+            aPtr := add(a, 32)
             bPtr := add(b, 32)
         }
 
@@ -45,7 +45,7 @@ library ByteComparator {
 
         if (a.length < b.length) return -1;
         if (a.length > b.length) return 1;
-        
+
         return 0;
     }
 }
