@@ -224,6 +224,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         // Apply the diff
         ValidatorSetDiffPayload memory diff = ValidatorSets.parseValidatorSetDiffPayload(message.message.payload);
         ValidatorSet memory currentValidatorSet = IAvalancheValidatorSetManager(validatorSetManagerContract).getValidatorSet(chainID);
+        require(diff.currentHeight > currentValidatorSet.pChainHeight, "Invalid blockchain height");
         (Validator[] memory newValidators, uint64 newWeight) = ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
 
         // Update state
