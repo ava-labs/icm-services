@@ -391,7 +391,7 @@ library BLST {
 
         // Copy the Y coordinate.
         for (uint256 i = 0; i < 48; ++i) {
-                        res[80 + i] = publicKey[i + 48];
+            res[80 + i] = publicKey[i + 48];
         }
         return res;
     }
