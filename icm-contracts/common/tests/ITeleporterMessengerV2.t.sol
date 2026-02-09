@@ -3,10 +3,8 @@ pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
 import {
-    TeleporterMessageV2,
-    TeleporterICMMessage,
-    ICMTeleporterV2
-} from "../ITeleporterMessengerV2.sol";
+    TeleporterICMMessage, TeleporterMessageV2, ICMTeleporterV2
+} from "../TeleporterMessageV2.sol";
 import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 
 contract ICMTest is Test {
