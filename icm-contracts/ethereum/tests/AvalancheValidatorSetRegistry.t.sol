@@ -311,10 +311,6 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
-    function testGetAvalancheNetworkID() public view {
-        assertEq(_registry.getAvalancheNetworkID(), NETWORK_ID);
-    }
-
     /**
      * @dev Test applying a valid diff that adds, removes, and modifies validators.
      * This ensures the Registry correctly orchestrates the update.
@@ -394,6 +390,10 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         // Expected: 15 (Initial) - 1 (Removed) + 10 (Modified) + 1 (Added) = 25
         assertEq(newSet.totalWeight, 25);
         assertEq(newSet.validators.length, 5);
+    }
+
+    function testGetAvalancheNetworkID() public view {
+        assertEq(_registry.getAvalancheNetworkID(), NETWORK_ID);
     }
 }
 
