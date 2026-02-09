@@ -14,7 +14,7 @@ ARG GETH_VERSION=v1.16.1-12b4131f
 RUN wget https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-${GETH_VERSION#v}.tar.gz && \
     tar -xzf geth-linux-amd64-${GETH_VERSION#v}.tar.gz && \
     cp geth-linux-amd64-${GETH_VERSION#v}/geth /usr/local/bin/ && \
-    rm -rf geth-linux-amd64-${GETH_VERSION#v}* 
+    rm -rf geth-linux-amd64-${GETH_VERSION#v}*
 
 # Set working directory
 WORKDIR /ethereum
