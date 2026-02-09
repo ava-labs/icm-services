@@ -10,6 +10,7 @@ library ByteComparator {
      * @notice Compares two byte arrays (lexicographically).
      * @return result -1 if a < b, 0 if a == b, 1 if a > b
      */
+     /* solhint-disable no-inline-assembly */
     function compare(bytes memory a, bytes memory b) internal pure returns (int256) {
         if (a.length == b.length) {
              bool samePointer;
