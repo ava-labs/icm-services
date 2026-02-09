@@ -22,7 +22,6 @@ library ByteSlicer {
         }
     }
 
-
     /**
      * @notice Add the source bytes to the target bytes at the indicated position
      * @param target the array be extended

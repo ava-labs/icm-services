@@ -10,7 +10,7 @@ library ByteComparator {
      * @notice Compares two byte arrays (lexicographically).
      * @return result -1 if a < b, 0 if a == b, 1 if a > b
      */
-    function _compareBytes(bytes memory a, bytes memory b) internal pure returns (int256) {
+    function compare(bytes memory a, bytes memory b) internal pure returns (int256) {
         if (a.length == b.length) {
              bool samePointer;
              assembly { samePointer := eq(a, b) }

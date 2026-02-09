@@ -411,7 +411,6 @@ library ValidatorSets {
         // Copy validators that are not being removed, applying modifications
         for (uint256 i = 0; i < currentValidators.length; i++) {
             bytes memory currentKey = currentValidators[i].blsPublicKey;
-            bool isRemoved = false;
             
             // Check if this validator is being removed
             (bool isRemoved, ) = _searchValidators(diff.removed, currentKey);
@@ -462,6 +461,57 @@ library ValidatorSets {
             payload.pChainHeight,
             payload.pChainTimestamp,
             abi.encode(payload.shardHashes)
+        );
+    }
+
+    /*
+     * @notice Serialize a ValidatorSetDiffPayload
+     */
+   function serializeValidatorSetDiffPayload(
+        ValidatorSetDiffPayload memory payload
+    ) public pure returns (bytes memory) {
+        bytes2 codec = bytes2(0);
+        bytes4 payloadType = bytes4(0x00000005);
+        bytes memory data = abi.encodePacked(
+            codec,                      
+            payloadType,                 
+            payload.avalancheBlockchainID,
+            payload.previousHeight,
+            payload.previousTimestamp,
+            payload.previousValidatorSetHash,
+            payload.currentHeight,
+            payload.currentTimestamp,
+            payload.currentValidatorSetHash,
+            uint32(payload.added.length)    
+        );
+        // Encode added validators 
+        for (uint256 i = 0; i < payload.added.length; i++) {
+            data = abi.encodePacked(data, serializeValidatorChange(payload.added[i]));
+        }
+        // Encode removed validators 
+        data = abi.encodePacked(data, uint32(payload.removed.length));
+        for (uint256 i = 0; i < payload.removed.length; i++) {
+            data = abi.encodePacked(data, serializeValidatorChange(payload.removed[i]));
+        }
+        // Encode modified validators 
+        data = abi.encodePacked(data, uint32(payload.modified.length));
+        for (uint256 i = 0; i < payload.modified.length; i++) {
+            data = abi.encodePacked(data, serializeValidatorChange(payload.modified[i]));
+        }
+        return data;
+    }
+
+    /**
+     * @notice Serializes a single ValidatorChange 
+     */
+    function serializeValidatorChange(
+        ValidatorChange memory change
+    ) public pure returns (bytes memory) {
+        return abi.encodePacked(
+            change.nodeID,
+            change.blsPublicKey,    
+            change.previousWeight,  
+            change.currentWeight
         );
     }
 

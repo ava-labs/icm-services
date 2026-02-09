@@ -8,6 +8,7 @@ import {
     ValidatorSetMetadata,
     Validator,
     ValidatorSet,
+    ValidatorSetDiffPayload,
     ValidatorSetShard,
     ValidatorSetSignature,
     ValidatorSets
