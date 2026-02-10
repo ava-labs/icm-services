@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+<<<<<<< HEAD
 import {ByteComparator} from "./ByteComparator.sol";
 import {ByteSlicer} from "./ByteSlicer.sol";
+=======
+>>>>>>> bat/icm-refactored/validator-set-registry
 import {BLST} from "./BLST.sol";
 
 struct Validator {
@@ -62,6 +65,7 @@ struct ValidatorSetSignature {
     bytes signature;
 }
 
+<<<<<<< HEAD
 // ValidatorChange represents a single validator addition, removal, or modification
 struct ValidatorChange {
     bytes20 nodeID; // 20 bytes
@@ -87,6 +91,8 @@ struct ValidatorSetDiffPayload {
     ValidatorChange[] modified;
 }
 
+=======
+>>>>>>> bat/icm-refactored/validator-set-registry
 library ValidatorSets {
     /* solhint-disable no-inline-assembly */
     uint256 private constant QUORUM_NUM = 67;
@@ -273,6 +279,7 @@ library ValidatorSets {
         });
     }
 
+<<<<<<< HEAD
     /**
      * @notice Parses a ValidatorSetDiff payload from serialized bytes
      * @dev The payload type ID must be 5 for ValidatorSetDiff
@@ -444,6 +451,8 @@ library ValidatorSets {
         return (newValidators, newTotalWeight);
     }
 
+=======
+>>>>>>> bat/icm-refactored/validator-set-registry
     /*
      * @notice Serialize a ValidatorSetStatePayload
      */
@@ -463,6 +472,7 @@ library ValidatorSets {
     }
 
     /*
+<<<<<<< HEAD
      * @notice Serialize a ValidatorSetDiffPayload
      */
     function serializeValidatorSetDiffPayload(
@@ -511,6 +521,8 @@ library ValidatorSets {
     }
 
     /*
+=======
+>>>>>>> bat/icm-refactored/validator-set-registry
      * @notice Deserialize bytes into `ValidatorSetSignature`
      */
     function parseValidatorSetSignature(
@@ -607,6 +619,7 @@ library ValidatorSets {
         uint256 scaledSignatureWeight = QUORUM_DEN * uint256(signatureWeight);
         return scaledTotalWeight <= scaledSignatureWeight;
     }
+<<<<<<< HEAD
 
     /**
      * @notice Generic Binary Search.
@@ -664,4 +677,6 @@ library ValidatorSets {
             validators[uint256(j + 1)] = key;
         }
     }
+=======
+>>>>>>> bat/icm-refactored/validator-set-registry
 }

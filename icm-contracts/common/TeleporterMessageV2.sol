@@ -83,7 +83,7 @@ library TeleporterMessageV2Parsing {
         teleporterMessage.requiredGasLimit = uint256(bytes32(data[124:156]));
 
         {
-            // get the number of addressed in the array
+            // get the number of addresses in the array
             uint32 numRelayerAddresses = uint32(bytes4(data[156:160]));
             uint256 offsetAddresses = 160;
             address[] memory allowedRelayerAddresses = new address[](numRelayerAddresses);
@@ -172,15 +172,18 @@ library TeleporterMessageV2Parsing {
     ) internal pure returns (bytes memory) {
         bytes memory serialized = new bytes(receipts.length * 52);
         uint256 length = receipts.length;
+
         /* solhint-disable no-inline-assembly */
         assembly ("memory-safe") {
             let s := add(serialized, 0x20)
             let r := add(receipts, 0x20)
             for { let i := 0 } lt(i, length) { i := add(i, 1) } {
-                mstore(s, mload(r))
+                // get the value at index number i
+                let value := mload(r)
+                mstore(s, mload(value))
                 s := add(s, 32)
-                r := add(r, 32)
-                mstore(s, mload(r))
+                // shift the address left 12 bytes
+                mstore(s, shl(96, mload(add(value, 0x20))))
                 s := add(s, 20)
                 r := add(r, 32)
             }

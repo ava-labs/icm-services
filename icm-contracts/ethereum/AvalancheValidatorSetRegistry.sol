@@ -8,7 +8,10 @@ import {
     ValidatorSetMetadata,
     Validator,
     ValidatorSet,
+<<<<<<< HEAD
     ValidatorSetDiffPayload,
+=======
+>>>>>>> bat/icm-refactored/validator-set-registry
     ValidatorSetShard,
     ValidatorSetSignature,
     ValidatorSets
@@ -79,7 +82,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         // Check that we are not interrupting an existing registration
         if (isRegistrationInProgress(message.sourceBlockchainID)) {
             // check if we are interrupting an existing registration
+<<<<<<< HEAD
             revert("Can't register to a blockchain ID while another registration is in progress");
+=======
+            revert("A registration is already in progress");
+>>>>>>> bat/icm-refactored/validator-set-registry
         }
 
         // Check if this is the first time this blockchain is registering a validator set
@@ -100,6 +107,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ) = parseValidatorSetMetadata(message, shardBytes);
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
         require(message.sourceBlockchainID == avalancheBlockchainID, "Source chain ID mismatch");
+<<<<<<< HEAD
+=======
+        uint256 numValidators = validators.length;
+>>>>>>> bat/icm-refactored/validator-set-registry
 
         // This validator set is sharded
         if (validatorSetMetadata.shardHashes.length > 1) {
@@ -112,8 +123,16 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             partialSet.shardsReceived = 1;
             partialSet.partialWeight = validatorWeight;
             partialSet.inProgress = true;
+<<<<<<< HEAD
             for (uint256 i = 0; i < validators.length; i++) {
                 partialSet.validators.push(validators[i]);
+=======
+            for (uint256 i = 0; i < numValidators;) {
+                partialSet.validators.push(validators[i]);
+                unchecked {
+                    ++i;
+                }
+>>>>>>> bat/icm-refactored/validator-set-registry
             }
 
             if (!isRegistered(message.sourceBlockchainID)) {
@@ -130,8 +149,16 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             valSet.totalWeight = validatorWeight;
             valSet.pChainHeight = validatorSetMetadata.pChainHeight;
             valSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
+<<<<<<< HEAD
             for (uint256 i = 0; i < validators.length; i++) {
                 valSet.validators.push(validators[i]);
+=======
+            for (uint256 i = 0; i < numValidators;) {
+                valSet.validators.push(validators[i]);
+                unchecked {
+                    ++i;
+                }
+>>>>>>> bat/icm-refactored/validator-set-registry
             }
         }
         emit ValidatorSetRegistered(avalancheBlockchainID);
@@ -146,8 +173,12 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         bytes memory shardBytes
     ) external {
         require(
+<<<<<<< HEAD
             isRegistrationInProgress(shard.avalancheBlockchainID),
             "Cannot apply shard if registration is not in progress"
+=======
+            isRegistrationInProgress(shard.avalancheBlockchainID), "Registration is not in progress"
+>>>>>>> bat/icm-refactored/validator-set-registry
         );
         bytes32 avalancheBlockchainID = shard.avalancheBlockchainID;
         require(
@@ -165,7 +196,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         }
     }
 
+<<<<<<< HEAD
      /**
+=======
+    /**
+>>>>>>> bat/icm-refactored/validator-set-registry
      * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
      * it over to the `_validatorSets` mapping.
      * @param shard Indicates the sequence number of the shard and blockchain affected by this update
@@ -173,15 +208,23 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      */
     /* solhint-disable-next-line no-unused-vars */
     function applyShard(ValidatorSetShard calldata shard, bytes memory shardBytes) public virtual {
+<<<<<<< HEAD
         // Do not revert.
         // The child contract SubsetUpdater will override this with real logic.
     }
 
      /**
+=======
+        revert("Not implemented");
+    }
+
+    /**
+>>>>>>> bat/icm-refactored/validator-set-registry
      * @notice Parses and validates metadata about a validator set data from an ICM message. This
      * is called when registering validator sets. It may also contain a (potentially partially) updated set of
      * the validators that are being registered. This is always considered to be the first shard of
      * the requisite data.
+<<<<<<< HEAD
      */
     function parseValidatorSetMetadata(
         /* solhint-disable-next-line no-unused-vars */
@@ -243,6 +286,23 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         bytes32 avalancheBlockchainID
     ) external view returns (ValidatorSet memory) {
         return _validatorSets[avalancheBlockchainID];
+=======
+     *
+     * @param icmMessage The ICM message containing the validator set metadata
+     * @param shardBytes The serialized data used to construct the registered
+     * validator set
+     * @return The parsed validator set metadata
+     * @return A parsed validators array
+     * @return The total weight of the parsed validators
+     */
+    function parseValidatorSetMetadata(
+        /* solhint-disable-next-line no-unused-vars */
+        ICMMessage calldata icmMessage,
+        /* solhint-disable-next-line no-unused-vars */
+        bytes calldata shardBytes
+    ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
+        revert("Not implemented");
+>>>>>>> bat/icm-refactored/validator-set-registry
     }
 
     /**
@@ -273,6 +333,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ICMMessage calldata message,
         bytes32 avalancheBlockchainID
     ) public view {
+<<<<<<< HEAD
         require(
             pChainInitialized(),
             "A complete P-chain validator must be registered to verify ICM messages"
@@ -281,14 +342,24 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             isRegistered(avalancheBlockchainID),
             "No validator set is registered for the provided Avalanche blockchain ID"
         );
+=======
+        require(pChainInitialized(), "No P-chain validator set registered.");
+        require(isRegistered(avalancheBlockchainID), "No validator set registered to given ID");
+>>>>>>> bat/icm-refactored/validator-set-registry
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
         ValidatorSetSignature memory sig =
             ValidatorSets.parseValidatorSetSignature(message.attestation);
         require(
             ValidatorSets.verifyValidatorSetSignature(
+<<<<<<< HEAD
                 sig, message.payload, _validatorSets[avalancheBlockchainID]
             ),
             "Could not verify ICM message: Signature checks failed"
+=======
+                sig, message.rawMessage, _validatorSets[avalancheBlockchainID]
+            ),
+            "Failed to verify signatures"
+>>>>>>> bat/icm-refactored/validator-set-registry
         );
     }
 
@@ -309,6 +380,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     ) public view returns (bool) {
         return _partialValidatorSets[avalancheBlockchainID].inProgress;
     }
+<<<<<<< HEAD
     /**
      * @notice Update the validator set for a given Avalanche blockchain ID. 
      */
@@ -318,6 +390,8 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     ) internal {
         _validatorSets[avalancheBlockchainID] = validatorSet;
     }
+=======
+>>>>>>> bat/icm-refactored/validator-set-registry
 }
 
 // This contract specifies that shards of validator sets is a serialized subsequence of
@@ -329,7 +403,11 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         // allow the actual validator set to be populated across multiple
         // transactions
         ValidatorSetMetadata memory initialValidatorSetData
+<<<<<<< HEAD
     ) AvalancheValidatorSetRegistry(avalancheNetworkID_, initialValidatorSetData) {}
+=======
+    ) payable AvalancheValidatorSetRegistry(avalancheNetworkID_, initialValidatorSetData) {}
+>>>>>>> bat/icm-refactored/validator-set-registry
 
     /**
      * @dev Applies a set of validators to partial to a set that has been registered.
@@ -343,11 +421,22 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         (Validator[] memory validators, uint64 validatorWeight) =
             ValidatorSets.parseValidators(shardBytes);
         require(validators.length > 0, "Validator set cannot be empty");
+<<<<<<< HEAD
         require(validatorWeight > 0, "Total weight must be greater than 0");
 
         // update the partial validator set
         for (uint256 i = 0; i < validators.length; i++) {
             _partialValidatorSets[avalancheBlockchainID].validators.push(validators[i]);
+=======
+        require(validatorWeight > 0, "Total weight must exceed 0");
+
+        // update the partial validator set
+        for (uint256 i = 0; i < validators.length;) {
+            _partialValidatorSets[avalancheBlockchainID].validators.push(validators[i]);
+            unchecked {
+                ++i;
+            }
+>>>>>>> bat/icm-refactored/validator-set-registry
         }
         _partialValidatorSets[avalancheBlockchainID].partialWeight += validatorWeight;
         _partialValidatorSets[avalancheBlockchainID].shardsReceived += 1;
@@ -372,7 +461,11 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
     ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
         // Parse the validator set state payload.
         ValidatorSetMetadata memory validatorSetMetadata =
+<<<<<<< HEAD
             ValidatorSets.parseValidatorSetMetadata(icmMessage.payload);
+=======
+            ValidatorSets.parseValidatorSetMetadata(icmMessage.rawMessage);
+>>>>>>> bat/icm-refactored/validator-set-registry
         // Check that the first validator set shard hash matches the hash of the serialized validator set.
         require(
             validatorSetMetadata.shardHashes[0] == sha256(shardBytes), "Validator set hash mismatch"
@@ -383,15 +476,26 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
         require(
             _validatorSets[avalancheBlockchainID].pChainHeight < validatorSetMetadata.pChainHeight,
+<<<<<<< HEAD
             "P-Chain height must be greater than the current validator set"
+=======
+            "P-Chain height too low"
+>>>>>>> bat/icm-refactored/validator-set-registry
         );
         require(
             _validatorSets[avalancheBlockchainID].pChainTimestamp
                 < validatorSetMetadata.pChainTimestamp,
+<<<<<<< HEAD
             "P-Chain timestamp must be greater than the current validator set"
         );
         require(validators.length > 0, "Validator set cannot be empty");
         require(totalWeight > 0, "Total weight must be greater than 0");
+=======
+            "P-Chain timestamp too low"
+        );
+        require(validators.length > 0, "Validator set cannot be empty");
+        require(totalWeight > 0, "Total weight must exceed 0");
+>>>>>>> bat/icm-refactored/validator-set-registry
         return (validatorSetMetadata, validators, totalWeight);
     }
 }
