@@ -11,11 +11,11 @@ contract ICMTest is Test {
     function testRoundTripICMMessage(
         bytes4 sourceNetworkID,
         bytes32 sourceBlockchainID,
-        bytes memory rawMessage,
+        bytes memory payload,
         bytes memory attestation
     ) public pure {
         ICMMessage memory message = ICMMessage({
-            rawMessage: rawMessage,
+            payload: payload,
             sourceNetworkID: uint32(sourceNetworkID),
             sourceBlockchainID: sourceBlockchainID,
             attestation: attestation

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
-import {ICMMessage} from "../../common/ICM.sol";
+import {ICMMessage, ICM} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
 import {SubsetUpdater} from "../AvalancheValidatorSetRegistry.sol";
 import {
@@ -23,6 +23,14 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7;
     bytes32 public constant L1_BLOCKCHAIN_ID =
         0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef;
+    
+    struct ICMRawMessage {
+        uint32 sourceNetworkID;
+        bytes32 sourceBlockchainID;
+        address sourceAddress;
+        address verifierAddress;
+        bytes payload;
+    } 
 
     /**
      * @dev Create a dummy set of P-chain validators to initialize the `AvalancheValidatorSetRegistry` with.
@@ -116,12 +124,12 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         view
         returns (Validator[] memory, ICMMessage memory)
     {
-        (Validator[] memory validators, bytes memory raw) = registerValidatorSetFixture(1, 1);
+        (Validator[] memory validators, bytes memory payload) = registerValidatorSetFixture(1, 1);
 
         // sign the message
-        bytes memory signature = dummyPChainValidatorSetSign(raw);
+        bytes memory signature = dummyPChainValidatorSetSign(payload);
         ICMMessage memory message = ICMMessage({
-            rawMessage: raw,
+            payload: payload,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
@@ -137,12 +145,12 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         uint64 pChainHeight,
         uint64 pChainTimestamp
     ) public view returns (Validator[] memory, ICMMessage memory) {
-        (Validator[] memory validators, bytes memory raw) =
+        (Validator[] memory validators, bytes memory payload) =
             registerValidatorSetFixture(pChainHeight, pChainTimestamp);
         // sign the message
-        bytes memory signature = l1ValidatorSetSign(raw);
+        bytes memory signature = l1ValidatorSetSign(payload);
         ICMMessage memory message = ICMMessage({
-            rawMessage: raw,
+            payload: payload,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
@@ -369,24 +377,17 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        ICMRawMessage memory rawIcmMsg = ICMRawMessage({
+        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
+        ICMMessage memory icmMsg = ICMMessage({
+            payload: payloadBytes,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: validatorSet.avalancheBlockchainID,
-            sourceAddress: address(0),
-            verifierAddress: address(0),
-            payload: payloadBytes
-        });
-        bytes memory rawIcmMsgBytes = ICM.serializeICMRawMessage(rawIcmMsg);
-        bytes memory signature = dummyPChainValidatorSetSign(rawIcmMsgBytes);
-        ICMMessage memory message = ICMMessage({
-            message: rawIcmMsg,
-            rawMessageBytes: rawIcmMsgBytes,
             attestation: signature
         });
 
         // Execute
-        _registry.updateValidatorSetWithDiff(message);
-        ValidatorSet memory newSet = _manager.getValidatorSet(validatorSet.avalancheBlockchainID);
+        _registry.updateValidatorSetWithDiff(icmMsg);
+        ValidatorSet memory newSet = _registry.getValidatorSet(validatorSet.avalancheBlockchainID);
         assertEq(newSet.pChainHeight, payload.currentHeight);
 
         // Expected: 15 (Initial) - 1 (Removed) + 10 (Modified) + 1 (Added) = 25
@@ -425,24 +426,17 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        ICMRawMessage memory rawIcmMsg = ICMRawMessage({
+        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
+        ICMMessage memory icmMsg = ICMMessage({
+            payload: payloadBytes,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: validatorSet.avalancheBlockchainID,
-            sourceAddress: address(0),
-            verifierAddress: address(0),
-            payload: payloadBytes
-        });
-        bytes memory rawIcmMsgBytes = ICM.serializeICMRawMessage(rawIcmMsg);
-        bytes memory signature = dummyPChainValidatorSetSign(rawIcmMsgBytes);
-        ICMMessage memory message = ICMMessage({
-            message: rawIcmMsg,
-            rawMessageBytes: rawIcmMsgBytes,
             attestation: signature
         });
 
         // Test
         vm.expectRevert(bytes("Invalid blockchain height"));
-        _registry.updateValidatorSetWithDiff(message);
+        _registry.updateValidatorSetWithDiff(icmMsg);
     }
 
     function testUpdateValidatorSetWithDiffRevertInvalidSignature() public {
@@ -476,33 +470,23 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        ICMRawMessage memory rawIcmMsg = ICMRawMessage({
-            sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: validatorSet.avalancheBlockchainID,
-            sourceAddress: address(0),
-            verifierAddress: address(0),
-            payload: payloadBytes
-        });
-        bytes memory rawIcmMsgBytes = ICM.serializeICMRawMessage(rawIcmMsg);
-        bytes memory validSignature = dummyPChainValidatorSetSign(rawIcmMsgBytes);
+        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
 
         // Tamper data
         ValidatorSetDiffPayload memory tamperedPayload = payload;
         tamperedPayload.currentTimestamp += 1;
         bytes memory tamperedPayloadBytes =
             ValidatorSets.serializeValidatorSetDiffPayload(tamperedPayload);
-        ICMRawMessage memory tamperedMsg = rawIcmMsg;
-        tamperedMsg.payload = tamperedPayloadBytes;
-        bytes memory tamperedRawBytes = ICM.serializeICMRawMessage(tamperedMsg);
-        ICMMessage memory invalidMessage = ICMMessage({
-            message: tamperedMsg,
-            rawMessageBytes: tamperedRawBytes,
-            attestation: validSignature
+        ICMMessage memory invalidIcmMsg = ICMMessage({
+            payload: tamperedPayloadBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: validatorSet.avalancheBlockchainID,
+            attestation: signature
         });
 
         // Test
         vm.expectRevert();
-        _registry.updateValidatorSetWithDiff(invalidMessage);
+        _registry.updateValidatorSetWithDiff(invalidIcmMsg);
     }
 
     function testUpdateValidatorSetWithDiffRevertReplayAttack() public {
@@ -542,25 +526,18 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        ICMRawMessage memory rawIcmMsg = ICMRawMessage({
+        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
+        ICMMessage memory icmMsg = ICMMessage({
+            payload: payloadBytes,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: validatorSet.avalancheBlockchainID,
-            sourceAddress: address(0),
-            verifierAddress: address(0),
-            payload: payloadBytes
-        });
-        bytes memory rawIcmMsgBytes = ICM.serializeICMRawMessage(rawIcmMsg);
-        bytes memory signature = dummyPChainValidatorSetSign(rawIcmMsgBytes);
-        ICMMessage memory message = ICMMessage({
-            message: rawIcmMsg,
-            rawMessageBytes: rawIcmMsgBytes,
             attestation: signature
         });
 
         // Test
-        _registry.updateValidatorSetWithDiff(message);
+        _registry.updateValidatorSetWithDiff(icmMsg);
         vm.expectRevert();
-        _registry.updateValidatorSetWithDiff(message);
+        _registry.updateValidatorSetWithDiff(icmMsg);
     }
 
     function testGetAvalancheNetworkID() public view {

@@ -6,9 +6,9 @@ pragma solidity ^0.8.30;
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 struct ICMMessage {
-    // The serialized bytes of raw message. The data and serializations formats
+    // The serialized bytes of the payload. The data and serializations formats
     // for this data will be app / contract specific
-    bytes rawMessage;
+    bytes payload;
     // used to distinguish between mainnet and testnets
     uint32 sourceNetworkID;
     // The blockchain on which the message originated
@@ -32,9 +32,9 @@ library ICM {
     function parseICMMessage(
         bytes calldata data
     ) public pure returns (ICMMessage memory) {
-        bytes memory message = extractICMRawMessage(data);
+        bytes memory payload = extractICMRawMessage(data);
         // The position in data after the raw message bytes
-        uint256 messageOffset = message.length + MESSAGE_LENGTH_BYTES;
+        uint256 messageOffset = payload.length + MESSAGE_LENGTH_BYTES;
         // parse the source Network ID
         uint32 sourceNetworkID = uint32(bytes4(data[messageOffset:messageOffset + 4]));
 
@@ -44,7 +44,7 @@ library ICM {
         // the rest of the bytes are the attestation
         bytes memory attestation = data[messageOffset + 36:];
         return ICMMessage({
-            rawMessage: message,
+            payload: payload,
             sourceNetworkID: sourceNetworkID,
             sourceBlockchainID: sourceBlockchainID,
             attestation: attestation
@@ -68,10 +68,10 @@ library ICM {
     function serializeICMMessage(
         ICMMessage calldata message
     ) public pure returns (bytes memory) {
-        uint32 messageLength = uint32(message.rawMessage.length);
+        uint32 messageLength = uint32(message.payload.length);
         return abi.encodePacked(
             messageLength,
-            message.rawMessage,
+            message.payload,
             message.sourceNetworkID,
             message.sourceBlockchainID,
             message.attestation
