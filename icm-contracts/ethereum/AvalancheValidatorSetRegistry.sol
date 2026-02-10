@@ -152,9 +152,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ValidatorSetShard calldata shard,
         bytes memory shardBytes
     ) external {
+        
         require(
-            isRegistrationInProgress(shard.avalancheBlockchainID),
-            "Cannot apply shard if registration is not in progress"
+            isRegistrationInProgress(shard.avalancheBlockchainID), "Registration is not in progress"
         );
         bytes32 avalancheBlockchainID = shard.avalancheBlockchainID;
         require(
@@ -226,6 +226,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      */
     // solhint-disable-next-line no-empty-blocks
     function applyShard(ValidatorSetShard calldata, bytes memory) public virtual {
+        revert("Not implemented");
         // Do not revert and return empty values to satisfy the compiler.
         // The child contract SubsetUpdater will override this with real logic.
     }
@@ -240,14 +241,14 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         /* solhint-disable-next-line no-unused-vars */
         ICMMessage calldata,
         /* solhint-disable-next-line no-unused-vars */
-        bytes calldata
+        bytes calldata 
     ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
+        revert("Not implemented");
         // Do not revert and return empty values to satisfy the compiler.
         // The child contract SubsetUpdater will override this with real logic.
-        ValidatorSetMetadata memory emptyMeta;
-        Validator[] memory emptyValidators = new Validator[](0);
-
-        return (emptyMeta, emptyValidators, 0);
+        // ValidatorSetMetadata memory emptyMeta;
+        // Validator[] memory emptyValidators = new Validator[](0);
+        // return (emptyMeta, emptyValidators, 0);
     }
 
     /**
