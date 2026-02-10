@@ -15,8 +15,8 @@ contract ICMTest is Test {
         uint8 numReceipts,
         uint256 messageNonce
     ) public pure {
-        vm.assume(numRelayerAddresses < 10);
-        vm.assume(numReceipts < 10);
+        numRelayerAddresses = uint8(bound(numRelayerAddresses, 0, 10));
+        numReceipts = uint8(bound(numReceipts, 0, 10));
         address[] memory allowedRelayerAddresses = new address[](numRelayerAddresses);
         for (uint256 i = 0; i < numRelayerAddresses; i++) {
             allowedRelayerAddresses[i] = relayerAddress;
@@ -52,10 +52,21 @@ contract ICMTest is Test {
         assertEq(deserialized.destinationAddress, teleporterMessage.destinationAddress);
         assertEq(deserialized.requiredGasLimit, teleporterMessage.requiredGasLimit);
         assertEq(deserialized.allowedRelayerAddresses, teleporterMessage.allowedRelayerAddresses);
-        for (uint256 i = 0; i < allowedRelayerAddresses.length; i++) {
+        for (uint256 i = 0; i < numRelayerAddresses; i++) {
             assertEq(
                 teleporterMessage.allowedRelayerAddresses[i],
                 deserialized.allowedRelayerAddresses[i]
+            );
+        }
+
+        for (uint256 i = 0; i < numReceipts; i++) {
+            assertEq(
+                teleporterMessage.receipts[i].relayerRewardAddress,
+                deserialized.receipts[i].relayerRewardAddress
+            );
+            assertEq(
+                teleporterMessage.receipts[i].receivedMessageNonce,
+                deserialized.receipts[i].receivedMessageNonce
             );
         }
 

@@ -47,7 +47,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
                 1
             );
             previousPublicKey = BLST.unPadUncompressedBlsPublicKey(validators[i].blsPublicKey);
-            totalWeight += uint64(i + 1);
+            totalWeight += validators[i].weight;
         }
 
         ValidatorSet memory validatorSet = ValidatorSet({
@@ -86,7 +86,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
                 1
             );
             previousPublicKey = BLST.unPadUncompressedBlsPublicKey(validators[i].blsPublicKey);
-            totalWeight += uint64(i + 1);
+            totalWeight += validators[i].weight;
             // compute the shard hash
             Validator[] memory validatorShard = new Validator[](1);
             validatorShard[0] = validators[i];
