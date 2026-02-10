@@ -5,23 +5,14 @@ pragma solidity ^0.8.30;
  * THIS IS LIBRARY IS UN-AUDITED CODE.
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
-struct ICMRawMessage {
+struct ICMMessage {
+    // The serialized bytes of raw message. The data and serializations formats
+    // for this data will be app / contract specific
+    bytes rawMessage;
     // used to distinguish between mainnet and testnets
     uint32 sourceNetworkID;
     // The blockchain on which the message originated
     bytes32 sourceBlockchainID;
-    // The address that sent the message
-    address sourceAddress;
-    // Address of verifying contract on the receiving blockchain
-    address verifierAddress;
-    // The message payload
-    bytes payload;
-}
-
-struct ICMMessage {
-    ICMRawMessage message;
-    // The serialized bytes of `message`
-    bytes rawMessageBytes;
     // Arbitrary bytes that is used by receiving contracts to
     // authenticate this message.
     bytes attestation;
@@ -30,13 +21,10 @@ struct ICMMessage {
 /**
  * @title ICM
  * @notice Utility library for Interchain Messaging (ICM) messages. Mainly (de)serialization.
- * @dev This library provides helper functions for working with ICM signatures and validation
  */
 library ICM {
-    /* solhint-disable no-inline-assembly */
-
-    uint256 private constant SOURCE_NETWORK_ID_LENGTH = 4;
-    uint256 private constant MESSAGE_METADATA_LENGTH = 82;
+    // The number of bytes encoding the length of a raw ICM message
+    uint256 private constant MESSAGE_LENGTH_BYTES = 4;
 
     /*
      * @notice Deserialize an ICM message from bytes
@@ -44,69 +32,33 @@ library ICM {
     function parseICMMessage(
         bytes calldata data
     ) public pure returns (ICMMessage memory) {
-        ICMRawMessage memory message = parseICMRawMessage(data);
-        uint256 payloadLength = message.payload.length;
-        // Parse the unsigned message bytes
-        bytes memory rawMessageBytes = data[0:MESSAGE_METADATA_LENGTH + payloadLength];
+        bytes memory message = extractICMRawMessage(data);
+        // The position in data after the raw message bytes
+        uint256 messageOffset = message.length + MESSAGE_LENGTH_BYTES;
+        // parse the source Network ID
+        uint32 sourceNetworkID = uint32(bytes4(data[messageOffset:messageOffset + 4]));
+        // parse the source blockchain ID
+        bytes32 sourceBlockchainID = bytes32(data[messageOffset + 4:messageOffset + 36]);
+
         // the rest of the bytes are the attestation
-        bytes memory attestation = data[MESSAGE_METADATA_LENGTH + payloadLength:];
+        bytes memory attestation = data[messageOffset + 36:];
         return ICMMessage({
-            message: message,
-            rawMessageBytes: rawMessageBytes,
+            rawMessage: message,
+            sourceNetworkID: sourceNetworkID,
+            sourceBlockchainID: sourceBlockchainID,
             attestation: attestation
         });
     }
 
     /*
-     * @notice Deserialize a raw ICM message from bytes
+     * @notice Extract the raw ICM message bytes
      */
-    function parseICMRawMessage(
+    function extractICMRawMessage(
         bytes calldata data
-    ) public pure returns (ICMRawMessage memory) {
-        // Validate the codec ID is 0
-        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
-
-        // Parse the sourceNetworkID
-        uint32 sourceNetworkID = uint32(bytes4(data[2:2 + SOURCE_NETWORK_ID_LENGTH]));
-
-        // Parse the sourceBlockchainID
-        bytes32 sourceBlockchainID = bytes32(data[6:38]);
-
-        // Parse the sourceAddress and verifierAddress
-        address sourceAddress = address(bytes20(data[38:58]));
-        address verifierAddress = address(bytes20(data[58:78]));
-
-        // Parse the payload
-        uint32 payloadLength = uint32(bytes4(data[78:MESSAGE_METADATA_LENGTH]));
-        bytes memory payload = data[MESSAGE_METADATA_LENGTH:MESSAGE_METADATA_LENGTH + payloadLength];
-        return ICMRawMessage({
-            sourceNetworkID: sourceNetworkID,
-            sourceBlockchainID: sourceBlockchainID,
-            sourceAddress: sourceAddress,
-            verifierAddress: verifierAddress,
-            payload: payload
-        });
-    }
-
-    /**
-     * @notice Serialize a raw ICM message to bytes.
-     */
-    function serializeICMRawMessage(
-        ICMRawMessage calldata message
     ) public pure returns (bytes memory) {
-        // encode the payload length
-        bytes2 codec = bytes2(0);
-        uint32 sourceNetworkID = uint32(message.sourceNetworkID);
-        uint32 payloadLength = uint32(message.payload.length);
-        return abi.encodePacked(
-            codec,
-            sourceNetworkID,
-            message.sourceBlockchainID,
-            message.sourceAddress,
-            message.verifierAddress,
-            payloadLength,
-            message.payload
-        );
+        uint32 messageLength = uint32(bytes4(data[0:MESSAGE_LENGTH_BYTES]));
+        bytes memory rawMessage = data[MESSAGE_LENGTH_BYTES:MESSAGE_LENGTH_BYTES + messageLength];
+        return rawMessage;
     }
 
     /**
@@ -115,6 +67,13 @@ library ICM {
     function serializeICMMessage(
         ICMMessage calldata message
     ) public pure returns (bytes memory) {
-        return abi.encodePacked(message.rawMessageBytes, message.attestation);
+        uint32 messageLength = uint32(message.rawMessage.length);
+        return abi.encodePacked(
+            messageLength,
+            message.rawMessage,
+            message.sourceNetworkID,
+            message.sourceBlockchainID,
+            message.attestation
+        );
     }
 }

@@ -9,7 +9,7 @@ import {Test} from "@forge-std/Test.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
-import {ICMMessage, TeleporterMessageV2} from "../../common/ITeleporterMessengerV2.sol";
+import {TeleporterICMMessage, TeleporterMessageV2} from "../../common/ITeleporterMessengerV2.sol";
 import {ECDSAVerifier} from "./ECDSAVerifier.sol";
 
 contract ECDSAVerifierTest is Test {
@@ -48,7 +48,7 @@ contract ECDSAVerifierTest is Test {
         bytes32 sourceBlockchainID = bytes32(uint256(998));
         bytes memory signature = _sign(tMsg, sourceBlockchainID, signerPrivateKey);
 
-        ICMMessage memory icmMsg = ICMMessage({
+        TeleporterICMMessage memory icmMsg = TeleporterICMMessage({
             message: tMsg,
             sourceNetworkID: 0,
             sourceBlockchainID: sourceBlockchainID,
@@ -75,7 +75,7 @@ contract ECDSAVerifierTest is Test {
         // Sign with the wrong private key
         bytes memory signature = _sign(tMsg, sourceBlockchainID, attackerPrivateKey);
 
-        ICMMessage memory icmMsg = ICMMessage({
+        TeleporterICMMessage memory icmMsg = TeleporterICMMessage({
             message: tMsg,
             sourceNetworkID: 0,
             sourceBlockchainID: sourceBlockchainID,
@@ -114,7 +114,7 @@ contract ECDSAVerifierTest is Test {
             message: hex"DEADBEEF"
         });
 
-        ICMMessage memory icmMsg = ICMMessage({
+        TeleporterICMMessage memory icmMsg = TeleporterICMMessage({
             message: wrongMessage,
             sourceNetworkID: 0,
             sourceBlockchainID: sourceBlockchainID,
