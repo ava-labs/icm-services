@@ -6,9 +6,9 @@ pragma solidity ^0.8.30;
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 struct ICMMessage {
-    // The serialized bytes of the payload. The data and serializations formats
+    // The serialized bytes of the raw message. The data and serializations formats
     // for this data will be app / contract specific
-    bytes payload;
+    bytes rawMessage;
     // used to distinguish between mainnet and testnets
     uint32 sourceNetworkID;
     // The blockchain on which the message originated
@@ -32,9 +32,9 @@ library ICM {
     function parseICMMessage(
         bytes calldata data
     ) public pure returns (ICMMessage memory) {
-        bytes memory payload = extractICMRawMessage(data);
+        bytes memory rawMessage = extractICMRawMessage(data);
         // The position in data after the raw message bytes
-        uint256 messageOffset = payload.length + MESSAGE_LENGTH_BYTES;
+        uint256 messageOffset = rawMessage.length + MESSAGE_LENGTH_BYTES;
         // parse the source Network ID
         uint32 sourceNetworkID = uint32(bytes4(data[messageOffset:messageOffset + 4]));
         // parse the source blockchain ID
@@ -43,7 +43,7 @@ library ICM {
         // the rest of the bytes are the attestation
         bytes memory attestation = data[messageOffset + 36:];
         return ICMMessage({
-            payload: payload,
+            rawMessage: rawMessage,
             sourceNetworkID: sourceNetworkID,
             sourceBlockchainID: sourceBlockchainID,
             attestation: attestation
@@ -67,10 +67,10 @@ library ICM {
     function serializeICMMessage(
         ICMMessage calldata message
     ) public pure returns (bytes memory) {
-        uint32 messageLength = uint32(message.payload.length);
+        uint32 messageLength = uint32(message.rawMessage.length);
         return abi.encodePacked(
             messageLength,
-            message.payload,
+            message.rawMessage,
             message.sourceNetworkID,
             message.sourceBlockchainID,
             message.attestation

@@ -49,7 +49,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
                 1
             );
             previousPublicKey = BLST.unPadUncompressedBlsPublicKey(validators[i].blsPublicKey);
-            totalWeight += uint64(i + 1);
+            totalWeight += validators[i].weight;
         }
 
         ValidatorSet memory validatorSet = ValidatorSet({
@@ -88,7 +88,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
                 1
             );
             previousPublicKey = BLST.unPadUncompressedBlsPublicKey(validators[i].blsPublicKey);
-            totalWeight += uint64(i + 1);
+            totalWeight += validators[i].weight;
             // compute the shard hash
             Validator[] memory validatorShard = new Validator[](1);
             validatorShard[0] = validators[i];
@@ -121,7 +121,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         // sign the message
         bytes memory signature = dummyPChainValidatorSetSign(payload);
         ICMMessage memory message = ICMMessage({
-            payload: payload,
+            rawMessage: payload,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
@@ -142,7 +142,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         // sign the message
         bytes memory signature = l1ValidatorSetSign(payload);
         ICMMessage memory message = ICMMessage({
-            payload: payload,
+            rawMessage: payload,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
@@ -250,7 +250,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             shardNumber: 2,
             avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
-        vm.expectRevert(bytes("Cannot apply shard if registration is not in progress"));
+        vm.expectRevert(bytes("Registration is not in progress"));
         _registry.updateValidatorSet(shard2, validatorBytes);
     }
 
@@ -371,7 +371,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         // Sign
         bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
         ICMMessage memory icmMsg = ICMMessage({
-            payload: payloadBytes,
+            rawMessage: payloadBytes,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: validatorSet.avalancheBlockchainID,
             attestation: signature
@@ -420,7 +420,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         // Sign
         bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
         ICMMessage memory icmMsg = ICMMessage({
-            payload: payloadBytes,
+            rawMessage: payloadBytes,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: validatorSet.avalancheBlockchainID,
             attestation: signature
@@ -470,7 +470,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory tamperedPayloadBytes =
             ValidatorSets.serializeValidatorSetDiffPayload(tamperedPayload);
         ICMMessage memory invalidIcmMsg = ICMMessage({
-            payload: tamperedPayloadBytes,
+            rawMessage: tamperedPayloadBytes,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: validatorSet.avalancheBlockchainID,
             attestation: signature
@@ -520,7 +520,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         // Sign
         bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
         ICMMessage memory icmMsg = ICMMessage({
-            payload: payloadBytes,
+            rawMessage: payloadBytes,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: validatorSet.avalancheBlockchainID,
             attestation: signature
@@ -617,9 +617,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         _registry.registerValidatorSet(message, validatorBytes);
 
         // check that the interruption is caught and rejected
-        vm.expectRevert(
-            bytes("Can't register to a blockchain ID while another registration is in progress")
-        );
+        vm.expectRevert(bytes("A registration is already in progress"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -646,7 +644,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // Try to register this set again, still signed by the P-chain
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        vm.expectRevert(bytes("Could not verify ICM message: Signature checks failed"));
+        vm.expectRevert(bytes("Failed to verify signatures"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -660,7 +658,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         Validator[] memory validatorShard = new Validator[](1);
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        vm.expectRevert(bytes("Could not verify ICM message: Signature checks failed"));
+        vm.expectRevert(bytes("Failed to verify signatures"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -760,7 +758,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         // registering the first shard should fail
-        vm.expectRevert(bytes("P-Chain timestamp must be greater than the current validator set"));
+        vm.expectRevert(bytes("P-Chain timestamp too low"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 }

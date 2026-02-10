@@ -405,7 +405,7 @@ library ValidatorSets {
         newTotalWeight = 0;
 
         // Create a mapping of validators to remove (by public key hash)
-        // We'll use a O(n * logm) approach since the validators are sorted by public key
+        // We'll use a O(n * log m) approach since the validators are sorted by public key
         uint256 newIndex = 0;
 
         // Copy validators that are not being removed, applying modifications
