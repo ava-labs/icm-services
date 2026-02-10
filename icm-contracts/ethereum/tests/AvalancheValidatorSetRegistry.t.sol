@@ -116,12 +116,12 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         view
         returns (Validator[] memory, ICMMessage memory)
     {
-        (Validator[] memory validators, bytes memory payload) = registerValidatorSetFixture(1, 1);
+        (Validator[] memory validators, bytes memory raw) = registerValidatorSetFixture(1, 1);
 
         // sign the message
-        bytes memory signature = dummyPChainValidatorSetSign(payload);
+        bytes memory signature = dummyPChainValidatorSetSign(raw);
         ICMMessage memory message = ICMMessage({
-            rawMessage: payload,
+            rawMessage: raw,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
@@ -137,12 +137,12 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         uint64 pChainHeight,
         uint64 pChainTimestamp
     ) public view returns (Validator[] memory, ICMMessage memory) {
-        (Validator[] memory validators, bytes memory payload) =
+        (Validator[] memory validators, bytes memory raw) =
             registerValidatorSetFixture(pChainHeight, pChainTimestamp);
         // sign the message
-        bytes memory signature = l1ValidatorSetSign(payload);
+        bytes memory signature = l1ValidatorSetSign(raw);
         ICMMessage memory message = ICMMessage({
-            rawMessage: payload,
+            rawMessage: raw,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: L1_BLOCKCHAIN_ID,
             attestation: signature
@@ -305,9 +305,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         Validator[] memory validatorShard = new Validator[](1);
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        vm.expectRevert(
-            bytes("A complete P-chain validator must be registered to verify ICM messages")
-        );
+        vm.expectRevert(bytes("No P-chain validator set registered."));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -730,7 +728,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         // registering the first shard should fail
-        vm.expectRevert(bytes("P-Chain height must be greater than the current validator set"));
+        vm.expectRevert(bytes("P-Chain height too low"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
