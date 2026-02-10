@@ -6,7 +6,7 @@ pragma solidity ^0.8.30;
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 struct ICMMessage {
-    // The serialized bytes of the raw message. The data and serializations formats
+    // The serialized bytes of raw message. The data and serializations formats
     // for this data will be app / contract specific
     bytes rawMessage;
     // used to distinguish between mainnet and testnets
