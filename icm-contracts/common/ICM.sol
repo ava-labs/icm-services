@@ -32,9 +32,9 @@ library ICM {
     function parseICMMessage(
         bytes calldata data
     ) public pure returns (ICMMessage memory) {
-        bytes memory rawMessage = extractICMRawMessage(data);
+        bytes memory message = extractICMRawMessage(data);
         // The position in data after the raw message bytes
-        uint256 messageOffset = rawMessage.length + MESSAGE_LENGTH_BYTES;
+        uint256 messageOffset = message.length + MESSAGE_LENGTH_BYTES;
         // parse the source Network ID
         uint32 sourceNetworkID = uint32(bytes4(data[messageOffset:messageOffset + 4]));
         // parse the source blockchain ID
@@ -43,7 +43,7 @@ library ICM {
         // the rest of the bytes are the attestation
         bytes memory attestation = data[messageOffset + 36:];
         return ICMMessage({
-            rawMessage: rawMessage,
+            rawMessage: message,
             sourceNetworkID: sourceNetworkID,
             sourceBlockchainID: sourceBlockchainID,
             attestation: attestation

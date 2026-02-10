@@ -238,9 +238,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      */
     function parseValidatorSetMetadata(
         /* solhint-disable-next-line no-unused-vars */
-        ICMMessage calldata icmMessage,
+        ICMMessage calldata,
         /* solhint-disable-next-line no-unused-vars */
-        bytes calldata shardBytes
+        bytes calldata 
     ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
         // Do not revert and return empty values to satisfy the compiler.
         // The child contract SubsetUpdater will override this with real logic.
