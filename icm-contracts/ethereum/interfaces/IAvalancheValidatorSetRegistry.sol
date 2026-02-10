@@ -46,9 +46,9 @@ interface IAvalancheValidatorSetRegistry {
     ) external;
 
     /**
-    * @notice Retrieves the latest validator set registered for a given Avalanche blockchain ID.
-    * @param avalancheBlockchainID The Avalanche blockchain ID to query the validator set for.
-    */
+     * @notice Retrieves the latest validator set registered for a given Avalanche blockchain ID.
+     * @param avalancheBlockchainID The Avalanche blockchain ID to query the validator set for.
+     */
     function getValidatorSet(
         bytes32 avalancheBlockchainID
     ) external view returns (ValidatorSet memory);
