@@ -194,8 +194,7 @@ contract ValidatorSetsTest is Test {
         bytes32 avalancheBlockchainID
     ) public pure {
         ValidatorSetShard memory validatorSetShard = ValidatorSetShard({
-            shardNumber: shardNumber,
-            avalancheBlockchainID: avalancheBlockchainID
+            shardNumber: shardNumber, avalancheBlockchainID: avalancheBlockchainID
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetShard(validatorSetShard);
         ValidatorSetShard memory deserialized = ValidatorSets.parseValidatorSetShard(serialized);

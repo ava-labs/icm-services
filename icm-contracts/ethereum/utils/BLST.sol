@@ -250,7 +250,10 @@ library BLST {
      * @param p1 The second G1 point
      * @return The sum of the two G1 points
      */
-    function addG1(bytes memory p0, bytes memory p1) internal view returns (bytes memory) {
+    function addG1(
+        bytes memory p0,
+        bytes memory p1
+    ) internal view returns (bytes memory) {
         require(p0.length == 128 && p1.length == 128, "Invalid G1 point length");
         (bool success, bytes memory result) =
             BLS12381_G1_ADD_PRECOMPILE.staticcall(abi.encodePacked(p0, p1));
@@ -264,7 +267,10 @@ library BLST {
      * @param q1 The second G2 point
      * @return The sum of the two G2 points
      */
-    function addG2(bytes memory q0, bytes memory q1) internal view returns (bytes memory) {
+    function addG2(
+        bytes memory q0,
+        bytes memory q1
+    ) internal view returns (bytes memory) {
         require(q0.length == 256 && q1.length == 256, "Invalid G2 point length");
         bytes memory addG2input = abi.encodePacked(q0, q1);
         (bool success, bytes memory output) = BLS12381_G2_ADD_PRECOMPILE.staticcall(addG2input);
@@ -313,7 +319,10 @@ library BLST {
     /**
      * @dev Computes the mod against the bls12-381 field modulus
      */
-    function _modfield(bytes32 _b1, bytes32 _b2) internal view returns (bytes32[2] memory r) {
+    function _modfield(
+        bytes32 _b1,
+        bytes32 _b2
+    ) internal view returns (bytes32[2] memory r) {
         assembly {
             let bl := 0x40
             let ml := 0x40

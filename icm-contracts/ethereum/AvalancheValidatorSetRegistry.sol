@@ -152,7 +152,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ValidatorSetShard calldata shard,
         bytes memory shardBytes
     ) external {
-        
         require(
             isRegistrationInProgress(shard.avalancheBlockchainID), "Registration is not in progress"
         );
@@ -224,8 +223,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
      * it over to the `_validatorSets` mapping.
      */
-    // solhint-disable-next-line no-empty-blocks
-    function applyShard(ValidatorSetShard calldata, bytes memory) public virtual {
+    function applyShard(
+        ValidatorSetShard calldata,
+        bytes memory
+        // solhint-disable-next-line no-empty-blocks
+    ) public virtual {
         // Do not revert and return empty values to satisfy the compiler.
         // The child contract SubsetUpdater will override this with real logic.
     }
@@ -240,7 +242,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         /* solhint-disable-next-line no-unused-vars */
         ICMMessage calldata,
         /* solhint-disable-next-line no-unused-vars */
-        bytes calldata 
+        bytes calldata
     ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
         // Do not revert and return empty values to satisfy the compiler.
         // The child contract SubsetUpdater will override this with real logic.
@@ -359,9 +361,9 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
             // mark this set as complete
             _partialValidatorSets[avalancheBlockchainID].inProgress = false;
             _validatorSets[avalancheBlockchainID].validators =
-                _partialValidatorSets[avalancheBlockchainID].validators;
+            _partialValidatorSets[avalancheBlockchainID].validators;
             _validatorSets[avalancheBlockchainID].totalWeight =
-                _partialValidatorSets[avalancheBlockchainID].partialWeight;
+            _partialValidatorSets[avalancheBlockchainID].partialWeight;
         }
     }
 

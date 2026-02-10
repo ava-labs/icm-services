@@ -170,16 +170,15 @@ library ValidatorSets {
             // bytes up to VALIDATOR_BYTES from the current byte position.
             uint64 weight = uint64(
                 bytes8(
-                    data[
-                        currentPosition + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:
-                            currentPosition + VALIDATOR_BYTES
+                    data[currentPosition
+                            + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:currentPosition
+                                + VALIDATOR_BYTES
                     ]
                 )
             );
             require(weight > 0, "Validator weight must be greater than 0");
             validators[i] = Validator({
-                blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey),
-                weight: weight
+                blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey), weight: weight
             });
             previousPublicKey = unformattedPublicKey;
             totalWeight += weight;
@@ -209,13 +208,16 @@ library ValidatorSets {
                 BLST.unPadUncompressedBlsPublicKey(validators[i].blsPublicKey);
             assembly ("memory-safe") {
                 mstore(
-                    add(serialized, add(offset, 0x20)), mload(add(uncompressedBlsPublicKey, 0x20))
+                    add(serialized, add(offset, 0x20)),
+                    mload(add(uncompressedBlsPublicKey, 0x20))
                 )
                 mstore(
-                    add(serialized, add(offset, 0x40)), mload(add(uncompressedBlsPublicKey, 0x40))
+                    add(serialized, add(offset, 0x40)),
+                    mload(add(uncompressedBlsPublicKey, 0x40))
                 )
                 mstore(
-                    add(serialized, add(offset, 0x60)), mload(add(uncompressedBlsPublicKey, 0x60))
+                    add(serialized, add(offset, 0x60)),
+                    mload(add(uncompressedBlsPublicKey, 0x60))
                 )
             }
             offset += BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH;
@@ -431,8 +433,7 @@ library ValidatorSets {
         // Add new validators
         for (uint256 i = 0; i < diff.added.length; i++) {
             newValidators[newIndex] = Validator({
-                blsPublicKey: diff.added[i].blsPublicKey,
-                weight: diff.added[i].currentWeight
+                blsPublicKey: diff.added[i].blsPublicKey, weight: diff.added[i].currentWeight
             });
             newTotalWeight += diff.added[i].currentWeight;
             newIndex++;
@@ -538,10 +539,10 @@ library ValidatorSets {
     ) public pure returns (ValidatorSetShard memory) {
         uint64 shardNumber = uint64(bytes8(shardBytes[0:8]));
         bytes32 avalancheBlockchainID = bytes32(shardBytes[8:40]);
-        return ValidatorSetShard({
-            shardNumber: shardNumber,
-            avalancheBlockchainID: avalancheBlockchainID
-        });
+        return
+            ValidatorSetShard({
+                shardNumber: shardNumber, avalancheBlockchainID: avalancheBlockchainID
+            });
     }
 
     /*
