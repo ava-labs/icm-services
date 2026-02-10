@@ -78,7 +78,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         // Check that we are not interrupting an existing registration
         if (isRegistrationInProgress(message.sourceBlockchainID)) {
             // check if we are interrupting an existing registration
-            revert("Can't register to a blockchain ID while another registration is in progress");
+            revert("A registration is already in progress");
         }
 
         // Check if this is the first time this blockchain is registering a validator set
@@ -99,6 +99,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ) = parseValidatorSetMetadata(message, shardBytes);
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
         require(message.sourceBlockchainID == avalancheBlockchainID, "Source chain ID mismatch");
+        uint256 numValidators = validators.length;
 
         // This validator set is sharded
         if (validatorSetMetadata.shardHashes.length > 1) {
@@ -111,8 +112,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             partialSet.shardsReceived = 1;
             partialSet.partialWeight = validatorWeight;
             partialSet.inProgress = true;
-            for (uint256 i = 0; i < validators.length; i++) {
+            for (uint256 i = 0; i < numValidators;) {
                 partialSet.validators.push(validators[i]);
+                unchecked {
+                    ++i;
+                }
             }
 
             if (!isRegistered(message.sourceBlockchainID)) {
@@ -129,8 +133,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             valSet.totalWeight = validatorWeight;
             valSet.pChainHeight = validatorSetMetadata.pChainHeight;
             valSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
-            for (uint256 i = 0; i < validators.length; i++) {
+            for (uint256 i = 0; i < numValidators;) {
                 valSet.validators.push(validators[i]);
+                unchecked {
+                    ++i;
+                }
             }
         }
         emit ValidatorSetRegistered(avalancheBlockchainID);
@@ -145,8 +152,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         bytes memory shardBytes
     ) external {
         require(
-            isRegistrationInProgress(shard.avalancheBlockchainID),
-            "Cannot apply shard if registration is not in progress"
+            isRegistrationInProgress(shard.avalancheBlockchainID), "Registration is not in progress"
         );
         bytes32 avalancheBlockchainID = shard.avalancheBlockchainID;
         require(
@@ -225,14 +231,8 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ICMMessage calldata message,
         bytes32 avalancheBlockchainID
     ) public view {
-        require(
-            pChainInitialized(),
-            "A complete P-chain validator must be registered to verify ICM messages"
-        );
-        require(
-            isRegistered(avalancheBlockchainID),
-            "No validator set is registered for the provided Avalanche blockchain ID"
-        );
+        require(pChainInitialized(), "No P-chain validator set registered.");
+        require(isRegistered(avalancheBlockchainID), "No validator set registered to given ID");
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
         ValidatorSetSignature memory sig =
             ValidatorSets.parseValidatorSetSignature(message.attestation);
@@ -240,7 +240,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             ValidatorSets.verifyValidatorSetSignature(
                 sig, message.rawMessage, _validatorSets[avalancheBlockchainID]
             ),
-            "Could not verify ICM message: Signature checks failed"
+            "Failed to verify signatures"
         );
     }
 
@@ -272,7 +272,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         // allow the actual validator set to be populated across multiple
         // transactions
         ValidatorSetMetadata memory initialValidatorSetData
-    ) AvalancheValidatorSetRegistry(avalancheNetworkID_, initialValidatorSetData) {}
+    ) payable AvalancheValidatorSetRegistry(avalancheNetworkID_, initialValidatorSetData) {}
 
     /**
      * @dev Applies a set of validators to partial to a set that has been registered.
@@ -286,11 +286,14 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         (Validator[] memory validators, uint64 validatorWeight) =
             ValidatorSets.parseValidators(shardBytes);
         require(validators.length > 0, "Validator set cannot be empty");
-        require(validatorWeight > 0, "Total weight must be greater than 0");
+        require(validatorWeight > 0, "Total weight must exceed 0");
 
         // update the partial validator set
-        for (uint256 i = 0; i < validators.length; i++) {
+        for (uint256 i = 0; i < validators.length;) {
             _partialValidatorSets[avalancheBlockchainID].validators.push(validators[i]);
+            unchecked {
+                ++i;
+            }
         }
         _partialValidatorSets[avalancheBlockchainID].partialWeight += validatorWeight;
         _partialValidatorSets[avalancheBlockchainID].shardsReceived += 1;
@@ -326,15 +329,15 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
         require(
             _validatorSets[avalancheBlockchainID].pChainHeight < validatorSetMetadata.pChainHeight,
-            "P-Chain height must be greater than the current validator set"
+            "P-Chain height too low"
         );
         require(
             _validatorSets[avalancheBlockchainID].pChainTimestamp
                 < validatorSetMetadata.pChainTimestamp,
-            "P-Chain timestamp must be greater than the current validator set"
+            "P-Chain timestamp too low"
         );
         require(validators.length > 0, "Validator set cannot be empty");
-        require(totalWeight > 0, "Total weight must be greater than 0");
+        require(totalWeight > 0, "Total weight must exceed 0");
         return (validatorSetMetadata, validators, totalWeight);
     }
 }

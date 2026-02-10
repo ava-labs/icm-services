@@ -248,7 +248,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             shardNumber: 2,
             avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
-        vm.expectRevert(bytes("Cannot apply shard if registration is not in progress"));
+        vm.expectRevert(bytes("Registration is not in progress"));
         _registry.updateValidatorSet(shard2, validatorBytes);
     }
 
@@ -303,9 +303,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         Validator[] memory validatorShard = new Validator[](1);
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        vm.expectRevert(
-            bytes("A complete P-chain validator must be registered to verify ICM messages")
-        );
+        vm.expectRevert(bytes("No P-chain validator set registered."));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -394,9 +392,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         _registry.registerValidatorSet(message, validatorBytes);
 
         // check that the interruption is caught and rejected
-        vm.expectRevert(
-            bytes("Can't register to a blockchain ID while another registration is in progress")
-        );
+        vm.expectRevert(bytes("A registration is already in progress"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -423,7 +419,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // Try to register this set again, still signed by the P-chain
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        vm.expectRevert(bytes("Could not verify ICM message: Signature checks failed"));
+        vm.expectRevert(bytes("Failed to verify signatures"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -437,7 +433,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         Validator[] memory validatorShard = new Validator[](1);
         validatorShard[0] = validators[0];
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
-        vm.expectRevert(bytes("Could not verify ICM message: Signature checks failed"));
+        vm.expectRevert(bytes("Failed to verify signatures"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -509,7 +505,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         // registering the first shard should fail
-        vm.expectRevert(bytes("P-Chain height must be greater than the current validator set"));
+        vm.expectRevert(bytes("P-Chain height too low"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
@@ -537,7 +533,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         validatorShard[0] = validators[0];
         validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         // registering the first shard should fail
-        vm.expectRevert(bytes("P-Chain timestamp must be greater than the current validator set"));
+        vm.expectRevert(bytes("P-Chain timestamp too low"));
         _registry.registerValidatorSet(message, validatorBytes);
     }
 }
