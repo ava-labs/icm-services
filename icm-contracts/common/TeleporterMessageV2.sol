@@ -83,7 +83,7 @@ library TeleporterMessageV2Parsing {
         teleporterMessage.requiredGasLimit = uint256(bytes32(data[124:156]));
 
         {
-            // get the number of addressed in the array
+            // get the number of addresses in the array
             uint32 numRelayerAddresses = uint32(bytes4(data[156:160]));
             uint256 offsetAddresses = 160;
             address[] memory allowedRelayerAddresses = new address[](numRelayerAddresses);

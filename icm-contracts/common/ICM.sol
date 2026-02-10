@@ -37,7 +37,6 @@ library ICM {
         uint256 messageOffset = message.length + MESSAGE_LENGTH_BYTES;
         // parse the source Network ID
         uint32 sourceNetworkID = uint32(bytes4(data[messageOffset:messageOffset + 4]));
-
         // parse the source blockchain ID
         bytes32 sourceBlockchainID = bytes32(data[messageOffset + 4:messageOffset + 36]);
 
