@@ -223,12 +223,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      /**
      * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
      * it over to the `_validatorSets` mapping.
-     * @param _shard Indicates the sequence number of the shard and blockchain affected by this update
-     * @param _shardBytes the actual data of the shard which
      */
-    function applyShard(ValidatorSetShard calldata _shard, bytes memory _shardBytes) public virtual {
-        // Do not revert.
-        // The child contract SubsetUpdater will override this with real logic.
+     // solhint-disable-next-line no-empty-blocks
+    function applyShard(ValidatorSetShard calldata, bytes memory) public virtual {
+        // Do not revert. The child contract SubsetUpdater will override this with real logic.
     }
 
      /**
@@ -238,8 +236,8 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      * the requisite data.
      */
     function parseValidatorSetMetadata(
-        ICMMessage calldata _icmMessage,
-        bytes calldata _shardBytes
+        ICMMessage calldata,
+        bytes calldata
     ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
         // Do not revert and return empty values to satisfy the compiler.
         // The child contract SubsetUpdater will override this with real logic.

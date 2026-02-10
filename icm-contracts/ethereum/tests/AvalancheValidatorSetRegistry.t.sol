@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
-import {ICMMessage, ICM} from "../../common/ICM.sol";
+import {ICMMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
 import {SubsetUpdater} from "../AvalancheValidatorSetRegistry.sol";
 import {
@@ -23,14 +23,6 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         0x3d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7;
     bytes32 public constant L1_BLOCKCHAIN_ID =
         0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef;
-    
-    struct ICMRawMessage {
-        uint32 sourceNetworkID;
-        bytes32 sourceBlockchainID;
-        address sourceAddress;
-        address verifierAddress;
-        bytes payload;
-    } 
 
     /**
      * @dev Create a dummy set of P-chain validators to initialize the `AvalancheValidatorSetRegistry` with.
