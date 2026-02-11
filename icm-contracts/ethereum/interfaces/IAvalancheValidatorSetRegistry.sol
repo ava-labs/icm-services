@@ -29,10 +29,7 @@ interface IAvalancheValidatorSetRegistry {
      * `ValidatorSetMetadata` for further details
      * @param shardBytes The first shard of the data needed to populate the newly registered validator set.
      */
-    function registerValidatorSet(
-        ICMMessage calldata message,
-        bytes memory shardBytes
-    ) external;
+    function registerValidatorSet(ICMMessage calldata message, bytes memory shardBytes) external;
 
     /**
      * @notice Apply a shard to a registered validator set which is only partially populated.

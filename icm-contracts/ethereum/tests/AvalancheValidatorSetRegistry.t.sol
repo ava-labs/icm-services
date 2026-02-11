@@ -37,7 +37,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 
         for (uint256 i = 0; i < 5; i++) {
             validators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(secretKeys[i]), weight: uint64(i + 1)
+                blsPublicKey: BLST.getPublicKeyFromSecret(secretKeys[i]),
+                weight: uint64(i + 1)
             });
             // check that the validators are ordered by public key
             assertEq(
@@ -76,9 +77,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
         uint64 totalWeight = 0;
         for (uint256 i = 0; i <= 1; i++) {
-            validators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(i + 2), weight: uint64(i + 2)
-            });
+            validators[i] =
+                Validator({blsPublicKey: BLST.getPublicKeyFromSecret(i + 2), weight: uint64(i + 2)});
             // check that the validators are ordered by public key
             assertEq(
                 BLST.comparePublicKeys(
@@ -227,7 +227,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         assertFalse(_registry.pChainInitialized());
         _registry.updateValidatorSet(shard, validatorBytes);
@@ -242,13 +243,15 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard1 = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         assertFalse(_registry.pChainInitialized());
         _registry.updateValidatorSet(shard1, validatorBytes);
         assertTrue(_registry.pChainInitialized());
         ValidatorSetShard memory shard2 = ValidatorSetShard({
-            shardNumber: 2, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 2,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         vm.expectRevert(bytes("Registration is not in progress"));
         _registry.updateValidatorSet(shard2, validatorBytes);
@@ -261,7 +264,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 2, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 2,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         assertFalse(_registry.pChainInitialized());
         vm.expectRevert(bytes("Received shard out of order"));
@@ -286,7 +290,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
 
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         assertFalse(_registry.pChainInitialized());
         vm.expectRevert(bytes("Unexpected shard hash"));
@@ -316,7 +321,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         _registry.updateValidatorSet(shard, validatorBytes);
         assertTrue(_registry.pChainInitialized());
@@ -325,9 +331,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         ValidatorChange[] memory removed = new ValidatorChange[](1);
         removed[0] = ValidatorChange({
             nodeID: bytes20(0),
-            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(
-                validatorSet.validators[0].blsPublicKey
-            ),
+            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(validatorSet.validators[0].blsPublicKey),
             previousWeight: validatorSet.validators[0].weight,
             currentWeight: 0
         });
@@ -336,9 +340,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         ValidatorChange[] memory modified = new ValidatorChange[](1);
         modified[0] = ValidatorChange({
             nodeID: bytes20(0),
-            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(
-                validatorSet.validators[1].blsPublicKey
-            ),
+            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(validatorSet.validators[1].blsPublicKey),
             previousWeight: validatorSet.validators[1].weight,
             currentWeight: validatorSet.validators[1].weight + 10
         });
@@ -392,7 +394,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         _registry.updateValidatorSet(shard, validatorBytes);
         assertTrue(_registry.pChainInitialized());
@@ -436,7 +439,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         _registry.updateValidatorSet(shard, validatorBytes);
         assertTrue(_registry.pChainInitialized());
@@ -486,7 +490,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         _registry.updateValidatorSet(shard, validatorBytes);
         assertTrue(_registry.pChainInitialized());
@@ -495,9 +500,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         ValidatorChange[] memory removed = new ValidatorChange[](1);
         removed[0] = ValidatorChange({
             nodeID: bytes20(0),
-            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(
-                validatorSet.validators[0].blsPublicKey
-            ),
+            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(validatorSet.validators[0].blsPublicKey),
             previousWeight: validatorSet.validators[0].weight,
             currentWeight: 0
         });
@@ -557,7 +560,8 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         // initialize the entire P-chain validator set
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
-            shardNumber: 1, avalancheBlockchainID: validatorSet.avalancheBlockchainID
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
         });
         _registry.updateValidatorSet(shard, validatorBytes);
     }

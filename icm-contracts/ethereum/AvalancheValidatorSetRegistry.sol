@@ -223,11 +223,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
      * it over to the `_validatorSets` mapping.
      */
-    function applyShard(
-        ValidatorSetShard calldata,
-        bytes memory
-        // solhint-disable-next-line no-empty-blocks
-    ) public virtual {
+    function applyShard(ValidatorSetShard calldata, bytes memory) public virtual 
+    // solhint-disable-next-line no-empty-blocks
+    {
         // Do not revert and return empty values to satisfy the compiler.
         // The child contract SubsetUpdater will override this with real logic.
     }
@@ -364,9 +362,9 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
             // mark this set as complete
             _partialValidatorSets[avalancheBlockchainID].inProgress = false;
             _validatorSets[avalancheBlockchainID].validators =
-            _partialValidatorSets[avalancheBlockchainID].validators;
+                _partialValidatorSets[avalancheBlockchainID].validators;
             _validatorSets[avalancheBlockchainID].totalWeight =
-            _partialValidatorSets[avalancheBlockchainID].partialWeight;
+                _partialValidatorSets[avalancheBlockchainID].partialWeight;
         }
     }
 
