@@ -312,10 +312,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     ) public view returns (bool) {
         return _partialValidatorSets[avalancheBlockchainID].inProgress;
     }
+
     /**
      * @notice Update the validator set for a given Avalanche blockchain ID.
      */
-
     function _setValidatorSet(
         bytes32 avalancheBlockchainID,
         ValidatorSet memory validatorSet

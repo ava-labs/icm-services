@@ -368,11 +368,12 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
         ICMMessage memory icmMsg = ICMMessage({
             rawMessage: payloadBytes,
             sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: validatorSet.avalancheBlockchainID,
+            sourceBlockchainID: chainID,
             attestation: signature
         });
 
@@ -416,11 +417,12 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
         ICMMessage memory icmMsg = ICMMessage({
             rawMessage: payloadBytes,
             sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: validatorSet.avalancheBlockchainID,
+            sourceBlockchainID: chainID,
             attestation: signature
         });
 
@@ -459,7 +461,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
 
         // Tamper data
         ValidatorSetDiffPayload memory tamperedPayload = payload;
@@ -516,11 +519,12 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
 
         // Sign
-        bytes memory signature = dummyPChainValidatorSetSign(payloadBytes); // TODO: This must sign (network ID, chain ID, payload)
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
         ICMMessage memory icmMsg = ICMMessage({
             rawMessage: payloadBytes,
             sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: validatorSet.avalancheBlockchainID,
+            sourceBlockchainID: chainID,
             attestation: signature
         });
 

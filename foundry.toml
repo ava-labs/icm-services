@@ -1,7 +1,7 @@
 [profile.default]
-src = 'icm-contracts/avalanche/'
+src = 'icm-contracts/ethereum/'
 solc_version = '0.8.30'
-evm_version = 'shanghai'
+evm_version = 'prague'
 out = 'out'
 libs = ['lib']
 test = 'tests'
