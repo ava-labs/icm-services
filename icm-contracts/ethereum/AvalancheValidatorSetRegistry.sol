@@ -284,9 +284,12 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
         ValidatorSetSignature memory sig =
             ValidatorSets.parseValidatorSetSignature(message.attestation);
+        bytes memory signedData = abi.encodePacked(
+            message.sourceNetworkID, message.sourceBlockchainID, message.rawMessage
+        );
         require(
             ValidatorSets.verifyValidatorSetSignature(
-                sig, message.rawMessage, _validatorSets[avalancheBlockchainID]
+                sig, signedData, _validatorSets[avalancheBlockchainID]
             ),
             "Failed to verify signatures"
         );

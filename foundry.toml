@@ -1,7 +1,7 @@
 [profile.default]
 src = 'icm-contracts/avalanche/'
 solc_version = '0.8.30'
-evm_version = 'prague'
+evm_version = 'shanghai'
 out = 'out'
 libs = ['lib']
 test = 'tests'
