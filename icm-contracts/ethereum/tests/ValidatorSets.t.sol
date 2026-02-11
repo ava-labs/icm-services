@@ -8,7 +8,8 @@ import {
     ValidatorSet,
     ValidatorSets,
     ValidatorSetSignature,
-    ValidatorSetStatePayload
+    ValidatorSetMetadata,
+    ValidatorSetShard
 } from "../utils/ValidatorSets.sol";
 
 contract ValidatorSetsTest is Test {
@@ -149,21 +150,21 @@ contract ValidatorSetsTest is Test {
         bytes32 avalancheBlockchainID,
         uint64 pChainHeight,
         uint64 pChainTimestamp,
-        bytes32 validatorSetHash
+        bytes32[] memory shardHashes
     ) public pure {
-        ValidatorSetStatePayload memory payload = ValidatorSetStatePayload({
+        ValidatorSetMetadata memory payload = ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            validatorSetHash: validatorSetHash
+            shardHashes: shardHashes
         });
-        bytes memory serialized = ValidatorSets.serializeValidatorSetStatePayload(payload);
-        ValidatorSetStatePayload memory deserialized =
-            ValidatorSets.parseValidatorSetStatePayload(serialized);
+        bytes memory serialized = ValidatorSets.serializeValidatorSetMetadata(payload);
+        ValidatorSetMetadata memory deserialized =
+            ValidatorSets.parseValidatorSetMetadata(serialized);
         assertEq(payload.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(payload.pChainHeight, deserialized.pChainHeight);
         assertEq(payload.pChainTimestamp, deserialized.pChainTimestamp);
-        assertEq(payload.validatorSetHash, deserialized.validatorSetHash);
+        assertEq(payload.shardHashes, deserialized.shardHashes);
     }
 
     /*
@@ -186,6 +187,24 @@ contract ValidatorSetsTest is Test {
     }
 
     /*
+     * @dev Test to make sure a round trip of serialization is a no-op
+     */
+    function testRoundTripValidatorSetShard(
+        uint64 shardNumber,
+        bytes32 avalancheBlockchainID
+    ) public pure {
+        ValidatorSetShard memory validatorSetShard = ValidatorSetShard({
+            shardNumber: shardNumber,
+            avalancheBlockchainID: avalancheBlockchainID
+        });
+        bytes memory serialized = ValidatorSets.serializeValidatorSetShard(validatorSetShard);
+        ValidatorSetShard memory deserialized = ValidatorSets.parseValidatorSetShard(serialized);
+
+        assertEq(deserialized.shardNumber, shardNumber);
+        assertEq(deserialized.avalancheBlockchainID, avalancheBlockchainID);
+    }
+
+    /*
      * @dev Test util to generate a set of validators. Returns validators and total staking weight
      * N.B. These validators are not sorted by key, so any test requiring that should not use this
      * function
@@ -205,6 +224,8 @@ contract ValidatorSetsTest is Test {
 
     /*
      * @dev Create 96 bytes from three 32 bytes words
+     * N.B. These are for testing serialization and key-ordering. They are not real public keys
+     * and should not be used as such.
      */
     function _createPublicKeyFromWords(
         uint256 x,

@@ -16,11 +16,43 @@ struct ValidatorSet {
     uint64 pChainTimestamp;
 }
 
-struct ValidatorSetStatePayload {
+// The payload that initiates registering / updating a
+// Validator set for the chain with ID `avalancheBlockchainID`.
+struct ValidatorSetMetadata {
     bytes32 avalancheBlockchainID;
     uint64 pChainHeight;
     uint64 pChainTimestamp;
-    bytes32 validatorSetHash;
+    // A list of hashes for each shard. These are expected to arrive
+    // in order
+    bytes32[] shardHashes;
+}
+
+// A shard to add to a validator set for which partial data has already
+// been received. The `avalancheBlockchainID` field will be used to lookup the
+// existing partial data
+struct ValidatorSetShard {
+    // Which shard this is. These are expected to be processed in order
+    uint64 shardNumber;
+    // The avalanche blockchain ID whose validator set we are updating
+    bytes32 avalancheBlockchainID;
+}
+
+// A partial Validator set which can be constructed from
+//  shards sent across multiple transactions
+struct PartialValidatorSet {
+    uint64 pChainHeight;
+    uint64 pChainTimestamp;
+    // A list of hashes for each shard. These are expected to arrive
+    // in order
+    bytes32[] shardHashes;
+    // The amount of shard already received
+    uint64 shardsReceived;
+    // The validators received so far
+    Validator[] validators;
+    // The weight of the above validators
+    uint64 partialWeight;
+    // A flag to indicate that this is now a complete validator set
+    bool inProgress;
 }
 
 struct ValidatorSetSignature {
@@ -179,12 +211,12 @@ library ValidatorSets {
      * - 32 bytes: Avalanche blockchain ID
      * - 8 bytes: Avalanche P-chain height
      * - 8 bytes: Avalanche P-chain timestamp
-     * - 32 bytes: Hash of validator set
+     * - the remainder is an abi-encoded array of hashes
      * @return ValidatorSetStatePayload instance
      */
-    function parseValidatorSetStatePayload(
+    function parseValidatorSetMetadata(
         bytes calldata data
-    ) public pure returns (ValidatorSetStatePayload memory) {
+    ) public pure returns (ValidatorSetMetadata memory) {
         // Check the codec ID is 0
         require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
 
@@ -203,22 +235,22 @@ library ValidatorSets {
         // Parse the pChainTimestamp`
         uint64 pChainTimestamp = uint64(bytes8(data[46:54]));
 
-        // Parse the validatorSetHash
-        bytes32 validatorSetHash = bytes32(data[54:86]);
+        // Parse the shardHashes
+        bytes32[] memory shardHashes = abi.decode(data[54:], (bytes32[]));
 
-        return ValidatorSetStatePayload({
+        return ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,
             pChainHeight: pChainHeight,
             pChainTimestamp: pChainTimestamp,
-            validatorSetHash: validatorSetHash
+            shardHashes: shardHashes
         });
     }
 
     /*
      * @notice Serialize a ValidatorSetStatePayload
      */
-    function serializeValidatorSetStatePayload(
-        ValidatorSetStatePayload memory payload
+    function serializeValidatorSetMetadata(
+        ValidatorSetMetadata memory payload
     ) public pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000004);
@@ -228,7 +260,7 @@ library ValidatorSets {
             payload.avalancheBlockchainID,
             payload.pChainHeight,
             payload.pChainTimestamp,
-            payload.validatorSetHash
+            abi.encode(payload.shardHashes)
         );
     }
 
@@ -244,12 +276,35 @@ library ValidatorSets {
     }
 
     /*
-     * @notice Serialize `ValidatorSetSigntature` to bytes
+     * @notice Serialize `ValidatorSetSignature` to bytes
      */
     function serializeValidatorSetSignature(
         ValidatorSetSignature memory signature
     ) public pure returns (bytes memory) {
         return abi.encodePacked(signature.signers, signature.signature);
+    }
+
+    /*
+     * @notice Deserialize bytes into `ValidatorSetShard`
+     */
+    function parseValidatorSetShard(
+        bytes calldata shardBytes
+    ) public pure returns (ValidatorSetShard memory) {
+        uint64 shardNumber = uint64(bytes8(shardBytes[0:8]));
+        bytes32 avalancheBlockchainID = bytes32(shardBytes[8:40]);
+        return ValidatorSetShard({
+            shardNumber: shardNumber,
+            avalancheBlockchainID: avalancheBlockchainID
+        });
+    }
+
+    /*
+     * @notice Serialize `ValidatorSetShard` to bytes
+     */
+    function serializeValidatorSetShard(
+        ValidatorSetShard memory shard
+    ) public pure returns (bytes memory) {
+        return abi.encodePacked(shard.shardNumber, shard.avalancheBlockchainID);
     }
 
     /*

@@ -8,6 +8,71 @@ import {
 import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 
 contract ICMTest is Test {
+    function testTeleporterMessageV2RoundTrip(
+        bytes memory payload,
+        uint8 numRelayerAddresses,
+        address relayerAddress,
+        uint8 numReceipts,
+        uint256 messageNonce
+    ) public pure {
+        numRelayerAddresses = uint8(bound(numRelayerAddresses, 0, 10));
+        numReceipts = uint8(bound(numReceipts, 0, 10));
+        address[] memory allowedRelayerAddresses = new address[](numRelayerAddresses);
+        for (uint256 i = 0; i < numRelayerAddresses; i++) {
+            allowedRelayerAddresses[i] = relayerAddress;
+        }
+
+        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
+        for (uint256 i = 0; i < numReceipts; i++) {
+            receipts[i] = TeleporterMessageReceipt({
+                receivedMessageNonce: messageNonce,
+                relayerRewardAddress: relayerAddress
+            });
+        }
+
+        TeleporterMessageV2 memory teleporterMessage = TeleporterMessageV2({
+            messageNonce: 0,
+            originSenderAddress: address(123),
+            originTeleporterAddress: address(456),
+            destinationBlockchainID: bytes32(hex"abcd"),
+            destinationAddress: address(987),
+            requiredGasLimit: 100000,
+            allowedRelayerAddresses: allowedRelayerAddresses,
+            receipts: receipts,
+            message: payload
+        });
+        bytes memory serialized = ICMTeleporterV2.serializeTeleporterMessageV2(teleporterMessage);
+        TeleporterMessageV2 memory deserialized =
+            ICMTeleporterV2.parseTeleporterMessageV2(serialized);
+
+        assertEq(deserialized.messageNonce, teleporterMessage.messageNonce);
+        assertEq(deserialized.originSenderAddress, teleporterMessage.originSenderAddress);
+        assertEq(deserialized.originTeleporterAddress, teleporterMessage.originTeleporterAddress);
+        assertEq(deserialized.destinationBlockchainID, teleporterMessage.destinationBlockchainID);
+        assertEq(deserialized.destinationAddress, teleporterMessage.destinationAddress);
+        assertEq(deserialized.requiredGasLimit, teleporterMessage.requiredGasLimit);
+        assertEq(deserialized.allowedRelayerAddresses, teleporterMessage.allowedRelayerAddresses);
+        for (uint256 i = 0; i < numRelayerAddresses; i++) {
+            assertEq(
+                teleporterMessage.allowedRelayerAddresses[i],
+                deserialized.allowedRelayerAddresses[i]
+            );
+        }
+
+        for (uint256 i = 0; i < numReceipts; i++) {
+            assertEq(
+                teleporterMessage.receipts[i].relayerRewardAddress,
+                deserialized.receipts[i].relayerRewardAddress
+            );
+            assertEq(
+                teleporterMessage.receipts[i].receivedMessageNonce,
+                deserialized.receipts[i].receivedMessageNonce
+            );
+        }
+
+        assertEq(deserialized.message, teleporterMessage.message);
+    }
+
     /*
      * @dev Test to make sure a round trip of serialization is a no-op
      */

@@ -29,10 +29,38 @@ var (
 	_ = abi.ConvertType
 )
 
+// ICMMessage is an auto generated low-level Go binding around an user-defined struct.
+type ICMMessage struct {
+	RawMessage         []byte
+	SourceNetworkID    uint32
+	SourceBlockchainID [32]byte
+	Attestation        []byte
+}
+
+// Validator is an auto generated low-level Go binding around an user-defined struct.
+type Validator struct {
+	BlsPublicKey []byte
+	Weight       uint64
+}
+
+// ValidatorSetMetadata is an auto generated low-level Go binding around an user-defined struct.
+type ValidatorSetMetadata struct {
+	AvalancheBlockchainID [32]byte
+	PChainHeight          uint64
+	PChainTimestamp       uint64
+	ShardHashes           [][32]byte
+}
+
+// ValidatorSetShard is an auto generated low-level Go binding around an user-defined struct.
+type ValidatorSetShard struct {
+	ShardNumber           uint64
+	AvalancheBlockchainID [32]byte
+}
+
 // AvalancheValidatorSetRegistryMetaData contains all meta data concerning the AvalancheValidatorSetRegistry contract.
 var AvalancheValidatorSetRegistryMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"avalancheNetworkID_\",\"type\":\"uint32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"validatorSetID\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"name\":\"ValidatorSetRegistered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"validatorSetID\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"name\":\"ValidatorSetUpdated\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"avalancheNetworkID\",\"outputs\":[{\"internalType\":\"uint32\",\"name\":\"\",\"type\":\"uint32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getAvalancheNetworkID\",\"outputs\":[{\"internalType\":\"uint32\",\"name\":\"\",\"type\":\"uint32\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
-	Bin: "0x60a0604052348015600e575f5ffd5b50604051610149380380610149833981016040819052602b916038565b63ffffffff166080526060565b5f602082840312156047575f5ffd5b815163ffffffff811681146059575f5ffd5b9392505050565b60805160ce61007b5f395f8181603801526075015260ce5ff3fe6080604052348015600e575f5ffd5b50600436106030575f3560e01c806368531ed014603457806382366d05146073575b5f5ffd5b605a7f000000000000000000000000000000000000000000000000000000000000000081565b60405163ffffffff909116815260200160405180910390f35b7f0000000000000000000000000000000000000000000000000000000000000000605a56fea26469706673582212208a823d82f8a7fe65ce9a905b90ae16e3457dd5e682e11b0c726b4cfc7ff66d6f64736f6c634300081e0033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"avalancheNetworkID_\",\"type\":\"uint32\"},{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"pChainHeight\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"pChainTimestamp\",\"type\":\"uint64\"},{\"internalType\":\"bytes32[]\",\"name\":\"shardHashes\",\"type\":\"bytes32[]\"}],\"internalType\":\"structValidatorSetMetadata\",\"name\":\"initialValidatorSetData\",\"type\":\"tuple\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"name\":\"ValidatorSetRegistered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"name\":\"ValidatorSetUpdated\",\"type\":\"event\"},{\"inputs\":[{\"components\":[{\"internalType\":\"uint64\",\"name\":\"shardNumber\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"internalType\":\"structValidatorSetShard\",\"name\":\"shard\",\"type\":\"tuple\"},{\"internalType\":\"bytes\",\"name\":\"shardBytes\",\"type\":\"bytes\"}],\"name\":\"applyShard\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"avalancheNetworkID\",\"outputs\":[{\"internalType\":\"uint32\",\"name\":\"\",\"type\":\"uint32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getAvalancheNetworkID\",\"outputs\":[{\"internalType\":\"uint32\",\"name\":\"\",\"type\":\"uint32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"name\":\"isRegistered\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"name\":\"isRegistrationInProgress\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pChainID\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pChainInitialized\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"bytes\",\"name\":\"rawMessage\",\"type\":\"bytes\"},{\"internalType\":\"uint32\",\"name\":\"sourceNetworkID\",\"type\":\"uint32\"},{\"internalType\":\"bytes32\",\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"attestation\",\"type\":\"bytes\"}],\"internalType\":\"structICMMessage\",\"name\":\"icmMessage\",\"type\":\"tuple\"},{\"internalType\":\"bytes\",\"name\":\"shardBytes\",\"type\":\"bytes\"}],\"name\":\"parseValidatorSetMetadata\",\"outputs\":[{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"pChainHeight\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"pChainTimestamp\",\"type\":\"uint64\"},{\"internalType\":\"bytes32[]\",\"name\":\"shardHashes\",\"type\":\"bytes32[]\"}],\"internalType\":\"structValidatorSetMetadata\",\"name\":\"\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"bytes\",\"name\":\"blsPublicKey\",\"type\":\"bytes\"},{\"internalType\":\"uint64\",\"name\":\"weight\",\"type\":\"uint64\"}],\"internalType\":\"structValidator[]\",\"name\":\"\",\"type\":\"tuple[]\"},{\"internalType\":\"uint64\",\"name\":\"\",\"type\":\"uint64\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"bytes\",\"name\":\"rawMessage\",\"type\":\"bytes\"},{\"internalType\":\"uint32\",\"name\":\"sourceNetworkID\",\"type\":\"uint32\"},{\"internalType\":\"bytes32\",\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"attestation\",\"type\":\"bytes\"}],\"internalType\":\"structICMMessage\",\"name\":\"message\",\"type\":\"tuple\"},{\"internalType\":\"bytes\",\"name\":\"shardBytes\",\"type\":\"bytes\"}],\"name\":\"registerValidatorSet\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"uint64\",\"name\":\"shardNumber\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"internalType\":\"structValidatorSetShard\",\"name\":\"shard\",\"type\":\"tuple\"},{\"internalType\":\"bytes\",\"name\":\"shardBytes\",\"type\":\"bytes\"}],\"name\":\"updateValidatorSet\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"bytes\",\"name\":\"rawMessage\",\"type\":\"bytes\"},{\"internalType\":\"uint32\",\"name\":\"sourceNetworkID\",\"type\":\"uint32\"},{\"internalType\":\"bytes32\",\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"attestation\",\"type\":\"bytes\"}],\"internalType\":\"structICMMessage\",\"name\":\"message\",\"type\":\"tuple\"},{\"internalType\":\"bytes32\",\"name\":\"avalancheBlockchainID\",\"type\":\"bytes32\"}],\"name\":\"verifyICMMessage\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	Bin: "0x60c060405234801561000f575f5ffd5b506040516119ec3803806119ec83398101604081905261002e91610208565b63ffffffff8216608052805160a08190525f90815260016020818152604092839020818501518154948601516001600160401b0390811668010000000000000000026001600160801b03199096169116179390931783556060840151805161009d938501929190910190610124565b50600401805460ff60401b19166801000000000000000090811790915560a0515f908152602081815260409182902084518155908401516002909101805494909201516001600160401b03908116600160801b02600160801b600160c01b03199190921690930292909216600160401b600160c01b03199093169290921717905550610330565b828054828255905f5260205f2090810192821561015d579160200282015b8281111561015d578251825591602001919060010190610142565b5061016992915061016d565b5090565b5b80821115610169575f815560010161016e565b634e487b7160e01b5f52604160045260245ffd5b604051608081016001600160401b03811182821017156101b7576101b7610181565b60405290565b604051601f8201601f191681016001600160401b03811182821017156101e5576101e5610181565b604052919050565b80516001600160401b0381168114610203575f5ffd5b919050565b5f5f60408385031215610219575f5ffd5b825163ffffffff8116811461022c575f5ffd5b60208401519092506001600160401b03811115610247575f5ffd5b830160808186031215610258575f5ffd5b610260610195565b81518152610270602083016101ed565b6020820152610281604083016101ed565b604082015260608201516001600160401b0381111561029e575f5ffd5b80830192505085601f8301126102b2575f5ffd5b81516001600160401b038111156102cb576102cb610181565b8060051b6102db602082016101bd565b918252602081850181019290810190898411156102f6575f5ffd5b6020860195505b8386101561031c578551808352602096870196909350909101906102fd565b606085015250949791965090945050505050565b60805160a05161167261037a5f395f818160f1015281816101380152818161026301526108fe01525f8181610190015281816101c90152818161037601526107e501526116725ff3fe608060405234801561000f575f5ffd5b50600436106100a6575f3560e01c806368531ed01161006e57806368531ed01461018b57806382366d05146101c75780638457eaa7146101ed5780638e91cb4314610219578063933568401461022c5780639def1e781461023f575f5ffd5b806327258b22146100aa578063541dcba4146100ec57806357262e7f14610121578063580d632b146101365780636766233d14610178575b5f5ffd5b6100d76100b8366004610d7e565b5f908152602081905260409020600201546001600160401b0316151590565b60405190151581526020015b60405180910390f35b6101137f000000000000000000000000000000000000000000000000000000000000000081565b6040519081526020016100e3565b61013461012f366004610dab565b610261565b005b7f00000000000000000000000000000000000000000000000000000000000000005f908152602081905260409020600201546001600160401b031615156100d7565b610134610186366004610e56565b610591565b6101b27f000000000000000000000000000000000000000000000000000000000000000081565b60405163ffffffff90911681526020016100e3565b7f00000000000000000000000000000000000000000000000000000000000000006101b2565b6100d76101fb366004610d7e565b5f90815260016020526040902060040154600160401b900460ff1690565b610134610227366004610ee7565b6107de565b61013461023a366004610e56565b610c86565b61025261024d366004610ee7565b610cc0565b6040516100e393929190611020565b7f00000000000000000000000000000000000000000000000000000000000000005f908152602081905260409020600201546001600160401b03166102f95760405162461bcd60e51b8152602060048201526024808201527f4e6f20502d636861696e2076616c696461746f722073657420726567697374656044820152633932b21760e11b60648201526084015b60405180910390fd5b5f818152602081905260409020600201546001600160401b031661036f5760405162461bcd60e51b815260206004820152602760248201527f4e6f2076616c696461746f7220736574207265676973746572656420746f20676044820152661a5d995b88125160ca1b60648201526084016102f0565b63ffffffff7f0000000000000000000000000000000000000000000000000000000000000000166103a660408401602085016110d1565b63ffffffff16146103ef5760405162461bcd60e51b815260206004820152601360248201527209ccae8eedee4d640928840dad2e6dac2e8c6d606b1b60448201526064016102f0565b5f73__$aaf4ae346b84a712cc43f25bb66199d6fb$__63858ad39861041760608601866110fb565b6040518363ffffffff1660e01b8152600401610434929190611144565b5f60405180830381865af415801561044e573d5f5f3e3d5ffd5b505050506040513d5f823e601f3d908101601f1916820160405261047591908101906111bf565b90505f61048860408501602086016110d1565b604085013561049786806110fb565b6040516020016104aa9493929190611270565b60408051601f198184030181528282525f868152602081905291909120630161c9f960e61b835290925073__$aaf4ae346b84a712cc43f25bb66199d6fb$__916358727e409161050091869186916004016112ce565b602060405180830381865af415801561051b573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061053f9190611459565b61058b5760405162461bcd60e51b815260206004820152601b60248201527f4661696c656420746f20766572696679207369676e617475726573000000000060448201526064016102f0565b50505050565b6105b882602001355f9081526001602052604090206004015460ff600160401b9091041690565b6106045760405162461bcd60e51b815260206004820152601f60248201527f526567697374726174696f6e206973206e6f7420696e2070726f67726573730060448201526064016102f0565b602082018035906106159084611478565b5f828152600160208190526040909120600201546001600160401b0392831692610641929116906114b2565b6001600160401b0316146106975760405162461bcd60e51b815260206004820152601b60248201527f5265636569766564207368617264206f7574206f66206f72646572000000000060448201526064016102f0565b6002826040516106a791906114d7565b602060405180830381855afa1580156106c2573d5f5f3e3d5ffd5b5050506040513d601f19601f820116820180604052508101906106e591906114ed565b5f82815260016020818152604090922081019161070490870187611478565b61070e9190611504565b6001600160401b03168154811061072757610727611523565b905f5260205f200154146107755760405162461bcd60e51b81526020600482015260156024820152740aadccaf0e0cac6e8cac840e6d0c2e4c840d0c2e6d605b1b60448201526064016102f0565b61077f8383610c86565b6107a683602001355f9081526001602052604090206004015460ff600160401b9091041690565b6107d9576040516020840135907f3eb200e50e17828341d0b21af4671d123979b6e0e84ed7e47d43227a4fb52fe2905f90a25b505050565b63ffffffff7f00000000000000000000000000000000000000000000000000000000000000001661081560408501602086016110d1565b63ffffffff161461085e5760405162461bcd60e51b815260206004820152601360248201527209ccae8eedee4d640928840dad2e6dac2e8c6d606b1b60448201526064016102f0565b6040808401355f90815260016020522060040154600160401b900460ff16156108d75760405162461bcd60e51b815260206004820152602560248201527f4120726567697374726174696f6e20697320616c726561647920696e2070726f604482015264677265737360d81b60648201526084016102f0565b6040808401355f908152602081905220600201546001600160401b031661092757610922837f0000000000000000000000000000000000000000000000000000000000000000610261565b610935565b610935838460400135610261565b5f5f5f610943868686610cc0565b82519295509093509150604087013581146109a05760405162461bcd60e51b815260206004820152601860248201527f536f7572636520636861696e204944206d69736d61746368000000000000000060448201526064016102f0565b825160608501515160011015610b635784515f90815260016020818152604092839020818901518154948a01516001600160401b03908116600160401b026001600160801b031990961691161793909317835560608801518051610a0b938501929190910190610d21565b5060028101805467ffffffffffffffff1916600117905560048101805468ffffffffffffffffff19166001600160401b03861617600160401b1790555f5b82811015610ac95781600301868281518110610a6757610a67611523565b60209081029190910181015182546001810184555f938452919092208251600290920201908190610a989082611582565b50602091909101516001918201805467ffffffffffffffff19166001600160401b0390921691909117905501610a49565b506040808a01355f908152602081905220600201546001600160401b0316610b5d5785515f9081526020818152604091829020885181559088015160029091018054928901516001600160401b03908116600160801b0267ffffffffffffffff60801b1991909316600160401b021677ffffffffffffffffffffffffffffffff000000000000000019909316929092171790555b50610c52565b84515f9081526020818152604080832088518155600281018054938a0151928a01516001600160401b03908116600160801b0267ffffffffffffffff60801b19948216600160401b026001600160801b0319909616918a16919091179490941792909216929092179055905b82811015610c4f5781600101868281518110610bed57610bed611523565b60209081029190910181015182546001810184555f938452919092208251600290920201908190610c1e9082611582565b50602091909101516001918201805467ffffffffffffffff19166001600160401b0390921691909117905501610bcf565b50505b60405182907f715216b8fb094b002b3a62b413e8a3d36b5af37f18205d2d08926df7fcb4ce93905f90a25050505050505050565b60405162461bcd60e51b815260206004820152600f60248201526e139bdd081a5b5c1b195b595b9d1959608a1b60448201526064016102f0565b604080516080810182525f808252602082018190529181019190915260608082015260405162461bcd60e51b815260206004820152600f60248201526e139bdd081a5b5c1b195b595b9d1959608a1b60448201526060905f906064016102f0565b828054828255905f5260205f20908101928215610d5a579160200282015b82811115610d5a578251825591602001919060010190610d3f565b50610d66929150610d6a565b5090565b5b80821115610d66575f8155600101610d6b565b5f60208284031215610d8e575f5ffd5b5035919050565b5f60808284031215610da5575f5ffd5b50919050565b5f5f60408385031215610dbc575f5ffd5b82356001600160401b03811115610dd1575f5ffd5b610ddd85828601610d95565b95602094909401359450505050565b634e487b7160e01b5f52604160045260245ffd5b604051601f8201601f191681016001600160401b0381118282101715610e2857610e28610dec565b604052919050565b5f6001600160401b03821115610e4857610e48610dec565b50601f01601f191660200190565b5f5f8284036060811215610e68575f5ffd5b6040811215610e75575f5ffd5b5082915060408301356001600160401b03811115610e91575f5ffd5b8301601f81018513610ea1575f5ffd5b8035610eb4610eaf82610e30565b610e00565b818152866020838501011115610ec8575f5ffd5b816020840160208301375f602083830101528093505050509250929050565b5f5f5f60408486031215610ef9575f5ffd5b83356001600160401b03811115610f0e575f5ffd5b610f1a86828701610d95565b93505060208401356001600160401b03811115610f35575f5ffd5b8401601f81018613610f45575f5ffd5b80356001600160401b03811115610f5a575f5ffd5b866020828401011115610f6b575f5ffd5b939660209190910195509293505050565b5f81518084528060208401602086015e5f602082860101526020601f19601f83011685010191505092915050565b5f82825180855260208501945060208160051b830101602085015f5b8381101561101457601f198584030188528151805160408552610fec6040860182610f7c565b6020928301516001600160401b03169583019590955250978801979190910190600101610fc6565b50909695505050505050565b606081525f60e08201855160608401526001600160401b0360208701511660808401526001600160401b0360408701511660a08401526060860151608060c0850152818151808452610100860191506020830193505f92505b8083101561109c5783518252602082019150602084019350600183019250611079565b5084810360208601526110af8188610faa565b93505050506110c960408301846001600160401b03169052565b949350505050565b5f602082840312156110e1575f5ffd5b813563ffffffff811681146110f4575f5ffd5b9392505050565b5f5f8335601e19843603018112611110575f5ffd5b8301803591506001600160401b03821115611129575f5ffd5b60200191503681900382131561113d575f5ffd5b9250929050565b60208152816020820152818360408301375f818301604090810191909152601f909201601f19160101919050565b5f82601f830112611181575f5ffd5b815161118f610eaf82610e30565b8181528460208386010111156111a3575f5ffd5b8160208501602083015e5f918101602001919091529392505050565b5f602082840312156111cf575f5ffd5b81516001600160401b038111156111e4575f5ffd5b8201604081850312156111f5575f5ffd5b604080519081016001600160401b038111828210171561121757611217610dec565b60405281516001600160401b0381111561122f575f5ffd5b61123b86828501611172565b82525060208201516001600160401b03811115611256575f5ffd5b61126286828501611172565b602083015250949350505050565b63ffffffff60e01b8560e01b168152836004820152818360248301375f91016024019081529392505050565b600181811c908216806112b057607f821691505b602082108103610da557634e487b7160e01b5f52602260045260245ffd5b606081525f8451604060608401526112e960a0840182610f7c565b90506020860151605f198483030160808501526113068282610f7c565b915050828103602084015261131b8186610f7c565b9050828103604084015260a08101845482526001850160a0602084015281815480845260c08501915060c08160051b8601019350825f5260205f2092505f5b818110156114115760bf19868603018352604085525f845461137b8161129c565b806040890152600182165f811461139957600181146113b5576113e6565b60ff19831660608a0152606082151560051b8a010193506113e6565b875f5260205f205f5b838110156113dd5781548b8201606001526001909101906020016113be565b8a016060019450505b5050506001858101546001600160401b0316602097880152909560029095019493909301920161135a565b5050505060028501546001600160401b0381166040840152604081901c6001600160401b03166060840152608081811c6001600160401b031690840152509695505050505050565b5f60208284031215611469575f5ffd5b815180151581146110f4575f5ffd5b5f60208284031215611488575f5ffd5b81356001600160401b03811681146110f4575f5ffd5b634e487b7160e01b5f52601160045260245ffd5b6001600160401b0381811683821601908111156114d1576114d161149e565b92915050565b5f82518060208501845e5f920191825250919050565b5f602082840312156114fd575f5ffd5b5051919050565b6001600160401b0382811682821603908111156114d1576114d161149e565b634e487b7160e01b5f52603260045260245ffd5b601f8211156107d957805f5260205f20601f840160051c8101602085101561155c5750805b601f840160051c820191505b8181101561157b575f8155600101611568565b5050505050565b81516001600160401b0381111561159b5761159b610dec565b6115af816115a9845461129c565b84611537565b6020601f8211600181146115e1575f83156115ca5750848201515b5f19600385901b1c1916600184901b17845561157b565b5f84815260208120601f198516915b8281101561161057878501518255602094850194600190920191016115f0565b508482101561162d57868401515f19600387901b60f8161c191681555b50505050600190811b0190555056fea2646970667358221220766e135928202afca66858fd7be3b7b7ba06b8028d2c9458f78227840a149f8864736f6c634300081e0033",
 }
 
 // AvalancheValidatorSetRegistryABI is the input ABI used to generate the binding from.
@@ -44,7 +72,7 @@ var AvalancheValidatorSetRegistryABI = AvalancheValidatorSetRegistryMetaData.ABI
 var AvalancheValidatorSetRegistryBin = AvalancheValidatorSetRegistryMetaData.Bin
 
 // DeployAvalancheValidatorSetRegistry deploys a new Ethereum contract, binding an instance of AvalancheValidatorSetRegistry to it.
-func DeployAvalancheValidatorSetRegistry(auth *bind.TransactOpts, backend bind.ContractBackend, avalancheNetworkID_ uint32) (common.Address, *types.Transaction, *AvalancheValidatorSetRegistry, error) {
+func DeployAvalancheValidatorSetRegistry(auth *bind.TransactOpts, backend bind.ContractBackend, avalancheNetworkID_ uint32, initialValidatorSetData ValidatorSetMetadata) (common.Address, *types.Transaction, *AvalancheValidatorSetRegistry, error) {
 	parsed, err := AvalancheValidatorSetRegistryMetaData.GetAbi()
 	if err != nil {
 		return common.Address{}, nil, nil, err
@@ -53,7 +81,7 @@ func DeployAvalancheValidatorSetRegistry(auth *bind.TransactOpts, backend bind.C
 		return common.Address{}, nil, nil, errors.New("GetABI returned nil")
 	}
 
-	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(AvalancheValidatorSetRegistryBin), backend, avalancheNetworkID_)
+	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(AvalancheValidatorSetRegistryBin), backend, avalancheNetworkID_, initialValidatorSetData)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
@@ -264,6 +292,255 @@ func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCallerSession
 	return _AvalancheValidatorSetRegistry.Contract.GetAvalancheNetworkID(&_AvalancheValidatorSetRegistry.CallOpts)
 }
 
+// IsRegistered is a free data retrieval call binding the contract method 0x27258b22.
+//
+// Solidity: function isRegistered(bytes32 avalancheBlockchainID) view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCaller) IsRegistered(opts *bind.CallOpts, avalancheBlockchainID [32]byte) (bool, error) {
+	var out []interface{}
+	err := _AvalancheValidatorSetRegistry.contract.Call(opts, &out, "isRegistered", avalancheBlockchainID)
+
+	if err != nil {
+		return *new(bool), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
+
+	return out0, err
+
+}
+
+// IsRegistered is a free data retrieval call binding the contract method 0x27258b22.
+//
+// Solidity: function isRegistered(bytes32 avalancheBlockchainID) view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) IsRegistered(avalancheBlockchainID [32]byte) (bool, error) {
+	return _AvalancheValidatorSetRegistry.Contract.IsRegistered(&_AvalancheValidatorSetRegistry.CallOpts, avalancheBlockchainID)
+}
+
+// IsRegistered is a free data retrieval call binding the contract method 0x27258b22.
+//
+// Solidity: function isRegistered(bytes32 avalancheBlockchainID) view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCallerSession) IsRegistered(avalancheBlockchainID [32]byte) (bool, error) {
+	return _AvalancheValidatorSetRegistry.Contract.IsRegistered(&_AvalancheValidatorSetRegistry.CallOpts, avalancheBlockchainID)
+}
+
+// IsRegistrationInProgress is a free data retrieval call binding the contract method 0x8457eaa7.
+//
+// Solidity: function isRegistrationInProgress(bytes32 avalancheBlockchainID) view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCaller) IsRegistrationInProgress(opts *bind.CallOpts, avalancheBlockchainID [32]byte) (bool, error) {
+	var out []interface{}
+	err := _AvalancheValidatorSetRegistry.contract.Call(opts, &out, "isRegistrationInProgress", avalancheBlockchainID)
+
+	if err != nil {
+		return *new(bool), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
+
+	return out0, err
+
+}
+
+// IsRegistrationInProgress is a free data retrieval call binding the contract method 0x8457eaa7.
+//
+// Solidity: function isRegistrationInProgress(bytes32 avalancheBlockchainID) view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) IsRegistrationInProgress(avalancheBlockchainID [32]byte) (bool, error) {
+	return _AvalancheValidatorSetRegistry.Contract.IsRegistrationInProgress(&_AvalancheValidatorSetRegistry.CallOpts, avalancheBlockchainID)
+}
+
+// IsRegistrationInProgress is a free data retrieval call binding the contract method 0x8457eaa7.
+//
+// Solidity: function isRegistrationInProgress(bytes32 avalancheBlockchainID) view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCallerSession) IsRegistrationInProgress(avalancheBlockchainID [32]byte) (bool, error) {
+	return _AvalancheValidatorSetRegistry.Contract.IsRegistrationInProgress(&_AvalancheValidatorSetRegistry.CallOpts, avalancheBlockchainID)
+}
+
+// PChainID is a free data retrieval call binding the contract method 0x541dcba4.
+//
+// Solidity: function pChainID() view returns(bytes32)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCaller) PChainID(opts *bind.CallOpts) ([32]byte, error) {
+	var out []interface{}
+	err := _AvalancheValidatorSetRegistry.contract.Call(opts, &out, "pChainID")
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
+}
+
+// PChainID is a free data retrieval call binding the contract method 0x541dcba4.
+//
+// Solidity: function pChainID() view returns(bytes32)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) PChainID() ([32]byte, error) {
+	return _AvalancheValidatorSetRegistry.Contract.PChainID(&_AvalancheValidatorSetRegistry.CallOpts)
+}
+
+// PChainID is a free data retrieval call binding the contract method 0x541dcba4.
+//
+// Solidity: function pChainID() view returns(bytes32)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCallerSession) PChainID() ([32]byte, error) {
+	return _AvalancheValidatorSetRegistry.Contract.PChainID(&_AvalancheValidatorSetRegistry.CallOpts)
+}
+
+// PChainInitialized is a free data retrieval call binding the contract method 0x580d632b.
+//
+// Solidity: function pChainInitialized() view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCaller) PChainInitialized(opts *bind.CallOpts) (bool, error) {
+	var out []interface{}
+	err := _AvalancheValidatorSetRegistry.contract.Call(opts, &out, "pChainInitialized")
+
+	if err != nil {
+		return *new(bool), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
+
+	return out0, err
+
+}
+
+// PChainInitialized is a free data retrieval call binding the contract method 0x580d632b.
+//
+// Solidity: function pChainInitialized() view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) PChainInitialized() (bool, error) {
+	return _AvalancheValidatorSetRegistry.Contract.PChainInitialized(&_AvalancheValidatorSetRegistry.CallOpts)
+}
+
+// PChainInitialized is a free data retrieval call binding the contract method 0x580d632b.
+//
+// Solidity: function pChainInitialized() view returns(bool)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCallerSession) PChainInitialized() (bool, error) {
+	return _AvalancheValidatorSetRegistry.Contract.PChainInitialized(&_AvalancheValidatorSetRegistry.CallOpts)
+}
+
+// ParseValidatorSetMetadata is a free data retrieval call binding the contract method 0x9def1e78.
+//
+// Solidity: function parseValidatorSetMetadata((bytes,uint32,bytes32,bytes) icmMessage, bytes shardBytes) view returns((bytes32,uint64,uint64,bytes32[]), (bytes,uint64)[], uint64)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCaller) ParseValidatorSetMetadata(opts *bind.CallOpts, icmMessage ICMMessage, shardBytes []byte) (ValidatorSetMetadata, []Validator, uint64, error) {
+	var out []interface{}
+	err := _AvalancheValidatorSetRegistry.contract.Call(opts, &out, "parseValidatorSetMetadata", icmMessage, shardBytes)
+
+	if err != nil {
+		return *new(ValidatorSetMetadata), *new([]Validator), *new(uint64), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(ValidatorSetMetadata)).(*ValidatorSetMetadata)
+	out1 := *abi.ConvertType(out[1], new([]Validator)).(*[]Validator)
+	out2 := *abi.ConvertType(out[2], new(uint64)).(*uint64)
+
+	return out0, out1, out2, err
+
+}
+
+// ParseValidatorSetMetadata is a free data retrieval call binding the contract method 0x9def1e78.
+//
+// Solidity: function parseValidatorSetMetadata((bytes,uint32,bytes32,bytes) icmMessage, bytes shardBytes) view returns((bytes32,uint64,uint64,bytes32[]), (bytes,uint64)[], uint64)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) ParseValidatorSetMetadata(icmMessage ICMMessage, shardBytes []byte) (ValidatorSetMetadata, []Validator, uint64, error) {
+	return _AvalancheValidatorSetRegistry.Contract.ParseValidatorSetMetadata(&_AvalancheValidatorSetRegistry.CallOpts, icmMessage, shardBytes)
+}
+
+// ParseValidatorSetMetadata is a free data retrieval call binding the contract method 0x9def1e78.
+//
+// Solidity: function parseValidatorSetMetadata((bytes,uint32,bytes32,bytes) icmMessage, bytes shardBytes) view returns((bytes32,uint64,uint64,bytes32[]), (bytes,uint64)[], uint64)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCallerSession) ParseValidatorSetMetadata(icmMessage ICMMessage, shardBytes []byte) (ValidatorSetMetadata, []Validator, uint64, error) {
+	return _AvalancheValidatorSetRegistry.Contract.ParseValidatorSetMetadata(&_AvalancheValidatorSetRegistry.CallOpts, icmMessage, shardBytes)
+}
+
+// VerifyICMMessage is a free data retrieval call binding the contract method 0x57262e7f.
+//
+// Solidity: function verifyICMMessage((bytes,uint32,bytes32,bytes) message, bytes32 avalancheBlockchainID) view returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCaller) VerifyICMMessage(opts *bind.CallOpts, message ICMMessage, avalancheBlockchainID [32]byte) error {
+	var out []interface{}
+	err := _AvalancheValidatorSetRegistry.contract.Call(opts, &out, "verifyICMMessage", message, avalancheBlockchainID)
+
+	if err != nil {
+		return err
+	}
+
+	return err
+
+}
+
+// VerifyICMMessage is a free data retrieval call binding the contract method 0x57262e7f.
+//
+// Solidity: function verifyICMMessage((bytes,uint32,bytes32,bytes) message, bytes32 avalancheBlockchainID) view returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) VerifyICMMessage(message ICMMessage, avalancheBlockchainID [32]byte) error {
+	return _AvalancheValidatorSetRegistry.Contract.VerifyICMMessage(&_AvalancheValidatorSetRegistry.CallOpts, message, avalancheBlockchainID)
+}
+
+// VerifyICMMessage is a free data retrieval call binding the contract method 0x57262e7f.
+//
+// Solidity: function verifyICMMessage((bytes,uint32,bytes32,bytes) message, bytes32 avalancheBlockchainID) view returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryCallerSession) VerifyICMMessage(message ICMMessage, avalancheBlockchainID [32]byte) error {
+	return _AvalancheValidatorSetRegistry.Contract.VerifyICMMessage(&_AvalancheValidatorSetRegistry.CallOpts, message, avalancheBlockchainID)
+}
+
+// ApplyShard is a paid mutator transaction binding the contract method 0x93356840.
+//
+// Solidity: function applyShard((uint64,bytes32) shard, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactor) ApplyShard(opts *bind.TransactOpts, shard ValidatorSetShard, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.contract.Transact(opts, "applyShard", shard, shardBytes)
+}
+
+// ApplyShard is a paid mutator transaction binding the contract method 0x93356840.
+//
+// Solidity: function applyShard((uint64,bytes32) shard, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) ApplyShard(shard ValidatorSetShard, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.ApplyShard(&_AvalancheValidatorSetRegistry.TransactOpts, shard, shardBytes)
+}
+
+// ApplyShard is a paid mutator transaction binding the contract method 0x93356840.
+//
+// Solidity: function applyShard((uint64,bytes32) shard, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactorSession) ApplyShard(shard ValidatorSetShard, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.ApplyShard(&_AvalancheValidatorSetRegistry.TransactOpts, shard, shardBytes)
+}
+
+// RegisterValidatorSet is a paid mutator transaction binding the contract method 0x8e91cb43.
+//
+// Solidity: function registerValidatorSet((bytes,uint32,bytes32,bytes) message, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactor) RegisterValidatorSet(opts *bind.TransactOpts, message ICMMessage, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.contract.Transact(opts, "registerValidatorSet", message, shardBytes)
+}
+
+// RegisterValidatorSet is a paid mutator transaction binding the contract method 0x8e91cb43.
+//
+// Solidity: function registerValidatorSet((bytes,uint32,bytes32,bytes) message, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) RegisterValidatorSet(message ICMMessage, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.RegisterValidatorSet(&_AvalancheValidatorSetRegistry.TransactOpts, message, shardBytes)
+}
+
+// RegisterValidatorSet is a paid mutator transaction binding the contract method 0x8e91cb43.
+//
+// Solidity: function registerValidatorSet((bytes,uint32,bytes32,bytes) message, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactorSession) RegisterValidatorSet(message ICMMessage, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.RegisterValidatorSet(&_AvalancheValidatorSetRegistry.TransactOpts, message, shardBytes)
+}
+
+// UpdateValidatorSet is a paid mutator transaction binding the contract method 0x6766233d.
+//
+// Solidity: function updateValidatorSet((uint64,bytes32) shard, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactor) UpdateValidatorSet(opts *bind.TransactOpts, shard ValidatorSetShard, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.contract.Transact(opts, "updateValidatorSet", shard, shardBytes)
+}
+
+// UpdateValidatorSet is a paid mutator transaction binding the contract method 0x6766233d.
+//
+// Solidity: function updateValidatorSet((uint64,bytes32) shard, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistrySession) UpdateValidatorSet(shard ValidatorSetShard, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.UpdateValidatorSet(&_AvalancheValidatorSetRegistry.TransactOpts, shard, shardBytes)
+}
+
+// UpdateValidatorSet is a paid mutator transaction binding the contract method 0x6766233d.
+//
+// Solidity: function updateValidatorSet((uint64,bytes32) shard, bytes shardBytes) returns()
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryTransactorSession) UpdateValidatorSet(shard ValidatorSetShard, shardBytes []byte) (*types.Transaction, error) {
+	return _AvalancheValidatorSetRegistry.Contract.UpdateValidatorSet(&_AvalancheValidatorSetRegistry.TransactOpts, shard, shardBytes)
+}
+
 // AvalancheValidatorSetRegistryValidatorSetRegisteredIterator is returned from FilterValidatorSetRegistered and is used to iterate over the raw logs and unpacked data for ValidatorSetRegistered events raised by the AvalancheValidatorSetRegistry contract.
 type AvalancheValidatorSetRegistryValidatorSetRegisteredIterator struct {
 	Event *AvalancheValidatorSetRegistryValidatorSetRegistered // Event containing the contract specifics and raw log
@@ -333,47 +610,38 @@ func (it *AvalancheValidatorSetRegistryValidatorSetRegisteredIterator) Close() e
 
 // AvalancheValidatorSetRegistryValidatorSetRegistered represents a ValidatorSetRegistered event raised by the AvalancheValidatorSetRegistry contract.
 type AvalancheValidatorSetRegistryValidatorSetRegistered struct {
-	ValidatorSetID        *big.Int
 	AvalancheBlockchainID [32]byte
 	Raw                   types.Log // Blockchain specific contextual infos
 }
 
-// FilterValidatorSetRegistered is a free log retrieval operation binding the contract event 0xe93e9f47e7810153341664fc2050adcb29c88899748615c477d17b712d621583.
+// FilterValidatorSetRegistered is a free log retrieval operation binding the contract event 0x715216b8fb094b002b3a62b413e8a3d36b5af37f18205d2d08926df7fcb4ce93.
 //
-// Solidity: event ValidatorSetRegistered(uint256 indexed validatorSetID, bytes32 indexed avalancheBlockchainID)
-func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) FilterValidatorSetRegistered(opts *bind.FilterOpts, validatorSetID []*big.Int, avalancheBlockchainID [][32]byte) (*AvalancheValidatorSetRegistryValidatorSetRegisteredIterator, error) {
+// Solidity: event ValidatorSetRegistered(bytes32 indexed avalancheBlockchainID)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) FilterValidatorSetRegistered(opts *bind.FilterOpts, avalancheBlockchainID [][32]byte) (*AvalancheValidatorSetRegistryValidatorSetRegisteredIterator, error) {
 
-	var validatorSetIDRule []interface{}
-	for _, validatorSetIDItem := range validatorSetID {
-		validatorSetIDRule = append(validatorSetIDRule, validatorSetIDItem)
-	}
 	var avalancheBlockchainIDRule []interface{}
 	for _, avalancheBlockchainIDItem := range avalancheBlockchainID {
 		avalancheBlockchainIDRule = append(avalancheBlockchainIDRule, avalancheBlockchainIDItem)
 	}
 
-	logs, sub, err := _AvalancheValidatorSetRegistry.contract.FilterLogs(opts, "ValidatorSetRegistered", validatorSetIDRule, avalancheBlockchainIDRule)
+	logs, sub, err := _AvalancheValidatorSetRegistry.contract.FilterLogs(opts, "ValidatorSetRegistered", avalancheBlockchainIDRule)
 	if err != nil {
 		return nil, err
 	}
 	return &AvalancheValidatorSetRegistryValidatorSetRegisteredIterator{contract: _AvalancheValidatorSetRegistry.contract, event: "ValidatorSetRegistered", logs: logs, sub: sub}, nil
 }
 
-// WatchValidatorSetRegistered is a free log subscription operation binding the contract event 0xe93e9f47e7810153341664fc2050adcb29c88899748615c477d17b712d621583.
+// WatchValidatorSetRegistered is a free log subscription operation binding the contract event 0x715216b8fb094b002b3a62b413e8a3d36b5af37f18205d2d08926df7fcb4ce93.
 //
-// Solidity: event ValidatorSetRegistered(uint256 indexed validatorSetID, bytes32 indexed avalancheBlockchainID)
-func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) WatchValidatorSetRegistered(opts *bind.WatchOpts, sink chan<- *AvalancheValidatorSetRegistryValidatorSetRegistered, validatorSetID []*big.Int, avalancheBlockchainID [][32]byte) (event.Subscription, error) {
+// Solidity: event ValidatorSetRegistered(bytes32 indexed avalancheBlockchainID)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) WatchValidatorSetRegistered(opts *bind.WatchOpts, sink chan<- *AvalancheValidatorSetRegistryValidatorSetRegistered, avalancheBlockchainID [][32]byte) (event.Subscription, error) {
 
-	var validatorSetIDRule []interface{}
-	for _, validatorSetIDItem := range validatorSetID {
-		validatorSetIDRule = append(validatorSetIDRule, validatorSetIDItem)
-	}
 	var avalancheBlockchainIDRule []interface{}
 	for _, avalancheBlockchainIDItem := range avalancheBlockchainID {
 		avalancheBlockchainIDRule = append(avalancheBlockchainIDRule, avalancheBlockchainIDItem)
 	}
 
-	logs, sub, err := _AvalancheValidatorSetRegistry.contract.WatchLogs(opts, "ValidatorSetRegistered", validatorSetIDRule, avalancheBlockchainIDRule)
+	logs, sub, err := _AvalancheValidatorSetRegistry.contract.WatchLogs(opts, "ValidatorSetRegistered", avalancheBlockchainIDRule)
 	if err != nil {
 		return nil, err
 	}
@@ -405,9 +673,9 @@ func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) Wat
 	}), nil
 }
 
-// ParseValidatorSetRegistered is a log parse operation binding the contract event 0xe93e9f47e7810153341664fc2050adcb29c88899748615c477d17b712d621583.
+// ParseValidatorSetRegistered is a log parse operation binding the contract event 0x715216b8fb094b002b3a62b413e8a3d36b5af37f18205d2d08926df7fcb4ce93.
 //
-// Solidity: event ValidatorSetRegistered(uint256 indexed validatorSetID, bytes32 indexed avalancheBlockchainID)
+// Solidity: event ValidatorSetRegistered(bytes32 indexed avalancheBlockchainID)
 func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) ParseValidatorSetRegistered(log types.Log) (*AvalancheValidatorSetRegistryValidatorSetRegistered, error) {
 	event := new(AvalancheValidatorSetRegistryValidatorSetRegistered)
 	if err := _AvalancheValidatorSetRegistry.contract.UnpackLog(event, "ValidatorSetRegistered", log); err != nil {
@@ -486,47 +754,38 @@ func (it *AvalancheValidatorSetRegistryValidatorSetUpdatedIterator) Close() erro
 
 // AvalancheValidatorSetRegistryValidatorSetUpdated represents a ValidatorSetUpdated event raised by the AvalancheValidatorSetRegistry contract.
 type AvalancheValidatorSetRegistryValidatorSetUpdated struct {
-	ValidatorSetID        *big.Int
 	AvalancheBlockchainID [32]byte
 	Raw                   types.Log // Blockchain specific contextual infos
 }
 
-// FilterValidatorSetUpdated is a free log retrieval operation binding the contract event 0xd48741f16bef6492997e28d107c7a13b06376de704072bdb37a9b02e502ea1f9.
+// FilterValidatorSetUpdated is a free log retrieval operation binding the contract event 0x3eb200e50e17828341d0b21af4671d123979b6e0e84ed7e47d43227a4fb52fe2.
 //
-// Solidity: event ValidatorSetUpdated(uint256 indexed validatorSetID, bytes32 indexed avalancheBlockchainID)
-func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) FilterValidatorSetUpdated(opts *bind.FilterOpts, validatorSetID []*big.Int, avalancheBlockchainID [][32]byte) (*AvalancheValidatorSetRegistryValidatorSetUpdatedIterator, error) {
+// Solidity: event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) FilterValidatorSetUpdated(opts *bind.FilterOpts, avalancheBlockchainID [][32]byte) (*AvalancheValidatorSetRegistryValidatorSetUpdatedIterator, error) {
 
-	var validatorSetIDRule []interface{}
-	for _, validatorSetIDItem := range validatorSetID {
-		validatorSetIDRule = append(validatorSetIDRule, validatorSetIDItem)
-	}
 	var avalancheBlockchainIDRule []interface{}
 	for _, avalancheBlockchainIDItem := range avalancheBlockchainID {
 		avalancheBlockchainIDRule = append(avalancheBlockchainIDRule, avalancheBlockchainIDItem)
 	}
 
-	logs, sub, err := _AvalancheValidatorSetRegistry.contract.FilterLogs(opts, "ValidatorSetUpdated", validatorSetIDRule, avalancheBlockchainIDRule)
+	logs, sub, err := _AvalancheValidatorSetRegistry.contract.FilterLogs(opts, "ValidatorSetUpdated", avalancheBlockchainIDRule)
 	if err != nil {
 		return nil, err
 	}
 	return &AvalancheValidatorSetRegistryValidatorSetUpdatedIterator{contract: _AvalancheValidatorSetRegistry.contract, event: "ValidatorSetUpdated", logs: logs, sub: sub}, nil
 }
 
-// WatchValidatorSetUpdated is a free log subscription operation binding the contract event 0xd48741f16bef6492997e28d107c7a13b06376de704072bdb37a9b02e502ea1f9.
+// WatchValidatorSetUpdated is a free log subscription operation binding the contract event 0x3eb200e50e17828341d0b21af4671d123979b6e0e84ed7e47d43227a4fb52fe2.
 //
-// Solidity: event ValidatorSetUpdated(uint256 indexed validatorSetID, bytes32 indexed avalancheBlockchainID)
-func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) WatchValidatorSetUpdated(opts *bind.WatchOpts, sink chan<- *AvalancheValidatorSetRegistryValidatorSetUpdated, validatorSetID []*big.Int, avalancheBlockchainID [][32]byte) (event.Subscription, error) {
+// Solidity: event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID)
+func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) WatchValidatorSetUpdated(opts *bind.WatchOpts, sink chan<- *AvalancheValidatorSetRegistryValidatorSetUpdated, avalancheBlockchainID [][32]byte) (event.Subscription, error) {
 
-	var validatorSetIDRule []interface{}
-	for _, validatorSetIDItem := range validatorSetID {
-		validatorSetIDRule = append(validatorSetIDRule, validatorSetIDItem)
-	}
 	var avalancheBlockchainIDRule []interface{}
 	for _, avalancheBlockchainIDItem := range avalancheBlockchainID {
 		avalancheBlockchainIDRule = append(avalancheBlockchainIDRule, avalancheBlockchainIDItem)
 	}
 
-	logs, sub, err := _AvalancheValidatorSetRegistry.contract.WatchLogs(opts, "ValidatorSetUpdated", validatorSetIDRule, avalancheBlockchainIDRule)
+	logs, sub, err := _AvalancheValidatorSetRegistry.contract.WatchLogs(opts, "ValidatorSetUpdated", avalancheBlockchainIDRule)
 	if err != nil {
 		return nil, err
 	}
@@ -558,9 +817,9 @@ func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) Wat
 	}), nil
 }
 
-// ParseValidatorSetUpdated is a log parse operation binding the contract event 0xd48741f16bef6492997e28d107c7a13b06376de704072bdb37a9b02e502ea1f9.
+// ParseValidatorSetUpdated is a log parse operation binding the contract event 0x3eb200e50e17828341d0b21af4671d123979b6e0e84ed7e47d43227a4fb52fe2.
 //
-// Solidity: event ValidatorSetUpdated(uint256 indexed validatorSetID, bytes32 indexed avalancheBlockchainID)
+// Solidity: event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID)
 func (_AvalancheValidatorSetRegistry *AvalancheValidatorSetRegistryFilterer) ParseValidatorSetUpdated(log types.Log) (*AvalancheValidatorSetRegistryValidatorSetUpdated, error) {
 	event := new(AvalancheValidatorSetRegistryValidatorSetUpdated)
 	if err := _AvalancheValidatorSetRegistry.contract.UnpackLog(event, "ValidatorSetUpdated", log); err != nil {
