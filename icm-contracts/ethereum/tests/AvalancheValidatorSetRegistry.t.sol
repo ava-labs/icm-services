@@ -117,7 +117,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         (Validator[] memory validators, bytes memory raw) = registerValidatorSetFixture(1, 1);
 
         // sign the message
-        bytes memory signature = dummyPChainValidatorSetSign(raw);
+        bytes memory signature = dummyPChainValidatorSetSign(L1_BLOCKCHAIN_ID, raw);
         ICMMessage memory message = ICMMessage({
             rawMessage: raw,
             sourceNetworkID: NETWORK_ID,
@@ -152,10 +152,12 @@ contract AvalancheValidatorSetRegistryCommon is Test {
      * @dev Sign the input payload with the dummy validator set created above
      */
     function dummyPChainValidatorSetSign(
+        bytes32 avalancheBlockchainID,
         bytes memory payload
     ) public view returns (bytes memory) {
         uint256[] memory secretKeys = dummyPChainValidatorSetSecretKeys();
-        bytes memory rawSig = BLST.createAggregateSignature(secretKeys, payload);
+        bytes memory signedData = abi.encodePacked(NETWORK_ID, avalancheBlockchainID, payload);
+        bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature = ValidatorSetSignature({
             // all five validators sign
             signers: hex"F8",
@@ -173,7 +175,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         uint256[] memory secretKeys = new uint256[](2);
         secretKeys[0] = 2;
         secretKeys[1] = 3;
-        bytes memory rawSig = BLST.createAggregateSignature(secretKeys, payload);
+        bytes memory signedData = abi.encodePacked(NETWORK_ID, L1_BLOCKCHAIN_ID, payload);
+        bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature = ValidatorSetSignature({
             //  both validators sign
             signers: hex"C0",
