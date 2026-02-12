@@ -366,7 +366,7 @@ library ValidatorSets {
 
         // Parse uncompressed BLS public key (96 bytes)
         bytes memory unformattedPublicKey = ByteSlicer.slice(data, offset, 96);
-        bytes memory blsPublicKey = BLST.formatUncompressedBLSPublicKey(unformattedPublicKey);
+        bytes memory blsPublicKey = BLST.padUncompressedBLSPublicKey(unformattedPublicKey);
         offset += 96;
 
         // Parse previousWeight (8 bytes)
@@ -649,12 +649,12 @@ library ValidatorSets {
     ) private pure {
         for (uint256 i = 1; i < validators.length; i++) {
             Validator memory key = validators[i];
-            bytes memory keyPubKey = BLST.getUncompressedBlsPublicKey(key.blsPublicKey);
+            bytes memory keyPubKey = BLST.unPadUncompressedBlsPublicKey(key.blsPublicKey);
             int256 j = int256(i) - 1;
 
             while (j >= 0) {
                 bytes memory jPubKey =
-                    BLST.getUncompressedBlsPublicKey(validators[uint256(j)].blsPublicKey);
+                    BLST.unPadUncompressedBlsPublicKey(validators[uint256(j)].blsPublicKey);
                 if (ByteComparator.compare(jPubKey, keyPubKey) <= 0) {
                     break;
                 }

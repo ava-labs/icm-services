@@ -378,57 +378,6 @@ library BLST {
      * @return The 128-byte serialized public key. Its X and Y coordinates are left-padded to be 64 bytes each, for a
      * total of 128 bytes.
      */
-    function formatUncompressedBLSPublicKey(
-        bytes memory publicKey
-    ) internal pure returns (bytes memory) {
-        require(publicKey.length == 96, "Invalid input public key length");
-        bytes memory res = new bytes(128);
-
-        // Copy the X coordinate.
-        for (uint256 i = 0; i < 48; ++i) {
-            res[16 + i] = publicKey[i];
-        }
-
-        // Copy the Y coordinate.
-        for (uint256 i = 0; i < 48; ++i) {
-            res[80 + i] = publicKey[i + 48];
-        }
-        return res;
-    }
-
-    /**
-     * @notice Turns the 128-byte format expected by the BLS12381_G1_ADD_PRECOMPILE into
-     * a 96-byte uncompressed BLS public key
-     * @param publicKey The the 128-byte padded format.
-     * @return The 96-byte uncompressed BLS public key.
-     */
-    function getUncompressedBlsPublicKey(
-        bytes memory publicKey
-    ) internal pure returns (bytes memory) {
-        require(publicKey.length == 128, "Invalid input public key length");
-        bytes memory res = new bytes(96);
-
-        // Copy the X coordinate.
-        for (uint256 i = 0; i < 48; ++i) {
-            res[i] = publicKey[16 + i];
-        }
-
-        // Copy the Y coordinate.
-        for (uint256 i = 0; i < 48; ++i) {
-            res[48 + i] = publicKey[i + 80];
-        }
-
-        return res;
-    }
-
-    /**
-     * @notice Formats a 96-byte uncompressed BLS public key into the 128-byte format expected by the
-     * BLS12381_G1_ADD_PRECOMPILE.
-     * @param publicKey The 96-byte uncompressed BLS public key, as produced by the BLST library's
-     * P1Affine.Serialize() function.
-     * @return The 128-byte serialized public key. Its X and Y coordinates are left-padded to be 64 bytes each, for a
-     * total of 128 bytes.
-     */
     function padUncompressedBLSPublicKey(
         bytes memory publicKey
     ) internal pure returns (bytes memory) {
