@@ -5,7 +5,6 @@
 pragma solidity 0.8.30;
 
 import {ICM, ICMMessage} from "./ICM.sol";
-import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 
 struct TeleporterMessageV2 {
     uint256 messageNonce;
@@ -32,6 +31,13 @@ struct TeleporterICMMessage {
     // Arbitrary bytes that is used by receiving contracts to
     // authenticate this message.
     bytes attestation;
+}
+
+// A message receipt identifies the message that was delivered by its nonce,
+// and the address that can redeem the reward for that message.
+struct TeleporterMessageReceipt {
+    uint256 receivedMessageNonce;
+    address relayerRewardAddress;
 }
 
 /**

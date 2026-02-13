@@ -3,9 +3,11 @@ pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
 import {
-    TeleporterICMMessage, TeleporterMessageV2, ICMTeleporterV2
+    TeleporterICMMessage,
+    TeleporterMessageV2,
+    ICMTeleporterV2,
+    TeleporterMessageReceipt
 } from "../TeleporterMessageV2.sol";
-import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 
 contract ICMTest is Test {
     function testTeleporterMessageV2RoundTrip(
@@ -17,12 +19,15 @@ contract ICMTest is Test {
     ) public pure {
         numRelayerAddresses = uint8(bound(numRelayerAddresses, 0, 10));
         numReceipts = uint8(bound(numReceipts, 0, 10));
-        address[] memory allowedRelayerAddresses = new address[](numRelayerAddresses);
+        address[] memory allowedRelayerAddresses = new address[](
+            numRelayerAddresses
+        );
         for (uint256 i = 0; i < numRelayerAddresses; i++) {
             allowedRelayerAddresses[i] = relayerAddress;
         }
 
-        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
+        TeleporterMessageReceipt[]
+            memory receipts = new TeleporterMessageReceipt[](numReceipts);
         for (uint256 i = 0; i < numReceipts; i++) {
             receipts[i] = TeleporterMessageReceipt({
                 receivedMessageNonce: messageNonce,
@@ -41,17 +46,37 @@ contract ICMTest is Test {
             receipts: receipts,
             message: payload
         });
-        bytes memory serialized = ICMTeleporterV2.serializeTeleporterMessageV2(teleporterMessage);
-        TeleporterMessageV2 memory deserialized =
-            ICMTeleporterV2.parseTeleporterMessageV2(serialized);
+        bytes memory serialized = ICMTeleporterV2.serializeTeleporterMessageV2(
+            teleporterMessage
+        );
+        TeleporterMessageV2 memory deserialized = ICMTeleporterV2
+            .parseTeleporterMessageV2(serialized);
 
         assertEq(deserialized.messageNonce, teleporterMessage.messageNonce);
-        assertEq(deserialized.originSenderAddress, teleporterMessage.originSenderAddress);
-        assertEq(deserialized.originTeleporterAddress, teleporterMessage.originTeleporterAddress);
-        assertEq(deserialized.destinationBlockchainID, teleporterMessage.destinationBlockchainID);
-        assertEq(deserialized.destinationAddress, teleporterMessage.destinationAddress);
-        assertEq(deserialized.requiredGasLimit, teleporterMessage.requiredGasLimit);
-        assertEq(deserialized.allowedRelayerAddresses, teleporterMessage.allowedRelayerAddresses);
+        assertEq(
+            deserialized.originSenderAddress,
+            teleporterMessage.originSenderAddress
+        );
+        assertEq(
+            deserialized.originTeleporterAddress,
+            teleporterMessage.originTeleporterAddress
+        );
+        assertEq(
+            deserialized.destinationBlockchainID,
+            teleporterMessage.destinationBlockchainID
+        );
+        assertEq(
+            deserialized.destinationAddress,
+            teleporterMessage.destinationAddress
+        );
+        assertEq(
+            deserialized.requiredGasLimit,
+            teleporterMessage.requiredGasLimit
+        );
+        assertEq(
+            deserialized.allowedRelayerAddresses,
+            teleporterMessage.allowedRelayerAddresses
+        );
         for (uint256 i = 0; i < numRelayerAddresses; i++) {
             assertEq(
                 teleporterMessage.allowedRelayerAddresses[i],
@@ -87,12 +112,15 @@ contract ICMTest is Test {
     ) public pure {
         vm.assume(numRelayerAddresses < 10);
         vm.assume(numReceipts < 10);
-        address[] memory allowedRelayerAddresses = new address[](numRelayerAddresses);
+        address[] memory allowedRelayerAddresses = new address[](
+            numRelayerAddresses
+        );
         for (uint256 i = 0; i < numRelayerAddresses; i++) {
             allowedRelayerAddresses[i] = relayerAddress;
         }
 
-        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
+        TeleporterMessageReceipt[]
+            memory receipts = new TeleporterMessageReceipt[](numReceipts);
         for (uint256 i = 0; i < numReceipts; i++) {
             receipts[i] = TeleporterMessageReceipt({
                 receivedMessageNonce: messageNonce,
@@ -119,17 +147,27 @@ contract ICMTest is Test {
             attestation: abi.encode(1)
         });
 
-        bytes memory serialized = ICMTeleporterV2.serializeTeleporterICMMessage(icmMessage);
-        TeleporterICMMessage memory deserializedICM =
-            ICMTeleporterV2.parseTeleporterICMMessage(serialized);
+        bytes memory serialized = ICMTeleporterV2.serializeTeleporterICMMessage(
+            icmMessage
+        );
+        TeleporterICMMessage memory deserializedICM = ICMTeleporterV2
+            .parseTeleporterICMMessage(serialized);
         assertEq(icmMessage.sourceNetworkID, deserializedICM.sourceNetworkID);
-        assertEq(icmMessage.sourceBlockchainID, deserializedICM.sourceBlockchainID);
+        assertEq(
+            icmMessage.sourceBlockchainID,
+            deserializedICM.sourceBlockchainID
+        );
         assertEq(icmMessage.attestation, deserializedICM.attestation);
 
-        TeleporterMessageV2 memory deserializedTeleporterMessage = deserializedICM.message;
-        assertEq(teleporterMessage.messageNonce, deserializedTeleporterMessage.messageNonce);
+        TeleporterMessageV2
+            memory deserializedTeleporterMessage = deserializedICM.message;
         assertEq(
-            teleporterMessage.originSenderAddress, deserializedTeleporterMessage.originSenderAddress
+            teleporterMessage.messageNonce,
+            deserializedTeleporterMessage.messageNonce
+        );
+        assertEq(
+            teleporterMessage.originSenderAddress,
+            deserializedTeleporterMessage.originSenderAddress
         );
         assertEq(
             teleporterMessage.originTeleporterAddress,
@@ -140,16 +178,24 @@ contract ICMTest is Test {
             deserializedTeleporterMessage.destinationBlockchainID
         );
         assertEq(
-            teleporterMessage.destinationAddress, deserializedTeleporterMessage.destinationAddress
+            teleporterMessage.destinationAddress,
+            deserializedTeleporterMessage.destinationAddress
         );
-        assertEq(teleporterMessage.requiredGasLimit, deserializedTeleporterMessage.requiredGasLimit);
+        assertEq(
+            teleporterMessage.requiredGasLimit,
+            deserializedTeleporterMessage.requiredGasLimit
+        );
         assertEq(
             teleporterMessage.allowedRelayerAddresses.length,
             deserializedTeleporterMessage.allowedRelayerAddresses.length
         );
-        assertEq(teleporterMessage.receipts.length, deserializedTeleporterMessage.receipts.length);
         assertEq(
-            keccak256(teleporterMessage.message), keccak256(deserializedTeleporterMessage.message)
+            teleporterMessage.receipts.length,
+            deserializedTeleporterMessage.receipts.length
+        );
+        assertEq(
+            keccak256(teleporterMessage.message),
+            keccak256(deserializedTeleporterMessage.message)
         );
     }
 }
