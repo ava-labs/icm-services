@@ -19,6 +19,7 @@ import (
 	validatorsetsig "github.com/ava-labs/icm-services/abi-bindings/go/governance/ValidatorSetSig"
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
+	// teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
 	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
@@ -345,6 +346,7 @@ func DeployWithNicksMethod(
 	fundedKey *ecdsa.PrivateKey,
 ) {
 	// Fund the deployer address
+	// FIXME GEOFF
 	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
 	fundDeployerTx := CreateNativeTransferTransaction(
 		ctx, l1, fundedKey, deployerAddress, fundAmount,
@@ -369,6 +371,68 @@ func DeployWithNicksMethod(
 	contractCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
 	Expect(err).Should(BeNil())
 	Expect(len(contractCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
+}
+
+func DeployWarpAdapterContract(
+	ctx context.Context,
+	l1 interfaces.L1TestInfo,
+	fundedKey *ecdsa.PrivateKey,
+) common.Address {
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile("./out/WarpAdapter.sol/WarpAdapter.json")
+	Expect(err).Should(BeNil())
+
+	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
+		byteCode,
+		false,
+		deploymentUtils.GetDefaultContractCreationGasPrice(),
+	)
+	Expect(err).Should(BeNil())
+
+	DeployWithNicksMethod(
+		ctx,
+		l1,
+		transactionBytes,
+		deployerAddress,
+		contractAddress,
+		fundedKey,
+	)
+
+	return contractAddress
+}
+
+func DeployTeleporterV2(
+	ctx context.Context,
+	l1 interfaces.L1TestInfo,
+	fundedKey *ecdsa.PrivateKey,
+) common.Address {
+	warpAdapterAddress := DeployWarpAdapterContract(ctx, l1, fundedKey)
+
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile("./out/TeleporterMessenger.sol/TeleporterMessenger.json")
+	Expect(err).Should(BeNil())
+
+	teleporterABI, err := teleportermessenger.TeleporterMessengerMetaData.GetAbi()
+	Expect(err).Should(BeNil())
+
+	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(teleporterABI, byteCode, warpAdapterAddress)
+	Expect(err).Should(BeNil())
+
+	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
+		byteCode,
+		false,
+		deploymentUtils.GetDefaultContractCreationGasPrice(),
+	)
+	Expect(err).Should(BeNil())
+
+	DeployWithNicksMethod(
+		ctx,
+		l1,
+		transactionBytes,
+		deployerAddress,
+		contractAddress,
+		fundedKey,
+	)
+
+	return contractAddress
 }
 
 // Deploys a new version of Teleporter and returns its address
@@ -697,8 +761,19 @@ func CreateReceiveCrossChainMessageTransaction(
 	)
 	Expect(err).Should(BeNil())
 
-	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, PrivateKeyToAddress(senderKey))
-	Expect(err).Should(BeNil())
+	var callData []byte
+	if teleporterContractAddress.Hex() == "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf" {
+		callData, err = teleportermessenger.PackReceiveCrossChainMessage(0, PrivateKeyToAddress(senderKey))
+		Expect(err).Should(BeNil())
+	} else {
+		// callData, err = teleportermessengerv2.PackReceiveCrossChainMessageV2(
+		// 	*teleporterMessage,
+		// 	signedMessage.SourceChainID,
+		// 	0,
+		// 	PrivateKeyToAddress(senderKey),
+		// )
+		// Expect(err).Should(BeNil())
+	}
 
 	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 

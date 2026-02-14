@@ -16,6 +16,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
+	// teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages"
@@ -166,6 +167,7 @@ func (m *messageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
 	return m.unsignedMessage
 }
 
+// TODO This is unused
 func (m *messageHandler) GetMessageRoutingInfo() (
 	ids.ID,
 	common.Address,
@@ -275,14 +277,25 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		m.logger.Error("Failed to calculate gas limit for receiveCrossChainMessage call")
 		return common.Hash{}, err
 	}
+
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
-	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
-		0,
-		common.HexToAddress(m.messageConfig.RewardAddress),
-	)
-	if err != nil {
-		m.logger.Error("Failed packing receiveCrossChainMessage call data")
-		return common.Hash{}, err
+	var callData []byte
+	if (m.protocolAddress.Hex() == "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf") {
+		callData, err = teleportermessenger.PackReceiveCrossChainMessage(
+			0,
+			common.HexToAddress(m.messageConfig.RewardAddress),
+		)
+		if err != nil {
+			m.logger.Error("Failed packing receiveCrossChainMessage call data")
+			return common.Hash{}, err
+		}
+	} else {
+		// callData, err = teleportermessengerv2.PackReceiveCrossChainMessageV2(
+		// 	*m.teleporterMessage,
+		// 	m.unsignedMessage.SourceChainID,
+		// 	0,
+		// 	common.HexToAddress(m.messageConfig.RewardAddress),
+		// )
 	}
 
 	receipt, err := m.destinationClient.SendTx(

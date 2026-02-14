@@ -25,11 +25,11 @@ export ARCH=$(uname -m)
 [ $ARCH = x86_64 ] && ARCH=amd64
 echo "ARCH set to $ARCH"
 
-DEFAULT_AVALANCHE_CONTRACT_LIST="TeleporterMessenger TeleporterRegistry ExampleERC20 ExampleRewardCalculator TestMessenger ValidatorSetSig NativeTokenStakingManager ERC20TokenStakingManager
+DEFAULT_AVALANCHE_CONTRACT_LIST="TeleporterMessenger TeleporterRegistry WarpAdapter ExampleERC20 ExampleRewardCalculator TestMessenger ValidatorSetSig NativeTokenStakingManager ERC20TokenStakingManager
 TokenHome TokenRemote ERC20TokenHome ERC20TokenHomeUpgradeable ERC20TokenRemote ERC20TokenRemoteUpgradeable NativeTokenHome NativeTokenHomeUpgradeable NativeTokenRemote NativeTokenRemoteUpgradeable
 WrappedNativeToken MockERC20SendAndCallReceiver MockNativeSendAndCallReceiver ExampleERC20Decimals IStakingManager ACP99Manager ValidatorManager PoAManager BatchCrossChainMessenger INativeMinter"
 
-DEFAULT_COMMON_CONTRACT_LIST=""
+DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2"
 
 DEFAULT_ETHEREUM_CONTRACT_LIST="AvalancheValidatorSetRegistry"
 
@@ -39,7 +39,7 @@ ACCESS_LIST="OwnableUpgradeable"
 EXTERNAL_LIBS="ValidatorMessages"
 
 AVALANCHE_CONTRACT_LIST=
-COMMON_CONTRACT_LIST=
+COMMON_CONTRACT_LIST=""
 ETHEREUM_CONTRACT_LIST=
 HELP=
 while [ $# -gt 0 ]; do

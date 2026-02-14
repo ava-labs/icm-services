@@ -5,3 +5,4 @@
 @subnet-evm=icm-contracts/avalanche/subnet-evm
 @mocks=icm-contracts/avalanche/mocks
 @utilities=icm-contracts/avalanche/utilities
+@common=icm-contracts/common
