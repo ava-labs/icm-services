@@ -5,3 +5,5 @@
 @subnet-evm=icm-contracts/avalanche/subnet-evm
 @mocks=icm-contracts/avalanche/mocks
 @utilities=icm-contracts/avalanche/utilities
+@risc0/contracts/=lib/risc0-ethereum/contracts/src/
+@solidity-merkle-trees/=lib/solidity-merkle-trees/src/
