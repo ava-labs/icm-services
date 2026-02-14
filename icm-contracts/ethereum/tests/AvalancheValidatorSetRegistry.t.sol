@@ -9,6 +9,8 @@ import {
     Validator,
     ValidatorSet,
     ValidatorSets,
+    ValidatorChange,
+    ValidatorSetDiffPayload,
     ValidatorSetMetadata,
     ValidatorSetShard,
     ValidatorSetSignature
@@ -308,6 +310,231 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorShard);
         vm.expectRevert(bytes("No P-chain validator set registered."));
         _registry.registerValidatorSet(message, validatorBytes);
+    }
+
+    /**
+     * @dev Test applying a valid diff that adds, removes, and modifies validators.
+     * This ensures the Registry correctly orchestrates the update.
+     */
+    function testUpdateValidatorSetWithDiffSuccess() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        // Removed validators
+        ValidatorChange[] memory removed = new ValidatorChange[](1);
+        removed[0] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(validatorSet.validators[0].blsPublicKey),
+            previousWeight: validatorSet.validators[0].weight,
+            currentWeight: 0
+        });
+
+        // Modified validators
+        ValidatorChange[] memory modified = new ValidatorChange[](1);
+        modified[0] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(validatorSet.validators[1].blsPublicKey),
+            previousWeight: validatorSet.validators[1].weight,
+            currentWeight: validatorSet.validators[1].weight + 10
+        });
+
+        // Added validators
+        ValidatorChange[] memory added = new ValidatorChange[](1);
+        added[0] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(BLST.getPublicKeyFromSecret(6)),
+            previousWeight: 0,
+            currentWeight: 1
+        });
+
+        // Construct payload
+        ValidatorSetDiffPayload memory payload = ValidatorSetDiffPayload({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight + 1,
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            added: added,
+            removed: removed,
+            modified: modified
+        });
+        bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
+        ICMMessage memory icmMsg = ICMMessage({
+            rawMessage: payloadBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: chainID,
+            attestation: signature
+        });
+
+        // Execute
+        _registry.updateValidatorSetWithDiff(icmMsg);
+        ValidatorSet memory newSet = _registry.getValidatorSet(validatorSet.avalancheBlockchainID);
+        assertEq(newSet.pChainHeight, payload.currentHeight);
+
+        // Expected: 15 (Initial) - 1 (Removed) + 10 (Modified) + 1 (Added) = 25
+        assertEq(newSet.totalWeight, 25);
+        assertEq(newSet.validators.length, 5);
+    }
+
+    function testUpdateValidatorSetWithDiffRevertInvalidHeight() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory added = new ValidatorChange[](0);
+        ValidatorChange[] memory removed = new ValidatorChange[](0);
+        ValidatorChange[] memory modified = new ValidatorChange[](0);
+
+        // Payload
+        ValidatorSetDiffPayload memory payload = ValidatorSetDiffPayload({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight, // Invalid height
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            added: added,
+            removed: removed,
+            modified: modified
+        });
+        bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
+        ICMMessage memory icmMsg = ICMMessage({
+            rawMessage: payloadBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: chainID,
+            attestation: signature
+        });
+
+        // Test
+        vm.expectRevert(bytes("Invalid blockchain height"));
+        _registry.updateValidatorSetWithDiff(icmMsg);
+    }
+
+    function testUpdateValidatorSetWithDiffRevertInvalidSignature() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory added = new ValidatorChange[](0);
+        ValidatorChange[] memory removed = new ValidatorChange[](0);
+        ValidatorChange[] memory modified = new ValidatorChange[](0);
+
+        // Payload
+        ValidatorSetDiffPayload memory payload = ValidatorSetDiffPayload({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight + 1,
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            added: added,
+            removed: removed,
+            modified: modified
+        });
+        bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
+
+        // Tamper data
+        ValidatorSetDiffPayload memory tamperedPayload = payload;
+        tamperedPayload.currentTimestamp += 1;
+        bytes memory tamperedPayloadBytes =
+            ValidatorSets.serializeValidatorSetDiffPayload(tamperedPayload);
+        ICMMessage memory invalidIcmMsg = ICMMessage({
+            rawMessage: tamperedPayloadBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: validatorSet.avalancheBlockchainID,
+            attestation: signature
+        });
+
+        // Test
+        vm.expectRevert();
+        _registry.updateValidatorSetWithDiff(invalidIcmMsg);
+    }
+
+    function testUpdateValidatorSetWithDiffRevertReplayAttack() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory added = new ValidatorChange[](0);
+        ValidatorChange[] memory removed = new ValidatorChange[](1);
+        removed[0] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: BLST.unPadUncompressedBlsPublicKey(validatorSet.validators[0].blsPublicKey),
+            previousWeight: validatorSet.validators[0].weight,
+            currentWeight: 0
+        });
+        ValidatorChange[] memory modified = new ValidatorChange[](0);
+
+        // Payload
+        ValidatorSetDiffPayload memory payload = ValidatorSetDiffPayload({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight + 1,
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            added: added,
+            removed: removed,
+            modified: modified
+        });
+        bytes memory payloadBytes = ValidatorSets.serializeValidatorSetDiffPayload(payload);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, payloadBytes);
+        ICMMessage memory icmMsg = ICMMessage({
+            rawMessage: payloadBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: chainID,
+            attestation: signature
+        });
+
+        // Test
+        _registry.updateValidatorSetWithDiff(icmMsg);
+        vm.expectRevert();
+        _registry.updateValidatorSetWithDiff(icmMsg);
     }
 
     function testGetAvalancheNetworkID() public view {
