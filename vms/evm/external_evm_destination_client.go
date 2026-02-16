@@ -6,10 +6,8 @@ package evm
 import (
 	"context"
 	"crypto/ecdsa"
-	"errors"
 	"fmt"
 	"math/big"
-	"reflect"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -17,8 +15,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/AvalancheValidatorSetRegistry"
-	"github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/icm-services/vms/evm/client"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -36,12 +32,25 @@ const (
 	gasLimitForSimulation = 2_000_000
 )
 
+type PrivateKeySigner struct {
+	privateKey *ecdsa.PrivateKey
+}
+
+func (p *PrivateKeySigner) Address() common.Address {
+	return crypto.PubkeyToAddress(p.privateKey.PublicKey)
+}
+
+func (p *PrivateKeySigner) SignTx(tx *types.Transaction, evmChainID *big.Int) (*types.Transaction, error) {
+	signer := types.LatestSignerForChainID(evmChainID)
+	return types.SignTx(tx, signer, p.privateKey)
+}
+
 // ExternalEVMDestinationClient handles communication with external EVM chains
 // that have AvalancheValidatorSetRegistry contracts deployed.
 //
 // Implements vms.DestinationClient interface.
 type ExternalEVMDestinationClient struct {
-	ethClient       client.EthClient
+	ethClient       EthClient
 	logger          logging.Logger
 	chainID         string
 	evmChainID      *big.Int
@@ -50,44 +59,11 @@ type ExternalEVMDestinationClient struct {
 	blockGasLimit   uint64
 
 	// Gas fee configuration
-	maxBaseFee                 *big.Int
-	suggestedPriorityFeeBuffer *big.Int
-	maxPriorityFeePerGas       *big.Int
-	txInclusionTimeout         time.Duration
+	gasFeeConfig       *GasFeeConfig
+	txInclusionTimeout time.Duration
 
 	// Concurrent senders for transaction processing
-	concurrentSenders []*externalEVMConcurrentSender
-}
-
-// externalEVMConcurrentSender handles transaction signing and sending for one private key.
-// Each sender has its own goroutine that processes transactions sequentially,
-// ensuring proper nonce management while allowing concurrent receipt waiting.
-type externalEVMConcurrentSender struct {
-	logger            logging.Logger
-	privateKey        *ecdsa.PrivateKey
-	address           common.Address
-	currentNonce      uint64
-	messageChan       chan externalEVMTxData
-	queuedTxSemaphore chan struct{}
-	destClient        *ExternalEVMDestinationClient
-}
-
-// externalEVMTxData holds the data for a transaction to be sent
-type externalEVMTxData struct {
-	to            common.Address
-	gasLimit      uint64
-	gasFeeCap     *big.Int
-	gasTipCap     *big.Int
-	callData      []byte
-	signedMessage *avalancheWarp.Message
-	resultChan    chan externalEVMTxResult
-}
-
-// externalEVMTxResult holds the result of a transaction
-type externalEVMTxResult struct {
-	receipt *types.Receipt
-	err     error
-	txID    common.Hash
+	concurrentSenders []*readonlyConcurrentSigner
 }
 
 // NewExternalEVMDestinationClient creates a new external EVM destination client.
@@ -121,7 +97,7 @@ func NewExternalEVMDestinationClient(
 	}
 
 	// Wrap the client to add Avalanche-specific method stubs
-	wrappedClient := client.NewExternalEthClientWrapper(rawClient)
+	wrappedClient := NewExternalEthClientWrapper(rawClient)
 
 	// Verify chain ID matches
 	networkChainID, err := rawClient.ChainID(context.Background())
@@ -131,23 +107,25 @@ func NewExternalEVMDestinationClient(
 	if networkChainID.Cmp(evmChainID) != 0 {
 		return nil, fmt.Errorf("chain ID mismatch: expected %s, got %s", chainID, networkChainID.String())
 	}
-
-	destClient := &ExternalEVMDestinationClient{
-		ethClient:                  wrappedClient,
-		logger:                     logger,
-		chainID:                    chainID,
-		evmChainID:                 evmChainID,
-		registryAddress:            registryAddress,
-		rpcEndpointURL:             rpcEndpointURL,
-		blockGasLimit:              blockGasLimit,
+	gasFeeData := &GasFeeConfig{
 		maxBaseFee:                 maxBaseFee,
 		suggestedPriorityFeeBuffer: suggestedPriorityFeeBuffer,
 		maxPriorityFeePerGas:       maxPriorityFeePerGas,
-		txInclusionTimeout:         time.Duration(txInclusionTimeoutSeconds) * time.Second,
+	}
+	destClient := &ExternalEVMDestinationClient{
+		ethClient:          wrappedClient,
+		logger:             logger,
+		chainID:            chainID,
+		evmChainID:         evmChainID,
+		registryAddress:    registryAddress,
+		rpcEndpointURL:     rpcEndpointURL,
+		blockGasLimit:      blockGasLimit,
+		gasFeeConfig:       gasFeeData,
+		txInclusionTimeout: time.Duration(txInclusionTimeoutSeconds) * time.Second,
 	}
 
 	// Initialize concurrent senders from private keys
-	concurrentSenders := make([]*externalEVMConcurrentSender, len(privateKeyHexes))
+	concurrentSenders := make([]*readonlyConcurrentSigner, len(privateKeyHexes))
 	for i, pkHex := range privateKeyHexes {
 		privateKey, err := crypto.HexToECDSA(pkHex)
 		if err != nil {
@@ -163,20 +141,19 @@ func NewExternalEVMDestinationClient(
 			return nil, fmt.Errorf("failed to get nonce for sender %s: %w", address.Hex(), err)
 		}
 
-		cs := &externalEVMConcurrentSender{
+		cs := &concurrentSigner{
 			logger:            senderLogger,
-			privateKey:        privateKey,
-			address:           address,
+			signer:            &PrivateKeySigner{privateKey: privateKey},
 			currentNonce:      nonce,
-			messageChan:       make(chan externalEVMTxData),
+			messageChan:       make(chan txData),
 			queuedTxSemaphore: make(chan struct{}, externalEVMPoolTxsPerAccount),
-			destClient:        destClient,
+			destinationClient: destClient,
 		}
 
 		// Start the transaction processing goroutine
 		go cs.processIncomingTransactions()
 
-		concurrentSenders[i] = cs
+		concurrentSenders[i] = (*readonlyConcurrentSigner)(cs)
 		senderLogger.Info("Initialized concurrent sender", zap.Uint64("nonce", nonce))
 	}
 
@@ -192,50 +169,42 @@ func NewExternalEVMDestinationClient(
 	return destClient, nil
 }
 
+func (c *ExternalEVMDestinationClient) EVMChainID() *big.Int {
+	return c.evmChainID
+}
+
+func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
+	return c.ethClient
+}
+
+func (c *ExternalEVMDestinationClient) Logger() logging.Logger {
+	return c.logger
+}
+
+func (c *ExternalEVMDestinationClient) GasFeeConfig() *GasFeeConfig {
+	return c.gasFeeConfig
+}
+
+func (c *ExternalEVMDestinationClient) FeeFactor() int64 {
+	return externalEVMDefaultBaseFeeFactor
+}
+
+func (c *ExternalEVMDestinationClient) ConcurrentSigners() []*readonlyConcurrentSigner {
+	return c.concurrentSenders
+}
+
+func (c *ExternalEVMDestinationClient) AccessList(_ txData) types.AccessList {
+	return types.AccessList{}
+}
+
+func (c *ExternalEVMDestinationClient) TxInclusionTimeout() time.Duration {
+	return c.txInclusionTimeout
+}
+
 // getFeePerGas calculates the gas fee cap and gas tip cap for transactions.
+// nolint:unused
 func (c *ExternalEVMDestinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	var maxBaseFee *big.Int
-	if c.maxBaseFee != nil && c.maxBaseFee.Cmp(big.NewInt(0)) > 0 {
-		maxBaseFee = c.maxBaseFee
-	} else {
-		// Get base fee from the latest block header
-		baseFeeCtx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-		defer cancel()
-
-		header, err := c.ethClient.HeaderByNumber(baseFeeCtx, nil) // nil = latest block
-		if err != nil {
-			c.logger.Error("Failed to get latest block header", zap.Error(err))
-			return nil, nil, err
-		}
-		if header.BaseFee == nil {
-			c.logger.Error("Chain does not support EIP-1559 (no base fee in header)")
-			return nil, nil, errors.New("chain does not support EIP-1559")
-		}
-		maxBaseFee = new(big.Int).Mul(header.BaseFee, big.NewInt(externalEVMDefaultBaseFeeFactor))
-	}
-
-	// Get suggested gas tip cap
-	gasTipCapCtx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-	defer cancel()
-
-	gasTipCap, err := c.ethClient.SuggestGasTipCap(gasTipCapCtx)
-	if err != nil {
-		c.logger.Error("Failed to get gas tip cap", zap.Error(err))
-		return nil, nil, err
-	}
-
-	// Add buffer to suggested tip
-	if c.suggestedPriorityFeeBuffer != nil {
-		gasTipCap = new(big.Int).Add(gasTipCap, c.suggestedPriorityFeeBuffer)
-	}
-
-	// Cap at max priority fee
-	if c.maxPriorityFeePerGas != nil && gasTipCap.Cmp(c.maxPriorityFeePerGas) > 0 {
-		gasTipCap = c.maxPriorityFeePerGas
-	}
-
-	gasFeeCap := new(big.Int).Add(maxBaseFee, gasTipCap)
-	return gasFeeCap, gasTipCap, nil
+	return getFeePerGas(c)
 }
 
 // SendTx sends a transaction to an external EVM chain.
@@ -247,246 +216,39 @@ func (c *ExternalEVMDestinationClient) SendTx(
 	gasLimit uint64,
 	callData []byte,
 ) (*types.Receipt, error) {
-	gasFeeCap, gasTipCap, err := c.getFeePerGas()
-	if err != nil {
-		return nil, err
-	}
-
-	resultChan := make(chan externalEVMTxResult)
-	to := common.HexToAddress(toAddress)
-	txData := externalEVMTxData{
-		to:            to,
-		gasLimit:      gasLimit,
-		gasFeeCap:     gasFeeCap,
-		gasTipCap:     gasTipCap,
-		callData:      callData,
-		signedMessage: signedMessage,
-		resultChan:    resultChan,
-	}
-
-	// Build select cases for eligible senders
-	var cases []reflect.SelectCase
-	for _, cs := range c.concurrentSenders {
-		if deliverers.Len() != 0 && !deliverers.Contains(cs.address) {
-			c.logger.Debug("Sender not eligible to deliver message",
-				zap.Stringer("address", cs.address))
-			continue
-		}
-		c.logger.Debug("Sender eligible to deliver message",
-			zap.Stringer("address", cs.address))
-		cases = append(cases, reflect.SelectCase{
-			Dir:  reflect.SelectSend,
-			Chan: reflect.ValueOf(cs.messageChan),
-			Send: reflect.ValueOf(txData),
-		})
-	}
-
-	if len(cases) == 0 {
-		return nil, errors.New("no eligible senders available")
-	}
-
-	// Select an available, eligible sender
-	reflect.Select(cases)
-
-	// Wait for result with timeout
-	timeout := time.NewTimer(c.txInclusionTimeout + utils.DefaultRPCTimeout)
-	defer timeout.Stop()
-
-	select {
-	case result, ok := <-resultChan:
-		if !ok {
-			return nil, errors.New("result channel closed unexpectedly")
-		}
-		if result.err != nil {
-			c.logger.Error("Transaction failed",
-				zap.Error(result.err),
-				zap.Stringer("txID", result.txID))
-			return nil, result.err
-		}
-		return result.receipt, nil
-	case <-timeout.C:
-		return nil, errors.New("timed out waiting for transaction result")
-	}
+	return SendTx(c, signedMessage, deliverers, toAddress, gasLimit, callData, c.txInclusionTimeout)
 }
 
-// processIncomingTransactions is the worker goroutine for each sender.
-// It processes transactions sequentially to ensure proper nonce management.
-func (s *externalEVMConcurrentSender) processIncomingTransactions() {
-	for {
-		// Acquire semaphore slot (blocks if too many pending txs)
-		s.queuedTxSemaphore <- struct{}{}
-		s.logger.Debug("Waiting for incoming transaction")
-
-		txData := <-s.messageChan
-
-		err := s.issueTransaction(txData)
-		if err != nil {
-			s.logger.Error("Failed to issue transaction", zap.Error(err))
-			// Release semaphore and send error result
-			<-s.queuedTxSemaphore
-			txData.resultChan <- externalEVMTxResult{
-				receipt: nil,
-				err:     err,
-			}
-			close(txData.resultChan)
-		}
-	}
+// SenderAddresses returns the addresses of all senders.
+func (c *ExternalEVMDestinationClient) SenderAddresses() []common.Address {
+	return SenderAddresses(c)
 }
 
-// issueTransaction sends a transaction to the external EVM.
-// Must be called sequentially per sender (managed by processIncomingTransactions).
-// The callData should be pre-encoded by the caller using ABI bindings.
-func (s *externalEVMConcurrentSender) issueTransaction(data externalEVMTxData) error {
-	s.logger.Debug("Processing transaction", zap.Stringer("to", data.to))
-
-	// Create the transaction with pre-encoded callData
-	// The callData is packed by the caller (e.g., registryABI.Pack("updateValidatorSet", ...))
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   s.destClient.evmChainID,
-		Nonce:     s.currentNonce,
-		To:        &data.to,
-		Gas:       data.gasLimit,
-		GasFeeCap: data.gasFeeCap,
-		GasTipCap: data.gasTipCap,
-		Value:     big.NewInt(0),
-		Data:      data.callData, // Pre-encoded by caller
-	})
-
-	// Create signer and sign the transaction
-	signer := types.LatestSignerForChainID(s.destClient.evmChainID)
-	signedTx, err := types.SignTx(tx, signer, s.privateKey)
-	if err != nil {
-		s.logger.Error("Failed to sign transaction", zap.Error(err))
-		return err
-	}
-
-	// Send the transaction
-	sendCtx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-	defer cancel()
-
-	s.logger.Info("Sending transaction to external EVM",
-		zap.Stringer("txID", signedTx.Hash()),
-		zap.Stringer("from", s.address),
-		zap.Stringer("to", data.to),
-		zap.Uint64("nonce", s.currentNonce),
-		zap.Uint64("gasLimit", data.gasLimit),
-		zap.Stringer("gasFeeCap", data.gasFeeCap),
-		zap.Stringer("gasTipCap", data.gasTipCap),
-	)
-
-	if err := s.destClient.ethClient.SendTransaction(sendCtx, signedTx); err != nil {
-		s.logger.Error("Failed to send transaction", zap.Error(err))
-		return err
-	}
-
-	s.logger.Info("Transaction sent successfully", zap.Stringer("txID", signedTx.Hash()))
-	s.currentNonce++
-
-	// Wait for receipt asynchronously
-	go s.waitForReceipt(signedTx.Hash(), data.resultChan)
-
-	return nil
+// Client returns the underlying ethclient.
+func (c *ExternalEVMDestinationClient) Client() Client {
+	return c.ethClient
 }
 
-// waitForReceipt polls for transaction receipt and sends result to channel.
-func (s *externalEVMConcurrentSender) waitForReceipt(
-	txHash common.Hash,
-	resultChan chan<- externalEVMTxResult,
-) {
-	defer close(resultChan)
-
-	var receipt *types.Receipt
-	operation := func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-		defer cancel()
-
-		var err error
-		receipt, err = s.destClient.ethClient.TransactionReceipt(ctx, txHash)
-		return err
-	}
-
-	notify := func(err error, duration time.Duration) {
-		s.logger.Debug("Waiting for receipt, retrying...",
-			zap.Stringer("txID", txHash),
-			zap.Duration("retryIn", duration),
-			zap.Error(err))
-	}
-
-	err := utils.WithRetriesTimeout(operation, notify, s.destClient.txInclusionTimeout)
-	if err != nil {
-		resultChan <- externalEVMTxResult{
-			receipt: nil,
-			err:     fmt.Errorf("failed to get transaction receipt: %w", err),
-			txID:    txHash,
-		}
-		return
-	}
-
-	<-s.queuedTxSemaphore
-
-	resultChan <- externalEVMTxResult{
-		receipt: receipt,
-		err:     nil,
-		txID:    txHash,
-	}
+// DestinationBlockchainID returns empty for external chains.
+// External chains don't have Avalanche blockchain IDs.
+// This method is required by the interface but not used for external EVMs.
+func (c *ExternalEVMDestinationClient) DestinationBlockchainID() ids.ID {
+	return ids.Empty
 }
 
-// SimulateCall simulates a contract call and returns the revert reason if it fails.
-// This is useful for debugging why a transaction might fail before sending it.
-func (c *ExternalEVMDestinationClient) SimulateCall(
-	ctx context.Context,
-	toAddress string,
-	callData []byte,
-) ([]byte, error) {
-	to := common.HexToAddress(toAddress)
-
-	// Use the first sender's address as the "from" address for simulation
-	var fromAddress common.Address
-	if len(c.concurrentSenders) > 0 {
-		fromAddress = c.concurrentSenders[0].address
-	}
-
-	callMsg := ethereum.CallMsg{
-		From: fromAddress,
-		To:   &to,
-		Gas:  gasLimitForSimulation, // Use same gas limit as actual transactions
-		Data: callData,
-	}
-
-	result, err := c.ethClient.CallContract(ctx, callMsg, nil) // nil = latest block
-	if err != nil {
-		// Try to extract revert reason from error
-		c.logger.Debug("SimulateCall error details",
-			zap.Error(err),
-			zap.String("errorType", fmt.Sprintf("%T", err)),
-		)
-	}
-	return result, err
+// BlockGasLimit returns the configured gas limit for transactions.
+func (c *ExternalEVMDestinationClient) BlockGasLimit() uint64 {
+	return c.blockGasLimit
 }
 
-// SimulateCallAtBlock simulates a contract call at a specific block number.
-func (c *ExternalEVMDestinationClient) SimulateCallAtBlock(
-	ctx context.Context,
-	toAddress string,
-	callData []byte,
-	blockNumber *big.Int,
-) ([]byte, error) {
-	to := common.HexToAddress(toAddress)
+// GetRPCEndpointURL returns the RPC endpoint URL for this external chain.
+func (c *ExternalEVMDestinationClient) GetRPCEndpointURL() string {
+	return c.rpcEndpointURL
+}
 
-	var fromAddress common.Address
-	if len(c.concurrentSenders) > 0 {
-		fromAddress = c.concurrentSenders[0].address
-	}
-
-	callMsg := ethereum.CallMsg{
-		From: fromAddress,
-		To:   &to,
-		Gas:  gasLimitForSimulation,
-		Data: callData,
-	}
-
-	result, err := c.ethClient.CallContract(ctx, callMsg, blockNumber)
-	return result, err
+// RegistryAddress returns the registry contract address for this external chain.
+func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
+	return c.registryAddress
 }
 
 // GetPChainHeightForDestination queries the registry contract for its known P-chain height.
@@ -496,7 +258,7 @@ func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 	c.logger.Debug("Querying registry for P-chain height",
 		zap.String("registryAddress", c.registryAddress.Hex()))
 
-	// Get current validator set to find its P-chain height
+	// Get the current validator set to find its P-chain height
 	registryABI, err := validatorregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
@@ -624,38 +386,60 @@ func (c *ExternalEVMDestinationClient) GetCurrentValidatorSetID(ctx context.Cont
 	return 0, fmt.Errorf("unexpected result format from getCurrentValidatorSetID")
 }
 
-// Client returns the underlying ethclient.
-func (c *ExternalEVMDestinationClient) Client() Client {
-	return c.ethClient
-}
+// SimulateCall simulates a contract call and returns the revert reason if it fails.
+// This is useful for debugging why a transaction might fail before sending it.
+func (c *ExternalEVMDestinationClient) SimulateCall(
+	ctx context.Context,
+	toAddress string,
+	callData []byte,
+) ([]byte, error) {
+	to := common.HexToAddress(toAddress)
 
-// SenderAddresses returns the addresses of all senders.
-func (c *ExternalEVMDestinationClient) SenderAddresses() []common.Address {
-	addresses := make([]common.Address, len(c.concurrentSenders))
-	for i, cs := range c.concurrentSenders {
-		addresses[i] = cs.address
+	// Use the first sender's address as the "from" address for simulation
+	var fromAddress common.Address
+	if len(c.concurrentSenders) > 0 {
+		fromAddress = c.concurrentSenders[0].signer.Address()
 	}
-	return addresses
+
+	callMsg := ethereum.CallMsg{
+		From: fromAddress,
+		To:   &to,
+		Gas:  gasLimitForSimulation, // Use same gas limit as actual transactions
+		Data: callData,
+	}
+
+	result, err := c.ethClient.CallContract(ctx, callMsg, nil) // nil = latest block
+	if err != nil {
+		// Try to extract revert reason from error
+		c.logger.Debug("SimulateCall error details",
+			zap.Error(err),
+			zap.String("errorType", fmt.Sprintf("%T", err)),
+		)
+	}
+	return result, err
 }
 
-// DestinationBlockchainID returns empty for external chains.
-// External chains don't have Avalanche blockchain IDs.
-// This method is required by the interface but not used for external EVMs.
-func (c *ExternalEVMDestinationClient) DestinationBlockchainID() ids.ID {
-	return ids.Empty
-}
+// SimulateCallAtBlock simulates a contract call at a specific block number.
+func (c *ExternalEVMDestinationClient) SimulateCallAtBlock(
+	ctx context.Context,
+	toAddress string,
+	callData []byte,
+	blockNumber *big.Int,
+) ([]byte, error) {
+	to := common.HexToAddress(toAddress)
 
-// BlockGasLimit returns the configured gas limit for transactions.
-func (c *ExternalEVMDestinationClient) BlockGasLimit() uint64 {
-	return c.blockGasLimit
-}
+	var fromAddress common.Address
+	if len(c.concurrentSenders) > 0 {
+		fromAddress = c.concurrentSenders[0].signer.Address()
+	}
 
-// GetRPCEndpointURL returns the RPC endpoint URL for this external chain.
-func (c *ExternalEVMDestinationClient) GetRPCEndpointURL() string {
-	return c.rpcEndpointURL
-}
+	callMsg := ethereum.CallMsg{
+		From: fromAddress,
+		To:   &to,
+		Gas:  gasLimitForSimulation,
+		Data: callData,
+	}
 
-// RegistryAddress returns the registry contract address for this external chain.
-func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
-	return c.registryAddress
+	result, err := c.ethClient.CallContract(ctx, callMsg, blockNumber)
+	return result, err
 }
