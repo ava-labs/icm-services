@@ -156,7 +156,7 @@ func TeleporterRegistry(
 
 	// Update teleporter with the new TeleporterMessengers
 	for _, l1 := range network.GetAllL1Infos() {
-		teleporter.SetTeleporter(newTeleporterAddress, l1)
+		teleporter.SetTeleporter(newTeleporterAddress, l1.BlockchainID)
 	}
 
 	teleporter.SendExampleCrossChainMessageAndVerify(

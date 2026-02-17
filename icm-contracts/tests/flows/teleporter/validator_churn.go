@@ -28,7 +28,6 @@ func ValidatorChurn(
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	//
@@ -136,10 +135,9 @@ func ValidatorChurn(
 	// Attempt to deliver the warp message signed by the old validator set. This should fail.
 	//
 	// Construct the transaction to send the Warp message to the destination chain
-	signedTx := utils.CreateReceiveCrossChainMessageTransaction(
+	signedTx := teleporter.CreateReceiveCrossChainMessageTransaction(
 		ctx,
 		signedWarpMessage,
-		teleporterContractAddress,
 		fundedKey,
 		l1BInfo,
 	)
