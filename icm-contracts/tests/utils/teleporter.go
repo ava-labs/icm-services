@@ -40,9 +40,8 @@ var (
 )
 
 type ChainTeleporterInfo struct {
-	TeleporterRegistryAddress common.Address
-
-	TeleporterMessengerAddress common.Address
+	teleporterRegistryAddress common.Address
+	teleporterMessengerAddress common.Address
 }
 
 type TeleporterTestInfo map[ids.ID]*ChainTeleporterInfo
@@ -53,6 +52,14 @@ func NewTeleporterTestInfo(l1s []interfaces.L1TestInfo) TeleporterTestInfo {
 		t[l1.BlockchainID] = &ChainTeleporterInfo{}
 	}
 	return t
+}
+
+func (t TeleporterTestInfo) StringifyRegistryAddresses() map[string]string {
+	registryAddresseses := make(map[string]string)
+	for l1, teleporterInfo := range t {
+		registryAddresseses[l1.Hex()] = teleporterInfo.teleporterRegistryAddress.Hex()
+	}
+	return registryAddresseses
 }
 
 func (t TeleporterTestInfo) TeleporterMessenger(
@@ -67,7 +74,7 @@ func (t TeleporterTestInfo) TeleporterMessenger(
 }
 
 func (t TeleporterTestInfo) TeleporterMessengerAddress(l1 interfaces.L1TestInfo) common.Address {
-	return t[l1.BlockchainID].TeleporterMessengerAddress
+	return t[l1.BlockchainID].teleporterMessengerAddress
 }
 
 func (t TeleporterTestInfo) TeleporterRegistry(
@@ -82,17 +89,17 @@ func (t TeleporterTestInfo) TeleporterRegistry(
 }
 
 func (t TeleporterTestInfo) TeleporterRegistryAddress(l1 interfaces.L1TestInfo) common.Address {
-	return t[l1.BlockchainID].TeleporterRegistryAddress
+	return t[l1.BlockchainID].teleporterRegistryAddress
 }
 
 func (t TeleporterTestInfo) SetTeleporter(address common.Address, blockchainID ids.ID) {
 	info := t[blockchainID]
-	info.TeleporterMessengerAddress = address
+	info.teleporterMessengerAddress = address
 }
 
 func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, blockchainID ids.ID) {
 	info := t[blockchainID]
-	info.TeleporterRegistryAddress = address
+	info.teleporterRegistryAddress = address
 }
 
 func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
@@ -113,7 +120,7 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	info := t[l1.BlockchainID]
-	info.TeleporterRegistryAddress = teleporterRegistryAddress
+	info.teleporterRegistryAddress = teleporterRegistryAddress
 }
 
 func (t TeleporterTestInfo) RelayTeleporterMessage(
@@ -850,7 +857,7 @@ func SaveRegistyAddress(
 	// Save the Teleporter registry address and validator addresses to files
 	registryAddresseses := make(map[string]string)
 	for l1, teleporterInfo := range teleporterInfo {
-		registryAddresseses[l1.Hex()] = teleporterInfo.TeleporterRegistryAddress.Hex()
+		registryAddresseses[l1.Hex()] = teleporterInfo.teleporterRegistryAddress.Hex()
 	}
 
 	jsonData, err := json.Marshal(registryAddresseses)
