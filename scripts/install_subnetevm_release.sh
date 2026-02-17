@@ -45,18 +45,40 @@ extract_archive() {
   fi
 }
 
+is_valid_archive() {
+  local archive_path="${1}"
+  if [[ ${archive_path} == *.tar.gz ]]; then
+    gzip -t "${archive_path}" 2>/dev/null
+    return $?
+  elif [[ ${archive_path} == *.zip ]]; then
+    unzip -t "${archive_path}" > /dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
 # first check if we already have the archive
-if [[ -f ${SUBNET_EVM_DOWNLOAD_PATH} ]]; then
-  # if the download path already exists, extract and exit
-  echo "found subnet-evm ${SUBNET_EVM_VERSION} at ${SUBNET_EVM_DOWNLOAD_PATH}"
+if [[ -f ${SUBNET_EVM_DOWNLOAD_PATH} ]] && is_valid_archive "${SUBNET_EVM_DOWNLOAD_PATH}"; then
+  # if the download path already exists and is valid, extract and exit
+  echo "found valid subnet-evm ${SUBNET_EVM_VERSION} at ${SUBNET_EVM_DOWNLOAD_PATH}"
 
   extract_archive
 else
+  # Remove any invalid or partial download
+  if [[ -f ${SUBNET_EVM_DOWNLOAD_PATH} ]]; then
+    echo "removing invalid or partial download at ${SUBNET_EVM_DOWNLOAD_PATH}"
+    rm -f ${SUBNET_EVM_DOWNLOAD_PATH}
+  fi
+
   # try to download the archive if it exists
   if curl -s --head --request GET ${SUBNET_EVM_DOWNLOAD_URL} | grep "302" > /dev/null; then
     echo "${SUBNET_EVM_DOWNLOAD_URL} found"
     echo "downloading to ${SUBNET_EVM_DOWNLOAD_PATH}"
-    curl -L ${SUBNET_EVM_DOWNLOAD_URL} -o ${SUBNET_EVM_DOWNLOAD_PATH}
+    if ! curl -f -L ${SUBNET_EVM_DOWNLOAD_URL} -o ${SUBNET_EVM_DOWNLOAD_PATH}; then
+      rm -f ${SUBNET_EVM_DOWNLOAD_PATH}
+      echo "Failed to download subnet-evm from ${SUBNET_EVM_DOWNLOAD_URL}"
+      exit 1
+    fi
 
     extract_archive
   else
