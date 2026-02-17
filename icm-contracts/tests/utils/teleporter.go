@@ -40,7 +40,7 @@ var (
 )
 
 type ChainTeleporterInfo struct {
-	teleporterRegistryAddress common.Address
+	teleporterRegistryAddress  common.Address
 	teleporterMessengerAddress common.Address
 }
 
