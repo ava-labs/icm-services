@@ -6,3 +6,4 @@
 @mocks=icm-contracts/avalanche/mocks
 @utilities=icm-contracts/avalanche/utilities
 @common=icm-contracts/common
+@ethereum=icm-contracts/ethereum
