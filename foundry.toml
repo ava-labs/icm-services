@@ -18,7 +18,6 @@ evm_version = 'shanghai'
 src = 'icm-contracts/ethereum/'
 solc_version = '0.8.30'
 evm_version = 'prague'
-viaIR = true
 
 [fmt]
 line_length = 100

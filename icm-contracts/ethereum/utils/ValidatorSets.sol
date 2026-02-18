@@ -276,67 +276,117 @@ library ValidatorSets {
      * @notice Parses a ValidatorSetDiff payload from serialized bytes
      * @dev The payload type ID must be 5 for ValidatorSetDiff
      * @param data The serialized ValidatorSetDiff payload
-     * @return The parsed ValidatorSetDiff
+     * @return diff The parsed ValidatorSetDiff
      */
     function parseValidatorSetDiff(
         bytes memory data,
         uint256 currentValidatorCount
-    ) public pure returns (ValidatorSetDiff memory) {
-        // Check the codec ID is 0
-        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
-
-        // Parse the payload type ID, and confirm it is 5 for ValidatorSetDiff
-        uint32 payloadTypeID = uint32(bytes4(ByteSlicer.slice(data, 2, 4)));
-        require(payloadTypeID == 5, "Invalid ValidatorSetDiff payload type ID");
-
-        uint256 offset = 6;
-
-        // Parse the avalancheBlockchainID (32 bytes)
-        bytes32 avalancheBlockchainID = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
-        offset += 32;
-
-        // Parse previous state
-        uint64 previousHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
-        offset += 8;
-        uint64 previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
-        offset += 8;
-        bytes32 previousValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
-        offset += 32;
-
-        // Parse current state
-        uint64 currentHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
-        offset += 8;
-        uint64 currentTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
-        offset += 8;
-        bytes32 currentValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
-        offset += 32;
-
-        // Parse validator changes
-        uint32 numChanges = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
-        offset += 4;
-        uint32 numAdded = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
-        offset += 4;
-        ValidatorChange[] memory changes = new ValidatorChange[](numChanges);
-        uint256 numRemoved = 0;
-        for (uint32 i = 0; i < numChanges; i++) {
-            (changes[i], offset) = parseValidatorChange(data, offset);
-            if (changes[i].weight == 0) numRemoved++;
+    ) public pure returns (ValidatorSetDiff memory diff) {
+        {
+            require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+            uint32 payloadTypeID = uint32(bytes4(ByteSlicer.slice(data, 2, 4)));
+            require(payloadTypeID == 5, "Invalid ValidatorSetDiff payload type ID");
         }
-        _sortValidatorChanges(changes);
-        uint256 newSize = currentValidatorCount + numAdded - numRemoved;
-        return ValidatorSetDiff({
-            avalancheBlockchainID: avalancheBlockchainID,
-            previousHeight: previousHeight,
-            previousTimestamp: previousTimestamp,
-            previousValidatorSetHash: previousValidatorSetHash,
-            currentHeight: currentHeight,
-            currentTimestamp: currentTimestamp,
-            currentValidatorSetHash: currentValidatorSetHash,
-            changes: changes,
-            numAdded: numAdded,
-            newSize: newSize
-        });
+        uint256 offset = 6;
+        diff.avalancheBlockchainID = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+        offset += 32;
+        // Previous State
+        {
+            diff.previousHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            offset += 16;
+            diff.previousValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+            offset += 32;
+        }
+
+        // Current State
+        {
+            diff.currentHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.currentTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            offset += 16;
+            diff.currentValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+            offset += 32;
+        }
+        // Validator Changes
+        {
+            uint32 numChanges = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+            offset += 4;
+            diff.numAdded = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+            offset += 4;
+            diff.changes = new ValidatorChange[](numChanges);
+            uint256 numRemoved = 0;
+            for (uint32 i = 0; i < numChanges; ) {
+                (diff.changes[i], offset) = parseValidatorChange(data, offset);
+                if (diff.changes[i].weight == 0) {
+                    numRemoved++;
+                }
+                unchecked { ++i; }
+            }
+            _sortValidatorChanges(diff.changes);
+            diff.newSize = currentValidatorCount + diff.numAdded - numRemoved;
+        }
+        return diff;
     }
+
+    // /**
+    //  * @notice Parses a ValidatorSetDiff payload from serialized bytes
+    //  * @dev The payload type ID must be 5 for ValidatorSetDiff
+    //  * @param data The serialized ValidatorSetDiff payload
+    //  * @return The parsed ValidatorSetDiff
+    //  */
+    // function parseValidatorSetDiff(
+    //     bytes memory data,
+    //     uint256 currentValidatorCount
+    // ) public pure returns (ValidatorSetDiff memory) {
+    //     // Check the codec ID is 0
+    //     require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+    //     // Parse the payload type ID, and confirm it is 5 for ValidatorSetDiff
+    //     uint32 payloadTypeID = uint32(bytes4(ByteSlicer.slice(data, 2, 4)));
+    //     require(payloadTypeID == 5, "Invalid ValidatorSetDiff payload type ID");
+    //     uint256 offset = 6;
+    //     // Parse the avalancheBlockchainID (32 bytes)
+    //     bytes32 avalancheBlockchainID = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+    //     offset += 32;
+    //     // Parse previous state
+    //     uint64 previousHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+    //     offset += 8;
+    //     uint64 previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+    //     offset += 8;
+    //     bytes32 previousValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+    //     offset += 32;
+    //     // Parse current state
+    //     uint64 currentHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+    //     offset += 8;
+    //     uint64 currentTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+    //     offset += 8;
+    //     bytes32 currentValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+    //     offset += 32;
+    //     // Parse validator changes
+    //     uint32 numChanges = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+    //     offset += 4;
+    //     uint32 numAdded = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+    //     offset += 4;
+    //     ValidatorChange[] memory changes = new ValidatorChange[](numChanges);
+    //     uint256 numRemoved = 0;
+    //     for (uint32 i = 0; i < numChanges; i++) {
+    //         (changes[i], offset) = parseValidatorChange(data, offset);
+    //         if (changes[i].weight == 0) numRemoved++;
+    //     }
+    //     _sortValidatorChanges(changes);
+    //     uint256 newSize = currentValidatorCount + numAdded - numRemoved;
+    //     return ValidatorSetDiff({
+    //         avalancheBlockchainID: avalancheBlockchainID,
+    //         previousHeight: previousHeight,
+    //         previousTimestamp: previousTimestamp,
+    //         previousValidatorSetHash: previousValidatorSetHash,
+    //         currentHeight: currentHeight,
+    //         currentTimestamp: currentTimestamp,
+    //         currentValidatorSetHash: currentValidatorSetHash,
+    //         changes: changes,
+    //         numAdded: numAdded,
+    //         newSize: newSize
+    //     });
+    // }
 
     /**
      * @notice Parses a single ValidatorChange from serialized bytes
@@ -349,21 +399,14 @@ library ValidatorSets {
         bytes memory data,
         uint256 offset
     ) public pure returns (ValidatorChange memory change, uint256 newOffset) {
-        // Parse nodeID (20 bytes)
         bytes20 nodeID = bytes20(ByteSlicer.slice(data, offset, 20));
         offset += 20;
-
-        // Parse uncompressed BLS public key (96 bytes)
         bytes memory unformattedPublicKey = ByteSlicer.slice(data, offset, 96);
         bytes memory blsPublicKey = BLST.padUncompressedBLSPublicKey(unformattedPublicKey);
         offset += 96;
-
-        // Parse currentWeight (8 bytes)
         uint64 weight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
         offset += 8;
-
         change = ValidatorChange({nodeID: nodeID, blsPublicKey: blsPublicKey, weight: weight});
-
         return (change, offset);
     }
 
@@ -597,38 +640,6 @@ library ValidatorSets {
         uint256 scaledTotalWeight = QUORUM_NUM * uint256(totalWeight);
         uint256 scaledSignatureWeight = QUORUM_DEN * uint256(signatureWeight);
         return scaledTotalWeight <= scaledSignatureWeight;
-    }
-
-    /**
-     * @notice Generic Binary Search.
-     * @return found True if the key exists.
-     * @return item The ValidatorChange struct found (or empty if not found).
-     */
-    function _searchValidators(
-        ValidatorChange[] memory list,
-        bytes memory key
-    ) internal pure returns (bool found, ValidatorChange memory item) {
-        if (list.length == 0) return (false, item);
-
-        uint256 low = 0;
-        uint256 high = list.length - 1;
-
-        while (low <= high) {
-            uint256 mid = (low + high) / 2;
-            int256 cmp = ByteComparator.compare(list[mid].blsPublicKey, key);
-
-            if (cmp == 0) {
-                return (true, list[mid]);
-            }
-
-            if (cmp < 0) {
-                low = mid + 1;
-            } else {
-                if (mid == 0) break;
-                high = mid - 1;
-            }
-        }
-        return (false, item);
     }
 
     /**
