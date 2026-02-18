@@ -290,23 +290,26 @@ func checkExpectedRewardAmounts(
 	// it should be able to redeem {feePerMessage}*2. Otherwise,
 	// each distinct reward redeemer should be able to redeem {feePerMessage}.
 	if receiveEvent1.RewardRedeemer == receiveEvent2.RewardRedeemer {
-		amount, err := teleporter[sourceL1.BlockchainID].TeleporterMessenger.CheckRelayerRewardAmount(
+		amount, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent1.RewardRedeemer,
-			tokenAddress)
+			tokenAddress,
+		)
 		Expect(err).Should(BeNil())
 		Expect(amount).Should(Equal(new(big.Int).Mul(feePerMessage, big.NewInt(2))))
 	} else {
-		amount1, err := teleporter[sourceL1.BlockchainID].TeleporterMessenger.CheckRelayerRewardAmount(
+		amount1, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent1.RewardRedeemer,
-			tokenAddress)
+			tokenAddress,
+		)
 		Expect(err).Should(BeNil())
 		Expect(amount1).Should(Equal(feePerMessage))
-		amount2, err := teleporter[sourceL1.BlockchainID].TeleporterMessenger.CheckRelayerRewardAmount(
+		amount2, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent2.RewardRedeemer,
-			tokenAddress)
+			tokenAddress,
+		)
 		Expect(err).Should(BeNil())
 		Expect(amount2).Should(Equal(feePerMessage))
 	}

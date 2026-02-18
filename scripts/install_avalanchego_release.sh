@@ -47,18 +47,40 @@ extract_archive() {
   fi
 }
 
+is_valid_archive() {
+  local archive_path="${1}"
+  if [[ ${archive_path} == *.tar.gz ]]; then
+    gzip -t "${archive_path}" 2>/dev/null
+    return $?
+  elif [[ ${archive_path} == *.zip ]]; then
+    unzip -t "${archive_path}" > /dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
 # first check if we already have the archive
-if [[ -f ${AVAGO_DOWNLOAD_PATH} ]]; then
-  # if the download path already exists, extract and exit
-  echo "found avalanchego ${AVALANCHEGO_VERSION} at ${AVAGO_DOWNLOAD_PATH}"
+if [[ -f ${AVAGO_DOWNLOAD_PATH} ]] && is_valid_archive "${AVAGO_DOWNLOAD_PATH}"; then
+  # if the download path already exists and is valid, extract and exit
+  echo "found valid avalanchego ${AVALANCHEGO_VERSION} at ${AVAGO_DOWNLOAD_PATH}"
 
   extract_archive
 else
+  # Remove any invalid or partial download
+  if [[ -f ${AVAGO_DOWNLOAD_PATH} ]]; then
+    echo "removing invalid or partial download at ${AVAGO_DOWNLOAD_PATH}"
+    rm -f ${AVAGO_DOWNLOAD_PATH}
+  fi
+
   # try to download the archive if it exists
   if curl -s --head --request GET ${AVAGO_DOWNLOAD_URL} | grep "302" > /dev/null; then
     echo "${AVAGO_DOWNLOAD_URL} found"
     echo "downloading to ${AVAGO_DOWNLOAD_PATH}"
-    curl -L ${AVAGO_DOWNLOAD_URL} -o ${AVAGO_DOWNLOAD_PATH}
+    if ! curl -f -L ${AVAGO_DOWNLOAD_URL} -o ${AVAGO_DOWNLOAD_PATH}; then
+      rm -f ${AVAGO_DOWNLOAD_PATH}
+      echo "Failed to download avalanchego from ${AVAGO_DOWNLOAD_URL}"
+      exit 1
+    fi
 
     extract_archive
   else
