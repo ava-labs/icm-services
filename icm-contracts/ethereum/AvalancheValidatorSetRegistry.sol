@@ -210,6 +210,13 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      * is called when registering validator sets. It may also contain a (potentially partially) updated set of
      * the validators that are being registered. This is always considered to be the first shard of
      * the requisite data.
+     *
+     * @param icmMessage The ICM message containing the validator set metadata
+     * @param shardBytes The serialized data used to construct the registered
+     * validator set
+     * @return The parsed validator set metadata
+     * @return A parsed validators array
+     * @return The total weight of the parsed validators
      */
     function parseValidatorSetMetadata(
         /* solhint-disable-next-line no-unused-vars */
@@ -286,10 +293,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      * @notice Update the validator set for a given Avalanche blockchain ID.
      */
     function _setValidatorSet(
-        bytes32 avalancheBlockchainID,
         ValidatorSet memory validatorSet
     ) internal {
-        _validatorSets[avalancheBlockchainID] = validatorSet;
+        _validatorSets[validatorSet.avalancheBlockchainID] = validatorSet;
     }
 }
 
@@ -340,7 +346,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
             validators: newValidators,
             totalWeight: newWeight
         });
-        _setValidatorSet(chainID, newValidatorSet);
+        _setValidatorSet(newValidatorSet);
         emit ValidatorSetUpdated(chainID);
     }
 
