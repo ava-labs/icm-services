@@ -8,7 +8,7 @@ import {
     ValidatorSetMetadata,
     Validator,
     ValidatorSet,
-    ValidatorSetDiffPayload,
+    ValidatorSetDiff,
     ValidatorSetShard,
     ValidatorSetSignature,
     ValidatorSets
@@ -175,7 +175,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      * @notice Updates an existing validator set by applying a diff.
      * @dev This function assumes the number of changes in the `diff`
      * (validators added + removed + modified) is small relative to the total validator set size.
-     * @param message The ICM message containing the ValidatorSetDiffPayload.
+     * @param message The ICM message containing the ValidatorSetDiff.
      */
     /* solhint-disable-next-line no-unused-vars */
     function updateValidatorSetWithDiff(
@@ -308,7 +308,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
      * @notice Updates an existing validator set by applying a diff.
      * @dev This function assumes the number of changes in the `diff`
      * (validators added + removed + modified) is small relative to the total validator set size.
-     * @param message The ICM message containing the ValidatorSetDiffPayload.
+     * @param message The ICM message containing the ValidatorSetDiff.
      */
     function updateValidatorSetWithDiff(
         ICMMessage calldata message
@@ -324,9 +324,10 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         verifyICMMessage(message, chainID);
 
         // Apply the diff
-        ValidatorSetDiffPayload memory diff =
-            ValidatorSets.parseValidatorSetDiffPayload(message.rawMessage);
         ValidatorSet memory currentValidatorSet = this.getValidatorSet(chainID);
+        ValidatorSetDiff memory diff = ValidatorSets.parseValidatorSetDiff(
+            message.rawMessage, currentValidatorSet.validators.length
+        );
         require(diff.currentHeight > currentValidatorSet.pChainHeight, "Invalid blockchain height");
         (Validator[] memory newValidators, uint64 newWeight) =
             ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
