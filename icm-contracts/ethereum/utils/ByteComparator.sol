@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
-
+// TODO: Replace ByteComparator library with more efficient approach. See issue https://github.com/ava-labs/icm-services/issues/1190
 /**
  * @title ByteComparator
  * @notice Library for comparing byte arrays lexicographically
  */
+
 library ByteComparator {
     /**
      * @notice Compares two byte arrays (lexicographically).
