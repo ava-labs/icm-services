@@ -166,20 +166,6 @@ func (m *messageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
 	return m.unsignedMessage
 }
 
-func (m *messageHandler) GetMessageRoutingInfo() (
-	ids.ID,
-	common.Address,
-	ids.ID,
-	common.Address,
-	error,
-) {
-	return m.unsignedMessage.SourceChainID,
-		m.teleporterMessage.OriginSenderAddress,
-		m.teleporterMessage.DestinationBlockchainID,
-		m.teleporterMessage.DestinationAddress,
-		nil
-}
-
 // ShouldSendMessage returns true if the message should be sent to the destination chain
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
