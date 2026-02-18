@@ -219,7 +219,7 @@ generate_bindings "$COMMON_EVM_VERSION" "" "${contract_names[@]}"
 
 contract_names=(${ETHEREUM_CONTRACT_LIST[@]})
 cd $ETHEREUM_ICM_PATH
-generate_bindings "$ETHEREUM_EVM_VERSION" "--via-ir" "${contract_names[@]}"
+generate_bindings "$ETHEREUM_EVM_VERSION" "" "${contract_names[@]}"
 
 contract_names=($PROXY_LIST)
 cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/transparent

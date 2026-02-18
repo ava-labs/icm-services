@@ -288,15 +288,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     ) public view returns (bool) {
         return _partialValidatorSets[avalancheBlockchainID].inProgress;
     }
-
-    /**
-     * @notice Update the validator set for a given Avalanche blockchain ID.
-     */
-    function _setValidatorSet(
-        ValidatorSet memory validatorSet
-    ) internal {
-        _validatorSets[validatorSet.avalancheBlockchainID] = validatorSet;
-    }
 }
 
 // This contract specifies that shards of validator sets is a serialized subsequence of
@@ -316,7 +307,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
      * (validators added + removed + modified) is small relative to the total validator set size.
      * @param message The ICM message containing the ValidatorSetDiff.
      */
-    function updateValidatorSetWithDiff(
+     function updateValidatorSetWithDiff(
         ICMMessage calldata message
     ) external override {
         // Safety checks
@@ -335,18 +326,20 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
             message.rawMessage, currentValidatorSet.validators.length
         );
         require(diff.currentHeight > currentValidatorSet.pChainHeight, "Invalid blockchain height");
+        
         (Validator[] memory newValidators, uint64 newWeight) =
             ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
 
-        // Update state
-        ValidatorSet memory newValidatorSet = ValidatorSet({
-            avalancheBlockchainID: chainID,
-            pChainHeight: diff.currentHeight,
-            pChainTimestamp: diff.currentTimestamp,
-            validators: newValidators,
-            totalWeight: newWeight
-        });
-        _setValidatorSet(newValidatorSet);
+        // Update state 
+        ValidatorSet storage storageSet = _validatorSets[chainID];
+        storageSet.pChainHeight = diff.currentHeight;
+        storageSet.pChainTimestamp = diff.currentTimestamp;
+        storageSet.totalWeight = newWeight;
+        delete storageSet.validators;
+        for (uint256 i = 0; i < newValidators.length; ) {
+            storageSet.validators.push(newValidators[i]);
+            unchecked {++i;}
+        }
         emit ValidatorSetUpdated(chainID);
     }
 
