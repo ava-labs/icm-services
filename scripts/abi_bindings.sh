@@ -9,8 +9,6 @@ REPO_PATH=$(
   cd .. && pwd
 )
 
-ICM_CONTRACTS_PATH=$REPO_PATH/icm-contracts
-
 source $REPO_PATH/scripts/constants.sh
 source $REPO_PATH/scripts/versions.sh
 
@@ -20,10 +18,6 @@ echo "Common EVM Version: $COMMON_EVM_VERSION"
 echo "Common Solidity Version: $COMMON_SOLIDITY_VERSION"
 echo "Ethereum EVM Version: $ETHEREUM_EVM_VERSION"
 echo "Ethereum Solidity Version: $ETHEREUM_SOLIDITY_VERSION"
-
-export ARCH=$(uname -m)
-[ $ARCH = x86_64 ] && ARCH=amd64
-echo "ARCH set to $ARCH"
 
 DEFAULT_AVALANCHE_CONTRACT_LIST="TeleporterMessenger TeleporterRegistry WarpAdapter ExampleERC20 ExampleRewardCalculator TestMessenger ValidatorSetSig NativeTokenStakingManager ERC20TokenStakingManager
 TokenHome TokenRemote ERC20TokenHome ERC20TokenHomeUpgradeable ERC20TokenRemote ERC20TokenRemoteUpgradeable NativeTokenHome NativeTokenHomeUpgradeable NativeTokenRemote NativeTokenRemoteUpgradeable
@@ -105,7 +99,7 @@ while read -r filepath; do
 done < <(find "$REPO_PATH/lib" -type f -name "remappings.txt" )
 
 function convertToLower() {
-    if [ "$ARCH" = 'arm64' ]; then
+    if [ "$(uname -m)" = 'arm64' ]; then
         echo $1 | perl -ne 'print lc'
     else
         echo $1 | sed -e 's/\(.*\)/\L\1/'

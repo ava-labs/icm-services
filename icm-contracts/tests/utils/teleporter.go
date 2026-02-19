@@ -124,9 +124,11 @@ func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, blockc
 	info.teleporterRegistryAddress = address
 }
 
-// TODO pipe context through here
-func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
-	ctx := context.Background()
+func (t TeleporterTestInfo) DeployTeleporterRegistry(
+	ctx context.Context,
+	l1 interfaces.L1TestInfo,
+	deployerKey *ecdsa.PrivateKey,
+) {
 	entries := []teleporterregistry.ProtocolRegistryEntry{
 		{
 			Version:         big.NewInt(1),

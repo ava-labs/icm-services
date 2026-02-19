@@ -24,7 +24,7 @@ func AddFeeAmount(
 
 	// Use mock token as the fee token
 	mockTokenAddress, mockToken := utils.DeployExampleERC20(
-		context.Background(),
+		ctx,
 		fundedKey,
 		l1AInfo,
 	)
