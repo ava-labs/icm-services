@@ -16,8 +16,8 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/relayer/api"
 	ethereum "github.com/ava-labs/libevm"
@@ -42,7 +42,7 @@ func RelayMessageAPI(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	log.Info("Sending teleporter message")
 	receipt, _, teleporterMessageID := utils.SendBasicTeleporterMessage(
@@ -60,8 +60,8 @@ func RelayMessageAPI(
 	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 		fundedAddress,
 		relayerKey,
 	)
@@ -123,7 +123,7 @@ func RelayMessageAPI(
 		err = json.Unmarshal(body, &response)
 		Expect(err).Should(BeNil())
 
-		receipt, err := l1BInfo.RPCClient.TransactionReceipt(ctx, common.HexToHash(response.TransactionHash))
+		receipt, err := l1BInfo.EthClient.TransactionReceipt(ctx, common.HexToHash(response.TransactionHash))
 		Expect(err).Should(BeNil())
 
 		receiveEvent, err := utils.GetEventFromLogs(
@@ -168,10 +168,10 @@ func getWarpMessageFromLog(
 	ctx context.Context,
 	log logging.Logger,
 	receipt *types.Receipt,
-	source interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
 ) *avalancheWarp.UnsignedMessage {
 	log.Info("Fetching relevant warp logs from the newly produced block")
-	logs, err := source.RPCClient.FilterLogs(ctx, ethereum.FilterQuery{
+	logs, err := source.EthClient.FilterLogs(ctx, ethereum.FilterQuery{
 		BlockHash: &receipt.BlockHash,
 		Addresses: []common.Address{warp.Module.Address},
 	})

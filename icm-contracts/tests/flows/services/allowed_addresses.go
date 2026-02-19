@@ -9,8 +9,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/database"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
@@ -55,7 +55,7 @@ func AllowedAddresses(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	// Create distinct key/address pairs to be used in the configuration, and fund them
 	var allowedKeys []*ecdsa.PrivateKey
@@ -66,7 +66,7 @@ func AllowedAddresses(
 		allowedKey, err := crypto.GenerateKey()
 		Expect(err).Should(BeNil())
 		allowedAddress := crypto.PubkeyToAddress(allowedKey.PublicKey)
-		utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, allowedKey)
+		utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, allowedKey)
 		allowedKeys = append(allowedKeys, allowedKey)
 		allowedAddresses = append(allowedAddresses, allowedAddress)
 		allowedAddressesStr = append(allowedAddressesStr, allowedAddress.String())
@@ -89,8 +89,8 @@ func AllowedAddresses(
 	relayerConfig1 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 		fundedAddress,
 		relayerKey,
 	)
@@ -100,8 +100,8 @@ func AllowedAddresses(
 	relayerConfig2 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 		fundedAddress,
 		relayerKey,
 	)
@@ -116,8 +116,8 @@ func AllowedAddresses(
 	relayerConfig3 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 		fundedAddress,
 		relayerKey,
 	)
@@ -143,8 +143,8 @@ func AllowedAddresses(
 	relayerConfig4 := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 		fundedAddress,
 		relayerKey,
 	)
@@ -203,7 +203,7 @@ func AllowedAddresses(
 		allowedKeys[generalAllowedAddressIdx],
 		allowedAddresses[generalAllowedAddressIdx],
 	)
-	height1, err := l1AInfo.RPCClient.BlockNumber(ctx)
+	height1, err := l1AInfo.EthClient.BlockNumber(ctx)
 	Expect(err).Should(BeNil())
 	// Sleep for some time to make sure the DB is updated
 	time.Sleep(time.Duration(5*relayerConfig1.DBWriteIntervalSeconds) * time.Second)
@@ -253,7 +253,7 @@ func AllowedAddresses(
 		allowedKeys[relayer2AllowedSrcAddressIdx],
 		allowedAddresses[generalAllowedAddressIdx],
 	)
-	height2, err := l1AInfo.RPCClient.BlockNumber(ctx)
+	height2, err := l1AInfo.EthClient.BlockNumber(ctx)
 	Expect(err).Should(BeNil())
 	// Sleep for some time to make sure the DB is updated
 	time.Sleep(time.Duration(5*relayerConfig2.DBWriteIntervalSeconds) * time.Second)
@@ -303,7 +303,7 @@ func AllowedAddresses(
 		allowedKeys[generalAllowedAddressIdx],
 		allowedAddresses[relayer3AllowedDstAddressIdx],
 	)
-	height3, err := l1AInfo.RPCClient.BlockNumber(ctx)
+	height3, err := l1AInfo.EthClient.BlockNumber(ctx)
 	Expect(err).Should(BeNil())
 	// Sleep for some time to make sure the DB is updated
 	time.Sleep(time.Duration(5*relayerConfig3.DBWriteIntervalSeconds) * time.Second)
@@ -352,7 +352,7 @@ func AllowedAddresses(
 		allowedKeys[relayer4AllowedSrcAddressIdx],
 		allowedAddresses[relayer4AllowedDstAddressIdx],
 	)
-	height4, err := l1AInfo.RPCClient.BlockNumber(ctx)
+	height4, err := l1AInfo.EthClient.BlockNumber(ctx)
 	Expect(err).Should(BeNil())
 	// Sleep for some time to make sure the DB is updated
 	time.Sleep(time.Duration(5*relayerConfig4.DBWriteIntervalSeconds) * time.Second)

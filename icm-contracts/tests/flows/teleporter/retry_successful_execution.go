@@ -29,14 +29,14 @@ func RetrySuccessfulExecution(
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		l1AInfo.EVMTestInfo,
 	)
 	testMessengerContractAddressB, l1BTestMessenger := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		l1BInfo.EVMTestInfo,
 	)
 
 	//
@@ -56,7 +56,7 @@ func RetrySuccessfulExecution(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,

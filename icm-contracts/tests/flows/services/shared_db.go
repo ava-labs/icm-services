@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
@@ -37,8 +37,8 @@ func SharedDatabaseAccess(
 	relayerKeyB, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
 
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyA)
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyB)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyA)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKeyB)
 
 	//
 	// Set up relayer config
@@ -47,8 +47,8 @@ func SharedDatabaseAccess(
 	relayerConfigA := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo},
-		[]interfaces.L1TestInfo{l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo},
+		[]testinfo.L1TestInfo{l1BInfo},
 		fundedAddress,
 		relayerKeyA,
 	)
@@ -56,8 +56,8 @@ func SharedDatabaseAccess(
 	relayerConfigB := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo},
+		[]testinfo.L1TestInfo{l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo},
 		fundedAddress,
 		relayerKeyB,
 	)

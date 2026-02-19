@@ -32,7 +32,7 @@ import (
 	ownableupgradeable "github.com/ava-labs/icm-services/abi-bindings/go/OwnableUpgradeable"
 	proxyadmin "github.com/ava-labs/icm-services/abi-bindings/go/ProxyAdmin"
 	validatormanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/ValidatorManager"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
@@ -283,7 +283,7 @@ func NewLocalAvalancheNetwork(
 
 func (n *LocalAvalancheNetwork) ConvertSubnet(
 	ctx context.Context,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	managerType utils.ValidatorManagerConcreteType,
 	weights []uint64,
 	balances []uint64,
@@ -304,7 +304,7 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 		proxy,
 	)
 
-	validatorManager, err := validatormanager.NewValidatorManager(vdrManagerAddress, l1.RPCClient)
+	validatorManager, err := validatormanager.NewValidatorManager(vdrManagerAddress, l1.EthClient)
 	Expect(err).Should(BeNil())
 
 	sender := utils.PrivateKeyToAddress(senderKey)
@@ -331,7 +331,7 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 		proxy,
 	)
 
-	ownable, err := ownableupgradeable.NewOwnableUpgradeable(vdrManagerAddress, l1.RPCClient)
+	ownable, err := ownableupgradeable.NewOwnableUpgradeable(vdrManagerAddress, l1.EthClient)
 	Expect(err).Should(BeNil())
 
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
@@ -339,7 +339,7 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 
 	tx, err := ownable.TransferOwnership(opts, specializationAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1.RPCClient, tx.Hash())
+	utils.WaitForTransactionSuccess(context.Background(), l1.EthClient, tx.Hash())
 
 	n.validatorManagerSpecializations[l1.SubnetID] = ProxyAddress{
 		Address:    specializationAddress,
@@ -425,7 +425,7 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 		}
 	}
 	utils.PChainProposerVMWorkaround(pChainWallet)
-	err = utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.RPCClient, 5)
+	err = utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.EthClient, 5)
 	Expect(err).Should(BeNil())
 
 	return nodes, validationIDs
@@ -433,9 +433,9 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 
 func (n *LocalAvalancheNetwork) AddSubnetValidators(
 	nodes []*tmpnet.Node,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	partialSync bool,
-) interfaces.L1TestInfo {
+) testinfo.L1TestInfo {
 	// Modify each node's config to track the l1
 	for _, node := range nodes {
 		log.Info("Adding node",
@@ -506,7 +506,7 @@ func (n *LocalAvalancheNetwork) GetPrimaryNetworkValidators() []*tmpnet.Node {
 	return n.primaryNetworkValidators
 }
 
-func (n *LocalAvalancheNetwork) GetPrimaryNetworkInfo() interfaces.L1TestInfo {
+func (n *LocalAvalancheNetwork) GetPrimaryNetworkInfo() testinfo.L1TestInfo {
 	var nodeURIs []string
 	for _, node := range n.primaryNetworkValidators {
 		nodeURIs = append(nodeURIs, node.URI)
@@ -518,23 +518,26 @@ func (n *LocalAvalancheNetwork) GetPrimaryNetworkInfo() interfaces.L1TestInfo {
 	wsClient, err := ethclient.Dial(utils.HttpToWebsocketURI(nodeURIs[0], cChainBlockchainID.String()))
 	Expect(err).Should(BeNil())
 
-	rpcClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], cChainBlockchainID.String()))
+	ethClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], cChainBlockchainID.String()))
 	Expect(err).Should(BeNil())
 
-	evmChainID, err := rpcClient.ChainID(context.Background())
+	evmChainID, err := ethClient.ChainID(context.Background())
 	Expect(err).Should(BeNil())
-	return interfaces.L1TestInfo{
-		SubnetID:                     ids.Empty,
-		BlockchainID:                 cChainBlockchainID,
-		NodeURIs:                     nodeURIs,
-		WSClient:                     wsClient,
-		RPCClient:                    rpcClient,
-		EVMChainID:                   evmChainID,
+	return testinfo.L1TestInfo{
+		EVMTestInfo: testinfo.EVMTestInfo{
+			EVMChainID: evmChainID,
+			EthClient:  ethClient,
+		},
+		SubnetID:     ids.Empty,
+		BlockchainID: cChainBlockchainID,
+		NodeURIs:     nodeURIs,
+		WSClient:     wsClient,
+
 		RequirePrimaryNetworkSigners: false,
 	}
 }
 
-func (n *LocalAvalancheNetwork) GetL1Info(subnetID ids.ID) interfaces.L1TestInfo {
+func (n *LocalAvalancheNetwork) GetL1Info(subnetID ids.ID) testinfo.L1TestInfo {
 	for _, l1 := range n.Network.Subnets {
 		if l1.SubnetID == subnetID {
 			var nodeURIs []string
@@ -548,29 +551,31 @@ func (n *LocalAvalancheNetwork) GetL1Info(subnetID ids.ID) interfaces.L1TestInfo
 			wsClient, err := ethclient.Dial(utils.HttpToWebsocketURI(nodeURIs[0], blockchainID.String()))
 			Expect(err).Should(BeNil())
 
-			rpcClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
+			ethClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
 			Expect(err).Should(BeNil())
-			evmChainID, err := rpcClient.ChainID(context.Background())
+			evmChainID, err := ethClient.ChainID(context.Background())
 			Expect(err).Should(BeNil())
 			spec, ok := n.deployedL1Specs[l1.Name]
 			Expect(ok).Should(BeTrue())
-			return interfaces.L1TestInfo{
+			return testinfo.L1TestInfo{
+				EVMTestInfo: testinfo.EVMTestInfo{
+					EthClient:  ethClient,
+					EVMChainID: evmChainID,
+				},
 				SubnetID:                     subnetID,
 				BlockchainID:                 blockchainID,
 				NodeURIs:                     nodeURIs,
 				WSClient:                     wsClient,
-				RPCClient:                    rpcClient,
-				EVMChainID:                   evmChainID,
 				RequirePrimaryNetworkSigners: spec.RequirePrimaryNetworkSigners,
 			}
 		}
 	}
-	return interfaces.L1TestInfo{}
+	return testinfo.L1TestInfo{}
 }
 
 // Returns all l1 info sorted in lexicographic order of L1Name.
-func (n *LocalAvalancheNetwork) GetL1Infos() []interfaces.L1TestInfo {
-	l1s := make([]interfaces.L1TestInfo, len(n.Network.Subnets))
+func (n *LocalAvalancheNetwork) GetL1Infos() []testinfo.L1TestInfo {
+	l1s := make([]testinfo.L1TestInfo, len(n.Network.Subnets))
 	for i, l1 := range n.Network.Subnets {
 		var nodeURIs []string
 		for _, nodeID := range l1.ValidatorIDs {
@@ -583,19 +588,21 @@ func (n *LocalAvalancheNetwork) GetL1Infos() []interfaces.L1TestInfo {
 		wsClient, err := ethclient.Dial(utils.HttpToWebsocketURI(nodeURIs[0], blockchainID.String()))
 		Expect(err).Should(BeNil())
 
-		rpcClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
+		ethClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
 		Expect(err).Should(BeNil())
-		evmChainID, err := rpcClient.ChainID(context.Background())
+		evmChainID, err := ethClient.ChainID(context.Background())
 		Expect(err).Should(BeNil())
 		spec, ok := n.deployedL1Specs[l1.Name]
 		Expect(ok).Should(BeTrue())
-		l1s[i] = interfaces.L1TestInfo{
+		l1s[i] = testinfo.L1TestInfo{
+			EVMTestInfo: testinfo.EVMTestInfo{
+				EthClient:  ethClient,
+				EVMChainID: evmChainID,
+			},
 			SubnetID:                     l1.SubnetID,
 			BlockchainID:                 blockchainID,
 			NodeURIs:                     nodeURIs,
 			WSClient:                     wsClient,
-			RPCClient:                    rpcClient,
-			EVMChainID:                   evmChainID,
 			RequirePrimaryNetworkSigners: spec.RequirePrimaryNetworkSigners,
 		}
 	}
@@ -603,7 +610,7 @@ func (n *LocalAvalancheNetwork) GetL1Infos() []interfaces.L1TestInfo {
 }
 
 // Returns L1 info for all L1s, including the primary network
-func (n *LocalAvalancheNetwork) GetAllL1Infos() []interfaces.L1TestInfo {
+func (n *LocalAvalancheNetwork) GetAllL1Infos() []testinfo.L1TestInfo {
 	l1s := n.GetL1Infos()
 	return append(l1s, n.GetPrimaryNetworkInfo())
 }
@@ -694,8 +701,8 @@ func (n *LocalAvalancheNetwork) GetPChainWallet(validationIDs ...ids.ID) pwallet
 }
 
 func (n *LocalAvalancheNetwork) GetTwoL1s() (
-	interfaces.L1TestInfo,
-	interfaces.L1TestInfo,
+	testinfo.L1TestInfo,
+	testinfo.L1TestInfo,
 ) {
 	l1s := n.GetL1Infos()
 	Expect(len(l1s)).Should(BeNumerically(">=", 2))

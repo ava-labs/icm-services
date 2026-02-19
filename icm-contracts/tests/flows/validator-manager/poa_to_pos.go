@@ -71,9 +71,9 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 		false,
 	)
 	validatorManagerAddr, poaManagerAddr := network.GetValidatorManager(l1AInfo.SubnetID)
-	poaManager, err := poamanager.NewPoAManager(poaManagerAddr.Address, l1AInfo.RPCClient)
+	poaManager, err := poamanager.NewPoAManager(poaManagerAddr.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
-	validatorManager, err := validatormanager.NewValidatorManager(validatorManagerAddr.Address, l1AInfo.RPCClient)
+	validatorManager, err := validatormanager.NewValidatorManager(validatorManagerAddr.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 
 	signatureAggregator := utils.NewSignatureAggregator(
@@ -161,7 +161,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 
 	nativeStakingManager, err := nativetokenstakingmanager.NewNativeTokenStakingManager(
 		stakingManagerAddress,
-		l1AInfo.RPCClient,
+		l1AInfo.EthClient,
 	)
 	Expect(err).Should(BeNil())
 
@@ -170,7 +170,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 	Expect(err).Should(BeNil())
 	tx, err := poaManager.TransferValidatorManagerOwnership(opts, stakingManagerAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1AInfo.RPCClient, tx.Hash())
+	utils.WaitForTransactionSuccess(context.Background(), l1AInfo.EthClient, tx.Hash())
 
 	// Check that previous validator is still registered
 	validationID, err := validatorManager.GetNodeValidationID(&bind.CallOpts{}, poaNodeID)
@@ -184,7 +184,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 	//
 	// Remove the PoA validator and re-register as a PoS validator
 	//
-	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerAddress, l1AInfo.RPCClient)
+	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerAddress, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	utils.InitiateAndCompleteEndPoSValidation(
 		ctx,

@@ -52,7 +52,7 @@ func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalA
 	validatorManagerProxy, stakingManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
 	nativeStakingManager, err := nativetokenstakingmanager.NewNativeTokenStakingManager(
 		stakingManagerProxy.Address,
-		l1AInfo.RPCClient,
+		l1AInfo.EthClient,
 	)
 	Expect(err).Should(BeNil())
 	utils.AddNativeMinterAdmin(ctx, l1AInfo, fundedKey, stakingManagerProxy.Address)
@@ -68,7 +68,7 @@ func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalA
 	//
 	// Delist one initial validator
 	//
-	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.RPCClient)
+	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	utils.InitiateAndCompleteEndInitialPoSValidation(
 		ctx,

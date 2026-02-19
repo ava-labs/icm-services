@@ -17,7 +17,7 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/log"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -123,7 +123,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	justification []byte,
 	inputSigningSubnet ids.ID,
 	quorumPercentage uint64,
-	destination interfaces.L1TestInfo,
+	destination testinfo.L1TestInfo,
 ) (*avalancheWarp.Message, error) {
 	var err error
 	var signedMessage *avalancheWarp.Message
@@ -148,7 +148,7 @@ func (s *SignatureAggregator) createSignedMessage(
 	justification []byte,
 	inputSigningSubnet ids.ID,
 	quorumPercentage uint64,
-	destination interfaces.L1TestInfo,
+	destination testinfo.L1TestInfo,
 ) (*avalancheWarp.Message, error) {
 	var pChainHeight uint64 = uint64(pchainapi.ProposedHeight)
 
