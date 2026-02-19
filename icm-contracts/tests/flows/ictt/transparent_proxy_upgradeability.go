@@ -75,7 +75,7 @@ func TransparentUpgradeableProxy(
 
 	tx, err = erc20TokenHome.Initialize(
 		opts,
-		teleporter.TeleporterRegistryAddress(cChainInfo),
+		teleporter.TeleporterRegistryAddress(cChainInfo.BlockchainID),
 		fundedAddress,
 		big.NewInt(1),
 		exampleERC20Address,

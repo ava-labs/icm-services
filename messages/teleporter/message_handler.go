@@ -87,7 +87,7 @@ func (f *factory) NewMessageHandler(
 	unsignedMessage *warp.UnsignedMessage,
 	destinationClient vms.DestinationClient,
 ) (messages.MessageHandler, error) {
-	teleporterMessage, err := f.parseTeleporterMessage(unsignedMessage)
+	teleporterMessage, err := parseTeleporterMessage(unsignedMessage)
 	if err != nil {
 		logger.Error(
 			"Failed to parse teleporter message.",
@@ -132,7 +132,7 @@ func (f *factory) NewMessageHandler(
 }
 
 func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (messages.MessageRoutingInfo, error) {
-	teleporterMessage, err := f.parseTeleporterMessage(unsignedMessage)
+	teleporterMessage, err := parseTeleporterMessage(unsignedMessage)
 	if err != nil {
 		return messages.MessageRoutingInfo{}, fmt.Errorf("failed to parse teleporter message: %w", err)
 	}
@@ -261,6 +261,7 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		m.logger.Error("Failed to calculate gas limit for receiveCrossChainMessage call")
 		return common.Hash{}, err
 	}
+
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
 		0,
@@ -313,9 +314,7 @@ func (m *messageHandler) LoggerWithContext(logger logging.Logger) logging.Logger
 	return logger.With(m.logFields...)
 }
 
-// parseTeleporterMessage returns the Warp message's corresponding Teleporter message from the cache if it exists.
-// Otherwise parses the Warp message payload.
-func (f *factory) parseTeleporterMessage(
+func parseTeleporterMessage(
 	unsignedMessage *warp.UnsignedMessage,
 ) (*teleportermessenger.TeleporterMessage, error) {
 	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)

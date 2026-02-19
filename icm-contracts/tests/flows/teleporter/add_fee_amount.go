@@ -19,7 +19,7 @@ func AddFeeAmount(
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
+	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	// Use mock token as the fee token
