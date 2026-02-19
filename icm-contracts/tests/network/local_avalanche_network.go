@@ -660,7 +660,7 @@ func (n *LocalAvalancheNetwork) SetChainConfigs(chainConfigs map[string]string) 
 
 	// Restart the network to apply the new chain configs
 	ctx, cancel := context.WithTimeout(
-		context.Background(), 
+		context.Background(),
 		time.Duration(60*len(n.Network.Nodes))*time.Second,
 	)
 	defer cancel()
