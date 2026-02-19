@@ -371,6 +371,8 @@ library ValidatorSets {
         uint256 valSetPos = 0;
         uint256 changePos = 0;
 
+        _verifySortedValidatorChanges(diff.changes);
+
         for (uint256 i = 0; i < newSize;) {
             int256 compare;
             ValidatorChange memory nextChange;
@@ -587,25 +589,23 @@ library ValidatorSets {
     }
 
     /**
-     * @notice Sorts validator changes by their uncompressed public key bytes
-     * @dev Uses insertion sort which is efficient for small arrays
+     * @notice Verifies that the validator changes are sorted by public key in increasing order.
+     * @dev Operates in O(n) time. Reverts if the array is not sorted.
+     * @param changes The array of validator changes to verify.
      */
-    function _sortValidatorChanges(
+    function _verifySortedValidatorChanges(
         ValidatorChange[] memory changes
-    ) private pure {
-        for (uint256 i = 1; i < changes.length; i++) {
-            ValidatorChange memory key = changes[i];
-            bytes memory keyPubKey = key.blsPublicKey;
-            int256 j = int256(i) - 1;
-            while (j >= 0) {
-                bytes memory jPubKey = changes[uint256(j)].blsPublicKey;
-                if (ByteComparator.compare(jPubKey, keyPubKey) <= 0) {
-                    break;
-                }
-                changes[uint256(j + 1)] = changes[uint256(j)];
-                j--;
+    ) internal pure {
+        uint256 len = changes.length;
+        if (len < 2) return;
+        for (uint256 i = 0; i < len - 1;) {
+            // Compare
+            int256 compare =
+                ByteComparator.compare(changes[i].blsPublicKey, changes[i + 1].blsPublicKey);
+            require(compare <= 0, "Validator changes not sorted by public key");
+            unchecked {
+                ++i;
             }
-            changes[uint256(j + 1)] = key;
         }
     }
 }
