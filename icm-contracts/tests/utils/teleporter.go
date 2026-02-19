@@ -208,7 +208,7 @@ func (t TeleporterTestInfo) PackReceiveCrossChainMessageV1(
 	numSigners, err := signedMessage.Signature.NumSigners()
 	Expect(err).Should(BeNil())
 
-	teleporterMessage := ParseTeleporterMessage(signedMessage.UnsignedMessage)
+	teleporterMessage := ParseTeleporterMessageV1(signedMessage.UnsignedMessage)
 	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
 		numSigners,
 		teleporterMessage.RequiredGasLimit,
@@ -628,7 +628,7 @@ func DeployTestMessenger(
 // Parsing utils
 //
 
-func ParseTeleporterMessage(unsignedMessage avalancheWarp.UnsignedMessage) *teleportermessenger.TeleporterMessage {
+func ParseTeleporterMessageV1(unsignedMessage avalancheWarp.UnsignedMessage) *teleportermessenger.TeleporterMessage {
 	addressedPayload, err := payload.ParseAddressedCall(unsignedMessage.Payload)
 	Expect(err).Should(BeNil())
 
@@ -890,22 +890,8 @@ func (t *TeleporterTestInfo) CreateReceiveCrossChainMessageTransaction(
 ) *types.Transaction {
 	// Construct the transaction to send the Warp message to the destination chain
 	log.Info("Constructing receiveCrossChainMessage transaction for the destination chain")
-	numSigners, err := signedMessage.Signature.NumSigners()
-	Expect(err).Should(BeNil())
 
-	teleporterMessage := ParseTeleporterMessage(signedMessage.UnsignedMessage)
-	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
-		numSigners,
-		teleporterMessage.RequiredGasLimit,
-		len(predicate.New(signedMessage.Bytes())),
-		len(signedMessage.Payload),
-		len(teleporterMessage.Receipts),
-	)
-	Expect(err).Should(BeNil())
-
-	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, PrivateKeyToAddress(senderKey))
-	Expect(err).Should(BeNil())
-
+	callData, gasLimit := t.PackReceiveCrossChainMessage(signedMessage, senderKey, l1Info)
 	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
 	teleporterContractAddress := t.TeleporterMessengerAddress(l1Info.BlockchainID)

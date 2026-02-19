@@ -110,14 +110,13 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		Expect(err).Should(BeNil())
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
+			teleporterInfo.SetTeleporterV2(teleporterContractAddress, l1.BlockchainID)
 			teleporterInfo.SetTeleporterRegistry(
 				common.HexToAddress(registryAddresseses[l1.BlockchainID.Hex()]),
 				l1.BlockchainID,
 			)
 		}
 	}
-
 })
 
 var _ = ginkgo.AfterSuite(func() {
@@ -125,7 +124,7 @@ var _ = ginkgo.AfterSuite(func() {
 	localNetworkInstance = nil
 })
 
-var _ = ginkgo.Describe("[ICTT integration tests]", func() {
+var _ = ginkgo.Describe("[ICTT Teleporter V2 integration tests]", func() {
 	// ICTT tests
 	ginkgo.It("Transfer an ERC20 token between two L1s",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel),
