@@ -286,6 +286,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         return _partialValidatorSets[avalancheBlockchainID].inProgress;
     }
 }
+<<<<<<< HEAD
 
 // This contract specifies that shards of validator sets is a serialized subsequence of
 // the entire validator set that has been cryptographically committed to.
@@ -434,3 +435,5 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         return (validatorSetMetadata, validators, totalWeight);
     }
 }
+=======
+>>>>>>> main
