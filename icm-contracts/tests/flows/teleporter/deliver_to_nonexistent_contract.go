@@ -50,7 +50,7 @@ func DeliverToNonExistentContract(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
 		l1AInfo,
 	)
 
@@ -141,7 +141,7 @@ func DeliverToNonExistentContract(
 		ctx,
 		deployerKey,
 		deployerAddress,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
 		l1BInfo,
 	)
 

@@ -27,7 +27,7 @@ func SendSpecificReceipts(
 	l1BInfo, _ := network.GetTwoL1s()
 	l1ATeleporterMessenger := teleporter.TeleporterMessenger(l1AInfo)
 	l1BTeleporterMessenger := teleporter.TeleporterMessenger(l1BInfo)
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
+	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	_, fundedKey := network.GetFundedAccountInfo()
 
 	aggregator := network.GetSignatureAggregator()

@@ -435,6 +435,13 @@ func createMessageHandlerFactories(
 				)
 			case config.OFF_CHAIN_REGISTRY:
 				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
+			case config.TELEPORTER_V2:
+				// m, err = teleporterv2.NewMessageHandlerFactory(
+				// 	address,
+				// 	cfg,
+				// 	deciderConnection,
+				// )
+				err = fmt.Errorf("teleporter v2 is not yet supported")
 			default:
 				m, err = nil, fmt.Errorf("invalid message format %s", format)
 			}
