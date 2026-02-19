@@ -326,7 +326,6 @@ library ValidatorSets {
                     ++i;
                 }
             }
-            _sortValidatorChanges(diff.changes);
             diff.newSize = currentValidatorCount + diff.numAdded - numRemoved;
         }
         return diff;

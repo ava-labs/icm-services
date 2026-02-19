@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {ICMMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
+import {ByteComparator} from "../utils/ByteComparator.sol";
 import {SubsetUpdater} from "../AvalancheValidatorSetRegistry.sol";
 import {
     Validator,
@@ -350,6 +351,8 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             weight: uint64(1)
         });
 
+        _sortValidatorChanges(changes);
+
         // Construct payload
         ValidatorSetDiff memory diff = ValidatorSetDiff({
             avalancheBlockchainID: validatorSet.avalancheBlockchainID,
@@ -527,6 +530,29 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
 
     function testGetAvalancheNetworkID() public view {
         assertEq(_registry.getAvalancheNetworkID(), NETWORK_ID);
+    }
+    /**
+     * @notice Sorts validator changes by their uncompressed public key bytes
+     * @dev Uses insertion sort which is efficient for small arrays
+     */
+
+    function _sortValidatorChanges(
+        ValidatorChange[] memory changes
+    ) private pure {
+        for (uint256 i = 1; i < changes.length; i++) {
+            ValidatorChange memory key = changes[i];
+            bytes memory keyPubKey = key.blsPublicKey;
+            int256 j = int256(i) - 1;
+            while (j >= 0) {
+                bytes memory jPubKey = changes[uint256(j)].blsPublicKey;
+                if (ByteComparator.compare(jPubKey, keyPubKey) <= 0) {
+                    break;
+                }
+                changes[uint256(j + 1)] = changes[uint256(j)];
+                j--;
+            }
+            changes[uint256(j + 1)] = key;
+        }
     }
 }
 
