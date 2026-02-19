@@ -6,6 +6,8 @@ import {AvalancheValidatorSetRegistry} from "./AvalancheValidatorSetRegistry.sol
 import {
     ValidatorSetMetadata,
     Validator,
+    ValidatorSet,
+    ValidatorSetDiff,
     ValidatorSetShard,
     ValidatorSets
 } from "./utils/ValidatorSets.sol";
