@@ -58,8 +58,8 @@ type TeleporterMessageV2 struct {
 
 // ECDSAVerifierMetaData contains all meta data concerning the ECDSAVerifier contract.
 var ECDSAVerifierMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"ECDSAInvalidSignature\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"length\",\"type\":\"uint256\"}],\"name\":\"ECDSAInvalidSignatureLength\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"s\",\"type\":\"bytes32\"}],\"name\":\"ECDSAInvalidSignatureS\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"trustedSigner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"messageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"originSenderAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"originTeleporterAddress\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"requiredGasLimit\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"receivedMessageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"relayerRewardAddress\",\"type\":\"address\"}],\"internalType\":\"structTeleporterMessageReceipt[]\",\"name\":\"receipts\",\"type\":\"tuple[]\"},{\"internalType\":\"bytes\",\"name\":\"message\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterMessageV2\",\"name\":\"message\",\"type\":\"tuple\"},{\"internalType\":\"uint32\",\"name\":\"sourceNetworkID\",\"type\":\"uint32\"},{\"internalType\":\"bytes32\",\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"attestation\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterICMMessage\",\"name\":\"message\",\"type\":\"tuple\"}],\"name\":\"verifyMessage\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
-	Bin: "0x60a060405234801561000f575f5ffd5b5060405161080538038061080583398101604081905261002e91610099565b6001600160a01b0381166100885760405162461bcd60e51b815260206004820152601660248201527f496e76616c6964207369676e6572206164647265737300000000000000000000604482015260640160405180910390fd5b6001600160a01b03166080526100c6565b5f602082840312156100a9575f5ffd5b81516001600160a01b03811681146100bf575f5ffd5b9392505050565b6080516107216100e45f395f81816065015261016301526107215ff3fe608060405234801561000f575f5ffd5b5060043610610034575f3560e01c8063f1faff0014610038578063f74d548014610060575b5f5ffd5b61004b61004636600461039a565b61009f565b60405190151581526020015b60405180910390f35b6100877f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b039091168152602001610057565b5f806100ab83806103d8565b83604001356040516020016100c1929190610599565b6040516020818303038152906040528051906020012090505f610110827f19457468657265756d205369676e6564204d6573736167653a0a3332000000005f908152601c91909152603c902090565b90505f61015f6101236060870187610694565b8080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525086939250506101a09050565b90507f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316816001600160a01b0316149350505050919050565b5f5f5f5f6101ae86866101c8565b9250925092506101be8282610211565b5090949350505050565b5f5f5f83516041036101ff576020840151604085015160608601515f1a6101f1888285856102d2565b95509550955050505061020a565b505081515f91506002905b9250925092565b5f826003811115610224576102246106d7565b0361022d575050565b6001826003811115610241576102416106d7565b0361025f5760405163f645eedf60e01b815260040160405180910390fd5b6002826003811115610273576102736106d7565b036102995760405163fce698f760e01b8152600481018290526024015b60405180910390fd5b60038260038111156102ad576102ad6106d7565b036102ce576040516335e2f38360e21b815260048101829052602401610290565b5050565b5f80807f7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a084111561030b57505f91506003905082610390565b604080515f808252602082018084528a905260ff891692820192909252606081018790526080810186905260019060a0016020604051602081039080840390855afa15801561035c573d5f5f3e3d5ffd5b5050604051601f1901519150506001600160a01b03811661038757505f925060019150829050610390565b92505f91508190505b9450945094915050565b5f602082840312156103aa575f5ffd5b813567ffffffffffffffff8111156103c0575f5ffd5b8201608081850312156103d1575f5ffd5b9392505050565b5f823561011e198336030181126103ed575f5ffd5b9190910192915050565b80356001600160a01b038116811461040d575f5ffd5b919050565b5f5f8335601e19843603018112610427575f5ffd5b830160208101925035905067ffffffffffffffff811115610446575f5ffd5b8060051b3603821315610457575f5ffd5b9250929050565b8183526020830192505f815f5b8481101561049a576001600160a01b03610484836103f7565b168652602095860195919091019060010161046b565b5093949350505050565b5f5f8335601e198436030181126104b9575f5ffd5b830160208101925035905067ffffffffffffffff8111156104d8575f5ffd5b8060061b3603821315610457575f5ffd5b8183526020830192505f815f5b8481101561049a57813586526001600160a01b03610516602084016103f7565b16602087015260409586019591909101906001016104f6565b5f5f8335601e19843603018112610544575f5ffd5b830160208101925035905067ffffffffffffffff811115610563575f5ffd5b803603821315610457575f5ffd5b81835281816020850137505f828201602090810191909152601f909101601f19169091010190565b60408082528335908201525f6105b1602085016103f7565b6001600160a01b031660608301526105cb604085016103f7565b6001600160a01b038116608084015250606084013560a08301526105f1608085016103f7565b6001600160a01b03811660c08401525060a084013560e083015261061860c0850185610412565b6101206101008501526106306101608501828461045e565b91505061064060e08601866104a4565b848303603f19016101208601526106588382846104e9565b9250505061066a61010086018661052f565b848303603f1901610140860152610682838284610571565b93505050508260208301529392505050565b5f5f8335601e198436030181126106a9575f5ffd5b83018035915067ffffffffffffffff8211156106c3575f5ffd5b602001915036819003821315610457575f5ffd5b634e487b7160e01b5f52602160045260245ffdfea2646970667358221220eff1d28a34a40c0d0cec1233b00362058f54cde1cf1d6787c295884e1182c72964736f6c634300081e0033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"signer\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"ECDSAInvalidSignature\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"length\",\"type\":\"uint256\"}],\"name\":\"ECDSAInvalidSignatureLength\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"s\",\"type\":\"bytes32\"}],\"name\":\"ECDSAInvalidSignatureS\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"messageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"originSenderAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"originTeleporterAddress\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"requiredGasLimit\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"receivedMessageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"relayerRewardAddress\",\"type\":\"address\"}],\"internalType\":\"structTeleporterMessageReceipt[]\",\"name\":\"receipts\",\"type\":\"tuple[]\"},{\"internalType\":\"bytes\",\"name\":\"message\",\"type\":\"bytes\"}],\"indexed\":false,\"internalType\":\"structTeleporterMessageV2\",\"name\":\"message\",\"type\":\"tuple\"}],\"name\":\"ECDSAVerifierSendMessage\",\"type\":\"event\"},{\"inputs\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"messageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"originSenderAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"originTeleporterAddress\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"requiredGasLimit\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"receivedMessageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"relayerRewardAddress\",\"type\":\"address\"}],\"internalType\":\"structTeleporterMessageReceipt[]\",\"name\":\"receipts\",\"type\":\"tuple[]\"},{\"internalType\":\"bytes\",\"name\":\"message\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterMessageV2\",\"name\":\"message\",\"type\":\"tuple\"}],\"name\":\"sendMessage\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"trustedSigner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"messageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"originSenderAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"originTeleporterAddress\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"requiredGasLimit\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"receivedMessageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"relayerRewardAddress\",\"type\":\"address\"}],\"internalType\":\"structTeleporterMessageReceipt[]\",\"name\":\"receipts\",\"type\":\"tuple[]\"},{\"internalType\":\"bytes\",\"name\":\"message\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterMessageV2\",\"name\":\"message\",\"type\":\"tuple\"},{\"internalType\":\"uint32\",\"name\":\"sourceNetworkID\",\"type\":\"uint32\"},{\"internalType\":\"bytes32\",\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"attestation\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterICMMessage\",\"name\":\"message\",\"type\":\"tuple\"}],\"name\":\"verifyMessage\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	Bin: "0x60a060405234801561000f575f5ffd5b506040516108c03803806108c083398101604081905261002e91610099565b6001600160a01b0381166100885760405162461bcd60e51b815260206004820152601660248201527f496e76616c6964207369676e6572206164647265737300000000000000000000604482015260640160405180910390fd5b6001600160a01b03166080526100c6565b5f602082840312156100a9575f5ffd5b81516001600160a01b03811681146100bf575f5ffd5b9392505050565b6080516107dc6100e45f395f8181608501526101bf01526107dc5ff3fe608060405234801561000f575f5ffd5b506004361061003f575f3560e01c8063eb97cd2c14610043578063f1faff0014610058578063f74d548014610080575b5f5ffd5b6100566100513660046103f6565b6100bf565b005b61006b610066366004610435565b6100f9565b60405190151581526020015b60405180910390f35b6100a77f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b039091168152602001610077565b7f7f79990a356de554936f38da80d42a1fb6ea1198955703669370ad6bfcf297d8816040516100ee91906106ec565b60405180910390a150565b5f8061010583806106fe565b83604001353060405160200161011d9392919061071d565b6040516020818303038152906040528051906020012090505f61016c827f19457468657265756d205369676e6564204d6573736167653a0a3332000000005f908152601c91909152603c902090565b90505f6101bb61017f606087018761074f565b8080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525086939250506101fc9050565b90507f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316816001600160a01b0316149350505050919050565b5f5f5f5f61020a8686610224565b92509250925061021a828261026d565b5090949350505050565b5f5f5f835160410361025b576020840151604085015160608601515f1a61024d8882858561032e565b955095509550505050610266565b505081515f91506002905b9250925092565b5f82600381111561028057610280610792565b03610289575050565b600182600381111561029d5761029d610792565b036102bb5760405163f645eedf60e01b815260040160405180910390fd5b60028260038111156102cf576102cf610792565b036102f55760405163fce698f760e01b8152600481018290526024015b60405180910390fd5b600382600381111561030957610309610792565b0361032a576040516335e2f38360e21b8152600481018290526024016102ec565b5050565b5f80807f7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a084111561036757505f915060039050826103ec565b604080515f808252602082018084528a905260ff891692820192909252606081018790526080810186905260019060a0016020604051602081039080840390855afa1580156103b8573d5f5f3e3d5ffd5b5050604051601f1901519150506001600160a01b0381166103e357505f9250600191508290506103ec565b92505f91508190505b9450945094915050565b5f60208284031215610406575f5ffd5b813567ffffffffffffffff81111561041c575f5ffd5b8201610120818503121561042e575f5ffd5b9392505050565b5f60208284031215610445575f5ffd5b813567ffffffffffffffff81111561045b575f5ffd5b82016080818503121561042e575f5ffd5b80356001600160a01b0381168114610482575f5ffd5b919050565b5f5f8335601e1984360301811261049c575f5ffd5b830160208101925035905067ffffffffffffffff8111156104bb575f5ffd5b8060051b36038213156104cc575f5ffd5b9250929050565b8183526020830192505f815f5b8481101561050f576001600160a01b036104f98361046c565b16865260209586019591909101906001016104e0565b5093949350505050565b5f5f8335601e1984360301811261052e575f5ffd5b830160208101925035905067ffffffffffffffff81111561054d575f5ffd5b8060061b36038213156104cc575f5ffd5b8183526020830192505f815f5b8481101561050f57813586526001600160a01b0361058b6020840161046c565b166020870152604095860195919091019060010161056b565b5f5f8335601e198436030181126105b9575f5ffd5b830160208101925035905067ffffffffffffffff8111156105d8575f5ffd5b8036038213156104cc575f5ffd5b81835281816020850137505f828201602090810191909152601f909101601f19169091010190565b803582525f61061f6020830161046c565b6001600160a01b031660208401526106396040830161046c565b6001600160a01b031660408401526060828101359084015261065d6080830161046c565b6001600160a01b0316608084015260a0828101359084015261068260c0830183610487565b61012060c0860152610699610120860182846104d3565b9150506106a960e0840184610519565b85830360e08701526106bc83828461055e565b925050506106ce6101008401846105a4565b8583036101008701526106e28382846105e6565b9695505050505050565b602081525f61042e602083018461060e565b5f823561011e19833603018112610713575f5ffd5b9190910192915050565b606081525f61072f606083018661060e565b6020830194909452506001600160a01b0391909116604090910152919050565b5f5f8335601e19843603018112610764575f5ffd5b83018035915067ffffffffffffffff82111561077e575f5ffd5b6020019150368190038213156104cc575f5ffd5b634e487b7160e01b5f52602160045260245ffdfea2646970667358221220f42f1704d1b001338e1cae58be770a86ba87827873bc595ba88ef8f2834e57ef64736f6c634300081e0033",
 }
 
 // ECDSAVerifierABI is the input ABI used to generate the binding from.
@@ -289,4 +289,159 @@ func (_ECDSAVerifier *ECDSAVerifierSession) VerifyMessage(message TeleporterICMM
 // Solidity: function verifyMessage(((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes),uint32,bytes32,bytes) message) view returns(bool)
 func (_ECDSAVerifier *ECDSAVerifierCallerSession) VerifyMessage(message TeleporterICMMessage) (bool, error) {
 	return _ECDSAVerifier.Contract.VerifyMessage(&_ECDSAVerifier.CallOpts, message)
+}
+
+// SendMessage is a paid mutator transaction binding the contract method 0xeb97cd2c.
+//
+// Solidity: function sendMessage((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message) returns()
+func (_ECDSAVerifier *ECDSAVerifierTransactor) SendMessage(opts *bind.TransactOpts, message TeleporterMessageV2) (*types.Transaction, error) {
+	return _ECDSAVerifier.contract.Transact(opts, "sendMessage", message)
+}
+
+// SendMessage is a paid mutator transaction binding the contract method 0xeb97cd2c.
+//
+// Solidity: function sendMessage((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message) returns()
+func (_ECDSAVerifier *ECDSAVerifierSession) SendMessage(message TeleporterMessageV2) (*types.Transaction, error) {
+	return _ECDSAVerifier.Contract.SendMessage(&_ECDSAVerifier.TransactOpts, message)
+}
+
+// SendMessage is a paid mutator transaction binding the contract method 0xeb97cd2c.
+//
+// Solidity: function sendMessage((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message) returns()
+func (_ECDSAVerifier *ECDSAVerifierTransactorSession) SendMessage(message TeleporterMessageV2) (*types.Transaction, error) {
+	return _ECDSAVerifier.Contract.SendMessage(&_ECDSAVerifier.TransactOpts, message)
+}
+
+// ECDSAVerifierECDSAVerifierSendMessageIterator is returned from FilterECDSAVerifierSendMessage and is used to iterate over the raw logs and unpacked data for ECDSAVerifierSendMessage events raised by the ECDSAVerifier contract.
+type ECDSAVerifierECDSAVerifierSendMessageIterator struct {
+	Event *ECDSAVerifierECDSAVerifierSendMessage // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ECDSAVerifierECDSAVerifierSendMessageIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ECDSAVerifierECDSAVerifierSendMessage)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ECDSAVerifierECDSAVerifierSendMessage)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ECDSAVerifierECDSAVerifierSendMessageIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ECDSAVerifierECDSAVerifierSendMessageIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ECDSAVerifierECDSAVerifierSendMessage represents a ECDSAVerifierSendMessage event raised by the ECDSAVerifier contract.
+type ECDSAVerifierECDSAVerifierSendMessage struct {
+	Message TeleporterMessageV2
+	Raw     types.Log // Blockchain specific contextual infos
+}
+
+// FilterECDSAVerifierSendMessage is a free log retrieval operation binding the contract event 0x7f79990a356de554936f38da80d42a1fb6ea1198955703669370ad6bfcf297d8.
+//
+// Solidity: event ECDSAVerifierSendMessage((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message)
+func (_ECDSAVerifier *ECDSAVerifierFilterer) FilterECDSAVerifierSendMessage(opts *bind.FilterOpts) (*ECDSAVerifierECDSAVerifierSendMessageIterator, error) {
+
+	logs, sub, err := _ECDSAVerifier.contract.FilterLogs(opts, "ECDSAVerifierSendMessage")
+	if err != nil {
+		return nil, err
+	}
+	return &ECDSAVerifierECDSAVerifierSendMessageIterator{contract: _ECDSAVerifier.contract, event: "ECDSAVerifierSendMessage", logs: logs, sub: sub}, nil
+}
+
+// WatchECDSAVerifierSendMessage is a free log subscription operation binding the contract event 0x7f79990a356de554936f38da80d42a1fb6ea1198955703669370ad6bfcf297d8.
+//
+// Solidity: event ECDSAVerifierSendMessage((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message)
+func (_ECDSAVerifier *ECDSAVerifierFilterer) WatchECDSAVerifierSendMessage(opts *bind.WatchOpts, sink chan<- *ECDSAVerifierECDSAVerifierSendMessage) (event.Subscription, error) {
+
+	logs, sub, err := _ECDSAVerifier.contract.WatchLogs(opts, "ECDSAVerifierSendMessage")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ECDSAVerifierECDSAVerifierSendMessage)
+				if err := _ECDSAVerifier.contract.UnpackLog(event, "ECDSAVerifierSendMessage", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseECDSAVerifierSendMessage is a log parse operation binding the contract event 0x7f79990a356de554936f38da80d42a1fb6ea1198955703669370ad6bfcf297d8.
+//
+// Solidity: event ECDSAVerifierSendMessage((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message)
+func (_ECDSAVerifier *ECDSAVerifierFilterer) ParseECDSAVerifierSendMessage(log types.Log) (*ECDSAVerifierECDSAVerifierSendMessage, error) {
+	event := new(ECDSAVerifierECDSAVerifierSendMessage)
+	if err := _ECDSAVerifier.contract.UnpackLog(event, "ECDSAVerifierSendMessage", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
 }

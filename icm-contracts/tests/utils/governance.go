@@ -7,7 +7,7 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	validatorsetsig "github.com/ava-labs/icm-services/abi-bindings/go/governance/ValidatorSetSig"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -19,20 +19,20 @@ import (
 func DeployValidatorSetSig(
 	ctx context.Context,
 	senderKey *ecdsa.PrivateKey,
-	contractL1 interfaces.L1TestInfo,
-	validatorL1 interfaces.L1TestInfo,
+	contractL1 testinfo.L1TestInfo,
+	validatorL1 testinfo.L1TestInfo,
 ) (common.Address, *validatorsetsig.ValidatorSetSig) {
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, contractL1.EVMChainID)
 	Expect(err).Should(BeNil())
 	address, tx, validatorSetSig, err := validatorsetsig.DeployValidatorSetSig(
 		opts,
-		contractL1.RPCClient,
+		contractL1.EthClient,
 		validatorL1.BlockchainID,
 	)
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, contractL1.RPCClient, tx.Hash())
+	WaitForTransactionSuccess(ctx, contractL1.EthClient, tx.Hash())
 
 	return address, validatorSetSig
 }
@@ -41,8 +41,8 @@ func DeployValidatorSetSig(
 // and we don't want to add the ValidatorSetSig ABI to the L1Info
 func ExecuteValidatorSetSigCallAndVerify(
 	ctx context.Context,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	validatorSetSigAddress common.Address,
 	senderKey *ecdsa.PrivateKey,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
@@ -62,14 +62,14 @@ func ExecuteValidatorSetSigCallAndVerify(
 
 	// Wait for tx to be accepted and verify events emitted
 	if expectSuccess {
-		return SendTransactionAndWaitForSuccess(ctx, destination.RPCClient, signedPredicateTx)
+		return SendTransactionAndWaitForSuccess(ctx, destination.EthClient, signedPredicateTx)
 	}
-	return SendTransactionAndWaitForFailure(ctx, destination.RPCClient, signedPredicateTx)
+	return SendTransactionAndWaitForFailure(ctx, destination.EthClient, signedPredicateTx)
 }
 
 func InitOffChainMessageChainConfigValidatorSetSig(
 	networkID uint32,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	validatorSetSigMessages []validatorsetsig.ValidatorSetSigMessage,
 ) ([]avalancheWarp.UnsignedMessage, string) {
 	unsignedMessages := []avalancheWarp.UnsignedMessage{}
@@ -88,7 +88,7 @@ func InitOffChainMessageChainConfigValidatorSetSig(
 // if the validator set signs this message
 func CreateOffChainValidatorSetSigMessage(
 	networkID uint32,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	message validatorsetsig.ValidatorSetSigMessage,
 ) *avalancheWarp.UnsignedMessage {
 	sourceAddress := []byte{}

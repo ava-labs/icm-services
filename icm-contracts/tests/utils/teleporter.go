@@ -11,7 +11,6 @@ import (
 	"os"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
-	"github.com/ava-labs/avalanchego/graft/subnet-evm/rpc"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -21,13 +20,12 @@ import (
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
 	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
@@ -46,7 +44,7 @@ type ChainTeleporterInfo struct {
 
 type TeleporterTestInfo map[ids.ID]*ChainTeleporterInfo
 
-func NewTeleporterTestInfo(l1s []interfaces.L1TestInfo) TeleporterTestInfo {
+func NewTeleporterTestInfo(l1s []testinfo.L1TestInfo) TeleporterTestInfo {
 	t := make(TeleporterTestInfo)
 	for _, l1 := range l1s {
 		t[l1.BlockchainID] = &ChainTeleporterInfo{}
@@ -63,32 +61,32 @@ func (t TeleporterTestInfo) StringifyRegistryAddresses() map[string]string {
 }
 
 func (t TeleporterTestInfo) TeleporterMessenger(
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 ) *teleportermessenger.TeleporterMessenger {
 	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(
-		t.TeleporterMessengerAddress(l1), l1.RPCClient,
+		t.TeleporterMessengerAddress(l1), l1.EthClient,
 	)
 	Expect(err).Should(BeNil())
 
 	return teleporterMessenger
 }
 
-func (t TeleporterTestInfo) TeleporterMessengerAddress(l1 interfaces.L1TestInfo) common.Address {
+func (t TeleporterTestInfo) TeleporterMessengerAddress(l1 testinfo.L1TestInfo) common.Address {
 	return t[l1.BlockchainID].teleporterMessengerAddress
 }
 
 func (t TeleporterTestInfo) TeleporterRegistry(
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 ) *teleporterregistry.TeleporterRegistry {
 	teleporterRegistry, err := teleporterregistry.NewTeleporterRegistry(
-		t.TeleporterRegistryAddress(l1), l1.RPCClient,
+		t.TeleporterRegistryAddress(l1), l1.EthClient,
 	)
 	Expect(err).Should(BeNil())
 
 	return teleporterRegistry
 }
 
-func (t TeleporterTestInfo) TeleporterRegistryAddress(l1 interfaces.L1TestInfo) common.Address {
+func (t TeleporterTestInfo) TeleporterRegistryAddress(l1 testinfo.L1TestInfo) common.Address {
 	return t[l1.BlockchainID].teleporterRegistryAddress
 }
 
@@ -102,7 +100,7 @@ func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, blockc
 	info.teleporterRegistryAddress = address
 }
 
-func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
+func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 testinfo.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
 	ctx := context.Background()
 	entries := []teleporterregistry.ProtocolRegistryEntry{
 		{
@@ -113,11 +111,11 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	opts, err := bind.NewKeyedTransactorWithChainID(deployerKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
 	teleporterRegistryAddress, tx, _, err := teleporterregistry.DeployTeleporterRegistry(
-		opts, l1.RPCClient, entries,
+		opts, l1.EthClient, entries,
 	)
 	Expect(err).Should(BeNil())
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
 
 	info := t[l1.BlockchainID]
 	info.teleporterRegistryAddress = teleporterRegistryAddress
@@ -126,8 +124,8 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 func (t TeleporterTestInfo) RelayTeleporterMessage(
 	ctx context.Context,
 	sourceReceipt *types.Receipt,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	expectSuccess bool,
 	fundedKey *ecdsa.PrivateKey,
 	justification []byte,
@@ -153,10 +151,10 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 
 	log.Info("Sending transaction to destination chain")
 	if !expectSuccess {
-		return SendTransactionAndWaitForFailure(ctx, destination.RPCClient, signedTx)
+		return SendTransactionAndWaitForFailure(ctx, destination.EthClient, signedTx)
 	}
 
-	receipt := SendTransactionAndWaitForSuccess(ctx, destination.RPCClient, signedTx)
+	receipt := SendTransactionAndWaitForSuccess(ctx, destination.EthClient, signedTx)
 
 	// Check the transaction logs for the ReceiveCrossChainMessage event emitted by the Teleporter contract
 	receiveEvent, err := GetEventFromLogs(
@@ -171,9 +169,9 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 
 func (t TeleporterTestInfo) SendExampleCrossChainMessageAndVerify(
 	ctx context.Context,
-	source interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
 	sourceExampleMessenger *testmessenger.TestMessenger,
-	destination interfaces.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	destExampleMessengerAddress common.Address,
 	destExampleMessenger *testmessenger.TestMessenger,
 	senderKey *ecdsa.PrivateKey,
@@ -196,7 +194,7 @@ func (t TeleporterTestInfo) SendExampleCrossChainMessageAndVerify(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.EthClient, tx.Hash())
 
 	sourceTeleporterMessenger := t.TeleporterMessenger(source)
 	destTeleporterMessenger := t.TeleporterMessenger(destination)
@@ -253,7 +251,7 @@ func (t TeleporterTestInfo) SendExampleCrossChainMessageAndVerify(
 
 func (t TeleporterTestInfo) AddProtocolVersionAndWaitForAcceptance(
 	ctx context.Context,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	newTeleporterAddress common.Address,
 	senderKey *ecdsa.PrivateKey,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
@@ -275,7 +273,7 @@ func (t TeleporterTestInfo) AddProtocolVersionAndWaitForAcceptance(
 	expectedLatestVersion := big.NewInt(curLatestVersion.Int64() + 1)
 
 	// Wait for tx to be accepted, and verify events emitted
-	receipt := SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, signedTx)
+	receipt := SendTransactionAndWaitForSuccess(ctx, l1.EthClient, signedTx)
 	teleporterRegistry := t.TeleporterRegistry(l1)
 	addProtocolVersionEvent, err := GetEventFromLogs(receipt.Logs, teleporterRegistry.ParseAddProtocolVersion)
 	Expect(err).Should(BeNil())
@@ -288,7 +286,7 @@ func (t TeleporterTestInfo) AddProtocolVersionAndWaitForAcceptance(
 	Expect(versionUpdatedEvent.NewVersion.Cmp(expectedLatestVersion)).Should(Equal(0))
 }
 
-func (t TeleporterTestInfo) GetLatestTeleporterVersion(l1 interfaces.L1TestInfo) *big.Int {
+func (t TeleporterTestInfo) GetLatestTeleporterVersion(l1 testinfo.L1TestInfo) *big.Int {
 	version, err := t.TeleporterRegistry(l1).LatestVersion(&bind.CallOpts{})
 	Expect(err).Should(BeNil())
 	return version
@@ -297,8 +295,8 @@ func (t TeleporterTestInfo) GetLatestTeleporterVersion(l1 interfaces.L1TestInfo)
 func (t TeleporterTestInfo) ClearReceiptQueue(
 	ctx context.Context,
 	fundedKey *ecdsa.PrivateKey,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	signatureAggregator *SignatureAggregator,
 ) {
 	sourceTeleporterMessenger := t.TeleporterMessenger(source)
@@ -339,46 +337,11 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 // Deployment utils
 //
 
-func DeployWithNicksMethod(
-	ctx context.Context,
-	l1 interfaces.L1TestInfo,
-	transactionBytes []byte,
-	deployerAddress common.Address,
-	contractAddress common.Address,
-	fundedKey *ecdsa.PrivateKey,
-) {
-	// Fund the deployer address
-	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
-	fundDeployerTx := CreateNativeTransferTransaction(
-		ctx, l1, fundedKey, deployerAddress, fundAmount,
-	)
-	SendTransactionAndWaitForSuccess(ctx, l1.RPCClient, fundDeployerTx)
-
-	log.Info("Finished funding contract deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
-
-	// Deploy contract
-	rpcClient, err := rpc.DialContext(
-		ctx,
-		HttpToRPCURI(l1.NodeURIs[0], l1.BlockchainID.String()),
-	)
-	Expect(err).Should(BeNil())
-	defer rpcClient.Close()
-
-	txHash := common.Hash{}
-	err = rpcClient.CallContext(ctx, &txHash, "eth_sendRawTransaction", hexutil.Encode(transactionBytes))
-	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1.RPCClient, txHash)
-
-	contractCode, err := l1.RPCClient.CodeAt(ctx, contractAddress, nil)
-	Expect(err).Should(BeNil())
-	Expect(len(contractCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
-}
-
 // Deploys a new version of Teleporter and returns its address
 // Does NOT modify the global Teleporter contract address to provide greater testing flexibility.
 func DeployNewTeleporterVersion(
 	ctx context.Context,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	teleporterByteCodeFile string,
 ) common.Address {
@@ -396,7 +359,7 @@ func DeployNewTeleporterVersion(
 
 	DeployWithNicksMethod(
 		ctx,
-		l1,
+		&l1,
 		transactionBytes,
 		deployerAddress,
 		contractAddress,
@@ -404,33 +367,6 @@ func DeployNewTeleporterVersion(
 	)
 
 	return contractAddress
-}
-
-func DeployTestMessenger(
-	ctx context.Context,
-	senderKey *ecdsa.PrivateKey,
-	teleporterManager common.Address,
-	registryAddress common.Address,
-	l1 interfaces.L1TestInfo,
-) (common.Address, *testmessenger.TestMessenger) {
-	opts, err := bind.NewKeyedTransactorWithChainID(
-		senderKey,
-		l1.EVMChainID,
-	)
-	Expect(err).Should(BeNil())
-	address, tx, exampleMessenger, err := testmessenger.DeployTestMessenger(
-		opts,
-		l1.RPCClient,
-		registryAddress,
-		teleporterManager,
-		big.NewInt(1),
-	)
-	Expect(err).Should(BeNil())
-
-	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
-
-	return address, exampleMessenger
 }
 
 //
@@ -454,8 +390,8 @@ func ParseTeleporterMessage(unsignedMessage avalancheWarp.UnsignedMessage) *tele
 
 func SendAddFeeAmountAndWaitForAcceptance(
 	ctx context.Context,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	messageID ids.ID,
 	amount *big.Int,
 	feeContractAddress common.Address,
@@ -471,7 +407,7 @@ func SendAddFeeAmountAndWaitForAcceptance(
 	tx, err := transactor.AddFeeAmount(opts, messageID, feeContractAddress, amount)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.EthClient, tx.Hash())
 
 	addFeeAmountEvent, err := GetEventFromLogs(receipt.Logs, transactor.ParseAddFeeAmount)
 	Expect(err).Should(BeNil())
@@ -490,7 +426,7 @@ func RetryMessageExecutionAndWaitForAcceptance(
 	ctx context.Context,
 	sourceBlockchainID ids.ID,
 	destinationTeleporterMessenger *teleportermessenger.TeleporterMessenger,
-	destinationL1 interfaces.L1TestInfo,
+	destinationL1 testinfo.L1TestInfo,
 	message teleportermessenger.TeleporterMessage,
 	senderKey *ecdsa.PrivateKey,
 ) *types.Receipt {
@@ -500,13 +436,13 @@ func RetryMessageExecutionAndWaitForAcceptance(
 	tx, err := destinationTeleporterMessenger.RetryMessageExecution(opts, sourceBlockchainID, message)
 	Expect(err).Should(BeNil())
 
-	return WaitForTransactionSuccess(ctx, destinationL1.RPCClient, tx.Hash())
+	return WaitForTransactionSuccess(ctx, destinationL1.EthClient, tx.Hash())
 }
 
 func RedeemRelayerRewardsAndConfirm(
 	ctx context.Context,
 	teleporterMessenger *teleportermessenger.TeleporterMessenger,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	feeToken *exampleerc20.ExampleERC20,
 	feeTokenAddress common.Address,
 	redeemerKey *ecdsa.PrivateKey,
@@ -529,7 +465,7 @@ func RedeemRelayerRewardsAndConfirm(
 		txOpts, feeTokenAddress,
 	)
 	Expect(err).Should(BeNil())
-	receipt := WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
 
 	// Check that the ERC20 balance was incremented
 	balanceAfterRedemption, err := feeToken.BalanceOf(
@@ -559,7 +495,7 @@ func RedeemRelayerRewardsAndConfirm(
 func SendSpecifiedReceiptsAndWaitForAcceptance(
 	ctx context.Context,
 	sourceTeleporterMessenger *teleportermessenger.TeleporterMessenger,
-	source interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
 	destinationBlockchainID ids.ID,
 	messageIDs [][32]byte,
 	feeInfo teleportermessenger.TeleporterFeeInfo,
@@ -573,7 +509,7 @@ func SendSpecifiedReceiptsAndWaitForAcceptance(
 		opts, destinationBlockchainID, messageIDs, feeInfo, allowedRelayerAddresses)
 	Expect(err).Should(BeNil())
 
-	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.EthClient, tx.Hash())
 
 	// Check the transaction logs for the SendCrossChainMessage event emitted by the Teleporter contract
 	event, err := GetEventFromLogs(receipt.Logs, sourceTeleporterMessenger.ParseSendCrossChainMessage)
@@ -591,8 +527,8 @@ func SendSpecifiedReceiptsAndWaitForAcceptance(
 func SendCrossChainMessageAndWaitForAcceptance(
 	ctx context.Context,
 	sourceTeleporterMessenger *teleportermessenger.TeleporterMessenger,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	input teleportermessenger.TeleporterMessageInput,
 	senderKey *ecdsa.PrivateKey,
 ) (*types.Receipt, ids.ID) {
@@ -604,7 +540,7 @@ func SendCrossChainMessageAndWaitForAcceptance(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be accepted
-	receipt := WaitForTransactionSuccess(ctx, source.RPCClient, tx.Hash())
+	receipt := WaitForTransactionSuccess(ctx, source.EthClient, tx.Hash())
 
 	// Check the transaction logs for the SendCrossChainMessage event emitted by the Teleporter contract
 	event, err := GetEventFromLogs(receipt.Logs, sourceTeleporterMessenger.ParseSendCrossChainMessage)
@@ -651,7 +587,7 @@ func GetOutstandingReceiptCount(
 // Returns the signed transaction.
 func CreateSendCrossChainMessageTransaction(
 	ctx context.Context,
-	source interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
 	input teleportermessenger.TeleporterMessageInput,
 	senderKey *ecdsa.PrivateKey,
 	teleporterContractAddress common.Address,
@@ -659,7 +595,7 @@ func CreateSendCrossChainMessageTransaction(
 	data, err := teleportermessenger.PackSendCrossChainMessage(input)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, source.RPCClient, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, source.EthClient, PrivateKeyToAddress(senderKey))
 
 	// Send a transaction to the Teleporter contract
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -682,7 +618,7 @@ func (t *TeleporterTestInfo) CreateReceiveCrossChainMessageTransaction(
 	ctx context.Context,
 	signedMessage *avalancheWarp.Message,
 	senderKey *ecdsa.PrivateKey,
-	l1Info interfaces.L1TestInfo,
+	l1Info testinfo.L1TestInfo,
 ) *types.Transaction {
 	// Construct the transaction to send the Warp message to the destination chain
 	log.Info("Constructing receiveCrossChainMessage transaction for the destination chain")
@@ -702,7 +638,7 @@ func (t *TeleporterTestInfo) CreateReceiveCrossChainMessageTransaction(
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, PrivateKeyToAddress(senderKey))
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.EthClient, PrivateKeyToAddress(senderKey))
 
 	teleporterContractAddress := t.TeleporterMessengerAddress(l1Info)
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
@@ -732,7 +668,7 @@ func CreateAddProtocolVersionTransaction(
 	signedMessage *avalancheWarp.Message,
 	teleporterRegistryAddress common.Address,
 	senderKey *ecdsa.PrivateKey,
-	l1Info interfaces.L1TestInfo,
+	l1Info testinfo.L1TestInfo,
 ) *types.Transaction {
 	// Construct the transaction to send the Warp message to the destination chain
 	log.Info("Constructing addProtocolVersion transaction for the destination chain")
@@ -740,7 +676,7 @@ func CreateAddProtocolVersionTransaction(
 	callData, err := teleporterregistry.PackAddProtocolVersion(0)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.EthClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -767,14 +703,14 @@ func CreateExecuteCallPredicateTransaction(
 	signedMessage *avalancheWarp.Message,
 	validatorSetSigAddress common.Address,
 	senderKey *ecdsa.PrivateKey,
-	l1Info interfaces.L1TestInfo,
+	l1Info testinfo.L1TestInfo,
 ) *types.Transaction {
 	log.Info("Constructing executeCall transaction for the destination chain")
 
 	callData, err := validatorsetsig.PackExecuteCall(0)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.EthClient, PrivateKeyToAddress(senderKey))
 
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
@@ -804,7 +740,7 @@ func CreateExecuteCallPredicateTransaction(
 // off-chain Warp messages
 func InitOffChainMessageChainConfig(
 	networkID uint32,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	registryAddress common.Address,
 	teleporterAddress common.Address,
 	version uint64,
@@ -829,7 +765,7 @@ func InitOffChainMessageChainConfig(
 // Creates an off-chain Warp message that registers a Teleporter protocol version with TeleporterRegistry
 func CreateOffChainRegistryMessage(
 	networkID uint32,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	registryAddress common.Address,
 	entry teleporterregistry.ProtocolRegistryEntry,
 ) *avalancheWarp.UnsignedMessage {
@@ -870,7 +806,7 @@ func SetTeleporterInfoFromFile(
 	fileName string,
 	teleporterContractAddress common.Address,
 	teleporterInfo TeleporterTestInfo,
-	l1s []interfaces.L1TestInfo,
+	l1s []testinfo.L1TestInfo,
 ) {
 	// Read the Teleporter registry address from the file
 	registryAddresseses := make(map[string]string)

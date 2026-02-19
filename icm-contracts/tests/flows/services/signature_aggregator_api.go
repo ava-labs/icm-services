@@ -15,8 +15,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	. "github.com/onsi/gomega"
@@ -45,7 +45,7 @@ func SignatureAggregatorAPI(
 
 	signatureAggregatorConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 	)
 
 	signatureAggregatorConfigPath := utils.WriteSignatureAggregatorConfig(

@@ -133,7 +133,7 @@ func NativeTokenHomeNativeDestination(
 			ctx,
 			recipientAddress,
 			amount,
-			l1AInfo.RPCClient,
+			l1AInfo.EthClient,
 		)
 	}
 
@@ -182,6 +182,6 @@ func NativeTokenHomeNativeDestination(
 			homeAmount,
 		)
 
-		utils.CheckBalance(ctx, recipientAddress, homeAmount, cChainInfo.RPCClient)
+		utils.CheckBalance(ctx, recipientAddress, homeAmount, cChainInfo.EthClient)
 	}
 }

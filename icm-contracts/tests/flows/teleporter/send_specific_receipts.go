@@ -7,8 +7,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	teleporterutils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/log"
@@ -254,8 +254,8 @@ func SendSpecificReceipts(
 func receiptIncluded(
 	teleporterMessengerAddress common.Address,
 	expectedMessageID ids.ID,
-	sourceL1 interfaces.L1TestInfo,
-	destinationL1 interfaces.L1TestInfo,
+	sourceL1 testinfo.L1TestInfo,
+	destinationL1 testinfo.L1TestInfo,
 	receipts []teleportermessenger.TeleporterMessageReceipt,
 ) bool {
 	for _, receipt := range receipts {
@@ -279,7 +279,7 @@ func receiptIncluded(
 // and that each message individually had a fee of {feePerMessage}.
 func checkExpectedRewardAmounts(
 	teleporter utils.TeleporterTestInfo,
-	sourceL1 interfaces.L1TestInfo,
+	sourceL1 testinfo.L1TestInfo,
 	receiveEvent1 *teleportermessenger.TeleporterMessengerReceiveCrossChainMessage,
 	receiveEvent2 *teleportermessenger.TeleporterMessengerReceiveCrossChainMessage,
 	tokenAddress common.Address,

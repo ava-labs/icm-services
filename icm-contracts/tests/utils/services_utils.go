@@ -22,7 +22,7 @@ import (
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	batchcrosschainmessenger "github.com/ava-labs/icm-services/abi-bindings/go/utilities/BatchCrossChainMessenger"
 	"github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
 	signatureaggregatorcfg "github.com/ava-labs/icm-services/signature-aggregator/config"
@@ -114,8 +114,8 @@ func ReadHexTextFile(filename string) string {
 func CreateDefaultRelayerConfig(
 	log logging.Logger,
 	teleporter TeleporterTestInfo,
-	sourceL1sInfo []interfaces.L1TestInfo,
-	destinationL1sInfo []interfaces.L1TestInfo,
+	sourceL1sInfo []testinfo.L1TestInfo,
+	destinationL1sInfo []testinfo.L1TestInfo,
 	fundedAddress common.Address,
 	relayerKey *ecdsa.PrivateKey,
 ) relayercfg.Config {
@@ -217,7 +217,7 @@ func CreateDefaultRelayerConfig(
 // there aren't two sets of "defaults".
 func CreateDefaultSignatureAggregatorConfig(
 	log logging.Logger,
-	sourceL1Info []interfaces.L1TestInfo,
+	sourceL1Info []testinfo.L1TestInfo,
 ) signatureaggregatorcfg.Config {
 	logLevel, err := logging.ToLevel(os.Getenv("LOG_LEVEL"))
 	if err != nil {
@@ -251,7 +251,7 @@ func ClearRelayerStorage() error {
 
 func FundRelayers(
 	ctx context.Context,
-	subnetsInfo []interfaces.L1TestInfo,
+	subnetsInfo []testinfo.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	relayerKey *ecdsa.PrivateKey,
 ) {
@@ -260,9 +260,9 @@ func FundRelayers(
 
 	for _, subnetInfo := range subnetsInfo {
 		fundRelayerTx := CreateNativeTransferTransaction(
-			ctx, subnetInfo, fundedKey, relayerAddress, fundAmount,
+			ctx, &subnetInfo.EVMTestInfo, fundedKey, relayerAddress, fundAmount,
 		)
-		SendTransactionAndWaitForSuccess(ctx, subnetInfo.RPCClient, fundRelayerTx)
+		SendTransactionAndWaitForSuccess(ctx, subnetInfo.EthClient, fundRelayerTx)
 	}
 }
 
@@ -270,8 +270,8 @@ func SendBasicTeleporterMessageAsync(
 	ctx context.Context,
 	log logging.Logger,
 	teleporter TeleporterTestInfo,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	destinationAddress common.Address,
 	ids chan<- ids.ID,
@@ -309,8 +309,8 @@ func SendBasicTeleporterMessage(
 	ctx context.Context,
 	log logging.Logger,
 	teleporter TeleporterTestInfo,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	destinationAddress common.Address,
 ) (*types.Receipt, teleportermessenger.TeleporterMessage, ids.ID) {
@@ -352,8 +352,8 @@ func RelayBasicMessage(
 	ctx context.Context,
 	log logging.Logger,
 	teleporter TeleporterTestInfo,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	destinationAddress common.Address,
 ) {
@@ -459,8 +459,8 @@ func TriggerProcessMissedBlocks(
 	ctx context.Context,
 	log logging.Logger,
 	teleporter TeleporterTestInfo,
-	sourceL1Info interfaces.L1TestInfo,
-	destinationSubnetInfo interfaces.L1TestInfo,
+	sourceL1Info testinfo.L1TestInfo,
+	destinationSubnetInfo testinfo.L1TestInfo,
 	currRelayerCleanup context.CancelFunc,
 	currentRelayerConfig relayercfg.Config,
 	fundedAddress common.Address,
@@ -505,7 +505,7 @@ func TriggerProcessMissedBlocks(
 		fundedAddress,
 	)
 
-	currHeight, err := sourceL1Info.RPCClient.BlockNumber(ctx)
+	currHeight, err := sourceL1Info.EthClient.BlockNumber(ctx)
 	Expect(err).Should(BeNil())
 	log.Info("Current block height", zap.Uint64("height", currHeight))
 
@@ -563,14 +563,14 @@ func DeployBatchCrossChainMessenger(
 	senderKey *ecdsa.PrivateKey,
 	teleporter TeleporterTestInfo,
 	teleporterManager common.Address,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 ) (common.Address, *batchcrosschainmessenger.BatchCrossChainMessenger) {
 	opts, err := bind.NewKeyedTransactorWithChainID(
 		senderKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
 	address, tx, exampleMessenger, err := batchcrosschainmessenger.DeployBatchCrossChainMessenger(
 		opts,
-		l1.RPCClient,
+		l1.EthClient,
 		teleporter.TeleporterRegistryAddress(l1),
 		teleporterManager,
 		teleporter.GetLatestTeleporterVersion(l1),
@@ -578,7 +578,7 @@ func DeployBatchCrossChainMessenger(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
 
 	return address, exampleMessenger
 }

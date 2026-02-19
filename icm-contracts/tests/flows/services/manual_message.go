@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/relayer/api"
@@ -53,7 +53,7 @@ func ManualMessage(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{cChainInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{cChainInfo}, fundedKey, relayerKey)
 
 	//
 	// Define the off-chain Warp message
@@ -110,8 +110,8 @@ func ManualMessage(
 	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{cChainInfo},
-		[]interfaces.L1TestInfo{cChainInfo},
+		[]testinfo.L1TestInfo{cChainInfo},
+		[]testinfo.L1TestInfo{cChainInfo},
 		fundedAddress,
 		relayerKey,
 	)

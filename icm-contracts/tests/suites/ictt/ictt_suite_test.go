@@ -100,10 +100,11 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
 
 	if e2eFlags.NetworkDir() == "" {
+		primaryNetworkInfo := localNetworkInstance.GetPrimaryNetworkInfo()
 		// Only deploy Teleporter if we are not reusing an existing network
 		utils.DeployWithNicksMethod(
 			ctx,
-			localNetworkInstance.GetPrimaryNetworkInfo(),
+			&primaryNetworkInfo,
 			teleporterDeployerTransaction,
 			teleporterDeployerAddress,
 			teleporterContractAddress,

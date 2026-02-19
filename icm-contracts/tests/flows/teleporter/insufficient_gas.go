@@ -25,7 +25,7 @@ func InsufficientGas(
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		l1AInfo.EVMTestInfo,
 	)
 	// Deploy TestMessenger to L1s B
 	testMessengerContractB, l1BTestMessenger := utils.DeployTestMessenger(
@@ -33,7 +33,7 @@ func InsufficientGas(
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Send message from L1A to L1B with 0 execution gas, which should fail to execute
@@ -54,7 +54,7 @@ func InsufficientGas(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,

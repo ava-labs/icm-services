@@ -10,8 +10,8 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
@@ -70,8 +70,8 @@ func relayAlteredMessage(
 	ctx context.Context,
 	teleporter utils.TeleporterTestInfo,
 	sourceReceipt *types.Receipt,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	network *localnetwork.LocalAvalancheNetwork,
 ) {
 	// Fetch the Teleporter message from the logs
@@ -106,7 +106,7 @@ func relayAlteredMessage(
 	)
 
 	log.Info("Sending transaction to destination chain")
-	utils.SendTransactionAndWaitForFailure(ctx, destination.RPCClient, signedTx)
+	utils.SendTransactionAndWaitForFailure(ctx, destination.EthClient, signedTx)
 }
 
 func createAlteredReceiveCrossChainMessageTransaction(
@@ -116,7 +116,7 @@ func createAlteredReceiveCrossChainMessageTransaction(
 	requiredGasLimit *big.Int,
 	teleporterContractAddress common.Address,
 	fundedKey *ecdsa.PrivateKey,
-	l1Info interfaces.L1TestInfo,
+	l1Info testinfo.L1TestInfo,
 ) *types.Transaction {
 	fundedAddress := crypto.PubkeyToAddress(fundedKey.PublicKey)
 	// Construct the transaction to send the Warp message to the destination chain
@@ -137,7 +137,7 @@ func createAlteredReceiveCrossChainMessageTransaction(
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, fundedAddress)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := utils.CalculateTxParams(ctx, l1Info.RPCClient, fundedAddress)
+	gasFeeCap, gasTipCap, nonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
 
 	alterTeleporterMessage(signedMessage)
 

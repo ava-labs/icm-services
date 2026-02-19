@@ -24,7 +24,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	nativeMinter "github.com/ava-labs/icm-services/abi-bindings/go/subnet-evm/INativeMinter"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/icm-services/utils"
@@ -151,16 +151,16 @@ func GetURIHostAndPort(uri string) (string, uint32, error) {
 
 func CreateNativeTransferTransaction(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	evmInfo *testinfo.EVMTestInfo,
 	fromKey *ecdsa.PrivateKey,
 	recipient common.Address,
 	amount *big.Int,
 ) *types.Transaction {
 	fromAddress := crypto.PubkeyToAddress(fromKey.PublicKey)
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, fromAddress)
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, evmInfo.EthClient, fromAddress)
 
 	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   l1Info.EVMChainID,
+		ChainID:   evmInfo.EVMChainID,
 		Nonce:     nonce,
 		To:        &recipient,
 		Gas:       NativeTransferGas,
@@ -169,18 +169,18 @@ func CreateNativeTransferTransaction(
 		Value:     amount,
 	})
 
-	return SignTransaction(tx, fromKey, l1Info.EVMChainID)
+	return SignTransaction(tx, fromKey, evmInfo.EVMChainID)
 }
 
 func SendNativeTransfer(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	l1Info testinfo.L1TestInfo,
 	fromKey *ecdsa.PrivateKey,
 	recipient common.Address,
 	amount *big.Int,
 ) *types.Receipt {
-	tx := CreateNativeTransferTransaction(ctx, l1Info, fromKey, recipient, amount)
-	return SendTransactionAndWaitForSuccess(ctx, l1Info.RPCClient, tx)
+	tx := CreateNativeTransferTransaction(ctx, l1Info.GetEVMTestInfo(), fromKey, recipient, amount)
+	return SendTransactionAndWaitForSuccess(ctx, l1Info.EthClient, tx)
 }
 
 // Sends a tx, and waits for it to be mined.
@@ -479,7 +479,7 @@ func BigIntMul(v1 *big.Int, v2 *big.Int) *big.Int {
 // Network utils
 //
 
-func GetPChainInfo(cChainInfo interfaces.L1TestInfo) interfaces.L1TestInfo {
+func GetPChainInfo(cChainInfo testinfo.L1TestInfo) testinfo.L1TestInfo {
 	pChainBlockchainID, err := info.NewClient(cChainInfo.NodeURIs[0]).GetBlockchainID(context.Background(), "P")
 	Expect(err).Should(BeNil())
 
@@ -491,7 +491,7 @@ func GetPChainInfo(cChainInfo interfaces.L1TestInfo) interfaces.L1TestInfo {
 type ChainConfigMap map[string]string
 
 // Sets the chain config in customChainConfigs for the specified L!
-func (m ChainConfigMap) Add(l1 interfaces.L1TestInfo, chainConfig string) {
+func (m ChainConfigMap) Add(l1 testinfo.L1TestInfo, chainConfig string) {
 	if l1.SubnetID == constants.PrimaryNetworkID {
 		m[CChainPathSpecifier] = chainConfig
 	} else {
@@ -587,18 +587,18 @@ func InstantiateGenesisTemplate(
 // Funded key must have admin access to set new admin.
 func AddNativeMinterAdmin(
 	ctx context.Context,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	address common.Address,
 ) {
-	nativeMinterPrecompile, err := nativeMinter.NewINativeMinter(nativeminter.ContractAddress, l1.RPCClient)
+	nativeMinterPrecompile, err := nativeMinter.NewINativeMinter(nativeminter.ContractAddress, l1.EthClient)
 	Expect(err).Should(BeNil())
 
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
 	tx, err := nativeMinterPrecompile.SetAdmin(opts, address)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
 }
 
 // Blocks until all validators specified in nodeURIs have reached the specified block height
@@ -655,12 +655,12 @@ func ExtractWarpMessageFromLog(
 func ConstructSignedWarpMessage(
 	ctx context.Context,
 	sourceReceipt *types.Receipt,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	justification []byte,
 	signatureAggregator *SignatureAggregator,
 ) *avalancheWarp.Message {
-	unsignedMsg := ExtractWarpMessageFromLog(ctx, sourceReceipt, source.RPCClient)
+	unsignedMsg := ExtractWarpMessageFromLog(ctx, sourceReceipt, source.EthClient)
 
 	// Loop over each client on source chain to ensure they all have time to accept the block.
 	// Note: if we did not confirm this here, the next stage could be racy since it assumes every node
@@ -673,8 +673,8 @@ func ConstructSignedWarpMessage(
 }
 
 func GetSignedMessage(
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	unsignedWarpMessage *avalancheWarp.UnsignedMessage,
 	justification []byte,
 	signatureAggregator *SignatureAggregator,

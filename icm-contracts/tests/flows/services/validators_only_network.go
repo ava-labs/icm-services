@@ -23,8 +23,8 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
@@ -69,7 +69,7 @@ func ValidatorsOnlyNetwork(
 	// Create a config without TLS cert and key
 	baseConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 	)
 	baseConfigPath := utils.WriteSignatureAggregatorConfig(
 		log,

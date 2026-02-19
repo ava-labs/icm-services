@@ -9,8 +9,8 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/database"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
@@ -41,7 +41,7 @@ func BasicRelay(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	//
 	// Set up relayer config
@@ -49,8 +49,8 @@ func BasicRelay(
 	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 		fundedAddress,
 		relayerKey,
 	)

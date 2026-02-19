@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
@@ -28,7 +29,7 @@ var _ LocalNetwork = (*LocalEthereumNetwork)(nil)
 
 type LocalEthereumNetwork struct {
 	BaseURL         string
-	RPCClient       *ethclient.Client
+	EthClient       *ethclient.Client
 	ChainID         *big.Int
 	globalFundedKey *secp256k1.PrivateKey
 	cmd             *exec.Cmd
@@ -80,7 +81,7 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 
 	return &LocalEthereumNetwork{
 		BaseURL:         localEthereumNetworkBaseURL,
-		RPCClient:       client,
+		EthClient:       client,
 		ChainID:         chainID,
 		globalFundedKey: globalFundedKey,
 		cmd:             cmd,
@@ -106,7 +107,7 @@ func NewLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 
 	return &LocalEthereumNetwork{
 		BaseURL:         localEthereumNetworkBaseURL,
-		RPCClient:       client,
+		EthClient:       client,
 		ChainID:         chainID,
 		globalFundedKey: globalFundedKey,
 	}
@@ -118,10 +119,20 @@ func (n *LocalEthereumNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.Pr
 	return fundedAddress, ecdsaKey
 }
 
+func (n *LocalEthereumNetwork) EthereumTestInfo() *testinfo.EthereumTestInfo {
+	return &testinfo.EthereumTestInfo{
+		EVMTestInfo: testinfo.EVMTestInfo{
+			EthClient:  n.EthClient,
+			EVMChainID: n.ChainID,
+		},
+		BaseURL: n.BaseURL,
+	}
+}
+
 func (n *LocalEthereumNetwork) TearDownNetwork() {
 	log.Info("Tearing down local Ethereum network")
 	Expect(n).ShouldNot(BeNil())
-	Expect(n.RPCClient).ShouldNot(BeNil())
+	Expect(n.EthClient).ShouldNot(BeNil())
 
 	// Stop the Ethereum network process if it was started by us
 	if n.cmd != nil && n.cmd.Process != nil {
