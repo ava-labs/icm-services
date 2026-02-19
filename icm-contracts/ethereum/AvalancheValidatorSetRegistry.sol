@@ -173,9 +173,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
 
     /**
      * @notice Updates an existing validator set by applying a diff.
-     * @dev This function assumes the number of changes in the `diff`
-     * (validators added + removed + modified) is small relative to the total validator set size.
-     * @param message The ICM message containing the ValidatorSetDiff.
      */
     /* solhint-disable-next-line no-unused-vars */
     function updateValidatorSetWithDiff(
@@ -331,15 +328,40 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
             ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
 
         // Update state
+        // NOTE: We can simplify this code using --via-ir once a stable compiler version is out.
         ValidatorSet storage storageSet = _validatorSets[chainID];
         storageSet.pChainHeight = diff.currentHeight;
         storageSet.pChainTimestamp = diff.currentTimestamp;
         storageSet.totalWeight = newWeight;
-        delete storageSet.validators;
-        for (uint256 i = 0; i < newValidators.length;) {
-            storageSet.validators.push(newValidators[i]);
-            unchecked {
-                ++i;
+        {
+            uint256 oldValLen = storageSet.validators.length;
+            uint256 newValLen = newValidators.length;
+            uint256 minValLen = newValLen < oldValLen ? newValLen : oldValLen;
+            // Overwrite
+            uint256 i = 0;
+            for (; i < minValLen;) {
+                storageSet.validators[i] = newValidators[i];
+                unchecked {
+                    ++i;
+                }
+            }
+            // Push
+            if (newValLen > oldValLen) {
+                for (; i < newValLen;) {
+                    storageSet.validators.push(newValidators[i]);
+                    unchecked {
+                        ++i;
+                    }
+                }
+                // Pop
+            } else if (oldValLen > newValLen) {
+                uint256 diffLen = oldValLen - newValLen;
+                for (uint256 j = 0; j < diffLen;) {
+                    storageSet.validators.pop();
+                    unchecked {
+                        ++j;
+                    }
+                }
             }
         }
         emit ValidatorSetUpdated(chainID);
