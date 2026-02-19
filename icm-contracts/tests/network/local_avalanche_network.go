@@ -192,7 +192,7 @@ func NewLocalAvalancheNetwork(
 	var primaryNetworkValidators []*tmpnet.Node
 	if isReuseNetwork {
 		// Load existing network and restart nodes
-		network, err = tmpnet.ReadNetwork(context.Background(), logging.NoLog{}, flagVars.NetworkDir())
+		network, err = tmpnet.ReadNetwork(ctx, logging.NoLog{}, flagVars.NetworkDir())
 		Expect(err).Should(BeNil())
 		Expect(network).ShouldNot(BeNil())
 
@@ -339,7 +339,7 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 
 	tx, err := ownable.TransferOwnership(opts, specializationAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1.RPCClient, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	n.validatorManagerSpecializations[l1.SubnetID] = ProxyAddress{
 		Address:    specializationAddress,
@@ -659,7 +659,10 @@ func (n *LocalAvalancheNetwork) SetChainConfigs(chainConfigs map[string]string) 
 	}
 
 	// Restart the network to apply the new chain configs
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(60*len(n.Network.Nodes))*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(), 
+		time.Duration(60*len(n.Network.Nodes))*time.Second,
+	)
 	defer cancel()
 	err = n.Network.Restart(ctx)
 	Expect(err).Should(BeNil())
@@ -688,7 +691,8 @@ func (n *LocalAvalancheNetwork) GetPChainWallet(validationIDs ...ids.ID) pwallet
 		primary.WalletConfig{
 			SubnetIDs:     subnetIDs,
 			ValidationIDs: validationIDs,
-		})
+		},
+	)
 	Expect(err).Should(BeNil())
 	return wallet.P()
 }

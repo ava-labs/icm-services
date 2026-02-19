@@ -269,7 +269,7 @@ func main() {
 	processMessageSemaphore := make(chan struct{}, cfg.MaxConcurrentMessages)
 
 	applicationRelayers, minHeights, err := createApplicationRelayers(
-		context.Background(),
+		ctx,
 		logger,
 		relayer.NewApplicationRelayerMetrics(relayerMetricsRegistry),
 		checkpoint.NewCheckpointManagerMetrics(relayerMetricsRegistry),

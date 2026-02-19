@@ -150,7 +150,7 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 
 		// Gather subnet-evm Warp signatures for the L1ValidatorWeightMessage & relay to the P-Chain
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,
@@ -217,7 +217,7 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 		// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 		// (Sending to the P-Chain will be skipped for now)
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,
