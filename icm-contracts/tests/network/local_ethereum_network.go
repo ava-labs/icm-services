@@ -88,31 +88,6 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	}
 }
 
-// NewLocalEthereumNetwork connects to an already-running local Ethereum network.
-// Use StartLocalEthereumNetwork to start a new network instance.
-func NewLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
-	// The local Ethereum network must already be running and accessible at a known endpoint.
-	// We test that it is accessible here.
-	client, err := ethclient.Dial(localEthereumNetworkBaseURL)
-	Expect(err).Should(BeNil())
-
-	// Get the chain ID of the local Ethereum network
-	chainID, err := client.ChainID(ctx)
-	Expect(err).Should(BeNil())
-
-	fundedKeyBytes, err := hex.DecodeString(localEthereumNetworkFundedKey)
-	Expect(err).Should(BeNil())
-	globalFundedKey, err := secp256k1.ToPrivateKey(fundedKeyBytes)
-	Expect(err).Should(BeNil())
-
-	return &LocalEthereumNetwork{
-		BaseURL:         localEthereumNetworkBaseURL,
-		EthClient:       client,
-		ChainID:         chainID,
-		globalFundedKey: globalFundedKey,
-	}
-}
-
 func (n *LocalEthereumNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.PrivateKey) {
 	ecdsaKey := n.globalFundedKey.ToECDSA()
 	fundedAddress := crypto.PubkeyToAddress(ecdsaKey.PublicKey)
