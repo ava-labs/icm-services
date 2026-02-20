@@ -599,8 +599,10 @@ library ValidatorSets {
         if (len < 2) return;
         for (uint256 i = 0; i < len - 1;) {
             // Compare
-            int256 compare =
-                BLST.comparePublicKeys(BLST.unPadUncompressedBlsPublicKey(changes[i].blsPublicKey), BLST.unPadUncompressedBlsPublicKey(changes[i + 1].blsPublicKey));
+            int256 compare = BLST.comparePublicKeys(
+                BLST.unPadUncompressedBlsPublicKey(changes[i].blsPublicKey),
+                BLST.unPadUncompressedBlsPublicKey(changes[i + 1].blsPublicKey)
+            );
             require(compare <= 0, "Validator changes not sorted by public key");
             unchecked {
                 ++i;

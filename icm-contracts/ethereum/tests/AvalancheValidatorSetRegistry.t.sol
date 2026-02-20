@@ -544,7 +544,12 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             int256 j = int256(i) - 1;
             while (j >= 0) {
                 bytes memory jPubKey = changes[uint256(j)].blsPublicKey;
-                if (BLST.comparePublicKeys(BLST.unPadUncompressedBlsPublicKey(jPubKey), BLST.unPadUncompressedBlsPublicKey(keyPubKey)) <= 0) {
+                if (
+                    BLST.comparePublicKeys(
+                        BLST.unPadUncompressedBlsPublicKey(jPubKey),
+                        BLST.unPadUncompressedBlsPublicKey(keyPubKey)
+                    ) <= 0
+                ) {
                     break;
                 }
                 changes[uint256(j + 1)] = changes[uint256(j)];

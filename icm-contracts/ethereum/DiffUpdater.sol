@@ -6,13 +6,13 @@ import {AvalancheValidatorSetRegistry} from "./AvalancheValidatorSetRegistry.sol
 import {
     ValidatorSetMetadata,
     Validator,
+    ValidatorSet,
+    ValidatorSetDiff,
     ValidatorSetShard,
     ValidatorSets
 } from "./utils/ValidatorSets.sol";
 
-// This contract specifies that shards of validator sets is a serialized subsequence of
-// the entire validator set that has been cryptographically committed to.
-contract SubsetUpdater is AvalancheValidatorSetRegistry {
+contract DiffUpdater is AvalancheValidatorSetRegistry {
     constructor(
         uint32 avalancheNetworkID_,
         // The metadata about the initial validator set. This is used
@@ -20,6 +20,75 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         // transactions
         ValidatorSetMetadata memory initialValidatorSetData
     ) payable AvalancheValidatorSetRegistry(avalancheNetworkID_, initialValidatorSetData) {}
+
+    /**
+     * @notice Updates an existing validator set by applying a diff.
+     * @dev This function assumes the number of changes in the `diff`
+     * (validators added + removed + modified) is small relative to the total validator set size.
+     * @param message The ICM message containing the ValidatorSetDiff.
+     */
+    function updateValidatorSetWithDiff(
+        ICMMessage calldata message
+    ) external override {
+        // Safety checks
+        require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
+        bytes32 chainID = message.sourceBlockchainID;
+        require(isRegistered(chainID), "Validator set not registered");
+        require(
+            !isRegistrationInProgress(chainID),
+            "Cannot apply diff with another registration in progress"
+        );
+        verifyICMMessage(message, chainID);
+
+        // Apply the diff
+        ValidatorSet memory currentValidatorSet = this.getValidatorSet(chainID);
+        ValidatorSetDiff memory diff = ValidatorSets.parseValidatorSetDiff(
+            message.rawMessage, currentValidatorSet.validators.length
+        );
+        require(diff.currentHeight > currentValidatorSet.pChainHeight, "Invalid blockchain height");
+
+        (Validator[] memory newValidators, uint64 newWeight) =
+            ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
+
+        // Update state
+        // NOTE: We can simplify this code using --via-ir once a stable compiler version is out.
+        ValidatorSet storage storageSet = _validatorSets[chainID];
+        storageSet.pChainHeight = diff.currentHeight;
+        storageSet.pChainTimestamp = diff.currentTimestamp;
+        storageSet.totalWeight = newWeight;
+        {
+            uint256 oldValLen = storageSet.validators.length;
+            uint256 newValLen = newValidators.length;
+            uint256 minValLen = newValLen < oldValLen ? newValLen : oldValLen;
+            // Overwrite
+            uint256 i = 0;
+            for (; i < minValLen;) {
+                storageSet.validators[i] = newValidators[i];
+                unchecked {
+                    ++i;
+                }
+            }
+            // Push
+            if (newValLen > oldValLen) {
+                for (; i < newValLen;) {
+                    storageSet.validators.push(newValidators[i]);
+                    unchecked {
+                        ++i;
+                    }
+                }
+                // Pop
+            } else if (oldValLen > newValLen) {
+                uint256 diffLen = oldValLen - newValLen;
+                for (uint256 j = 0; j < diffLen;) {
+                    storageSet.validators.pop();
+                    unchecked {
+                        ++j;
+                    }
+                }
+            }
+        }
+        emit ValidatorSetUpdated(chainID);
+    }
 
     /**
      * @dev Applies a set of validators to partial to a set that has been registered.
