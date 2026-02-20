@@ -145,7 +145,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 
 		// Gather subnet-evm Warp signatures for the L1ValidatorWeightMessage & relay to the P-Chain
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,
@@ -224,7 +224,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 		// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 		// (Sending to the P-Chain will be skipped for now)
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,

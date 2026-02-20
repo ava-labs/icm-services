@@ -568,11 +568,10 @@ func TestDestinationClient_AllRPCCallsForwardHTTPHeaders(t *testing.T) {
 	client, err := NewDestinationClient(logging.NoLog{}, &destinationBlockchain, time.Minute)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	client.avaRPCClient.BlockNumber(ctx)
+	client.avaRPCClient.BlockNumber(t.Context())
 	ethClient := client.Client()
-	ethClient.SuggestGasPrice(ctx)
-	ethClient.SuggestGasTipCap(ctx)
+	ethClient.SuggestGasPrice(t.Context())
+	ethClient.SuggestGasTipCap(t.Context())
 
 	require.Greater(t, len(receivedHeaders), 0, "No requests were made")
 	for i, headers := range receivedHeaders {

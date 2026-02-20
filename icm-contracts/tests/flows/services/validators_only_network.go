@@ -153,9 +153,9 @@ func ValidatorsOnlyNetwork(
 			Expect(network.DefaultRuntimeConfig.Process.ReuseDynamicPorts).Should(BeTrue())
 			tmpnetNode.RuntimeConfig = &network.DefaultRuntimeConfig
 			// Restart the network to apply the new chain configs
-			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			cctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 			defer cancel()
-			err := tmpnetNode.Restart(ctx)
+			err := tmpnetNode.Restart(cctx)
 			Expect(err).Should(BeNil())
 		}
 	}
