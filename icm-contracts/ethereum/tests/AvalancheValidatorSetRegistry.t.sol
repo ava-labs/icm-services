@@ -4,8 +4,7 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {ICMMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
-import {ByteComparator} from "../utils/ByteComparator.sol";
-import {SubsetUpdater} from "../AvalancheValidatorSetRegistry.sol";
+import {DiffUpdater} from "../DiffUpdater.sol";
 import {
     Validator,
     ValidatorSet,
@@ -206,7 +205,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 // Test suite for testing the initialization of the first P-chain validator set before
 // engaging in normal operation
 contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetRegistryCommon {
-    SubsetUpdater private _registry;
+    DiffUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -218,7 +217,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             pChainTimestamp: validatorSet.pChainTimestamp,
             shardHashes: shardHashes
         });
-        _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetMetadata);
+        _registry = new DiffUpdater(NETWORK_ID, initialValidatorSetMetadata);
     }
 
     /**
@@ -545,7 +544,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             int256 j = int256(i) - 1;
             while (j >= 0) {
                 bytes memory jPubKey = changes[uint256(j)].blsPublicKey;
-                if (ByteComparator.compare(jPubKey, keyPubKey) <= 0) {
+                if (BLST.comparePublicKeys(BLST.unPadUncompressedBlsPublicKey(jPubKey), BLST.unPadUncompressedBlsPublicKey(keyPubKey)) <= 0) {
                     break;
                 }
                 changes[uint256(j + 1)] = changes[uint256(j)];
@@ -558,7 +557,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
 
 // Test suite for functionality after the initial P-chain set has been registered
 contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSetRegistryCommon {
-    SubsetUpdater private _registry;
+    DiffUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -570,7 +569,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             pChainTimestamp: validatorSet.pChainTimestamp,
             shardHashes: shardHashes
         });
-        _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetData);
+        _registry = new DiffUpdater(NETWORK_ID, initialValidatorSetData);
         // initialize the entire P-chain validator set
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({

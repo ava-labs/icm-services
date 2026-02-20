@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {ByteComparator} from "./ByteComparator.sol";
 import {ByteSlicer} from "./ByteSlicer.sol";
 import {BLST} from "./BLST.sol";
 
@@ -601,7 +600,7 @@ library ValidatorSets {
         for (uint256 i = 0; i < len - 1;) {
             // Compare
             int256 compare =
-                ByteComparator.compare(changes[i].blsPublicKey, changes[i + 1].blsPublicKey);
+                BLST.comparePublicKeys(BLST.unPadUncompressedBlsPublicKey(changes[i].blsPublicKey), BLST.unPadUncompressedBlsPublicKey(changes[i + 1].blsPublicKey));
             require(compare <= 0, "Validator changes not sorted by public key");
             unchecked {
                 ++i;
