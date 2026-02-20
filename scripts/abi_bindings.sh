@@ -26,7 +26,7 @@ ECDSAVerifier"
 
 DEFAULT_COMMON_CONTRACT_LIST=""
 
-DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater"
+DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater"
 
 PROXY_LIST="TransparentUpgradeableProxy ProxyAdmin"
 ACCESS_LIST="OwnableUpgradeable"

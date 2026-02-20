@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {ByteSlicer} from "./ByteSlicer.sol";
 import {BLST} from "./BLST.sol";
 
 struct Validator {
@@ -58,6 +59,30 @@ struct PartialValidatorSet {
 struct ValidatorSetSignature {
     bytes signers;
     bytes signature;
+}
+
+// ValidatorChange represents a single validator addition, removal, or modification
+struct ValidatorChange {
+    bytes20 nodeID; // 20 bytes
+    bytes blsPublicKey; // 96 bytes uncompressed
+    uint64 weight; // Weight at current height (0 for removals)
+}
+
+// ValidatorSetDiff contains the diff information from a signed message
+struct ValidatorSetDiff {
+    bytes32 avalancheBlockchainID;
+    // Previous state
+    uint64 previousHeight;
+    uint64 previousTimestamp;
+    bytes32 previousValidatorSetHash;
+    // Current state
+    uint64 currentHeight;
+    uint64 currentTimestamp;
+    bytes32 currentValidatorSetHash;
+    // Changes sorted by key
+    ValidatorChange[] changes;
+    uint32 numAdded;
+    uint256 newSize;
 }
 
 library ValidatorSets {
@@ -246,6 +271,168 @@ library ValidatorSets {
         });
     }
 
+    /**
+     * @notice Parses a ValidatorSetDiff payload from serialized bytes
+     * @dev The payload type ID must be 5 for ValidatorSetDiff
+     * @param data The serialized ValidatorSetDiff payload
+     * @return diff The parsed ValidatorSetDiff
+     */
+    function parseValidatorSetDiff(
+        bytes memory data,
+        uint256 currentValidatorCount
+    ) public pure returns (ValidatorSetDiff memory diff) {
+        // TODO: Replace ByteSlicer library with more efficient approach. See issue https://github.com/ava-labs/icm-services/issues/1190
+        {
+            require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+            uint32 payloadTypeID = uint32(bytes4(ByteSlicer.slice(data, 2, 4)));
+            require(payloadTypeID == 5, "Invalid ValidatorSetDiff payload type ID");
+        }
+        uint256 offset = 6;
+        diff.avalancheBlockchainID = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+        offset += 32;
+        // Previous State
+        {
+            diff.previousHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            offset += 16;
+            diff.previousValidatorSetHash =
+                abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+            offset += 32;
+        }
+
+        // Current State
+        {
+            diff.currentHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.currentTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            offset += 16;
+            diff.currentValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+            offset += 32;
+        }
+        // Validator Changes
+        {
+            uint32 numChanges = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+            offset += 4;
+            diff.numAdded = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+            offset += 4;
+            diff.changes = new ValidatorChange[](numChanges);
+            uint256 numRemoved = 0;
+            for (uint32 i = 0; i < numChanges;) {
+                (diff.changes[i], offset) = parseValidatorChange(data, offset);
+                if (diff.changes[i].weight == 0) {
+                    numRemoved++;
+                }
+                unchecked {
+                    ++i;
+                }
+            }
+            diff.newSize = currentValidatorCount + diff.numAdded - numRemoved;
+        }
+        return diff;
+    }
+
+    /**
+     * @notice Parses a single ValidatorChange from serialized bytes
+     * @param data The serialized data
+     * @param offset The offset to start parsing from
+     * @return change The parsed ValidatorChange
+     * @return newOffset The new offset after parsing
+     */
+    function parseValidatorChange(
+        bytes memory data,
+        uint256 offset
+    ) public pure returns (ValidatorChange memory change, uint256 newOffset) {
+        // TODO: Replace ByteSlicer library with more efficient approach. See issue https://github.com/ava-labs/icm-services/issues/1190
+        bytes20 nodeID = bytes20(ByteSlicer.slice(data, offset, 20));
+        offset += 20;
+        bytes memory unformattedPublicKey = ByteSlicer.slice(data, offset, 96);
+        bytes memory blsPublicKey = BLST.padUncompressedBLSPublicKey(unformattedPublicKey);
+        offset += 96;
+        uint64 weight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        offset += 8;
+        change = ValidatorChange({nodeID: nodeID, blsPublicKey: blsPublicKey, weight: weight});
+        return (change, offset);
+    }
+
+    /**
+     * @notice Applies a presorted diff to a presorted validator array in O(N+M) time.
+     * @param currentValSet The existing validators (must be sorted by BLS public key).
+     * @param diff The diff containing the changes and newSize (must be sorted by BLS public key).
+     * @return modified The updated validator array.
+     * @return newTotalWeight The total weight of the new set.
+     */
+    function applyValidatorSetDiff(
+        Validator[] memory currentValSet,
+        ValidatorSetDiff memory diff
+    ) public pure returns (Validator[] memory, uint64) {
+        uint64 newTotalWeight = 0;
+        uint256 newSize = diff.newSize;
+        Validator[] memory modified = new Validator[](newSize);
+        uint256 valSetPos = 0;
+        uint256 changePos = 0;
+
+        _verifySortedValidatorChanges(diff.changes);
+
+        for (uint256 i = 0; i < newSize;) {
+            int256 compare;
+            ValidatorChange memory nextChange;
+            Validator memory nextVal;
+
+            // Safety checks
+            if (changePos >= diff.changes.length) {
+                // case 1: we've exhausted the changes, so we just take the remaining validators
+                nextVal = currentValSet[valSetPos];
+                compare = -1;
+            } else if (valSetPos >= currentValSet.length) {
+                // case 2: we've exhausted the current validator set, so we just take the remaining changes (which must all be additions)
+                nextChange = diff.changes[changePos];
+                compare = 1;
+            } else {
+                // case 3: we have both validators and changes left, so we compare the next validator and next change
+                nextVal = currentValSet[valSetPos];
+                nextChange = diff.changes[changePos];
+                compare = BLST.comparePublicKeys(
+                    BLST.unPadUncompressedBlsPublicKey(nextVal.blsPublicKey),
+                    BLST.unPadUncompressedBlsPublicKey(nextChange.blsPublicKey)
+                );
+            }
+
+            // Compare
+            if (compare < 0) {
+                // case 1: the next change occurs after this validator
+                modified[i] = nextVal;
+                newTotalWeight += nextVal.weight;
+                valSetPos++;
+                unchecked {
+                    ++i;
+                }
+            } else if (compare > 0) {
+                // case 2. this is a new validator
+                modified[i] =
+                    Validator({blsPublicKey: nextChange.blsPublicKey, weight: nextChange.weight});
+                newTotalWeight += nextChange.weight;
+                changePos++;
+                unchecked {
+                    ++i;
+                }
+            } else {
+                // case 3. this is a change to an existing validator
+                // If the next weight is zero, skip
+                if (nextChange.weight != 0) {
+                    nextVal.weight = nextChange.weight;
+                    modified[i] = nextVal;
+                    newTotalWeight += nextChange.weight;
+                    unchecked {
+                        ++i;
+                    }
+                }
+                changePos++;
+                valSetPos++;
+            }
+        }
+        require(modified[newSize - 1].weight > 0, "Incorrect size given in diff");
+        return (modified, newTotalWeight);
+    }
+
     /*
      * @notice Serialize a ValidatorSetStatePayload
      */
@@ -261,6 +448,44 @@ library ValidatorSets {
             payload.pChainHeight,
             payload.pChainTimestamp,
             abi.encode(payload.shardHashes)
+        );
+    }
+
+    /*
+     * @notice Serialize a ValidatorSetDiff
+     */
+    function serializeValidatorSetDiff(
+        ValidatorSetDiff memory diff
+    ) public pure returns (bytes memory) {
+        bytes2 codec = bytes2(0);
+        bytes4 payloadType = bytes4(0x00000005);
+        bytes memory data = abi.encodePacked(
+            codec,
+            payloadType,
+            diff.avalancheBlockchainID,
+            diff.previousHeight,
+            diff.previousTimestamp,
+            diff.previousValidatorSetHash,
+            diff.currentHeight,
+            diff.currentTimestamp,
+            diff.currentValidatorSetHash,
+            uint32(diff.changes.length),
+            uint32(diff.numAdded)
+        );
+        for (uint256 i = 0; i < diff.changes.length; i++) {
+            data = abi.encodePacked(data, serializeValidatorChange(diff.changes[i]));
+        }
+        return data;
+    }
+
+    /**
+     * @notice Serializes a single ValidatorChange
+     */
+    function serializeValidatorChange(
+        ValidatorChange memory change
+    ) public pure returns (bytes memory) {
+        return abi.encodePacked(
+            change.nodeID, BLST.unPadUncompressedBlsPublicKey(change.blsPublicKey), change.weight
         );
     }
 
@@ -360,5 +585,28 @@ library ValidatorSets {
         uint256 scaledTotalWeight = QUORUM_NUM * uint256(totalWeight);
         uint256 scaledSignatureWeight = QUORUM_DEN * uint256(signatureWeight);
         return scaledTotalWeight <= scaledSignatureWeight;
+    }
+
+    /**
+     * @notice Verifies that the validator changes are sorted by public key in increasing order.
+     * @dev Operates in O(n) time. Reverts if the array is not sorted.
+     * @param changes The array of validator changes to verify.
+     */
+    function _verifySortedValidatorChanges(
+        ValidatorChange[] memory changes
+    ) internal pure {
+        uint256 len = changes.length;
+        if (len < 2) return;
+        for (uint256 i = 0; i < len - 1;) {
+            // Compare
+            int256 compare = BLST.comparePublicKeys(
+                BLST.unPadUncompressedBlsPublicKey(changes[i].blsPublicKey),
+                BLST.unPadUncompressedBlsPublicKey(changes[i + 1].blsPublicKey)
+            );
+            require(compare <= 0, "Validator changes not sorted by public key");
+            unchecked {
+                ++i;
+            }
+        }
     }
 }

@@ -171,6 +171,15 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     }
 
     /**
+     * @notice Gets the validator set for a given Avalanche blockchain ID.
+     */
+    function getValidatorSet(
+        bytes32 avalancheBlockchainID
+    ) external view returns (ValidatorSet memory) {
+        return _validatorSets[avalancheBlockchainID];
+    }
+
+    /**
      * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
      * it over to the `_validatorSets` mapping.
      * @param shard Indicates the sequence number of the shard and blockchain affected by this update

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {ICMMessage} from "../../common/ICM.sol";
-import {ValidatorSetShard} from "../utils/ValidatorSets.sol";
+import {ValidatorSet, ValidatorSetShard} from "../utils/ValidatorSets.sol";
 
 /**
  * @title IAvalancheValidatorRegistry
@@ -44,4 +44,12 @@ interface IAvalancheValidatorSetRegistry {
         ValidatorSetShard calldata shard,
         bytes memory shardBytes
     ) external;
+
+    /**
+     * @notice Retrieves the latest validator set registered for a given Avalanche blockchain ID.
+     * @param avalancheBlockchainID The Avalanche blockchain ID to query the validator set for.
+     */
+    function getValidatorSet(
+        bytes32 avalancheBlockchainID
+    ) external view returns (ValidatorSet memory);
 }

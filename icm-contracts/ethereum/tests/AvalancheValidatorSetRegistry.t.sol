@@ -4,11 +4,13 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {ICMMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
-import {SubsetUpdater} from "../SubsetUpdater.sol";
+import {DiffUpdater} from "../DiffUpdater.sol";
 import {
     Validator,
     ValidatorSet,
     ValidatorSets,
+    ValidatorChange,
+    ValidatorSetDiff,
     ValidatorSetMetadata,
     ValidatorSetShard,
     ValidatorSetSignature
@@ -203,7 +205,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
 // Test suite for testing the initialization of the first P-chain validator set before
 // engaging in normal operation
 contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetRegistryCommon {
-    SubsetUpdater private _registry;
+    DiffUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -215,7 +217,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
             pChainTimestamp: validatorSet.pChainTimestamp,
             shardHashes: shardHashes
         });
-        _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetMetadata);
+        _registry = new DiffUpdater(NETWORK_ID, initialValidatorSetMetadata);
     }
 
     /**
@@ -310,14 +312,257 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         _registry.registerValidatorSet(message, validatorBytes);
     }
 
+    /**
+     * @dev Test applying a valid diff that adds, removes, and modifies validators.
+     * This ensures the Registry correctly orchestrates the update.
+     */
+    function testUpdateValidatorSetWithDiffSuccess() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory changes = new ValidatorChange[](3);
+
+        // Removed validators
+        changes[0] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: validatorSet.validators[0].blsPublicKey,
+            weight: uint64(0)
+        });
+
+        // Modified validators
+        changes[1] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: validatorSet.validators[1].blsPublicKey,
+            weight: uint64(validatorSet.validators[1].weight + 10)
+        });
+
+        // Added validators
+        changes[2] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: BLST.getPublicKeyFromSecret(6),
+            weight: uint64(1)
+        });
+
+        _sortValidatorChanges(changes);
+
+        // Construct payload
+        ValidatorSetDiff memory diff = ValidatorSetDiff({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight + 1,
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            changes: changes,
+            numAdded: 1,
+            newSize: validatorSet.validators.length
+        });
+        bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, diffBytes);
+        ICMMessage memory icmMsg = ICMMessage({
+            rawMessage: diffBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: chainID,
+            attestation: signature
+        });
+
+        // Execute
+        _registry.updateValidatorSetWithDiff(icmMsg);
+        ValidatorSet memory newSet = _registry.getValidatorSet(validatorSet.avalancheBlockchainID);
+        assertEq(newSet.pChainHeight, diff.currentHeight);
+
+        // Expected: 15 (Initial) - 1 (Removed) + 10 (Modified) + 1 (Added) = 25
+        assertEq(newSet.totalWeight, 25);
+        assertEq(newSet.validators.length, 5);
+    }
+
+    function testUpdateValidatorSetWithDiffRevertInvalidHeight() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory changes = new ValidatorChange[](0);
+
+        // Payload
+        ValidatorSetDiff memory diff = ValidatorSetDiff({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight, // Invalid height
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            changes: changes,
+            numAdded: 0,
+            newSize: validatorSet.validators.length
+        });
+        bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, diffBytes);
+        ICMMessage memory icmMsg = ICMMessage({
+            rawMessage: diffBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: chainID,
+            attestation: signature
+        });
+
+        // Test
+        vm.expectRevert(bytes("Invalid blockchain height"));
+        _registry.updateValidatorSetWithDiff(icmMsg);
+    }
+
+    function testUpdateValidatorSetWithDiffRevertInvalidSignature() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory changes = new ValidatorChange[](0);
+
+        // Diff
+        ValidatorSetDiff memory diff = ValidatorSetDiff({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight + 1,
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            changes: changes,
+            numAdded: 0,
+            newSize: validatorSet.validators.length
+        });
+        bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, diffBytes);
+
+        // Tamper data
+        ValidatorSetDiff memory tamperedDiff = diff;
+        tamperedDiff.currentTimestamp += 1;
+        bytes memory tamperedDiffBytes = ValidatorSets.serializeValidatorSetDiff(tamperedDiff);
+        ICMMessage memory invalidIcmMsg = ICMMessage({
+            rawMessage: tamperedDiffBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: validatorSet.avalancheBlockchainID,
+            attestation: signature
+        });
+
+        // Test
+        vm.expectRevert();
+        _registry.updateValidatorSetWithDiff(invalidIcmMsg);
+    }
+
+    function testUpdateValidatorSetWithDiffRevertReplayAttack() public {
+        // Initialize
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSet();
+        bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
+        ValidatorSetShard memory shard = ValidatorSetShard({
+            shardNumber: 1,
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID
+        });
+        _registry.updateValidatorSet(shard, validatorBytes);
+        assertTrue(_registry.pChainInitialized());
+
+        ValidatorChange[] memory changes = new ValidatorChange[](1);
+        changes[0] = ValidatorChange({
+            nodeID: bytes20(0),
+            blsPublicKey: validatorSet.validators[0].blsPublicKey,
+            weight: 0
+        });
+
+        // Payload
+        ValidatorSetDiff memory diff = ValidatorSetDiff({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            previousHeight: validatorSet.pChainHeight,
+            previousTimestamp: validatorSet.pChainTimestamp,
+            previousValidatorSetHash: bytes32(0),
+            currentHeight: validatorSet.pChainHeight + 1,
+            currentTimestamp: validatorSet.pChainTimestamp + 100,
+            currentValidatorSetHash: bytes32(0),
+            changes: changes,
+            numAdded: 0,
+            newSize: validatorSet.validators.length - 1
+        });
+        bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
+
+        // Sign
+        bytes32 chainID = validatorSet.avalancheBlockchainID;
+        bytes memory signature = dummyPChainValidatorSetSign(chainID, diffBytes);
+        ICMMessage memory icmMsg = ICMMessage({
+            rawMessage: diffBytes,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: chainID,
+            attestation: signature
+        });
+
+        // Test
+        _registry.updateValidatorSetWithDiff(icmMsg);
+        vm.expectRevert();
+        _registry.updateValidatorSetWithDiff(icmMsg);
+    }
+
     function testGetAvalancheNetworkID() public view {
         assertEq(_registry.getAvalancheNetworkID(), NETWORK_ID);
+    }
+    /**
+     * @notice Sorts validator changes by their uncompressed public key bytes
+     * @dev Uses insertion sort which is efficient for small arrays
+     */
+
+    function _sortValidatorChanges(
+        ValidatorChange[] memory changes
+    ) private pure {
+        for (uint256 i = 1; i < changes.length; i++) {
+            ValidatorChange memory key = changes[i];
+            bytes memory keyPubKey = key.blsPublicKey;
+            int256 j = int256(i) - 1;
+            while (j >= 0) {
+                bytes memory jPubKey = changes[uint256(j)].blsPublicKey;
+                if (
+                    BLST.comparePublicKeys(
+                        BLST.unPadUncompressedBlsPublicKey(jPubKey),
+                        BLST.unPadUncompressedBlsPublicKey(keyPubKey)
+                    ) <= 0
+                ) {
+                    break;
+                }
+                changes[uint256(j + 1)] = changes[uint256(j)];
+                j--;
+            }
+            changes[uint256(j + 1)] = key;
+        }
     }
 }
 
 // Test suite for functionality after the initial P-chain set has been registered
 contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSetRegistryCommon {
-    SubsetUpdater private _registry;
+    DiffUpdater private _registry;
 
     function setUp() public {
         (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
@@ -329,7 +574,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             pChainTimestamp: validatorSet.pChainTimestamp,
             shardHashes: shardHashes
         });
-        _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetData);
+        _registry = new DiffUpdater(NETWORK_ID, initialValidatorSetData);
         // initialize the entire P-chain validator set
         bytes memory validatorBytes = ValidatorSets.serializeValidators(validatorSet.validators);
         ValidatorSetShard memory shard = ValidatorSetShard({
