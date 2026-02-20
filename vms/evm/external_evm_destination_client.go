@@ -14,7 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/AvalancheValidatorSetRegistry"
+	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -259,7 +259,7 @@ func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 		zap.String("registryAddress", c.registryAddress.Hex()))
 
 	// Get the current validator set to find its P-chain height
-	registryABI, err := validatorregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
+	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
 	}
@@ -323,7 +323,7 @@ func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 // GetNextValidatorSetID queries the registry contract for the next validator set ID.
 // If this returns 0, no validator sets have been registered yet.
 func (c *ExternalEVMDestinationClient) GetNextValidatorSetID(ctx context.Context) (uint32, error) {
-	registryABI, err := validatorregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
+	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
 	}
@@ -355,7 +355,7 @@ func (c *ExternalEVMDestinationClient) GetNextValidatorSetID(ctx context.Context
 
 // GetCurrentValidatorSetID queries the registry contract for the current validator set ID.
 func (c *ExternalEVMDestinationClient) GetCurrentValidatorSetID(ctx context.Context) (uint64, error) {
-	registryABI, err := validatorregistry.AvalancheValidatorSetRegistryMetaData.GetAbi()
+	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
 	}
