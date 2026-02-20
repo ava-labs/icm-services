@@ -111,16 +111,11 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		)
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
-			teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
+			teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
+			teleporterInfo.DeployTeleporterRegistry(ctx, l1, fundedKey)
 		}
 
-		registryAddresseses := make(map[string]string)
-		for l1, teleporterInfo := range teleporterInfo {
-			registryAddresseses[l1.Hex()] = teleporterInfo.TeleporterRegistryAddress.Hex()
-		}
-
-		jsonData, err := json.Marshal(registryAddresseses)
+		jsonData, err := json.Marshal(teleporterInfo.StringifyRegistryAddresses())
 		Expect(err).Should(BeNil())
 		err = os.WriteFile(teleporterRegistryAddressFile, jsonData, fs.ModePerm)
 		Expect(err).Should(BeNil())
@@ -134,10 +129,10 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		Expect(err).Should(BeNil())
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+			teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
 			teleporterInfo.SetTeleporterRegistry(
 				common.HexToAddress(registryAddresseses[l1.BlockchainID.Hex()]),
-				l1,
+				l1.BlockchainID,
 			)
 		}
 	}

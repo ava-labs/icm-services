@@ -106,7 +106,6 @@ source "$REPO_PATH"/scripts/versions.sh
 
 BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 
-cwd=$(pwd)
 # Install the avalanchego and subnet-evm binaries
 rm -rf $BASEDIR/avalanchego
 BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
@@ -118,17 +117,15 @@ echo "Copied ${BASEDIR}/subnet-evm/subnet-evm binary to ${BASEDIR}/avalanchego/p
 export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
 export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
 export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
+export PATH=$PATH:$HOME/.foundry/bin
 
 # Install signature-aggregator binary
 "$REPO_PATH"/scripts/build_signature_aggregator.sh
 
 cd "$REPO_PATH"
-if command -v forge &> /dev/null; then
-  forge build --skip test
-else
-  echo "Forge command not found, attempting to use from $HOME"
-  $HOME/.foundry/bin/forge build
-fi
+forge build --skip test
+FOUNDRY_PROFILE=common forge build --skip test
+FOUNDRY_PROFILE=ethereum forge build --skip test
 
 for component in $(echo $components | tr ',' ' '); do
     echo "Building e2e tests for $component"

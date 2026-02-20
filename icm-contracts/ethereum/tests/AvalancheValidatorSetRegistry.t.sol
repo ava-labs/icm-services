@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {ICMMessage} from "../../common/ICM.sol";
 import {BLST} from "../utils/BLST.sol";
-import {SubsetUpdater} from "../AvalancheValidatorSetRegistry.sol";
+import {SubsetUpdater} from "../SubsetUpdater.sol";
 import {
     Validator,
     ValidatorSet,

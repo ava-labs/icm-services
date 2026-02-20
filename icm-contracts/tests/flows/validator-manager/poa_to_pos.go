@@ -170,7 +170,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 	Expect(err).Should(BeNil())
 	tx, err := poaManager.TransferValidatorManagerOwnership(opts, stakingManagerAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1AInfo.RPCClient, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
 
 	// Check that previous validator is still registered
 	validationID, err := validatorManager.GetNodeValidationID(&bind.CallOpts{}, poaNodeID)

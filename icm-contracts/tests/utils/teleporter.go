@@ -40,11 +40,8 @@ var (
 )
 
 type ChainTeleporterInfo struct {
-	TeleporterRegistry        *teleporterregistry.TeleporterRegistry
-	TeleporterRegistryAddress common.Address
-
-	TeleporterMessenger        *teleportermessenger.TeleporterMessenger
-	TeleporterMessengerAddress common.Address
+	teleporterRegistryAddress  common.Address
+	teleporterMessengerAddress common.Address
 }
 
 type TeleporterTestInfo map[ids.ID]*ChainTeleporterInfo
@@ -57,48 +54,59 @@ func NewTeleporterTestInfo(l1s []interfaces.L1TestInfo) TeleporterTestInfo {
 	return t
 }
 
+func (t TeleporterTestInfo) StringifyRegistryAddresses() map[string]string {
+	registryAddresseses := make(map[string]string)
+	for l1, teleporterInfo := range t {
+		registryAddresseses[l1.Hex()] = teleporterInfo.teleporterRegistryAddress.Hex()
+	}
+	return registryAddresseses
+}
+
 func (t TeleporterTestInfo) TeleporterMessenger(
 	l1 interfaces.L1TestInfo,
 ) *teleportermessenger.TeleporterMessenger {
-	return t[l1.BlockchainID].TeleporterMessenger
+	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(
+		t.TeleporterMessengerAddress(l1), l1.RPCClient,
+	)
+	Expect(err).Should(BeNil())
+
+	return teleporterMessenger
 }
 
 func (t TeleporterTestInfo) TeleporterMessengerAddress(l1 interfaces.L1TestInfo) common.Address {
-	return t[l1.BlockchainID].TeleporterMessengerAddress
+	return t[l1.BlockchainID].teleporterMessengerAddress
 }
 
 func (t TeleporterTestInfo) TeleporterRegistry(
 	l1 interfaces.L1TestInfo,
 ) *teleporterregistry.TeleporterRegistry {
-	return t[l1.BlockchainID].TeleporterRegistry
+	teleporterRegistry, err := teleporterregistry.NewTeleporterRegistry(
+		t.TeleporterRegistryAddress(l1), l1.RPCClient,
+	)
+	Expect(err).Should(BeNil())
+
+	return teleporterRegistry
 }
 
 func (t TeleporterTestInfo) TeleporterRegistryAddress(l1 interfaces.L1TestInfo) common.Address {
-	return t[l1.BlockchainID].TeleporterRegistryAddress
+	return t[l1.BlockchainID].teleporterRegistryAddress
 }
 
-func (t TeleporterTestInfo) SetTeleporter(address common.Address, l1 interfaces.L1TestInfo) {
-	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(
-		address, l1.RPCClient,
-	)
-	Expect(err).Should(BeNil())
-	info := t[l1.BlockchainID]
-	info.TeleporterMessengerAddress = address
-	info.TeleporterMessenger = teleporterMessenger
+func (t TeleporterTestInfo) SetTeleporter(address common.Address, blockchainID ids.ID) {
+	info := t[blockchainID]
+	info.teleporterMessengerAddress = address
 }
 
-func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, l1 interfaces.L1TestInfo) {
-	teleporterRegistry, err := teleporterregistry.NewTeleporterRegistry(
-		address, l1.RPCClient,
-	)
-	Expect(err).Should(BeNil())
-	info := t[l1.BlockchainID]
-	info.TeleporterRegistryAddress = address
-	info.TeleporterRegistry = teleporterRegistry
+func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, blockchainID ids.ID) {
+	info := t[blockchainID]
+	info.teleporterRegistryAddress = address
 }
 
-func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, deployerKey *ecdsa.PrivateKey) {
-	ctx := context.Background()
+func (t TeleporterTestInfo) DeployTeleporterRegistry(
+	ctx context.Context,
+	l1 interfaces.L1TestInfo,
+	deployerKey *ecdsa.PrivateKey,
+) {
 	entries := []teleporterregistry.ProtocolRegistryEntry{
 		{
 			Version:         big.NewInt(1),
@@ -107,7 +115,7 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	}
 	opts, err := bind.NewKeyedTransactorWithChainID(deployerKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
-	teleporterRegistryAddress, tx, teleporterRegistry, err := teleporterregistry.DeployTeleporterRegistry(
+	teleporterRegistryAddress, tx, _, err := teleporterregistry.DeployTeleporterRegistry(
 		opts, l1.RPCClient, entries,
 	)
 	Expect(err).Should(BeNil())
@@ -115,8 +123,7 @@ func (t TeleporterTestInfo) DeployTeleporterRegistry(l1 interfaces.L1TestInfo, d
 	WaitForTransactionSuccess(ctx, l1.RPCClient, tx.Hash())
 
 	info := t[l1.BlockchainID]
-	info.TeleporterRegistryAddress = teleporterRegistryAddress
-	info.TeleporterRegistry = teleporterRegistry
+	info.teleporterRegistryAddress = teleporterRegistryAddress
 }
 
 func (t TeleporterTestInfo) RelayTeleporterMessage(
@@ -140,10 +147,9 @@ func (t TeleporterTestInfo) RelayTeleporterMessage(
 	)
 
 	// Construct the transaction to send the Warp message to the destination chain
-	signedTx := CreateReceiveCrossChainMessageTransaction(
+	signedTx := t.CreateReceiveCrossChainMessageTransaction(
 		ctx,
 		signedWarpMessage,
-		t.TeleporterMessengerAddress(source),
 		fundedKey,
 		destination,
 	)
@@ -675,10 +681,9 @@ func CreateSendCrossChainMessageTransaction(
 
 // Constructs a transaction to call receiveCrossChainMessage
 // Returns the signed transaction.
-func CreateReceiveCrossChainMessageTransaction(
+func (t *TeleporterTestInfo) CreateReceiveCrossChainMessageTransaction(
 	ctx context.Context,
 	signedMessage *avalancheWarp.Message,
-	teleporterContractAddress common.Address,
 	senderKey *ecdsa.PrivateKey,
 	l1Info interfaces.L1TestInfo,
 ) *types.Transaction {
@@ -702,6 +707,7 @@ func CreateReceiveCrossChainMessageTransaction(
 
 	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info.RPCClient, PrivateKeyToAddress(senderKey))
 
+	teleporterContractAddress := t.TeleporterMessengerAddress(l1Info)
 	destinationTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   l1Info.EVMChainID,
 		Nonce:     nonce,
@@ -854,7 +860,7 @@ func SaveRegistyAddress(
 	// Save the Teleporter registry address and validator addresses to files
 	registryAddresseses := make(map[string]string)
 	for l1, teleporterInfo := range teleporterInfo {
-		registryAddresseses[l1.Hex()] = teleporterInfo.TeleporterRegistryAddress.Hex()
+		registryAddresseses[l1.Hex()] = teleporterInfo.teleporterRegistryAddress.Hex()
 	}
 
 	jsonData, err := json.Marshal(registryAddresseses)
@@ -877,10 +883,10 @@ func SetTeleporterInfoFromFile(
 	Expect(err).Should(BeNil())
 
 	for _, l1 := range l1s {
-		teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
+		teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
 		teleporterInfo.SetTeleporterRegistry(
 			common.HexToAddress(registryAddresseses[l1.BlockchainID.Hex()]),
-			l1,
+			l1.BlockchainID,
 		)
 	}
 }

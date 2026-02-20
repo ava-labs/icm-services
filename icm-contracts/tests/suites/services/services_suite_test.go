@@ -134,8 +134,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
 	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
 	for _, subnet := range localNetworkInstance.GetAllL1Infos() {
-		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet)
-		teleporterInfo.DeployTeleporterRegistry(subnet, fundedKey)
+		teleporterInfo.SetTeleporter(teleporterContractAddress, subnet.BlockchainID)
+		teleporterInfo.DeployTeleporterRegistry(ctx, subnet, fundedKey)
 	}
 
 	// Convert the subnets to sovereign L1s

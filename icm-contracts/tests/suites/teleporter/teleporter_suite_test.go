@@ -122,8 +122,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		}
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterInfo.SetTeleporter(teleporterContractAddress, l1)
-			teleporterInfo.DeployTeleporterRegistry(l1, fundedKey)
+			teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
+			teleporterInfo.DeployTeleporterRegistry(ctx, l1, fundedKey)
 		}
 
 		// Save the Teleporter registry address and validator addresses to files
