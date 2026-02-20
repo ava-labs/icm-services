@@ -29,7 +29,7 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
      */
     function updateValidatorSetWithDiff(
         ICMMessage calldata message
-    ) external override {
+    ) external {
         // Safety checks
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
         bytes32 chainID = message.sourceBlockchainID;

@@ -171,17 +171,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     }
 
     /**
-     * @notice Updates an existing validator set by applying a diff.
-     */
-    /* solhint-disable-next-line no-unused-vars */
-    function updateValidatorSetWithDiff(
-        /* solhint-disable-next-line no-unused-vars */
-        ICMMessage calldata message
-    ) external virtual {
-        revert("Not implemented");
-    }
-
-    /**
      * @notice Gets the validator set for a given Avalanche blockchain ID.
      */
     function getValidatorSet(
