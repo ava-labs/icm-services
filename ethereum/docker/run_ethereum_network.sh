@@ -51,6 +51,13 @@ _term() {
 trap '_term INT' INT
 trap '_term TERM' SIGTERM
 
+# Check if port 5050 is already in use and kill the process
+if lsof -Pi :5050 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    echo "Port 5050 is already in use, killing existing process..."
+    lsof -ti:5050 | xargs kill -9 2>/dev/null || true
+    sleep 2
+fi
+
 # Delete old nodes
 delete_old_files
 

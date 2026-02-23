@@ -10,14 +10,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/testinfo"
+	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
-	"github.com/ava-labs/libevm/log"
 	. "github.com/onsi/gomega"
 )
 
@@ -53,7 +54,9 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	scriptPath := filepath.Join(repoRoot, "ethereum", "docker", "run_ethereum_network.sh")
 
 	// Start the Ethereum network script in the background
-	cmd := exec.CommandContext(ctx, scriptPath)
+	// Use exec.Command instead of CommandContext to prevent context cancellation
+	// from sending SIGKILL before we can gracefully shutdown with SIGTERM
+	cmd := exec.Command(scriptPath)
 	// Inherit stdout/stderr for debugging
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -114,7 +117,7 @@ func (n *LocalEthereumNetwork) TearDownNetwork() {
 		log.Info(fmt.Sprintf("Stopping Ethereum network process (PID %d)", n.cmd.Process.Pid))
 
 		// Send interrupt signal to allow graceful shutdown
-		err := n.cmd.Process.Signal(os.Interrupt)
+		err := n.cmd.Process.Signal(syscall.SIGTERM)
 		if err != nil {
 			log.Warn(fmt.Sprintf("Failed to send interrupt signal to Ethereum network: %v", err))
 		}
@@ -132,7 +135,17 @@ func (n *LocalEthereumNetwork) TearDownNetwork() {
 			<-done // Wait for Wait() to complete
 		case err := <-done:
 			if err != nil {
-				log.Info(fmt.Sprintf("Ethereum network process exited with error: %v", err))
+				// Exit codes 130 (SIGINT) and 143 (SIGTERM) are expected when we terminate the process
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					exitCode := exitErr.ExitCode()
+					if exitCode == 130 || exitCode == 143 {
+						log.Info("Ethereum network process stopped successfully")
+					} else {
+						log.Info(fmt.Sprintf("Ethereum network process exited with error: %v", err))
+					}
+				} else {
+					log.Info(fmt.Sprintf("Ethereum network process exited with error: %v", err))
+				}
 			} else {
 				log.Info("Ethereum network process stopped successfully")
 			}

@@ -2,6 +2,7 @@ package ethereum_icm_verification
 
 import (
 	"context"
+	"flag"
 	"os"
 	"testing"
 	"time"
@@ -27,12 +28,17 @@ var (
 	e2eFlags                      *e2e.FlagVars
 )
 
+func TestMain(m *testing.M) {
+	e2eFlags = e2e.RegisterFlags()
+	flag.Parse()
+	os.Exit(m.Run())
+}
+
 func TestEthereumICMVerification(t *testing.T) {
 	if os.Getenv("RUN_E2E") == "" {
 		t.Skip("Environment variable RUN_E2E not set; skipping E2E tests")
 	}
 
-	e2eFlags = e2e.RegisterFlags()
 	RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, "Ethereum ICM Verification e2e test")
 }
@@ -65,9 +71,9 @@ var _ = ginkgo.BeforeSuite(func() {
 })
 
 var _ = ginkgo.AfterSuite(func() {
+	localEthereumNetworkInstance.TearDownNetwork()
 	localAvalancheNetworkInstance.TearDownNetwork()
 	localAvalancheNetworkInstance = nil
-	localEthereumNetworkInstance.TearDownNetwork()
 	localEthereumNetworkInstance = nil
 })
 
