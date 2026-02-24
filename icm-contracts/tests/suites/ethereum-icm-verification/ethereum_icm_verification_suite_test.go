@@ -82,6 +82,11 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 	ginkgo.It("Test ECDSAVerifier",
 		ginkgo.Label(ethereumICMVerificationLabel),
 		func(ctx context.Context) {
-			ethereumIcmVerification.EcdsaVerifier(ctx, localAvalancheNetworkInstance, localEthereumNetworkInstance, ecdsaVerifierByteCodeFile)
+			ethereumIcmVerification.EcdsaVerifier(
+				ctx,
+				localAvalancheNetworkInstance,
+				localEthereumNetworkInstance,
+				ecdsaVerifierByteCodeFile,
+			)
 		})
 })
