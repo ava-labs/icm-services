@@ -478,7 +478,6 @@ func DeployWithNicksMethod(
 	fundedKey *ecdsa.PrivateKey,
 ) {
 	// Fund the deployer address
-	// FIXME GEOFF
 	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
 	fundDeployerTx := CreateNativeTransferTransaction(
 		ctx, l1, fundedKey, deployerAddress, fundAmount,

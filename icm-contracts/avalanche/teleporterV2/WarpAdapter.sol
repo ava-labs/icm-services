@@ -11,6 +11,11 @@ import {
 } from "@common/ITeleporterMessengerV2.sol";
 
 /**
+ * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
+
+/**
  * @dev Implementation of the {IAdapter} interface for Warp.
  *
  * This implementation is used to send messages cross chain using the WarpMessenger precompile,
@@ -33,7 +38,7 @@ contract WarpAdapter is IAdapter {
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external override {
-        // Submit the message to the AWM precompile.
+        // Submit the message to the Warp precompile.
         WARP_MESSENGER.sendWarpMessage(abi.encode(message));
     }
 

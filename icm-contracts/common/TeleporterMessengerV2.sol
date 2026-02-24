@@ -25,6 +25,11 @@ import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 import {ReentrancyGuards} from "@utilities/ReentrancyGuards.sol";
 
 /**
+ * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
+
+/**
  * @dev Implementation of the {ITeleporterMessenger} interface.
  *
  * This implementation is used to send messages cross chain using the IMessageSender and IMessageVerifier interfaces,

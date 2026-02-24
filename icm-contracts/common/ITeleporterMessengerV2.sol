@@ -16,6 +16,10 @@ import {
     TeleporterMessageInput
 } from "@teleporter/ITeleporterMessenger.sol";
 
+/**
+ * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
 interface IMessageVerifier {
     function verifyMessage(
         TeleporterICMMessage calldata message
