@@ -9,6 +9,7 @@ To start developing on with ICM Contracts, you'll need Solidity >= v0.8.30. [Fou
 ### Security
 
 - Do not open up a GitHub issue if it relates to a security vulnerability in ICM Services, and instead refer to our [security policy](./SECURITY.md).
+- Do not use unaudited contract code in production even if it's in the main branch of the repository.
 
 ### Making an Issue
 
