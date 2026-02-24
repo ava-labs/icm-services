@@ -12,6 +12,10 @@ Do not test for or validate any security issues in the live Avalanche networks (
 
 Please refer to the [Bug Bounty Page](https://immunefi.com/bug-bounty/avalanche/information/) for the most up-to-date program rules and scope.
 
+## Scope
+
+Any contract code that doesn't have an audit or isn't released with a versioned tag should be considered incomplete and under active development and as such isn't in scope for the bug bounty program.
+
 ## Supported Versions
 
 Please use the most recently released version to perform testing and to validate security issues.

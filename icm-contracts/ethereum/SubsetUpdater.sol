@@ -10,6 +10,11 @@ import {
     ValidatorSets
 } from "./utils/ValidatorSets.sol";
 
+/**
+ * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
+
 // This contract specifies that shards of validator sets is a serialized subsequence of
 // the entire validator set that has been cryptographically committed to.
 contract SubsetUpdater is AvalancheValidatorSetRegistry {
