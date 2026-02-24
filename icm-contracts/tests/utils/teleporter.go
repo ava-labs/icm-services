@@ -352,7 +352,7 @@ func DeployNewTeleporterVersion(
 
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
-		false,
+		nil,
 		contractCreationGasPrice,
 	)
 	Expect(err).Should(BeNil())

@@ -109,46 +109,45 @@ func (n *LocalEthereumNetwork) EthereumTestInfo() *testinfo.EthereumTestInfo {
 
 func (n *LocalEthereumNetwork) TearDownNetwork() {
 	log.Info("Tearing down local Ethereum network")
-	Expect(n).ShouldNot(BeNil())
-	Expect(n.EthClient).ShouldNot(BeNil())
 
 	// Stop the Ethereum network process if it was started by us
-	if n.cmd != nil && n.cmd.Process != nil {
-		log.Info(fmt.Sprintf("Stopping Ethereum network process (PID %d)", n.cmd.Process.Pid))
+	if n.cmd == nil || n.cmd.Process == nil {
+		return
+	}
+	log.Info(fmt.Sprintf("Stopping Ethereum network process (PID %d)", n.cmd.Process.Pid))
 
-		// Send interrupt signal to allow graceful shutdown
-		err := n.cmd.Process.Signal(syscall.SIGTERM)
+	// Send interrupt signal to allow graceful shutdown
+	err := n.cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
+		log.Warn(fmt.Sprintf("Failed to send interrupt signal to Ethereum network: %v", err))
+	}
+
+	// Wait for the process to exit (with timeout)
+	done := make(chan error, 1)
+	go func() {
+		done <- n.cmd.Wait()
+	}()
+
+	select {
+	case <-time.After(10 * time.Second):
+		log.Warn("Ethereum network process did not exit gracefully, killing it")
+		_ = n.cmd.Process.Kill()
+		<-done // Wait for Wait() to complete
+	case err := <-done:
 		if err != nil {
-			log.Warn(fmt.Sprintf("Failed to send interrupt signal to Ethereum network: %v", err))
-		}
-
-		// Wait for the process to exit (with timeout)
-		done := make(chan error, 1)
-		go func() {
-			done <- n.cmd.Wait()
-		}()
-
-		select {
-		case <-time.After(10 * time.Second):
-			log.Warn("Ethereum network process did not exit gracefully, killing it")
-			_ = n.cmd.Process.Kill()
-			<-done // Wait for Wait() to complete
-		case err := <-done:
-			if err != nil {
-				// Exit codes 130 (SIGINT) and 143 (SIGTERM) are expected when we terminate the process
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					exitCode := exitErr.ExitCode()
-					if exitCode == 130 || exitCode == 143 {
-						log.Info("Ethereum network process stopped successfully")
-					} else {
-						log.Info(fmt.Sprintf("Ethereum network process exited with error: %v", err))
-					}
+			// Exit codes 130 (SIGINT) and 143 (SIGTERM) are expected when we terminate the process
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode := exitErr.ExitCode()
+				if exitCode == 130 || exitCode == 143 {
+					log.Info("Ethereum network process stopped successfully")
 				} else {
-					log.Info(fmt.Sprintf("Ethereum network process exited with error: %v", err))
+					log.Error(fmt.Sprintf("Ethereum network process exited with error: %v", err))
 				}
 			} else {
-				log.Info("Ethereum network process stopped successfully")
+				log.Error(fmt.Sprintf("Ethereum network process exited with error: %v", err))
 			}
+		} else {
+			log.Info("Ethereum network process stopped successfully")
 		}
 	}
 }
@@ -179,6 +178,8 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 				client, err := ethclient.Dial(localEthereumNetworkBaseURL)
 				if err == nil {
 					return client, nil
+				} else {
+					log.Warn("Failed to create Ethereum client, retrying in 1 second")
 				}
 			}
 			// Continue polling

@@ -133,14 +133,6 @@ for component in $(echo $components | tr ',' ' '); do
     go run github.com/onsi/ginkgo/v2/ginkgo build ${REPO_PATH}/icm-contracts/tests/suites/$component
 
     echo "Running e2e tests for $component"
-    echo "running RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${REPO_PATH}/build/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
-              --root-network-dir=${root_dir} \
-              --reuse-network=${reuse_network} \
-              --network-dir=${network_dir} \
-              --ginkgo.vv \
-              --ginkgo.label-filter=${GINKGO_LABEL_FILTER:-""} \
-              --ginkgo.focus=${GINKGO_FOCUS:-""} \
-              --ginkgo.trace"
     RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${REPO_PATH}/build/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \

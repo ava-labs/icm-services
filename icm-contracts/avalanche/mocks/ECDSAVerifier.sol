@@ -7,25 +7,24 @@ pragma solidity ^0.8.30;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 import {IAdapter, TeleporterICMMessage, TeleporterMessageV2} from "../../common/ITeleporterMessengerV2.sol";
 
-contract ECDSAVerifier is IAdapter {
+contract ECDSAVerifier is IAdapter, Initializable {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
     event ECDSAVerifierSendMessage (TeleporterMessageV2 message);
 
-    address public immutable trustedSigner;
+    address private _trustedSigner;
 
     /**
      * @notice Sets the trusted signer address at deployment time.
      * @param signer The address corresponding to the off-chain private key.
      */
-    constructor(
-        address signer
-    ) {
+    function initialize(address signer) external initializer {
         require(signer != address(0), "Invalid signer address");
-        trustedSigner = signer;
+        _trustedSigner = signer;
     }
 
     /**
@@ -39,7 +38,7 @@ contract ECDSAVerifier is IAdapter {
         // Apply EIP-191 prefix. See https://github.com/OpenZeppelin/openzeppelin-contracts/blob/75973f63b5a84dd2fc998b5f329f1e254b0fdc77/contracts/utils/cryptography/ECDSA.sol#L50
         bytes32 digest = dataHash.toEthSignedMessageHash();
         address recoveredSigner = digest.recover(message.attestation);
-        return recoveredSigner == trustedSigner;
+        return recoveredSigner == _trustedSigner;
     }
 
     function sendMessage(

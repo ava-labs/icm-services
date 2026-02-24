@@ -10,11 +10,11 @@ import (
 )
 
 func EcdsaVerifier(
+	ctx context.Context,
 	localAvalancheNetwork *localnetwork.LocalAvalancheNetwork,
 	localEthereumNetwork *localnetwork.LocalEthereumNetwork,
 	ecdsaVerifierByteCodeFile string,
 ) {
-	ctx := context.Background()
 	_, fundedKey := localAvalancheNetwork.GetFundedAccountInfo()
 	primaryNetworkInfo := localAvalancheNetwork.GetPrimaryNetworkInfo()
 
@@ -22,12 +22,16 @@ func EcdsaVerifier(
 	Expect(err).Should(BeNil())
 
 	// Generate the ECDSAVerifier deployer transaction via Nick's method
-	ecdsaVerifierDeployerTransaction,
+	ecdsaVerifierContractTransaction,
 		ecdsaVerifierDeployerAddress,
 		ecdsaVerifierContractAddress,
 		err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
-		false,
+		&deploymentUtils.KeylessTransactionFiles{
+			ContractCreationTxFileName: "ecdsaVerifierCreationTx.txt",
+			DeployerAddressFileName:    "ecdsaVerifierDeployerAddress.txt",
+			ContractAddressFileName:    "ecdsaVerifierContractAddress.txt",
+		},
 		deploymentUtils.GetDefaultContractCreationGasPrice(),
 	)
 	Expect(err).Should(BeNil())
@@ -35,19 +39,19 @@ func EcdsaVerifier(
 	utils.DeployWithNicksMethod(
 		ctx,
 		&primaryNetworkInfo,
-		ecdsaVerifierDeployerTransaction,
+		ecdsaVerifierContractTransaction,
 		ecdsaVerifierDeployerAddress,
 		ecdsaVerifierContractAddress,
 		fundedKey,
 	)
 	// Deploy the ECDSAVerifier contract on the Ethereum chain
-	_, fundedEthereumKey := localEthereumNetwork.GetFundedAccountInfo()
-	utils.DeployWithNicksMethod(
-		ctx,
-		localEthereumNetwork.EthereumTestInfo(),
-		ecdsaVerifierDeployerTransaction,
-		ecdsaVerifierDeployerAddress,
-		ecdsaVerifierContractAddress,
-		fundedEthereumKey,
-	)
+	//_, fundedEthereumKey := localEthereumNetwork.GetFundedAccountInfo()
+	//utils.DeployWithNicksMethod(
+	//	ctx,
+	//	localEthereumNetwork.EthereumTestInfo(),
+	//	ecdsaVerifierContractTransaction,
+	//	ecdsaVerifierDeployerAddress,
+	//	ecdsaVerifierContractAddress,
+	//	fundedEthereumKey,
+	//)
 }
