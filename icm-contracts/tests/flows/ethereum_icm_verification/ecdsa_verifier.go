@@ -27,11 +27,7 @@ func EcdsaVerifier(
 		ecdsaVerifierContractAddress,
 		err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
-		&deploymentUtils.KeylessTransactionFiles{
-			ContractCreationTxFileName: "ecdsaVerifierCreationTx.txt",
-			DeployerAddressFileName:    "ecdsaVerifierDeployerAddress.txt",
-			ContractAddressFileName:    "ecdsaVerifierContractAddress.txt",
-		},
+		nil,
 		deploymentUtils.GetDefaultContractCreationGasPrice(),
 	)
 	Expect(err).Should(BeNil())
@@ -45,13 +41,13 @@ func EcdsaVerifier(
 		fundedKey,
 	)
 	// Deploy the ECDSAVerifier contract on the Ethereum chain
-	//_, fundedEthereumKey := localEthereumNetwork.GetFundedAccountInfo()
-	//utils.DeployWithNicksMethod(
-	//	ctx,
-	//	localEthereumNetwork.EthereumTestInfo(),
-	//	ecdsaVerifierContractTransaction,
-	//	ecdsaVerifierDeployerAddress,
-	//	ecdsaVerifierContractAddress,
-	//	fundedEthereumKey,
-	//)
+	_, fundedEthereumKey := localEthereumNetwork.GetFundedAccountInfo()
+	utils.DeployWithNicksMethod(
+		ctx,
+		localEthereumNetwork.EthereumTestInfo(),
+		ecdsaVerifierContractTransaction,
+		ecdsaVerifierDeployerAddress,
+		ecdsaVerifierContractAddress,
+		fundedEthereumKey,
+	)
 }
