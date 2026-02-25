@@ -15,6 +15,12 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	contractCreationTxFileName       = "UniversalTeleporterDeployerTransaction.txt"
+	contractCreationAddrFileName     = "UniversalTeleporterDeployerAddress.txt"
+	universalContractAddressFileName = "UniversalTeleporterMessengerContractAddress.txt"
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatal("Invalid argument count. Must provide at least one argument to specify command type.")
@@ -35,7 +41,11 @@ func main() {
 
 		_, _, _, err = deploymentUtils.ConstructKeylessTransaction(
 			byteCode,
-			true,
+			&deploymentUtils.KeylessTransactionFiles{
+				ContractCreationTxFileName: contractCreationTxFileName,
+				DeployerAddressFileName:    contractCreationAddrFileName,
+				ContractAddressFileName:    universalContractAddressFileName,
+			},
 			deploymentUtils.GetDefaultContractCreationGasPrice(),
 		)
 		if err != nil {

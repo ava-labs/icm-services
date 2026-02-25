@@ -26,7 +26,6 @@ import (
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
@@ -341,37 +340,6 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 // Deployment utils
 //
 
-func DeployWithNicksMethod(
-	ctx context.Context,
-	l1 testinfo.L1TestInfo,
-	transactionBytes []byte,
-	deployerAddress common.Address,
-	contractAddress common.Address,
-	fundedKey *ecdsa.PrivateKey,
-) {
-	// Fund the deployer address
-	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 AVAX
-	fundDeployerTx := CreateNativeTransferTransaction(
-		ctx, &l1.EVMTestInfo, fundedKey, deployerAddress, fundAmount,
-	)
-	SendTransactionAndWaitForSuccess(ctx, l1.EthClient, fundDeployerTx)
-
-	log.Info("Finished funding contract deployer", zap.String("blockchainID", l1.BlockchainID.Hex()))
-
-	// Deploy contract
-	rpcClient := l1.RPCClient(ctx)
-	defer rpcClient.Close()
-
-	txHash := common.Hash{}
-	err := rpcClient.CallContext(ctx, &txHash, "eth_sendRawTransaction", hexutil.Encode(transactionBytes))
-	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1.EthClient, txHash)
-
-	contractCode, err := l1.EthClient.CodeAt(ctx, contractAddress, nil)
-	Expect(err).Should(BeNil())
-	Expect(len(contractCode)).Should(BeNumerically(">", 2)) // 0x is an EOA, contract returns the bytecode
-}
-
 // Deploys a new version of Teleporter and returns its address
 // Does NOT modify the global Teleporter contract address to provide greater testing flexibility.
 func DeployNewTeleporterVersion(
@@ -387,14 +355,14 @@ func DeployNewTeleporterVersion(
 
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
-		false,
+		nil,
 		contractCreationGasPrice,
 	)
 	Expect(err).Should(BeNil())
 
 	DeployWithNicksMethod(
 		ctx,
-		l1,
+		&l1,
 		transactionBytes,
 		deployerAddress,
 		contractAddress,
@@ -402,33 +370,6 @@ func DeployNewTeleporterVersion(
 	)
 
 	return contractAddress
-}
-
-func DeployTestMessenger(
-	ctx context.Context,
-	senderKey *ecdsa.PrivateKey,
-	teleporterManager common.Address,
-	registryAddress common.Address,
-	evmInfo testinfo.EVMTestInfo,
-) (common.Address, *testmessenger.TestMessenger) {
-	opts, err := bind.NewKeyedTransactorWithChainID(
-		senderKey,
-		evmInfo.EVMChainID,
-	)
-	Expect(err).Should(BeNil())
-	address, tx, exampleMessenger, err := testmessenger.DeployTestMessenger(
-		opts,
-		evmInfo.EthClient,
-		registryAddress,
-		teleporterManager,
-		big.NewInt(1),
-	)
-	Expect(err).Should(BeNil())
-
-	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, evmInfo.EthClient, tx.Hash())
-
-	return address, exampleMessenger
 }
 
 //
