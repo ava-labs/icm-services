@@ -84,7 +84,7 @@ func ValidatorChurn(
 	defer cancel()
 	newNodes := network.GetExtraNodes(newNodeCount)
 	validatorManagerProxy, poaManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
-	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1AInfo.RPCClient)
+	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	pChainInfo := utils.GetPChainInfo(network.GetPrimaryNetworkInfo())
 	Expect(err).Should(BeNil())
@@ -126,7 +126,7 @@ func ValidatorChurn(
 	// proposer VM is updated on all L1s.
 	for _, l1Info := range network.GetL1Infos() {
 		err = utils.IssueTxsToAdvanceChain(
-			ctx, l1Info.EVMChainID, fundedKey, l1Info.RPCClient, 5,
+			ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5,
 		)
 		Expect(err).Should(BeNil())
 	}
@@ -143,7 +143,7 @@ func ValidatorChurn(
 	)
 
 	log.Info("Sending transaction to destination chain")
-	utils.SendTransactionAndWaitForFailure(ctx, l1BInfo.RPCClient, signedTx)
+	utils.SendTransactionAndWaitForFailure(ctx, l1BInfo.EthClient, signedTx)
 
 	// Verify the message was not delivered
 	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
@@ -164,7 +164,7 @@ func ValidatorChurn(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt = utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	teleporter.RelayTeleporterMessage(
 		ctx,
