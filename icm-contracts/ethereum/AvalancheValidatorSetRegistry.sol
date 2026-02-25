@@ -117,12 +117,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             partialSet.shardsReceived = 1;
             partialSet.partialWeight = validatorWeight;
             partialSet.inProgress = true;
-            for (uint256 i = 0; i < numValidators;) {
-                partialSet.validators.push(validators[i]);
-                unchecked {
-                    ++i;
-                }
-            }
+            applyPartialUpdate(
+                validatorSetMetadata.avalancheBlockchainID, validators, validatorWeight
+            );
 
             if (!isRegistered(message.sourceBlockchainID)) {
                 ValidatorSet storage valSet =
@@ -176,6 +173,15 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
     }
 
     /**
+     * @notice Gets the validator set for a given Avalanche blockchain ID.
+     */
+    function getValidatorSet(
+        bytes32 avalancheBlockchainID
+    ) external view returns (ValidatorSet memory) {
+        return _validatorSets[avalancheBlockchainID];
+    }
+
+    /**
      * @notice  Validate and apply a shard to a partial validator set. If the set is completed by this shard, copy
      * it over to the `_validatorSets` mapping.
      * @param shard Indicates the sequence number of the shard and blockchain affected by this update
@@ -183,6 +189,23 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      */
     /* solhint-disable-next-line no-unused-vars */
     function applyShard(ValidatorSetShard calldata shard, bytes memory shardBytes) public virtual {
+        revert("Not implemented");
+    }
+
+    /**
+     * @notice The logic for how the update from a shard should be applied to a partially updated set.
+     * @param avalancheBlockchainID the Avalanche blockchain ID of the validator set we are updating
+     * @param partialUpdate the actual partially updated set
+     * @param partialWeightUpdate an update to the weight of the partial set
+     */
+    function applyPartialUpdate(
+        /* solhint-disable-next-line no-unused-vars */
+        bytes32 avalancheBlockchainID,
+        /* solhint-disable-next-line no-unused-vars */
+        Validator[] memory partialUpdate,
+        /* solhint-disable-next-line no-unused-vars */
+        uint64 partialWeightUpdate
+    ) public virtual {
         revert("Not implemented");
     }
 

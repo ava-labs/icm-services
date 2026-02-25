@@ -98,11 +98,10 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the l1 chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
-	primaryNetworkInfo := localNetworkInstance.GetPrimaryNetworkInfo()
 	if e2eFlags.NetworkDir() == "" {
 		utils.DeployWithNicksMethod(
 			ctx,
-			&primaryNetworkInfo,
+			localNetworkInstance.GetPrimaryNetworkInfo(),
 			teleporterDeployerTransaction,
 			teleporterDeployerAddress,
 			teleporterContractAddress,
