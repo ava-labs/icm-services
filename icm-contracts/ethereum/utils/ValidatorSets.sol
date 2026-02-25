@@ -293,8 +293,9 @@ library ValidatorSets {
         // Previous State
         {
             diff.previousHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            offset += 8;
             diff.previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
-            offset += 16;
+            offset += 8;
             diff.previousValidatorSetHash =
                 abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
             offset += 32;
@@ -303,8 +304,9 @@ library ValidatorSets {
         // Current State
         {
             diff.currentHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            offset += 8;
             diff.currentTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
-            offset += 16;
+            offset += 8;
             diff.currentValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
             offset += 32;
         }
