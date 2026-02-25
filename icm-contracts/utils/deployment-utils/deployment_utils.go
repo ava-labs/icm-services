@@ -28,10 +28,7 @@ const (
 	// The values do not technically need to be the same when using Nick's method, but the AvalancheGo
 	// APIs by default only allow legacy transactions to be broadcast if they have the same R and S values,
 	// which is used as a heuristic to identify (and allow) Nick's method transactions.
-	rsValueHex                       = "3333333333333333333333333333333333333333333333333333333333333333"
-	contractCreationTxFileName       = "UniversalTeleporterDeployerTransaction.txt"
-	contractCreationAddrFileName     = "UniversalTeleporterDeployerAddress.txt"
-	universalContractAddressFileName = "UniversalTeleporterMessengerContractAddress.txt"
+	rsValueHex = "3333333333333333333333333333333333333333333333333333333333333333"
 )
 
 var (
@@ -48,6 +45,12 @@ type byteCodeObj struct {
 type byteCodeFile struct {
 	ByteCode         byteCodeObj `json:"bytecode"`
 	DeployedByteCode byteCodeObj `json:"deployedBytecode"`
+}
+
+type KeylessTransactionFiles struct {
+	ContractCreationTxFileName string
+	DeployerAddressFileName    string
+	ContractAddressFileName    string
 }
 
 func AddConstructorArgsToByteCode(abi *abi.ABI, bytecode []byte, params ...interface{}) ([]byte, error) {
@@ -84,7 +87,7 @@ func ExtractByteCodeFromFile(byteCodeFileName string) ([]byte, error) {
 // Returns the transaction bytes, deployer address, and contract address
 func ConstructKeylessTransaction(
 	byteCode []byte,
-	writeFile bool,
+	writeFile *KeylessTransactionFiles,
 	contractCreationGasPrice *big.Int,
 ) ([]byte, common.Address, common.Address, error) {
 	// Convert the R and S values (which must be the same) from hex.
@@ -132,12 +135,12 @@ func ConstructKeylessTransaction(
 	contractAddress := crypto.CreateAddress(senderAddress, 0)
 	contractAddressString := contractAddress.Hex() // "0x" prepended by Hex() already.
 
-	log.Info("TeleporterMessenger Keyless Deployer Address", zap.String("address", senderAddressString))
-	log.Info("TeleporterMessenger Universal Contract Address", zap.String("address", contractAddressString))
+	log.Info("Contract Keyless Deployer Address", zap.String("address", senderAddressString))
+	log.Info("Contract Universal Contract Address", zap.String("address", contractAddressString))
 
-	if writeFile {
+	if writeFile != nil {
 		err = os.WriteFile(
-			contractCreationTxFileName,
+			writeFile.ContractCreationTxFileName,
 			[]byte(contractCreationTxString),
 			fs.ModePerm,
 		)
@@ -148,7 +151,7 @@ func ConstructKeylessTransaction(
 			)
 		}
 
-		err = os.WriteFile(contractCreationAddrFileName, []byte(senderAddressString), fs.ModePerm)
+		err = os.WriteFile(writeFile.DeployerAddressFileName, []byte(senderAddressString), fs.ModePerm)
 		if err != nil {
 			return nil, common.Address{}, common.Address{}, errors.Wrap(
 				err,
@@ -157,7 +160,7 @@ func ConstructKeylessTransaction(
 		}
 
 		err = os.WriteFile(
-			universalContractAddressFileName,
+			writeFile.ContractAddressFileName,
 			[]byte(contractAddressString),
 			fs.ModePerm,
 		)
