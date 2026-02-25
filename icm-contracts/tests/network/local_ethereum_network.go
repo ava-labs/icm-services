@@ -181,6 +181,8 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 				} else {
 					log.Warn("Failed to create Ethereum client, retrying in 1 second")
 				}
+			} else {
+				log.Debug("Failed to connect to Ethereum RPC endpoint, retrying in 1 second")
 			}
 			// Continue polling
 		}
