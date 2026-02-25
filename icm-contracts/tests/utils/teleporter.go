@@ -27,7 +27,6 @@ import (
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
@@ -545,14 +544,14 @@ func DeployNewTeleporterVersion(
 
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
-		false,
+		nil,
 		contractCreationGasPrice,
 	)
 	Expect(err).Should(BeNil())
 
 	DeployWithNicksMethod(
 		ctx,
-		l1,
+		&l1,
 		transactionBytes,
 		deployerAddress,
 		contractAddress,
@@ -560,33 +559,6 @@ func DeployNewTeleporterVersion(
 	)
 
 	return contractAddress
-}
-
-func DeployTestMessenger(
-	ctx context.Context,
-	senderKey *ecdsa.PrivateKey,
-	teleporterManager common.Address,
-	registryAddress common.Address,
-	evmInfo testinfo.EVMTestInfo,
-) (common.Address, *testmessenger.TestMessenger) {
-	opts, err := bind.NewKeyedTransactorWithChainID(
-		senderKey,
-		evmInfo.EVMChainID,
-	)
-	Expect(err).Should(BeNil())
-	address, tx, exampleMessenger, err := testmessenger.DeployTestMessenger(
-		opts,
-		evmInfo.EthClient,
-		registryAddress,
-		teleporterManager,
-		big.NewInt(1),
-	)
-	Expect(err).Should(BeNil())
-
-	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, evmInfo.EthClient, tx.Hash())
-
-	return address, exampleMessenger
 }
 
 //
