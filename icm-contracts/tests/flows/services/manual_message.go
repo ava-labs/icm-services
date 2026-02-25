@@ -69,7 +69,7 @@ func ManualMessage(
 	unsignedMessage, warpEnabledChainConfigC := utils.InitOffChainMessageChainConfig(
 		networkID,
 		cChainInfo,
-		teleporter.TeleporterRegistryAddress(cChainInfo),
+		teleporter.TeleporterRegistryAddress(cChainInfo.BlockchainID),
 		newProtocolAddress,
 		2,
 	)
@@ -77,7 +77,7 @@ func ManualMessage(
 	_, warpEnabledChainConfigA := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1AInfo,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
 		newProtocolAddress,
 		2,
 	)
@@ -85,7 +85,7 @@ func ManualMessage(
 	_, warpEnabledChainConfigB := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1BInfo,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
 		newProtocolAddress,
 		2,
 	)
