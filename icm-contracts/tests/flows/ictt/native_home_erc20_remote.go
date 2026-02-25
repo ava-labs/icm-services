@@ -186,5 +186,5 @@ func NativeTokenHomeERC20TokenRemote(
 		transferredAmount,
 	)
 
-	utils.CheckBalance(ctx, recipientAddress, transferredAmount, cChainInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmount, cChainInfo.EthClient)
 }

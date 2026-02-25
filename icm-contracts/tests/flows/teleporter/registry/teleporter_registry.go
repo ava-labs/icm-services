@@ -40,14 +40,14 @@ func TeleporterRegistry(
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(cChainInfo),
-		cChainInfo,
+		cChainInfo.EVMTestInfo,
 	)
 	testMessengerContractB, testMessengerB := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Deploy the new version of Teleporter to both chains
@@ -128,7 +128,7 @@ func TeleporterRegistry(
 	tx, err := testMessengerB.UpdateMinTeleporterVersion(opts, latestVersionB)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.EthClient, tx.Hash())
 
 	// Verify that minTeleporterVersion updated
 	minTeleporterVersionUpdatedEvent, err := utils.GetEventFromLogs(

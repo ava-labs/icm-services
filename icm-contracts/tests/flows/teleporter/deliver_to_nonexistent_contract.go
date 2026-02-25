@@ -37,9 +37,9 @@ func DeliverToNonExistentContract(
 
 	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(10)) // 10eth
 	fundDeployerTx := utils.CreateNativeTransferTransaction(
-		ctx, l1BInfo, fundedKey, deployerAddress, fundAmount,
+		ctx, &l1BInfo.EVMTestInfo, fundedKey, deployerAddress, fundAmount,
 	)
-	utils.SendTransactionAndWaitForSuccess(ctx, l1BInfo.RPCClient, fundDeployerTx)
+	utils.SendTransactionAndWaitForSuccess(ctx, l1BInfo.EthClient, fundDeployerTx)
 
 	//
 	// Deploy ExampleMessenger to L1 A, but not to L1 B
@@ -51,11 +51,11 @@ func DeliverToNonExistentContract(
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		l1AInfo.EVMTestInfo,
 	)
 
 	// Derive the eventual address of the destination contract on L1 B
-	nonce, err := l1BInfo.RPCClient.NonceAt(ctx, deployerAddress, nil)
+	nonce, err := l1BInfo.EthClient.NonceAt(ctx, deployerAddress, nil)
 	Expect(err).Should(BeNil())
 	destinationContractAddress := crypto.CreateAddress(deployerAddress, nonce)
 
@@ -78,7 +78,7 @@ func DeliverToNonExistentContract(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.RPCClient, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	sendEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,
@@ -142,7 +142,7 @@ func DeliverToNonExistentContract(
 		deployerKey,
 		deployerAddress,
 		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Confirm that it was deployed at the expected address

@@ -53,12 +53,12 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 	validatorManagerProxy, stakingManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
 	erc20StakingManager, err := erc20tokenstakingmanager.NewERC20TokenStakingManager(
 		stakingManagerProxy.Address,
-		l1AInfo.RPCClient,
+		l1AInfo.EthClient,
 	)
 	Expect(err).Should(BeNil())
 	erc20Address, err := erc20StakingManager.Erc20(&bind.CallOpts{})
 	Expect(err).Should(BeNil())
-	erc20, err := exampleerc20.NewExampleERC20(erc20Address, l1AInfo.RPCClient)
+	erc20, err := exampleerc20.NewExampleERC20(erc20Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 
 	signatureAggregator := utils.NewSignatureAggregator(
@@ -72,7 +72,7 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 	//
 	// Delist one initial validator
 	//
-	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.RPCClient)
+	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	utils.InitiateAndCompleteEndInitialPoSValidation(
 		ctx,

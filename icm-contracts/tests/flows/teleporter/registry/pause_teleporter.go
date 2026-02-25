@@ -27,14 +27,14 @@ func PauseTeleporter(
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		l1AInfo.EVMTestInfo,
 	)
 	testMessengerAddressB, testMessengerB := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
 		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Pause Teleporter on L1 B
@@ -46,7 +46,7 @@ func PauseTeleporter(
 	tx, err := testMessengerB.PauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.EthClient, tx.Hash())
 	pauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressPaused)
 	Expect(err).Should(BeNil())
 	Expect(pauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))
@@ -76,7 +76,7 @@ func PauseTeleporter(
 	tx, err = testMessengerB.UnpauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo.RPCClient, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo.EthClient, tx.Hash())
 	unpauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressUnpaused)
 	Expect(err).Should(BeNil())
 	Expect(unpauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))

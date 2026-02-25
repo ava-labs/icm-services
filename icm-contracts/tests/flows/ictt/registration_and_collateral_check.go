@@ -167,7 +167,7 @@ func RegistrationAndCollateralCheck(
 	)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, cChainInfo.RPCClient, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, cChainInfo.EthClient, tx.Hash())
 	event, err := utils.GetEventFromLogs(receipt.Logs, erc20TokenHome.ParseTokensSent)
 	Expect(err).Should(BeNil())
 	Expect(event.Sender).Should(Equal(crypto.PubkeyToAddress(fundedKey.PublicKey)))
@@ -199,5 +199,5 @@ func RegistrationAndCollateralCheck(
 	)
 
 	// Verify the recipient received the tokens
-	utils.CheckBalance(ctx, recipientAddress, scaledAmount, l1AInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, scaledAmount, l1AInfo.EthClient)
 }
