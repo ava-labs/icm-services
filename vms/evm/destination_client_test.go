@@ -104,12 +104,15 @@ func TestGetFeePerGas(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
-			destClient := destinationClient{
-				logger:                     logging.NoLog{},
-				avaRPCClient:               mockClient,
+			gasFeeConfig := GasFeeConfig{
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: test.suggestedPriorityFeeBuffer,
 				maxPriorityFeePerGas:       test.maxPriorityFeePerGas,
+			}
+			destClient := destinationClient{
+				logger:       logging.NoLog{},
+				avaRPCClient: mockClient,
+				gasFeeConfig: &gasFeeConfig,
 			}
 
 			estimatedBaseFeeTimes := 0
@@ -219,18 +222,21 @@ func TestSendTx(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
+			gasFeeConfig := GasFeeConfig{
+				maxBaseFee:                 test.maxBaseFee,
+				suggestedPriorityFeeBuffer: big.NewInt(0),
+				maxPriorityFeePerGas:       big.NewInt(0),
+			}
 			destClient = destinationClient{
 				readonlyConcurrentSigners: []*readonlyConcurrentSigner{
 					(*readonlyConcurrentSigner)(signer),
 				},
-				logger:                     logging.NoLog{},
-				avaRPCClient:               mockClient,
-				evmChainID:                 big.NewInt(5),
-				maxBaseFee:                 test.maxBaseFee,
-				suggestedPriorityFeeBuffer: big.NewInt(0),
-				maxPriorityFeePerGas:       big.NewInt(0),
-				blockGasLimit:              0,
-				txInclusionTimeout:         30 * time.Second,
+				logger:             logging.NoLog{},
+				avaRPCClient:       mockClient,
+				evmChainID:         big.NewInt(5),
+				gasFeeConfig:       &gasFeeConfig,
+				blockGasLimit:      0,
+				txInclusionTimeout: 30 * time.Second,
 			}
 			warpMsg := &avalancheWarp.Message{}
 			toAddress := "0x27aE10273D17Cd7e80de8580A51f476960626e5f"
