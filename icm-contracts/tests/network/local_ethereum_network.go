@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
@@ -42,7 +42,7 @@ const (
 	ethereumNetworkStartupTimeout = 60 * time.Second
 )
 
-// StartLocalEthereumNetwork starts a local Ethereum network using the docker script
+// StartLocalEthereumNetwork starts a local Ethereum network
 // and waits for it to be ready.
 func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	log.Info("Starting local Ethereum network")
@@ -51,7 +51,7 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	repoRoot, err := getRepoRoot()
 	Expect(err).Should(BeNil())
 
-	scriptPath := filepath.Join(repoRoot, "ethereum", "docker", "run_ethereum_network.sh")
+	scriptPath := filepath.Join(repoRoot, "ethereum", "run_ethereum_network.sh")
 
 	// Start the Ethereum network script in the background
 	// Use exec.Command instead of CommandContext to prevent context cancellation
