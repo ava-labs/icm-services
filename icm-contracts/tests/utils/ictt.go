@@ -85,7 +85,7 @@ func DeployERC20TokenHome(
 	implAddress, tx, erc20TokenHome, err := erc20tokenhome.DeployERC20TokenHome(
 		opts,
 		l1.RPCClient,
-		teleporter.TeleporterRegistryAddress(l1),
+		teleporter.TeleporterRegistryAddress(l1.BlockchainID),
 		teleporterManager,
 		teleporter.GetLatestTeleporterVersion(l1),
 		tokenAddress,
@@ -119,7 +119,7 @@ func DeployERC20TokenRemote(
 		opts,
 		l1.RPCClient,
 		erc20tokenremote.TokenRemoteSettings{
-			TeleporterRegistryAddress: teleporter.TeleporterRegistryAddress(l1),
+			TeleporterRegistryAddress: teleporter.TeleporterRegistryAddress(l1.BlockchainID),
 			TeleporterManager:         teleporterManager,
 			MinTeleporterVersion:      teleporter.GetLatestTeleporterVersion(l1),
 			TokenHomeBlockchainID:     tokenHomeBlockchainID,
@@ -166,7 +166,7 @@ func DeployNativeTokenRemote(
 		opts,
 		l1.RPCClient,
 		nativetokenremote.TokenRemoteSettings{
-			TeleporterRegistryAddress: teleporter.TeleporterRegistryAddress(l1),
+			TeleporterRegistryAddress: teleporter.TeleporterRegistryAddress(l1.BlockchainID),
 			TeleporterManager:         teleporterManager,
 			MinTeleporterVersion:      teleporter.GetLatestTeleporterVersion(l1),
 			TokenHomeBlockchainID:     tokenHomeBlockchainID,
@@ -202,7 +202,7 @@ func DeployNativeTokenHome(
 	implAddress, tx, nativeTokenHome, err := nativetokenhome.DeployNativeTokenHome(
 		opts,
 		l1.RPCClient,
-		teleporter.TeleporterRegistryAddress(l1),
+		teleporter.TeleporterRegistryAddress(l1.BlockchainID),
 		teleporterManager,
 		teleporter.GetLatestTeleporterVersion(l1),
 		tokenAddress,
@@ -396,10 +396,8 @@ func RegisterTokenRemoteOnHome(
 		nil,
 		signatureAggregator,
 	)
-	_, err = GetEventFromLogs(
-		receipt.Logs,
-		teleporter.TeleporterMessenger(homeL1).ParseMessageExecuted,
-	)
+
+	err = teleporter.CheckMessageExecuted(homeL1, receipt)
 	if err != nil {
 		TraceTransactionAndExit(ctx, homeL1.RPCClient, receipt.TxHash)
 	}
@@ -979,10 +977,8 @@ func SendERC20TokenMultiHopAndVerify(
 		nil,
 		signatureAggregator,
 	)
-	_, err := GetEventFromLogs(
-		intermediateReceipt.Logs,
-		teleporter.TeleporterMessenger(cChainInfo).ParseMessageExecuted,
-	)
+
+	err := teleporter.CheckMessageExecuted(cChainInfo, intermediateReceipt)
 	if err != nil {
 		TraceTransactionAndExit(ctx, cChainInfo.RPCClient, intermediateReceipt.TxHash)
 	}
@@ -1003,7 +999,8 @@ func SendERC20TokenMultiHopAndVerify(
 		nil,
 		signatureAggregator,
 	)
-	_, err = GetEventFromLogs(remoteReceipt.Logs, teleporter.TeleporterMessenger(toL1).ParseMessageExecuted)
+
+	err = teleporter.CheckMessageExecuted(toL1, remoteReceipt)
 	if err != nil {
 		TraceTransactionAndExit(ctx, toL1.RPCClient, remoteReceipt.TxHash)
 	}

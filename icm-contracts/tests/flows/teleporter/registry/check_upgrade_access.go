@@ -23,12 +23,12 @@ func CheckUpgradeAccess(
 	//
 	// Deploy TestMessenger to the L1
 	//
-	teleporterAddress := teleporter.TeleporterMessengerAddress(l1Info)
+	teleporterAddress := teleporter.TeleporterMessengerAddress(l1Info.BlockchainID)
 	_, testMessenger := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1Info),
+		teleporter.TeleporterRegistryAddress(l1Info.BlockchainID),
 		l1Info,
 	)
 

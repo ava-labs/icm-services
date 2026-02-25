@@ -90,19 +90,19 @@ func FilterTeleporterEvents(topics []common.Hash, data []byte, event string) (fm
 	var out fmt.Stringer
 	switch e {
 	case SendCrossChainMessage:
-		out = new(TeleporterMessengerSendCrossChainMessage)
+		out = new(TeleporterMessengerV2SendCrossChainMessage)
 	case ReceiveCrossChainMessage:
-		out = new(TeleporterMessengerReceiveCrossChainMessage)
+		out = new(TeleporterMessengerV2ReceiveCrossChainMessage)
 	case AddFeeAmount:
-		out = new(TeleporterMessengerAddFeeAmount)
+		out = new(TeleporterMessengerV2AddFeeAmount)
 	case MessageExecutionFailed:
-		out = new(TeleporterMessengerMessageExecutionFailed)
+		out = new(TeleporterMessengerV2MessageExecutionFailed)
 	case MessageExecuted:
-		out = new(TeleporterMessengerMessageExecuted)
+		out = new(TeleporterMessengerV2MessageExecuted)
 	case RelayerRewardsRedeemed:
-		out = new(TeleporterMessengerRelayerRewardsRedeemed)
+		out = new(TeleporterMessengerV2RelayerRewardsRedeemed)
 	case ReceiptReceived:
-		out = new(TeleporterMessengerReceiptReceived)
+		out = new(TeleporterMessengerV2ReceiptReceived)
 	default:
 		return nil, fmt.Errorf("unknown event %s", e.String())
 	}
@@ -112,11 +112,11 @@ func FilterTeleporterEvents(topics []common.Hash, data []byte, event string) (fm
 	return out, nil
 }
 
-func (t TeleporterMessengerSendCrossChainMessage) String() string {
-	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerSendCrossChainMessage{
+func (t TeleporterMessengerV2SendCrossChainMessage) String() string {
+	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerV2SendCrossChainMessage{
 		MessageID:               common.Hash(t.MessageID),
 		DestinationBlockchainID: ids.ID(t.DestinationBlockchainID),
-		Message:                 toReadableTeleporterMessage(t.Message),
+		Message:                 toReadableTeleporterMessageV2(t.Message),
 		FeeInfo:                 t.FeeInfo,
 		Raw:                     t.Raw,
 	}, "", "  ")
@@ -124,7 +124,7 @@ func (t TeleporterMessengerSendCrossChainMessage) String() string {
 	return string(outJson)
 }
 
-type ReadableTeleporterMessengerSendCrossChainMessage struct {
+type ReadableTeleporterMessengerV2SendCrossChainMessage struct {
 	MessageID               common.Hash
 	DestinationBlockchainID ids.ID
 	Message                 ReadableTeleporterMessage
@@ -132,8 +132,8 @@ type ReadableTeleporterMessengerSendCrossChainMessage struct {
 	Raw                     types.Log
 }
 
-func (t TeleporterMessengerReceiveCrossChainMessage) String() string {
-	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerReceiveCrossChainMessage{
+func (t TeleporterMessengerV2ReceiveCrossChainMessage) String() string {
+	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerV2ReceiveCrossChainMessage{
 		MessageID:          common.Hash(t.MessageID),
 		SourceBlockchainID: ids.ID(t.SourceBlockchainID),
 		Deliverer:          t.Deliverer,
@@ -145,7 +145,7 @@ func (t TeleporterMessengerReceiveCrossChainMessage) String() string {
 	return string(outJson)
 }
 
-type ReadableTeleporterMessengerReceiveCrossChainMessage struct {
+type ReadableTeleporterMessengerV2ReceiveCrossChainMessage struct {
 	MessageID          common.Hash
 	SourceBlockchainID ids.ID
 	Deliverer          common.Address
@@ -154,8 +154,8 @@ type ReadableTeleporterMessengerReceiveCrossChainMessage struct {
 	Raw                types.Log
 }
 
-func (t TeleporterMessengerAddFeeAmount) String() string {
-	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerAddFeeAmount{
+func (t TeleporterMessengerV2AddFeeAmount) String() string {
+	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerV2AddFeeAmount{
 		MessageID:      common.Hash(t.MessageID),
 		UpdatedFeeInfo: t.UpdatedFeeInfo,
 		Raw:            t.Raw,
@@ -164,14 +164,14 @@ func (t TeleporterMessengerAddFeeAmount) String() string {
 	return string(outJson)
 }
 
-type ReadableTeleporterMessengerAddFeeAmount struct {
+type ReadableTeleporterMessengerV2AddFeeAmount struct {
 	MessageID      common.Hash
 	UpdatedFeeInfo TeleporterFeeInfo
 	Raw            types.Log
 }
 
-func (t TeleporterMessengerMessageExecutionFailed) String() string {
-	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerMessageExecutionFailed{
+func (t TeleporterMessengerV2MessageExecutionFailed) String() string {
+	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerV2MessageExecutionFailed{
 		MessageID:          common.Hash(t.MessageID),
 		SourceBlockchainID: ids.ID(t.SourceBlockchainID),
 		Message:            toReadableTeleporterMessage(t.Message),
@@ -181,15 +181,15 @@ func (t TeleporterMessengerMessageExecutionFailed) String() string {
 	return string(outJson)
 }
 
-type ReadableTeleporterMessengerMessageExecutionFailed struct {
+type ReadableTeleporterMessengerV2MessageExecutionFailed struct {
 	MessageID          common.Hash
 	SourceBlockchainID ids.ID
 	Message            ReadableTeleporterMessage
 	Raw                types.Log
 }
 
-func (t TeleporterMessengerMessageExecuted) String() string {
-	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerMessageExecuted{
+func (t TeleporterMessengerV2MessageExecuted) String() string {
+	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerV2MessageExecuted{
 		MessageID:          common.Hash(t.MessageID),
 		SourceBlockchainID: ids.ID(t.SourceBlockchainID),
 		Raw:                t.Raw,
@@ -198,20 +198,20 @@ func (t TeleporterMessengerMessageExecuted) String() string {
 	return string(outJson)
 }
 
-type ReadableTeleporterMessengerMessageExecuted struct {
+type ReadableTeleporterMessengerV2MessageExecuted struct {
 	MessageID          common.Hash
 	SourceBlockchainID ids.ID
 	Raw                types.Log
 }
 
-func (t TeleporterMessengerRelayerRewardsRedeemed) String() string {
+func (t TeleporterMessengerV2RelayerRewardsRedeemed) String() string {
 	outJson, _ := json.MarshalIndent(t, "", "  ")
 
 	return string(outJson)
 }
 
-func (t TeleporterMessengerReceiptReceived) String() string {
-	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerReceiptReceived{
+func (t TeleporterMessengerV2ReceiptReceived) String() string {
+	outJson, _ := json.MarshalIndent(ReadableTeleporterMessengerV2ReceiptReceived{
 		MessageID:               common.Hash(t.MessageID),
 		DestinationBlockchainID: ids.ID(t.DestinationBlockchainID),
 		RelayerRewardAddress:    t.RelayerRewardAddress,
@@ -222,7 +222,7 @@ func (t TeleporterMessengerReceiptReceived) String() string {
 	return string(outJson)
 }
 
-type ReadableTeleporterMessengerReceiptReceived struct {
+type ReadableTeleporterMessengerV2ReceiptReceived struct {
 	MessageID               common.Hash
 	DestinationBlockchainID ids.ID
 	RelayerRewardAddress    common.Address
@@ -243,8 +243,27 @@ func toReadableTeleporterMessage(t TeleporterMessage) ReadableTeleporterMessage 
 	}
 }
 
+func toReadableTeleporterMessageV2(t TeleporterMessageV2) ReadableTeleporterMessage {
+	return ReadableTeleporterMessage{
+		MessageNonce:            t.MessageNonce,
+		OriginSenderAddress:     t.OriginSenderAddress,
+		DestinationBlockchainID: ids.ID(t.DestinationBlockchainID),
+		DestinationAddress:      t.DestinationAddress,
+		RequiredGasLimit:        t.RequiredGasLimit,
+		AllowedRelayerAddresses: t.AllowedRelayerAddresses,
+		Receipts:                t.Receipts,
+		Message:                 t.Message,
+	}
+}
+
 func (t TeleporterMessage) String() string {
 	outJson, _ := json.MarshalIndent(toReadableTeleporterMessage(t), "", "  ")
+
+	return string(outJson)
+}
+
+func (t TeleporterMessageV2) String() string {
+	outJson, _ := json.MarshalIndent(toReadableTeleporterMessageV2(t), "", "  ")
 
 	return string(outJson)
 }

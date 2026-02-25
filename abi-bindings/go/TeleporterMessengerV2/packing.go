@@ -23,6 +23,7 @@ func init() {
 	teleporterMessageType, err = abi.NewType("tuple", "struct Overloader.F", []abi.ArgumentMarshaling{
 		{Name: "messageNonce", Type: "uint256"},
 		{Name: "originSenderAddress", Type: "address"},
+		{Name: "originTeleporterAddress", Type: "address"},
 		{Name: "destinationBlockchainID", Type: "bytes32"},
 		{Name: "destinationAddress", Type: "address"},
 		{Name: "requiredGasLimit", Type: "uint256"},
@@ -38,7 +39,7 @@ func init() {
 	}
 }
 
-func (m *TeleporterMessage) Pack() ([]byte, error) {
+func (m *TeleporterMessageV2) Pack() ([]byte, error) {
 	args := abi.Arguments{
 		{
 			Name: "teleporterMessage",
@@ -48,7 +49,7 @@ func (m *TeleporterMessage) Pack() ([]byte, error) {
 	return args.Pack(m)
 }
 
-func (m *TeleporterMessage) Unpack(b []byte) error {
+func (m *TeleporterMessageV2) Unpack(b []byte) error {
 	args := abi.Arguments{
 		{
 			Name: "teleporterMessage",
@@ -62,17 +63,8 @@ func (m *TeleporterMessage) Unpack(b []byte) error {
 	return args.Copy(&m, unpacked)
 }
 
-func PackSendCrossChainMessage(input TeleporterMessageInput) ([]byte, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get abi")
-	}
-
-	return abi.Pack("sendCrossChainMessage", input)
-}
-
-func PackRetryMessageExecution(sourceBlockchainID ids.ID, message TeleporterMessage) ([]byte, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
+func PackRetryMessageExecution(sourceBlockchainID ids.ID, message TeleporterMessageV2) ([]byte, error) {
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get abi")
 	}
@@ -82,8 +74,31 @@ func PackRetryMessageExecution(sourceBlockchainID ids.ID, message TeleporterMess
 
 // PackReceiveCrossChainMessage packs a ReceiveCrossChainMessageInput to form
 // a call to the receiveCrossChainMessage function
+func PackReceiveCrossChainMessageV2(
+	teleporterMessage TeleporterMessageV2,
+	sourceBlockChainID ids.ID,
+	messageIndex uint64,
+	relayerRewardAddress common.Address,
+) ([]byte, error) {
+	tabi, err := TeleporterMessengerV2MetaData.GetAbi()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get abi")
+	}
+
+	attestation := make([]byte, 32)
+	big.NewInt(int64(messageIndex)).FillBytes(attestation)
+
+	return tabi.Pack("receiveCrossChainMessage", TeleporterICMMessage{
+		Message:            teleporterMessage,
+		SourceBlockchainID: sourceBlockChainID,
+		Attestation:        attestation,
+	}, relayerRewardAddress)
+}
+
+// PackReceiveCrossChainMessage packs a ReceiveCrossChainMessageInput to form
+// a call to the receiveCrossChainMessage function
 func PackReceiveCrossChainMessage(messageIndex uint32, relayerRewardAddress common.Address) ([]byte, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get abi")
 	}
@@ -97,7 +112,7 @@ func PackCalculateMessageID(
 	destinationBlockchainID [32]byte,
 	nonce *big.Int,
 ) ([]byte, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get abi")
 	}
@@ -106,7 +121,7 @@ func PackCalculateMessageID(
 }
 
 func PackCalculateMessageIDOutput(messageID [32]byte) ([]byte, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get abi")
 	}
@@ -116,7 +131,7 @@ func PackCalculateMessageIDOutput(messageID [32]byte) ([]byte, error) {
 
 // PackMessageReceived packs a MessageReceivedInput to form a call to the messageReceived function
 func PackMessageReceived(messageID [32]byte) ([]byte, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get abi")
 	}
@@ -125,7 +140,7 @@ func PackMessageReceived(messageID [32]byte) ([]byte, error) {
 
 // UnpackMessageReceivedResult attempts to unpack result bytes to a bool indicating whether the message was received
 func UnpackMessageReceivedResult(result []byte) (bool, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return false, errors.Wrap(err, "failed to get abi")
 	}
@@ -136,7 +151,7 @@ func UnpackMessageReceivedResult(result []byte) (bool, error) {
 }
 
 func PackMessageReceivedOutput(success bool) ([]byte, error) {
-	abi, err := TeleporterMessengerMetaData.GetAbi()
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get abi")
 	}
@@ -146,7 +161,7 @@ func PackMessageReceivedOutput(success bool) ([]byte, error) {
 
 // UnpackEvent unpacks the event data and topics into the provided interface
 func UnpackEvent(out interface{}, event string, topics []common.Hash, data []byte) error {
-	teleporterABI, err := TeleporterMessengerMetaData.GetAbi()
+	teleporterABI, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return fmt.Errorf("failed to get abi: %v", err)
 	}

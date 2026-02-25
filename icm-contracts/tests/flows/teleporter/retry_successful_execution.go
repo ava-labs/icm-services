@@ -28,14 +28,14 @@ func RetrySuccessfulExecution(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
 		l1AInfo,
 	)
 	testMessengerContractAddressB, l1BTestMessenger := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
 		l1BInfo,
 	)
 

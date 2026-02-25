@@ -13,6 +13,11 @@ import {
     ValidatorSets
 } from "./utils/ValidatorSets.sol";
 
+/**
+ * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
+
 // A contract for managing Avalanche validator sets which can be used to verify ICM messages
 // via a quorum of signatures.
 //

@@ -100,7 +100,7 @@ func relayAlteredMessage(
 		signedWarpMessage,
 		&sendEvent.Message,
 		sendEvent.Message.RequiredGasLimit,
-		teleporter.TeleporterMessengerAddress(source),
+		teleporter.TeleporterMessengerAddress(source.BlockchainID),
 		fundedKey,
 		destination,
 	)
