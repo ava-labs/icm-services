@@ -180,7 +180,7 @@ func ERC20TokenHomeNativeTokenRemoteMultiHop(
 	)
 
 	// Verify the recipient received the tokens
-	utils.CheckBalance(ctx, recipientAddress, transferredAmountA, l1AInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmountA, l1AInfo.EthClient)
 
 	// Send tokens from C-Chain to L1 B
 	inputB := erc20tokenhome.SendTokensInput{
@@ -217,7 +217,7 @@ func ERC20TokenHomeNativeTokenRemoteMultiHop(
 	)
 
 	// Verify the recipient received the tokens
-	utils.CheckBalance(ctx, recipientAddress, transferredAmountB, l1BInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmountB, l1BInfo.EthClient)
 
 	// Multi-hop transfer to L1 B
 	// Send half of the received amount to account for gas expenses

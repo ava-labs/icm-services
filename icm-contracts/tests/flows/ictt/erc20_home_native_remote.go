@@ -147,7 +147,7 @@ func ERC20TokenHomeNativeTokenRemote(
 	)
 
 	// Verify the recipient received the tokens
-	utils.CheckBalance(ctx, recipientAddress, transferredAmount, l1AInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmount, l1AInfo.EthClient)
 
 	// Send back to the home chain and check that ERC20TokenHome received the tokens
 	input_A := nativetokenremote.SendTokensInput{
