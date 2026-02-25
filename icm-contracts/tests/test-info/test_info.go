@@ -10,6 +10,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	rpcclient "github.com/ava-labs/icm-services/icm-contracts/tests/rpc-client"
 	"github.com/ava-labs/libevm/ethclient"
+	libevmRPC "github.com/ava-labs/libevm/rpc"
 	. "github.com/onsi/gomega"
 )
 
@@ -54,4 +55,24 @@ func (l1 *L1TestInfo) RPCClient(ctx context.Context) rpcclient.RpcClient {
 	)
 	Expect(err).Should(BeNil())
 	return &rpcclient.SubnetEvmRpcClient{Client: rpcClient}
+}
+
+// EthereumTestInfo Tracks information about a test Ethereum network used for executing tests against.
+type EthereumTestInfo struct {
+	EVMTestInfo
+	BaseURL string
+}
+
+func (e *EthereumTestInfo) GetEVMTestInfo() *EVMTestInfo {
+	return &e.EVMTestInfo
+}
+
+func (e *EthereumTestInfo) ChainID() string {
+	return e.EVMChainID.String()
+}
+
+func (e *EthereumTestInfo) RPCClient(ctx context.Context) rpcclient.RpcClient {
+	rpcClient, err := libevmRPC.DialContext(ctx, e.BaseURL)
+	Expect(err).Should(BeNil())
+	return &rpcclient.LibevmRPC{Client: rpcClient}
 }

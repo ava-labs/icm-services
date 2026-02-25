@@ -29,7 +29,8 @@ contract ECDSAVerifierTest is Test {
         (attackerAddress, attackerPrivateKey) = makeAddrAndKey("attacker");
 
         // Deploy the contract with the trusted signer
-        verifier = new ECDSAVerifier(signerAddress);
+        verifier = new ECDSAVerifier();
+        verifier.initialize(signerAddress);
     }
 
     function testVerifyMessageSuccess() public view {
@@ -131,8 +132,8 @@ contract ECDSAVerifierTest is Test {
         TeleporterMessageV2 memory message,
         bytes32 chainID,
         uint256 privateKey
-    ) internal pure returns (bytes memory) {
-        bytes32 dataHash = keccak256(abi.encode(message, chainID));
+    ) internal view returns (bytes memory) {
+        bytes32 dataHash = keccak256(abi.encode(message, chainID, address(verifier)));
         bytes32 digest = dataHash.toEthSignedMessageHash();
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         return abi.encodePacked(r, s, v);
