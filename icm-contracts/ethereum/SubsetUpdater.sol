@@ -41,13 +41,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         require(validatorWeight > 0, "Total weight must exceed 0");
 
         // update the partial validator set
-        for (uint256 i = 0; i < validators.length;) {
-            _partialValidatorSets[avalancheBlockchainID].validators.push(validators[i]);
-            unchecked {
-                ++i;
-            }
-        }
-        _partialValidatorSets[avalancheBlockchainID].partialWeight += validatorWeight;
+        applyPartialUpdate(avalancheBlockchainID, validators, validatorWeight);
         _partialValidatorSets[avalancheBlockchainID].shardsReceived += 1;
 
         // We have received all shards. Place this validator set into the mapping
@@ -59,6 +53,24 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
             _validatorSets[avalancheBlockchainID].totalWeight =
                 _partialValidatorSets[avalancheBlockchainID].partialWeight;
         }
+    }
+
+    /**
+     * @dev Simply push the validators onto the end of the existing partial update and add the
+     * new weight to the total
+     */
+    function applyPartialUpdate(
+        bytes32 avalancheBlockchainID,
+        Validator[] memory partialUpdate,
+        uint64 partialWeightUpdate
+    ) public override {
+        for (uint256 i = 0; i < partialUpdate.length;) {
+            _partialValidatorSets[avalancheBlockchainID].validators.push(partialUpdate[i]);
+            unchecked {
+                ++i;
+            }
+        }
+        _partialValidatorSets[avalancheBlockchainID].partialWeight += partialWeightUpdate;
     }
 
     /**
