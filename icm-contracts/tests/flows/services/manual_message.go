@@ -13,14 +13,14 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/relayer/api"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -30,7 +30,7 @@ import (
 func ManualMessage(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
@@ -53,7 +53,7 @@ func ManualMessage(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{cChainInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{cChainInfo}, fundedKey, relayerKey)
 
 	//
 	// Define the off-chain Warp message
@@ -69,26 +69,29 @@ func ManualMessage(
 	unsignedMessage, warpEnabledChainConfigC := utils.InitOffChainMessageChainConfig(
 		networkID,
 		cChainInfo,
-		teleporter.TeleporterRegistryAddress(cChainInfo),
+		teleporter.TeleporterRegistryAddress(cChainInfo.BlockchainID),
 		newProtocolAddress,
 		2,
 	)
+
 	_, warpEnabledChainConfigA := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1AInfo,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
 		newProtocolAddress,
 		2,
 	)
+
 	_, warpEnabledChainConfigB := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1BInfo,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
 		newProtocolAddress,
 		2,
 	)
 
 	// Create chain config with off chain messages
+
 	chainConfigs := make(utils.ChainConfigMap)
 	chainConfigs.Add(cChainInfo, warpEnabledChainConfigC)
 	chainConfigs.Add(l1BInfo, warpEnabledChainConfigB)
@@ -107,8 +110,8 @@ func ManualMessage(
 	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{cChainInfo},
-		[]interfaces.L1TestInfo{cChainInfo},
+		[]testinfo.L1TestInfo{cChainInfo},
+		[]testinfo.L1TestInfo{cChainInfo},
 		fundedAddress,
 		relayerKey,
 	)

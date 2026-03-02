@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"maps"
 	"os"
 	"sort"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/genesis"
+	subnetEvmTestUtils "github.com/ava-labs/avalanchego/graft/subnet-evm/tests/utils"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
@@ -30,18 +32,18 @@ import (
 	ownableupgradeable "github.com/ava-labs/icm-services/abi-bindings/go/OwnableUpgradeable"
 	proxyadmin "github.com/ava-labs/icm-services/abi-bindings/go/ProxyAdmin"
 	validatormanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/ValidatorManager"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
-	subnetEvmTestUtils "github.com/ava-labs/subnet-evm/tests/utils"
-	"go.uber.org/zap"
-
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/ethclient"
 	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
 )
+
+var _ LocalNetwork = (*LocalAvalancheNetwork)(nil)
 
 type ProxyAddress struct {
 	common.Address
@@ -49,7 +51,7 @@ type ProxyAddress struct {
 }
 
 // Implements Network, pointing to the network setup in local_network_setup.go
-type LocalNetwork struct {
+type LocalAvalancheNetwork struct {
 	*tmpnet.Network
 
 	extraNodes                      []*tmpnet.Node // to add as more L1 validators in the tests
@@ -106,22 +108,29 @@ func newTmpnetNetwork(
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
 			),
-			utils.WarpEnabledChainConfig,
+			maps.Clone(utils.DefaultChainConfig()),
 			initialL1Bootstrapper,
 		)
 		l1.OwningKey = globalFundedKey
 		l1s = append(l1s, l1)
 	}
 
-	// Create new network
-	network := subnetEvmTestUtils.NewTmpnetNetwork(
-		name,
-		bootstrapNodes,
-		tmpnet.FlagsMap{},
-		l1s...,
-	)
+	defaultFlags := tmpnet.FlagsMap{}
+	defaultFlags.SetDefaults(tmpnet.FlagsMap{
+		config.ProposerVMUseCurrentHeightKey: "true",
+	})
 
-	Expect(network).ShouldNot(BeNil())
+	// Create new network
+	network := &tmpnet.Network{
+		Owner:               name,
+		DefaultFlags:        defaultFlags,
+		Nodes:               bootstrapNodes,
+		Subnets:             l1s,
+		PrimarySubnetConfig: maps.Clone(utils.DefaultChainConfig()),
+		PrimaryChainConfigs: map[string]tmpnet.ConfigMap{
+			"C": maps.Clone(utils.DefaultChainConfig()),
+		},
+	}
 
 	// Specify only a subset of the nodes to be bootstrapped
 	keysToFund := []*secp256k1.PrivateKey{
@@ -143,7 +152,7 @@ func newTmpnetNetwork(
 	return network
 }
 
-func NewLocalNetwork(
+func NewLocalAvalancheNetwork(
 	ctx context.Context,
 	name string,
 	warpGenesisTemplateFile string,
@@ -151,7 +160,7 @@ func NewLocalNetwork(
 	numPrimaryNetworkValidators int,
 	extraNodeCount int, // for use by tests, eg to add new L1 validators
 	flagVars *e2e.FlagVars,
-) *LocalNetwork {
+) *LocalAvalancheNetwork {
 	// There must be at least one primary network validator per L1
 	Expect(numPrimaryNetworkValidators).Should(BeNumerically(">=", len(l1Specs)))
 
@@ -183,7 +192,7 @@ func NewLocalNetwork(
 	var primaryNetworkValidators []*tmpnet.Node
 	if isReuseNetwork {
 		// Load existing network and restart nodes
-		network, err = tmpnet.ReadNetwork(context.Background(), logging.NoLog{}, flagVars.NetworkDir())
+		network, err = tmpnet.ReadNetwork(ctx, logging.NoLog{}, flagVars.NetworkDir())
 		Expect(err).Should(BeNil())
 		Expect(network).ShouldNot(BeNil())
 
@@ -257,7 +266,7 @@ func NewLocalNetwork(
 		}
 	}
 
-	localNetwork := &LocalNetwork{
+	localNetwork := &LocalAvalancheNetwork{
 		Network:                         network,
 		extraNodes:                      extraNodes,
 		globalFundedKey:                 globalFundedKey,
@@ -272,9 +281,9 @@ func NewLocalNetwork(
 	return localNetwork
 }
 
-func (n *LocalNetwork) ConvertSubnet(
+func (n *LocalAvalancheNetwork) ConvertSubnet(
 	ctx context.Context,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	managerType utils.ValidatorManagerConcreteType,
 	weights []uint64,
 	balances []uint64,
@@ -295,7 +304,7 @@ func (n *LocalNetwork) ConvertSubnet(
 		proxy,
 	)
 
-	validatorManager, err := validatormanager.NewValidatorManager(vdrManagerAddress, l1.RPCClient)
+	validatorManager, err := validatormanager.NewValidatorManager(vdrManagerAddress, l1.EthClient)
 	Expect(err).Should(BeNil())
 
 	sender := utils.PrivateKeyToAddress(senderKey)
@@ -322,7 +331,7 @@ func (n *LocalNetwork) ConvertSubnet(
 		proxy,
 	)
 
-	ownable, err := ownableupgradeable.NewOwnableUpgradeable(vdrManagerAddress, l1.RPCClient)
+	ownable, err := ownableupgradeable.NewOwnableUpgradeable(vdrManagerAddress, l1.EthClient)
 	Expect(err).Should(BeNil())
 
 	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
@@ -330,7 +339,7 @@ func (n *LocalNetwork) ConvertSubnet(
 
 	tx, err := ownable.TransferOwnership(opts, specializationAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
 
 	n.validatorManagerSpecializations[l1.SubnetID] = ProxyAddress{
 		Address:    specializationAddress,
@@ -416,17 +425,18 @@ func (n *LocalNetwork) ConvertSubnet(
 		}
 	}
 	utils.PChainProposerVMWorkaround(pChainWallet)
-	utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.RPCClient, 5)
+	err = utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.EthClient, 5)
+	Expect(err).Should(BeNil())
 
 	return nodes, validationIDs
 }
 
-func (n *LocalNetwork) AddSubnetValidators(
+func (n *LocalAvalancheNetwork) AddSubnetValidators(
 	nodes []*tmpnet.Node,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	partialSync bool,
-) interfaces.L1TestInfo {
-	// Modify the each node's config to track the l1
+) testinfo.L1TestInfo {
+	// Modify each node's config to track the l1
 	for _, node := range nodes {
 		log.Info("Adding node",
 			zap.Stringer("nodeID", node.NodeID),
@@ -467,11 +477,11 @@ func (n *LocalNetwork) AddSubnetValidators(
 	return n.GetL1Info(l1.SubnetID)
 }
 
-func (n *LocalNetwork) GetValidatorManager(subnetID ids.ID) (ProxyAddress, ProxyAddress) {
+func (n *LocalAvalancheNetwork) GetValidatorManager(subnetID ids.ID) (ProxyAddress, ProxyAddress) {
 	return n.validatorManagers[subnetID], n.validatorManagerSpecializations[subnetID]
 }
 
-func (n *LocalNetwork) GetSignatureAggregator() *utils.SignatureAggregator {
+func (n *LocalAvalancheNetwork) GetSignatureAggregator() *utils.SignatureAggregator {
 	var subnetIDs []ids.ID
 	for _, l1 := range n.GetL1Infos() {
 		subnetIDs = append(subnetIDs, l1.SubnetID)
@@ -482,7 +492,7 @@ func (n *LocalNetwork) GetSignatureAggregator() *utils.SignatureAggregator {
 	)
 }
 
-func (n *LocalNetwork) GetExtraNodes(count int) []*tmpnet.Node {
+func (n *LocalAvalancheNetwork) GetExtraNodes(count int) []*tmpnet.Node {
 	Expect(len(n.extraNodes) >= count).Should(
 		BeTrue(),
 		"not enough extra nodes to use",
@@ -492,11 +502,11 @@ func (n *LocalNetwork) GetExtraNodes(count int) []*tmpnet.Node {
 	return nodes
 }
 
-func (n *LocalNetwork) GetPrimaryNetworkValidators() []*tmpnet.Node {
+func (n *LocalAvalancheNetwork) GetPrimaryNetworkValidators() []*tmpnet.Node {
 	return n.primaryNetworkValidators
 }
 
-func (n *LocalNetwork) GetPrimaryNetworkInfo() interfaces.L1TestInfo {
+func (n *LocalAvalancheNetwork) GetPrimaryNetworkInfo() testinfo.L1TestInfo {
 	var nodeURIs []string
 	for _, node := range n.primaryNetworkValidators {
 		nodeURIs = append(nodeURIs, node.URI)
@@ -508,23 +518,26 @@ func (n *LocalNetwork) GetPrimaryNetworkInfo() interfaces.L1TestInfo {
 	wsClient, err := ethclient.Dial(utils.HttpToWebsocketURI(nodeURIs[0], cChainBlockchainID.String()))
 	Expect(err).Should(BeNil())
 
-	rpcClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], cChainBlockchainID.String()))
+	ethClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], cChainBlockchainID.String()))
 	Expect(err).Should(BeNil())
 
-	evmChainID, err := rpcClient.ChainID(context.Background())
+	evmChainID, err := ethClient.ChainID(context.Background())
 	Expect(err).Should(BeNil())
-	return interfaces.L1TestInfo{
-		SubnetID:                     ids.Empty,
-		BlockchainID:                 cChainBlockchainID,
-		NodeURIs:                     nodeURIs,
-		WSClient:                     wsClient,
-		RPCClient:                    rpcClient,
-		EVMChainID:                   evmChainID,
+	return testinfo.L1TestInfo{
+		EVMTestInfo: testinfo.EVMTestInfo{
+			EVMChainID: evmChainID,
+			EthClient:  ethClient,
+		},
+		SubnetID:     ids.Empty,
+		BlockchainID: cChainBlockchainID,
+		NodeURIs:     nodeURIs,
+		WSClient:     wsClient,
+
 		RequirePrimaryNetworkSigners: false,
 	}
 }
 
-func (n *LocalNetwork) GetL1Info(subnetID ids.ID) interfaces.L1TestInfo {
+func (n *LocalAvalancheNetwork) GetL1Info(subnetID ids.ID) testinfo.L1TestInfo {
 	for _, l1 := range n.Network.Subnets {
 		if l1.SubnetID == subnetID {
 			var nodeURIs []string
@@ -538,29 +551,31 @@ func (n *LocalNetwork) GetL1Info(subnetID ids.ID) interfaces.L1TestInfo {
 			wsClient, err := ethclient.Dial(utils.HttpToWebsocketURI(nodeURIs[0], blockchainID.String()))
 			Expect(err).Should(BeNil())
 
-			rpcClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
+			ethClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
 			Expect(err).Should(BeNil())
-			evmChainID, err := rpcClient.ChainID(context.Background())
+			evmChainID, err := ethClient.ChainID(context.Background())
 			Expect(err).Should(BeNil())
 			spec, ok := n.deployedL1Specs[l1.Name]
 			Expect(ok).Should(BeTrue())
-			return interfaces.L1TestInfo{
+			return testinfo.L1TestInfo{
+				EVMTestInfo: testinfo.EVMTestInfo{
+					EthClient:  ethClient,
+					EVMChainID: evmChainID,
+				},
 				SubnetID:                     subnetID,
 				BlockchainID:                 blockchainID,
 				NodeURIs:                     nodeURIs,
 				WSClient:                     wsClient,
-				RPCClient:                    rpcClient,
-				EVMChainID:                   evmChainID,
 				RequirePrimaryNetworkSigners: spec.RequirePrimaryNetworkSigners,
 			}
 		}
 	}
-	return interfaces.L1TestInfo{}
+	return testinfo.L1TestInfo{}
 }
 
 // Returns all l1 info sorted in lexicographic order of L1Name.
-func (n *LocalNetwork) GetL1Infos() []interfaces.L1TestInfo {
-	l1s := make([]interfaces.L1TestInfo, len(n.Network.Subnets))
+func (n *LocalAvalancheNetwork) GetL1Infos() []testinfo.L1TestInfo {
+	l1s := make([]testinfo.L1TestInfo, len(n.Network.Subnets))
 	for i, l1 := range n.Network.Subnets {
 		var nodeURIs []string
 		for _, nodeID := range l1.ValidatorIDs {
@@ -573,19 +588,21 @@ func (n *LocalNetwork) GetL1Infos() []interfaces.L1TestInfo {
 		wsClient, err := ethclient.Dial(utils.HttpToWebsocketURI(nodeURIs[0], blockchainID.String()))
 		Expect(err).Should(BeNil())
 
-		rpcClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
+		ethClient, err := ethclient.Dial(utils.HttpToRPCURI(nodeURIs[0], blockchainID.String()))
 		Expect(err).Should(BeNil())
-		evmChainID, err := rpcClient.ChainID(context.Background())
+		evmChainID, err := ethClient.ChainID(context.Background())
 		Expect(err).Should(BeNil())
 		spec, ok := n.deployedL1Specs[l1.Name]
 		Expect(ok).Should(BeTrue())
-		l1s[i] = interfaces.L1TestInfo{
+		l1s[i] = testinfo.L1TestInfo{
+			EVMTestInfo: testinfo.EVMTestInfo{
+				EthClient:  ethClient,
+				EVMChainID: evmChainID,
+			},
 			SubnetID:                     l1.SubnetID,
 			BlockchainID:                 blockchainID,
 			NodeURIs:                     nodeURIs,
 			WSClient:                     wsClient,
-			RPCClient:                    rpcClient,
-			EVMChainID:                   evmChainID,
 			RequirePrimaryNetworkSigners: spec.RequirePrimaryNetworkSigners,
 		}
 	}
@@ -593,25 +610,25 @@ func (n *LocalNetwork) GetL1Infos() []interfaces.L1TestInfo {
 }
 
 // Returns L1 info for all L1s, including the primary network
-func (n *LocalNetwork) GetAllL1Infos() []interfaces.L1TestInfo {
+func (n *LocalAvalancheNetwork) GetAllL1Infos() []testinfo.L1TestInfo {
 	l1s := n.GetL1Infos()
 	return append(l1s, n.GetPrimaryNetworkInfo())
 }
 
-func (n *LocalNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.PrivateKey) {
+func (n *LocalAvalancheNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.PrivateKey) {
 	ecdsaKey := n.globalFundedKey.ToECDSA()
 	fundedAddress := crypto.PubkeyToAddress(ecdsaKey.PublicKey)
 	return fundedAddress, ecdsaKey
 }
 
-func (n *LocalNetwork) TearDownNetwork() {
+func (n *LocalAvalancheNetwork) TearDownNetwork() {
 	log.Info("Tearing down network")
 	Expect(n).ShouldNot(BeNil())
 	Expect(n.Network).ShouldNot(BeNil())
 	Expect(n.Network.Stop(context.Background())).Should(BeNil())
 }
 
-func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
+func (n *LocalAvalancheNetwork) SetChainConfigs(chainConfigs map[string]string) {
 	for chainIDStr, chainConfig := range chainConfigs {
 		var cfg tmpnet.ConfigMap
 		err := json.Unmarshal([]byte(chainConfig), &cfg)
@@ -649,21 +666,24 @@ func (n *LocalNetwork) SetChainConfigs(chainConfigs map[string]string) {
 	}
 
 	// Restart the network to apply the new chain configs
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(60*len(n.Network.Nodes))*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		time.Duration(60*len(n.Network.Nodes))*time.Second,
+	)
 	defer cancel()
 	err = n.Network.Restart(ctx)
 	Expect(err).Should(BeNil())
 }
 
-func (n *LocalNetwork) GetNetworkID() uint32 {
+func (n *LocalAvalancheNetwork) GetNetworkID() uint32 {
 	return n.Network.Genesis.NetworkID
 }
 
-func (n *LocalNetwork) Dir() string {
+func (n *LocalAvalancheNetwork) Dir() string {
 	return n.Network.Dir
 }
 
-func (n *LocalNetwork) GetPChainWallet(validationIDs ...ids.ID) pwallet.Wallet {
+func (n *LocalAvalancheNetwork) GetPChainWallet(validationIDs ...ids.ID) pwallet.Wallet {
 	// Create the P-Chain wallet to issue transactions
 	kc := secp256k1fx.NewKeychain(n.globalFundedKey)
 	var subnetIDs []ids.ID
@@ -678,21 +698,22 @@ func (n *LocalNetwork) GetPChainWallet(validationIDs ...ids.ID) pwallet.Wallet {
 		primary.WalletConfig{
 			SubnetIDs:     subnetIDs,
 			ValidationIDs: validationIDs,
-		})
+		},
+	)
 	Expect(err).Should(BeNil())
 	return wallet.P()
 }
 
-func (n *LocalNetwork) GetTwoL1s() (
-	interfaces.L1TestInfo,
-	interfaces.L1TestInfo,
+func (n *LocalAvalancheNetwork) GetTwoL1s() (
+	testinfo.L1TestInfo,
+	testinfo.L1TestInfo,
 ) {
 	l1s := n.GetL1Infos()
 	Expect(len(l1s)).Should(BeNumerically(">=", 2))
 	return l1s[0], l1s[1]
 }
 
-func (n *LocalNetwork) SaveValidatorAddress(
+func (n *LocalAvalancheNetwork) SaveValidatorAddress(
 	fileName string,
 ) {
 	validatorAddresses := make(map[string]map[string]string)
@@ -709,7 +730,7 @@ func (n *LocalNetwork) SaveValidatorAddress(
 	Expect(err).Should(BeNil())
 }
 
-func (n *LocalNetwork) SetValidatorAddressFromFile(fileName string) {
+func (n *LocalAvalancheNetwork) SetValidatorAddressFromFile(fileName string) {
 	validatorAddresses := make(map[string]map[string]string)
 	data, err := os.ReadFile(fileName)
 	Expect(err).Should(BeNil())

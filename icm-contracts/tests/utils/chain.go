@@ -3,9 +3,11 @@ package utils
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"slices"
@@ -14,26 +16,26 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/api/info"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/nativeminter"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	nativeMinter "github.com/ava-labs/icm-services/abi-bindings/go/subnet-evm/INativeMinter"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/eth/tracers"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/nativeminter"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	subnetEvmUtils "github.com/ava-labs/subnet-evm/tests/utils"
+	"github.com/ava-labs/libevm/ethclient"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -44,7 +46,11 @@ const (
 
 var NativeTransferGas uint64 = 21_000
 
-var WarpEnabledChainConfig = map[string]any{
+func DefaultChainConfig() map[string]any {
+	return maps.Clone(warpEnabledChainConfig)
+}
+
+var warpEnabledChainConfig = map[string]any{
 	"log-level":         "debug",
 	"warp-api-enabled":  true,
 	"local-txs-enabled": true,
@@ -76,6 +82,35 @@ type Node struct {
 //
 // URL utils
 //
+
+func TeleporterDeploymentValues() (
+	teleporterContractAddress common.Address,
+	teleporterDeployerAddress common.Address,
+	teleporterDeployedByteCode string,
+) {
+	teleporterContractAddress = common.HexToAddress(
+		ReadHexTextFile("./tests/utils/UniversalTeleporterMessengerContractAddress.txt"),
+	)
+	teleporterDeployerAddress = common.HexToAddress(
+		ReadHexTextFile("./tests/utils/UniversalTeleporterDeployerAddress.txt"),
+	)
+	teleporterDeployedByteCode = ReadHexTextFile(
+		"./tests/utils/UniversalTeleporterDeployedBytecode.txt",
+	)
+
+	return teleporterContractAddress, teleporterDeployerAddress, teleporterDeployedByteCode
+}
+
+func TeleporterDeployerTransaction() []byte {
+	teleporterDeployerTransactionStr := ReadHexTextFile(
+		"./tests/utils/UniversalTeleporterDeployerTransaction.txt",
+	)
+	teleporterDeployerTransaction, err := hex.DecodeString(
+		utils.SanitizeHexString(teleporterDeployerTransactionStr),
+	)
+	Expect(err).Should(BeNil())
+	return teleporterDeployerTransaction
+}
 
 func HttpToWebsocketURI(uri string, blockchainID string) string {
 	return fmt.Sprintf("ws://%s/ext/bc/%s/ws", strings.TrimPrefix(uri, "http://"), blockchainID)
@@ -116,16 +151,16 @@ func GetURIHostAndPort(uri string) (string, uint32, error) {
 
 func CreateNativeTransferTransaction(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	evmInfo *testinfo.EVMTestInfo,
 	fromKey *ecdsa.PrivateKey,
 	recipient common.Address,
 	amount *big.Int,
 ) *types.Transaction {
 	fromAddress := crypto.PubkeyToAddress(fromKey.PublicKey)
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, l1Info, fromAddress)
+	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, evmInfo.EthClient, fromAddress)
 
 	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   l1Info.EVMChainID,
+		ChainID:   evmInfo.EVMChainID,
 		Nonce:     nonce,
 		To:        &recipient,
 		Gas:       NativeTransferGas,
@@ -134,91 +169,91 @@ func CreateNativeTransferTransaction(
 		Value:     amount,
 	})
 
-	return SignTransaction(tx, fromKey, l1Info.EVMChainID)
+	return SignTransaction(tx, fromKey, evmInfo.EVMChainID)
 }
 
 func SendNativeTransfer(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	l1Info testinfo.L1TestInfo,
 	fromKey *ecdsa.PrivateKey,
 	recipient common.Address,
 	amount *big.Int,
 ) *types.Receipt {
-	tx := CreateNativeTransferTransaction(ctx, l1Info, fromKey, recipient, amount)
-	return SendTransactionAndWaitForSuccess(ctx, l1Info, tx)
+	tx := CreateNativeTransferTransaction(ctx, l1Info.GetEVMTestInfo(), fromKey, recipient, amount)
+	return SendTransactionAndWaitForSuccess(ctx, l1Info.EthClient, tx)
 }
 
 // Sends a tx, and waits for it to be mined.
 // Asserts Receipt.status equals success.
 func sendAndWaitForTransaction(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	tx *types.Transaction,
 	success bool,
 ) *types.Receipt {
-	err := l1Info.RPCClient.SendTransaction(ctx, tx)
+	err := client.SendTransaction(ctx, tx)
 	Expect(err).Should(BeNil())
 
-	return waitForTransaction(ctx, l1Info, tx.Hash(), success)
+	return waitForTransaction(ctx, client, tx.Hash(), success)
 }
 
 // Sends a tx, and waits for it to be mined.
 // Asserts Receipt.status equals false.
 func SendTransactionAndWaitForFailure(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	tx *types.Transaction,
 ) *types.Receipt {
-	return sendAndWaitForTransaction(ctx, l1Info, tx, false)
+	return sendAndWaitForTransaction(ctx, client, tx, false)
 }
 
 // Sends a tx, and waits for it to be mined.
 // Asserts Receipt.status equals true.
 func SendTransactionAndWaitForSuccess(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	tx *types.Transaction,
 ) *types.Receipt {
-	return sendAndWaitForTransaction(ctx, l1Info, tx, true)
+	return sendAndWaitForTransaction(ctx, client, tx, true)
 }
 
 // Waits for a transaction to be mined.
 // Asserts Receipt.status equals true.
 func WaitForTransactionSuccess(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	txHash common.Hash,
 ) *types.Receipt {
-	return waitForTransaction(ctx, l1Info, txHash, true)
+	return waitForTransaction(ctx, client, txHash, true)
 }
 
 // Waits for a transaction to be mined.
 // Asserts Receipt.status equals false.
 func WaitForTransactionFailure(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	txHash common.Hash,
 ) *types.Receipt {
-	return waitForTransaction(ctx, l1Info, txHash, false)
+	return waitForTransaction(ctx, client, txHash, false)
 }
 
 // Waits for a transaction to be mined.
 // Asserts Receipt.status equals success.
 func waitForTransaction(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	txHash common.Hash,
 	success bool,
 ) *types.Receipt {
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	receipt, err := WaitMined(cctx, l1Info.RPCClient, txHash)
+	receipt, err := WaitMined(cctx, client, txHash)
 	Expect(err).Should(BeNil())
 
 	if success {
 		if receipt.Status == types.ReceiptStatusFailed {
-			TraceTransactionAndExit(ctx, l1Info.RPCClient, receipt.TxHash)
+			TraceTransactionAndExit(ctx, client, receipt.TxHash)
 		}
 	} else {
 		Expect(receipt.Status).Should(Equal(types.ReceiptStatusFailed))
@@ -230,7 +265,7 @@ func waitForTransaction(
 // either a transaction receipt returned, or the context is cancelled or expired.
 func waitForTransactionReceipt(
 	cctx context.Context,
-	rpcClient ethclient.Client,
+	rpcClient *ethclient.Client,
 	txHash common.Hash,
 ) (*types.Receipt, error) {
 	queryTicker := time.NewTicker(200 * time.Millisecond)
@@ -269,16 +304,18 @@ func SignTransaction(tx *types.Transaction, key *ecdsa.PrivateKey, chainID *big.
 // Returns the gasFeeCap, gasTipCap, and nonce the be used when constructing a transaction from fundedAddress
 func CalculateTxParams(
 	ctx context.Context,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	fundedAddress common.Address,
 ) (*big.Int, *big.Int, uint64) {
-	baseFee, err := l1Info.RPCClient.EstimateBaseFee(ctx)
+	block, err := client.BlockByNumber(ctx, nil)
 	Expect(err).Should(BeNil())
 
-	gasTipCap, err := l1Info.RPCClient.SuggestGasTipCap(ctx)
+	baseFee := block.BaseFee()
+
+	gasTipCap, err := client.SuggestGasTipCap(ctx)
 	Expect(err).Should(BeNil())
 
-	nonce, err := l1Info.RPCClient.NonceAt(ctx, fundedAddress, nil)
+	nonce, err := client.NonceAt(ctx, fundedAddress, nil)
 	Expect(err).Should(BeNil())
 
 	gasFeeCap := baseFee.Mul(baseFee, big.NewInt(gasUtils.BaseFeeFactor))
@@ -293,11 +330,11 @@ func CalculateTxParams(
 }
 
 // Gomega will print the transaction trace and exit
-func TraceTransactionAndExit(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) {
+func TraceTransactionAndExit(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) {
 	Expect(TraceTransaction(ctx, rpcClient, txHash)).Should(Equal(""))
 }
 
-func TraceTransaction(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) string {
+func TraceTransaction(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) string {
 	var result interface{}
 	ct := "callTracer"
 	err := rpcClient.Client().Call(&result, "debug_traceTransaction", txHash.String(), tracers.TraceConfig{Tracer: &ct})
@@ -317,7 +354,7 @@ func TraceTransaction(ctx context.Context, rpcClient ethclient.Client, txHash co
 // It stops waiting when the context is canceled.
 // Takes a tx hash instead of the full tx in the subnet-evm version of this function.
 // Copied and modified from https://github.com/ava-labs/subnet-evm/blob/v0.6.0-fuji/accounts/abi/bind/util.go#L42
-func WaitMined(ctx context.Context, rpcClient ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
+func WaitMined(ctx context.Context, rpcClient *ethclient.Client, txHash common.Hash) (*types.Receipt, error) {
 	now := time.Now()
 	receipt, err := waitForTransactionReceipt(ctx, rpcClient, txHash)
 	if err != nil {
@@ -349,7 +386,7 @@ func WaitMined(ctx context.Context, rpcClient ethclient.Client, txHash common.Ha
 // is cancelled or expired.
 func waitForBlockHeight(
 	cctx context.Context,
-	rpcClient ethclient.Client,
+	rpcClient *ethclient.Client,
 	expectedBlockNumber uint64,
 ) error {
 	queryTicker := time.NewTicker(2 * time.Second)
@@ -385,12 +422,12 @@ func waitForBlockHeight(
 func GetEventFromLogsOrTrace[T any](
 	ctx context.Context,
 	receipt *types.Receipt,
-	l1Info interfaces.L1TestInfo,
+	client *ethclient.Client,
 	parser func(log types.Log) (T, error),
 ) T {
 	log, err := GetEventFromLogs(receipt.Logs, parser)
 	if err != nil {
-		TraceTransactionAndExit(ctx, l1Info.RPCClient, receipt.TxHash)
+		TraceTransactionAndExit(ctx, client, receipt.TxHash)
 	}
 	return log
 }
@@ -415,7 +452,7 @@ func PrivateKeyToAddress(k *ecdsa.PrivateKey) common.Address {
 }
 
 // Throws a Gomega error if there is a mismatch
-func CheckBalance(ctx context.Context, addr common.Address, expectedBalance *big.Int, rpcClient ethclient.Client) {
+func CheckBalance(ctx context.Context, addr common.Address, expectedBalance *big.Int, rpcClient *ethclient.Client) {
 	bal, err := rpcClient.BalanceAt(ctx, addr, nil)
 	Expect(err).Should(BeNil())
 	ExpectBigEqual(bal, expectedBalance)
@@ -442,7 +479,7 @@ func BigIntMul(v1 *big.Int, v2 *big.Int) *big.Int {
 // Network utils
 //
 
-func GetPChainInfo(cChainInfo interfaces.L1TestInfo) interfaces.L1TestInfo {
+func GetPChainInfo(cChainInfo testinfo.L1TestInfo) testinfo.L1TestInfo {
 	pChainBlockchainID, err := info.NewClient(cChainInfo.NodeURIs[0]).GetBlockchainID(context.Background(), "P")
 	Expect(err).Should(BeNil())
 
@@ -454,7 +491,7 @@ func GetPChainInfo(cChainInfo interfaces.L1TestInfo) interfaces.L1TestInfo {
 type ChainConfigMap map[string]string
 
 // Sets the chain config in customChainConfigs for the specified L!
-func (m ChainConfigMap) Add(l1 interfaces.L1TestInfo, chainConfig string) {
+func (m ChainConfigMap) Add(l1 testinfo.L1TestInfo, chainConfig string) {
 	if l1.SubnetID == constants.PrimaryNetworkID {
 		m[CChainPathSpecifier] = chainConfig
 	} else {
@@ -469,7 +506,7 @@ func GetChainConfigWithOffChainMessages(offChainMessages []avalancheWarp.Unsigne
 		hexOffChainMessages = append(hexOffChainMessages, hexutil.Encode(message.Bytes()))
 	}
 
-	chainConfig := WarpEnabledChainConfig
+	chainConfig := DefaultChainConfig()
 	chainConfig["warp-off-chain-messages"] = hexOffChainMessages
 
 	// Marshal the map to JSON
@@ -550,18 +587,18 @@ func InstantiateGenesisTemplate(
 // Funded key must have admin access to set new admin.
 func AddNativeMinterAdmin(
 	ctx context.Context,
-	l1 interfaces.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 	fundedKey *ecdsa.PrivateKey,
 	address common.Address,
 ) {
-	nativeMinterPrecompile, err := nativeMinter.NewINativeMinter(nativeminter.ContractAddress, l1.RPCClient)
+	nativeMinterPrecompile, err := nativeMinter.NewINativeMinter(nativeminter.ContractAddress, l1.EthClient)
 	Expect(err).Should(BeNil())
 
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1.EVMChainID)
 	Expect(err).Should(BeNil())
 	tx, err := nativeMinterPrecompile.SetAdmin(opts, address)
 	Expect(err).Should(BeNil())
-	WaitForTransactionSuccess(ctx, l1, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
 }
 
 // Blocks until all validators specified in nodeURIs have reached the specified block height
@@ -596,10 +633,10 @@ func WaitForAllValidatorsToAcceptBlock(ctx context.Context, nodeURIs []string, b
 func ExtractWarpMessageFromLog(
 	ctx context.Context,
 	sourceReceipt *types.Receipt,
-	source interfaces.L1TestInfo,
+	client *ethclient.Client,
 ) *avalancheWarp.UnsignedMessage {
 	log.Info("Fetching relevant warp logs from the newly produced block")
-	logs, err := source.RPCClient.FilterLogs(ctx, ethereum.FilterQuery{
+	logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
 		BlockHash: &sourceReceipt.BlockHash,
 		Addresses: []common.Address{warp.Module.Address},
 	})
@@ -618,12 +655,12 @@ func ExtractWarpMessageFromLog(
 func ConstructSignedWarpMessage(
 	ctx context.Context,
 	sourceReceipt *types.Receipt,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	justification []byte,
 	signatureAggregator *SignatureAggregator,
 ) *avalancheWarp.Message {
-	unsignedMsg := ExtractWarpMessageFromLog(ctx, sourceReceipt, source)
+	unsignedMsg := ExtractWarpMessageFromLog(ctx, sourceReceipt, source.EthClient)
 
 	// Loop over each client on source chain to ensure they all have time to accept the block.
 	// Note: if we did not confirm this here, the next stage could be racy since it assumes every node
@@ -636,8 +673,8 @@ func ConstructSignedWarpMessage(
 }
 
 func GetSignedMessage(
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
 	unsignedWarpMessage *avalancheWarp.UnsignedMessage,
 	justification []byte,
 	signatureAggregator *SignatureAggregator,
@@ -676,7 +713,7 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	chainIDInt, err := client.ChainID(ctx)
 	Expect(err).Should(BeNil())
 
-	err = subnetEvmUtils.IssueTxsToActivateProposerVMFork(ctx, chainIDInt, fundedKey, client)
+	err = IssueTxsToAdvanceChain(ctx, chainIDInt, fundedKey, client, 2)
 	Expect(err).Should(BeNil())
 }
 
@@ -687,25 +724,27 @@ func IssueTxsToAdvanceChain(
 	ctx context.Context,
 	chainID *big.Int,
 	fundedKey *ecdsa.PrivateKey,
-	client ethclient.Client,
+	client *ethclient.Client,
 	numTriggerTxs int,
 ) error {
 	addr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 	nonce, err := client.NonceAt(ctx, addr, nil)
 	Expect(err).Should(BeNil())
 
-	newHeads := make(chan *types.Header, 1)
-	sub, err := client.SubscribeNewHead(ctx, newHeads)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
 	to := common.HexToAddress(string(common.Big1.Bytes()))
 	gasFeeCap := big.NewInt(0).SetUint64(225_000_000_000)
 
 	txSigner := types.LatestSignerForChainID(chainID)
+	queryTicker := time.NewTicker(200 * time.Millisecond)
+	defer queryTicker.Stop()
+
 	for i := 0; i < numTriggerTxs; i++ {
+		// Get current block number before sending transaction
+		currentBlockNumber, err := client.BlockNumber(ctx)
+		if err != nil {
+			return err
+		}
+
 		tx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
 			Nonce:     nonce,
@@ -722,7 +761,24 @@ func IssueTxsToAdvanceChain(
 		if err := client.SendTransaction(ctx, triggerTx); err != nil {
 			return err
 		}
-		<-newHeads // wait for block to be accepted
+
+		// Poll until block number increases
+		for {
+			newBlockNumber, err := client.BlockNumber(ctx)
+			if err != nil {
+				return err
+			}
+			if newBlockNumber > currentBlockNumber {
+				break
+			}
+
+			// Wait for the next polling interval or context cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-queryTicker.C:
+			}
+		}
 		nonce++
 	}
 	log.Info(

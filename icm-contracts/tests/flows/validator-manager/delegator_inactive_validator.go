@@ -12,7 +12,7 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -25,7 +25,7 @@ import (
  * - Disable the validator by issuing a DisableL1ValidatorTx on the P-Chain
  * - Initiate and complete validator removal
  */
-func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork.LocalNetwork) {
+func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork.LocalAvalancheNetwork) {
 	// Get the L1s info
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
@@ -45,12 +45,12 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 	validatorManagerProxy, stakingManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
 	erc20StakingManager, err := erc20tokenstakingmanager.NewERC20TokenStakingManager(
 		stakingManagerProxy.Address,
-		l1AInfo.RPCClient,
+		l1AInfo.EthClient,
 	)
 	Expect(err).Should(BeNil())
 	erc20Address, err := erc20StakingManager.Erc20(&bind.CallOpts{})
 	Expect(err).Should(BeNil())
-	erc20, err := exampleerc20.NewExampleERC20(erc20Address, l1AInfo.RPCClient)
+	erc20, err := exampleerc20.NewExampleERC20(erc20Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 
 	signatureAggregator := utils.NewSignatureAggregator(
@@ -64,7 +64,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 	//
 	// Delist one initial validator
 	//
-	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.RPCClient)
+	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	utils.InitiateAndCompleteEndInitialPoSValidation(
 		ctx,
@@ -145,7 +145,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 
 		// Gather subnet-evm Warp signatures for the L1ValidatorWeightMessage & relay to the P-Chain
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,
@@ -224,7 +224,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 		// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 		// (Sending to the P-Chain will be skipped for now)
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,

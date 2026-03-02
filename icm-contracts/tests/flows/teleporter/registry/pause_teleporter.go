@@ -5,13 +5,13 @@ import (
 
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
 func PauseTeleporter(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -21,20 +21,20 @@ func PauseTeleporter(
 	//
 	// Deploy TestMessenger to L1s A and B
 	//
-	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
+	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	_, testMessengerA := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
+		l1AInfo.EVMTestInfo,
 	)
 	testMessengerAddressB, testMessengerB := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Pause Teleporter on L1 B
@@ -46,7 +46,7 @@ func PauseTeleporter(
 	tx, err := testMessengerB.PauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.EthClient, tx.Hash())
 	pauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressPaused)
 	Expect(err).Should(BeNil())
 	Expect(pauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))
@@ -76,7 +76,7 @@ func PauseTeleporter(
 	tx, err = testMessengerB.UnpauseTeleporterAddress(opts, teleporterAddress)
 	Expect(err).Should(BeNil())
 
-	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1BInfo.EthClient, tx.Hash())
 	unpauseTeleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, testMessengerB.ParseTeleporterAddressUnpaused)
 	Expect(err).Should(BeNil())
 	Expect(unpauseTeleporterEvent.TeleporterAddress).Should(Equal(teleporterAddress))

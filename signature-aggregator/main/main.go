@@ -12,20 +12,19 @@ import (
 	"syscall"
 
 	"github.com/ava-labs/avalanchego/api/info"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/plugin/evm"
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/avalanchego/vms/platformvm"
-
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	"github.com/ava-labs/icm-services/signature-aggregator/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/healthcheck"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
-	"github.com/ava-labs/subnet-evm/plugin/evm"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -166,8 +165,7 @@ func main() {
 		messageCreator,
 		cfg.SignatureCacheSize,
 		metricsInstance,
-		platformvm.NewClient(cfg.GetPChainAPI().BaseURL),
-		cfg.GetPChainAPI().Options(),
+		clients.NewCanonicalValidatorClient(cfg.PChainAPI),
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))

@@ -9,8 +9,8 @@ import (
 	erc20tokenremote "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenRemote/ERC20TokenRemote"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -28,7 +28,7 @@ import (
 
 func TransparentUpgradeableProxy(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
@@ -57,11 +57,11 @@ func TransparentUpgradeableProxy(
 	Expect(err).Should(BeNil())
 	implAddress, tx, _, err := erc20tokenhomeupgradeable.DeployERC20TokenHomeUpgradeable(
 		opts,
-		cChainInfo.RPCClient,
+		cChainInfo.EthClient,
 		uint8(1),
 	)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.EthClient, tx.Hash())
 
 	// Deploy a TransparentUpgradeableProxy contract on primary network for the ERC20TokenHome logic contract
 	erc20TokenHomeAddress, proxyAdmin := utils.DeployTransparentUpgradeableProxy(
@@ -70,19 +70,19 @@ func TransparentUpgradeableProxy(
 		fundedKey,
 		implAddress,
 	)
-	erc20TokenHome, err := erc20tokenhome.NewERC20TokenHome(erc20TokenHomeAddress, cChainInfo.RPCClient)
+	erc20TokenHome, err := erc20tokenhome.NewERC20TokenHome(erc20TokenHomeAddress, cChainInfo.EthClient)
 	Expect(err).Should(BeNil())
 
 	tx, err = erc20TokenHome.Initialize(
 		opts,
-		teleporter.TeleporterRegistryAddress(cChainInfo),
+		teleporter.TeleporterRegistryAddress(cChainInfo.BlockchainID),
 		fundedAddress,
 		big.NewInt(1),
 		exampleERC20Address,
 		tokenDecimals,
 	)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.EthClient, tx.Hash())
 
 	// Deploy the ERC20TokenRemote contract on L1 A
 	erc20TokenRemoteAddress, erc20TokenRemote := utils.DeployERC20TokenRemote(
@@ -169,16 +169,16 @@ func TransparentUpgradeableProxy(
 	// Deploy a new ERC20TokenHome logic contract on primary network
 	newLogic, tx, _, err := erc20tokenhomeupgradeable.DeployERC20TokenHomeUpgradeable(
 		opts,
-		cChainInfo.RPCClient,
+		cChainInfo.EthClient,
 		uint8(1),
 	)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.EthClient, tx.Hash())
 
 	// Upgrade the TransparentUpgradeableProxy contract to use the new logic contract
 	tx, err = proxyAdmin.UpgradeAndCall(opts, erc20TokenHomeAddress, newLogic, []byte{})
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, cChainInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, cChainInfo.EthClient, tx.Hash())
 
 	// Send a transfer from L1 A back to primary network
 	utils.SendNativeTransfer(

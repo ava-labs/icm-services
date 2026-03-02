@@ -87,19 +87,19 @@ func NewRelayerExternalHandler(
 // Teleporter application relayer. On startup, one Relayer goroutine is created per source subnet,
 // which listens to the subscriber for cross-chain messages. When a cross-chain message is picked
 // up by a Relayer, HandleInbound routes AppResponses traffic to the appropriate Relayer.
-func (h *RelayerExternalHandler) HandleInbound(_ context.Context, inboundMessage message.InboundMessage) {
+func (h *RelayerExternalHandler) HandleInbound(_ context.Context, inboundMessage *message.InboundMessage) {
 	h.log.Debug(
 		"Handling app response",
-		zap.Stringer("op", inboundMessage.Op()),
-		zap.Stringer("from", inboundMessage.NodeID()),
+		zap.Stringer("op", inboundMessage.Op),
+		zap.Stringer("from", inboundMessage.NodeID),
 	)
-	if inboundMessage.Op() == message.AppResponseOp || inboundMessage.Op() == message.AppErrorOp {
-		if inboundMessage.Op() == message.AppErrorOp {
-			h.log.Debug("Received AppError message", zap.Stringer("message", inboundMessage.Message()))
+	if inboundMessage.Op == message.AppResponseOp || inboundMessage.Op == message.AppErrorOp {
+		if inboundMessage.Op == message.AppErrorOp {
+			h.log.Debug("Received AppError message", zap.Stringer("message", inboundMessage.Message))
 		}
-		h.registerAppResponse(inboundMessage)
+		h.registerAppResponse(*inboundMessage)
 	} else {
-		h.log.Debug("Ignoring message", zap.Stringer("op", inboundMessage.Op()))
+		h.log.Debug("Ignoring message", zap.Stringer("op", inboundMessage.Op))
 		inboundMessage.OnFinishedHandling()
 	}
 }
@@ -184,7 +184,7 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 	defer h.lock.Unlock()
 
 	// Extract the message fields
-	m := inboundMessage.Message()
+	m := inboundMessage.Message
 
 	chainID, err := message.GetChainID(m)
 	if err != nil {
@@ -201,10 +201,10 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 
 	// Remove the timeout on the request
 	reqID := ids.RequestID{
-		NodeID:    inboundMessage.NodeID(),
+		NodeID:    inboundMessage.NodeID,
 		ChainID:   chainID,
 		RequestID: requestID,
-		Op:        byte(inboundMessage.Op()),
+		Op:        byte(inboundMessage.Op),
 	}
 	h.timeoutManager.Remove(reqID)
 

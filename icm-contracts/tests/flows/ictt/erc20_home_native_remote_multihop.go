@@ -7,8 +7,8 @@ import (
 	erc20tokenhome "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenHome/ERC20TokenHome"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -24,7 +24,7 @@ import (
 */
 func ERC20TokenHomeNativeTokenRemoteMultiHop(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
@@ -180,7 +180,7 @@ func ERC20TokenHomeNativeTokenRemoteMultiHop(
 	)
 
 	// Verify the recipient received the tokens
-	utils.CheckBalance(ctx, recipientAddress, transferredAmountA, l1AInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmountA, l1AInfo.EthClient)
 
 	// Send tokens from C-Chain to L1 B
 	inputB := erc20tokenhome.SendTokensInput{
@@ -217,7 +217,7 @@ func ERC20TokenHomeNativeTokenRemoteMultiHop(
 	)
 
 	// Verify the recipient received the tokens
-	utils.CheckBalance(ctx, recipientAddress, transferredAmountB, l1BInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmountB, l1BInfo.EthClient)
 
 	// Multi-hop transfer to L1 B
 	// Send half of the received amount to account for gas expenses

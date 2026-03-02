@@ -9,14 +9,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	"go.uber.org/zap"
 )
 
@@ -26,11 +25,18 @@ var (
 	ErrFailedToProcessLogs  = errors.New("failed to process logs")
 )
 
+// FilterLogsClient defines the minimal interface for clients that can filter logs.
+// This interface is used by NewWarpBlockInfo to fetch logs for a specific block.
+type FilterLogsClient interface {
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+}
+
 // WarpBlockInfo describes the block height and logs needed to process Warp messages.
 // WarpBlockInfo instances are populated by the subscriber, and forwarded to the Listener to process.
 type WarpBlockInfo struct {
 	BlockNumber uint64
 	Messages    []*WarpMessageInfo
+	IsCatchup   bool
 }
 
 // WarpMessageInfo describes the transaction information for the Warp message
@@ -44,7 +50,7 @@ type WarpMessageInfo struct {
 }
 
 // Extract Warp logs from the block, if they exist
-func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethclient.Client) (*WarpBlockInfo, error) {
+func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient FilterLogsClient) (*WarpBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
@@ -92,6 +98,7 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 	return &WarpBlockInfo{
 		BlockNumber: header.Number.Uint64(),
 		Messages:    messages,
+		IsCatchup:   false,
 	}, nil
 }
 
@@ -142,6 +149,7 @@ func LogsToBlocks(logs []types.Log) (map[uint64]*WarpBlockInfo, error) {
 			blocks[log.BlockNumber] = &WarpBlockInfo{
 				BlockNumber: log.BlockNumber,
 				Messages:    []*WarpMessageInfo{warpMessageInfo},
+				IsCatchup:   true,
 			}
 		}
 	}

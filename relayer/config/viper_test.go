@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	basecfg "github.com/ava-labs/icm-services/config"
-
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )

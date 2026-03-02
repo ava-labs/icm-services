@@ -5,8 +5,8 @@ import (
 
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -16,7 +16,7 @@ const (
 
 func TeleporterRegistry(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	// Deploy dApp on both chains that use Teleporter Registry
@@ -39,21 +39,21 @@ func TeleporterRegistry(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(cChainInfo),
-		cChainInfo,
+		teleporter.TeleporterRegistryAddress(cChainInfo.BlockchainID),
+		cChainInfo.EVMTestInfo,
 	)
 	testMessengerContractB, testMessengerB := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Deploy the new version of Teleporter to both chains
 	var newTeleporterAddress common.Address
 	for _, l1 := range network.GetAllL1Infos() {
-		newTeleporterAddress = teleporter.DeployNewTeleporterVersion(ctx, l1, fundedKey, teleporterByteCodeFile)
+		newTeleporterAddress = utils.DeployNewTeleporterVersion(ctx, l1, fundedKey, teleporterByteCodeFile)
 	}
 
 	networkID := network.GetNetworkID()
@@ -61,21 +61,21 @@ func TeleporterRegistry(
 	offchainMessageC, warpEnabledChainConfigC := utils.InitOffChainMessageChainConfig(
 		networkID,
 		cChainInfo,
-		teleporter.TeleporterRegistryAddress(cChainInfo),
+		teleporter.TeleporterRegistryAddress(cChainInfo.BlockchainID),
 		newTeleporterAddress,
 		2,
 	)
 	offchainMessageB, warpEnabledChainConfigB := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1BInfo,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
 		newTeleporterAddress,
 		2,
 	)
 	offchainMessageA, warpEnabledChainConfigA := utils.InitOffChainMessageChainConfig(
 		networkID,
 		l1AInfo,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
 		newTeleporterAddress,
 		2,
 	)
@@ -128,7 +128,7 @@ func TeleporterRegistry(
 	tx, err := testMessengerB.UpdateMinTeleporterVersion(opts, latestVersionB)
 	Expect(err).Should(BeNil())
 
-	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1BInfo.EthClient, tx.Hash())
 
 	// Verify that minTeleporterVersion updated
 	minTeleporterVersionUpdatedEvent, err := utils.GetEventFromLogs(
@@ -156,8 +156,7 @@ func TeleporterRegistry(
 
 	// Update teleporter with the new TeleporterMessengers
 	for _, l1 := range network.GetAllL1Infos() {
-		teleporter.SetTeleporter(newTeleporterAddress, l1)
-		teleporter.InitializeBlockchainID(l1, fundedKey)
+		teleporter.SetTeleporter(newTeleporterAddress, l1.BlockchainID)
 	}
 
 	teleporter.SendExampleCrossChainMessageAndVerify(

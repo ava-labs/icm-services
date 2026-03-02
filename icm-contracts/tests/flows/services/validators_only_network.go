@@ -23,8 +23,8 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
@@ -51,7 +51,7 @@ const (
 func ValidatorsOnlyNetwork(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	// Begin Setup step
@@ -69,7 +69,7 @@ func ValidatorsOnlyNetwork(
 	// Create a config without TLS cert and key
 	baseConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 	)
 	baseConfigPath := utils.WriteSignatureAggregatorConfig(
 		log,
@@ -153,9 +153,9 @@ func ValidatorsOnlyNetwork(
 			Expect(network.DefaultRuntimeConfig.Process.ReuseDynamicPorts).Should(BeTrue())
 			tmpnetNode.RuntimeConfig = &network.DefaultRuntimeConfig
 			// Restart the network to apply the new chain configs
-			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			cctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 			defer cancel()
-			err := tmpnetNode.Restart(ctx)
+			err := tmpnetNode.Restart(cctx)
 			Expect(err).Should(BeNil())
 		}
 	}

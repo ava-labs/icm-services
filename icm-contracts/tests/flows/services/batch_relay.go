@@ -9,13 +9,13 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -23,7 +23,7 @@ import (
 func BatchRelay(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
@@ -56,7 +56,7 @@ func BatchRelay(
 	log.Info("Funding relayer address on all subnets")
 	relayerKey, err := crypto.GenerateKey()
 	Expect(err).Should(BeNil())
-	utils.FundRelayers(ctx, []interfaces.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1AInfo, l1BInfo}, fundedKey, relayerKey)
 
 	//
 	// Set up relayer config
@@ -64,8 +64,8 @@ func BatchRelay(
 	relayerConfig := utils.CreateDefaultRelayerConfig(
 		log,
 		teleporter,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 		fundedAddress,
 		relayerKey,
 	)
@@ -115,7 +115,7 @@ func BatchRelay(
 	)
 	Expect(err).Should(BeNil())
 
-	utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	// Wait for the message on the destination
 	maxWait := 40

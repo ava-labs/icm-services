@@ -8,7 +8,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
-	"github.com/ava-labs/subnet-evm/accounts/abi"
+	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/spf13/cobra"
 )
 

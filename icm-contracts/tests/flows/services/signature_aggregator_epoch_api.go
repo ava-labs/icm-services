@@ -16,8 +16,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	. "github.com/onsi/gomega"
@@ -43,7 +43,7 @@ import (
 func SignatureAggregatorEpochAPI(
 	ctx context.Context,
 	log logging.Logger,
-	network *network.LocalNetwork,
+	network *network.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	// Begin Setup step
@@ -53,7 +53,7 @@ func SignatureAggregatorEpochAPI(
 
 	signatureAggregatorConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
-		[]interfaces.L1TestInfo{l1AInfo, l1BInfo},
+		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 	)
 
 	signatureAggregatorConfigPath := utils.WriteSignatureAggregatorConfig(

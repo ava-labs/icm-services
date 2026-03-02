@@ -21,6 +21,7 @@ import (
 
 type CheckpointManager struct {
 	logger          logging.Logger
+	metrics         *CheckpointManagerMetrics
 	database        database.RelayerDatabase
 	writeSignal     chan struct{}
 	relayerID       database.RelayerID
@@ -33,6 +34,7 @@ type CheckpointManager struct {
 
 func NewCheckpointManager(
 	logger logging.Logger,
+	metrics *CheckpointManagerMetrics,
 	db database.RelayerDatabase,
 	writeSignal chan struct{},
 	relayerID database.RelayerID,
@@ -55,8 +57,9 @@ func NewCheckpointManager(
 
 	committedHeight := max(storedHeight, startingHeight)
 
-	return &CheckpointManager{
+	cm := &CheckpointManager{
 		logger:          logger,
+		metrics:         metrics,
 		database:        db,
 		writeSignal:     writeSignal,
 		relayerID:       relayerID,
@@ -64,7 +67,12 @@ func NewCheckpointManager(
 		lock:            &sync.RWMutex{},
 		pendingCommits:  h,
 		dirty:           true,
-	}, nil
+	}
+
+	metrics.UpdateCommittedHeight(relayerID, committedHeight)
+	metrics.UpdatePendingCommitsHeapLength(relayerID, 0)
+
+	return cm, nil
 }
 
 func (cm *CheckpointManager) Run() {
@@ -125,6 +133,7 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 	// First push the height onto the pending commits min heap
 	// This will ensure that the heights are committed in order
 	heap.Push(cm.pendingCommits, height)
+	cm.metrics.UpdatePendingCommitsHeapLength(cm.relayerID, cm.pendingCommits.Len())
 	log.Verbo(
 		"Pending committed heights",
 		zap.Uint64("maxCommittedHeight", cm.committedHeight),
@@ -135,6 +144,8 @@ func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
 		log.Verbo("Committing height")
 		cm.committedHeight = h
 		cm.dirty = true
+		cm.metrics.UpdateCommittedHeight(cm.relayerID, cm.committedHeight)
+		cm.metrics.UpdatePendingCommitsHeapLength(cm.relayerID, cm.pendingCommits.Len())
 		if cm.pendingCommits.Len() == 0 {
 			break
 		}

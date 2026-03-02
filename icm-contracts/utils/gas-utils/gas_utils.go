@@ -7,9 +7,9 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/precompileconfig"
 	"github.com/ava-labs/avalanchego/utils/math"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
-	"github.com/ava-labs/subnet-evm/precompile/precompileconfig"
 )
 
 const (
@@ -28,6 +28,9 @@ var _ precompileconfig.Rules = &graniteActivatedRules{}
 // as long as the underlying struct on subnet-evm is private.
 type graniteActivatedRules struct{}
 
+func (u *graniteActivatedRules) IsDurangoActivated() bool {
+	return true
+}
 func (u *graniteActivatedRules) IsGraniteActivated() bool {
 	return true
 }

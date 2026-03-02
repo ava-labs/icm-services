@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/peers"
@@ -22,7 +21,7 @@ import (
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
-	"github.com/ava-labs/subnet-evm/rpc"
+	"github.com/ava-labs/libevm/rpc"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )

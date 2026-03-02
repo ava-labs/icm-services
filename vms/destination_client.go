@@ -19,12 +19,11 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/subnet-evm/ethclient"
 	"go.uber.org/zap"
 )
 
 // DestinationClient is the interface for the destination chain client. Methods that interact with
-// the destination chain should generally be implemented in a thread safe way, as they will be called
+// the destination chain should generally be implemented in a thread-safe way, as they will be called
 // concurrently by the application relayers.
 type DestinationClient interface {
 	// SendTx constructs the transaction from warp primitives, and sends to the configured destination chain endpoint.
@@ -39,7 +38,7 @@ type DestinationClient interface {
 	) (*types.Receipt, error)
 
 	// Client returns the underlying client for the destination chain
-	Client() ethclient.Client
+	Client() evm.Client
 
 	// SenderAddresses returns the addresses of the relayer on the destination chain
 	SenderAddresses() []common.Address

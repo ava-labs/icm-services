@@ -5,27 +5,27 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 	. "github.com/onsi/gomega"
 )
 
 // Disallow this test from being run on anything but a local network, since it requires special behavior by the relayer
 func RelayerModifiesMessage(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -70,9 +70,9 @@ func relayAlteredMessage(
 	ctx context.Context,
 	teleporter utils.TeleporterTestInfo,
 	sourceReceipt *types.Receipt,
-	source interfaces.L1TestInfo,
-	destination interfaces.L1TestInfo,
-	network *localnetwork.LocalNetwork,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
+	network *localnetwork.LocalAvalancheNetwork,
 ) {
 	// Fetch the Teleporter message from the logs
 	sendEvent, err := utils.GetEventFromLogs(
@@ -100,13 +100,13 @@ func relayAlteredMessage(
 		signedWarpMessage,
 		&sendEvent.Message,
 		sendEvent.Message.RequiredGasLimit,
-		teleporter.TeleporterMessengerAddress(source),
+		teleporter.TeleporterMessengerAddress(source.BlockchainID),
 		fundedKey,
 		destination,
 	)
 
 	log.Info("Sending transaction to destination chain")
-	utils.SendTransactionAndWaitForFailure(ctx, destination, signedTx)
+	utils.SendTransactionAndWaitForFailure(ctx, destination.EthClient, signedTx)
 }
 
 func createAlteredReceiveCrossChainMessageTransaction(
@@ -116,7 +116,7 @@ func createAlteredReceiveCrossChainMessageTransaction(
 	requiredGasLimit *big.Int,
 	teleporterContractAddress common.Address,
 	fundedKey *ecdsa.PrivateKey,
-	l1Info interfaces.L1TestInfo,
+	l1Info testinfo.L1TestInfo,
 ) *types.Transaction {
 	fundedAddress := crypto.PubkeyToAddress(fundedKey.PublicKey)
 	// Construct the transaction to send the Warp message to the destination chain
@@ -137,7 +137,7 @@ func createAlteredReceiveCrossChainMessageTransaction(
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(0, fundedAddress)
 	Expect(err).Should(BeNil())
 
-	gasFeeCap, gasTipCap, nonce := utils.CalculateTxParams(ctx, l1Info, fundedAddress)
+	gasFeeCap, gasTipCap, nonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
 
 	alterTeleporterMessage(signedMessage)
 

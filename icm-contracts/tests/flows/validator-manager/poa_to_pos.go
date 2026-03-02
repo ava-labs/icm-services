@@ -13,9 +13,8 @@ import (
 	istakingmanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/interfaces/IStakingManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
-
 	. "github.com/onsi/gomega"
 )
 
@@ -38,7 +37,7 @@ import (
  * - Delist the previous PoA validator properly
  * - Delist the PoS validator
  */
-func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) {
+func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalancheNetwork) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
 	_, fundedKey := network.GetFundedAccountInfo()
@@ -72,9 +71,9 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) 
 		false,
 	)
 	validatorManagerAddr, poaManagerAddr := network.GetValidatorManager(l1AInfo.SubnetID)
-	poaManager, err := poamanager.NewPoAManager(poaManagerAddr.Address, l1AInfo.RPCClient)
+	poaManager, err := poamanager.NewPoAManager(poaManagerAddr.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
-	validatorManager, err := validatormanager.NewValidatorManager(validatorManagerAddr.Address, l1AInfo.RPCClient)
+	validatorManager, err := validatormanager.NewValidatorManager(validatorManagerAddr.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 
 	signatureAggregator := utils.NewSignatureAggregator(
@@ -162,7 +161,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) 
 
 	nativeStakingManager, err := nativetokenstakingmanager.NewNativeTokenStakingManager(
 		stakingManagerAddress,
-		l1AInfo.RPCClient,
+		l1AInfo.EthClient,
 	)
 	Expect(err).Should(BeNil())
 
@@ -171,7 +170,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) 
 	Expect(err).Should(BeNil())
 	tx, err := poaManager.TransferValidatorManagerOwnership(opts, stakingManagerAddress)
 	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(context.Background(), l1AInfo, tx.Hash())
+	utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	// Check that previous validator is still registered
 	validationID, err := validatorManager.GetNodeValidationID(&bind.CallOpts{}, poaNodeID)
@@ -185,7 +184,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalNetwork) 
 	//
 	// Remove the PoA validator and re-register as a PoS validator
 	//
-	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerAddress, l1AInfo.RPCClient)
+	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerAddress, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	utils.InitiateAndCompleteEndPoSValidation(
 		ctx,

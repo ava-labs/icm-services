@@ -12,12 +12,18 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 1 # Disable non-security version updates
     groups:
-      weekly-updates:
+      weekly-ava-updates:
+        patterns:
+          - "github.com/ava-labs/*"
+      weekly-ext-updates:
         patterns:
           - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      weekly-github-actions:
+        patterns:
+          - "*"

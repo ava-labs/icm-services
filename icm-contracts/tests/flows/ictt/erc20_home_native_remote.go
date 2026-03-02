@@ -8,8 +8,8 @@ import (
 	nativetokenremote "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenRemote/NativeTokenRemote"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -33,7 +33,7 @@ var (
  */
 func ERC20TokenHomeNativeTokenRemote(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
@@ -147,7 +147,7 @@ func ERC20TokenHomeNativeTokenRemote(
 	)
 
 	// Verify the recipient received the tokens
-	utils.CheckBalance(ctx, recipientAddress, transferredAmount, l1AInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmount, l1AInfo.EthClient)
 
 	// Send back to the home chain and check that ERC20TokenHome received the tokens
 	input_A := nativetokenremote.SendTokensInput{

@@ -8,11 +8,11 @@ import (
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
-func ValidatorSetSig(ctx context.Context, network *localnetwork.LocalNetwork) {
+func ValidatorSetSig(ctx context.Context, network *localnetwork.LocalAvalancheNetwork) {
 	// ************************************************************************************************
 	// Setup
 	// ************************************************************************************************
@@ -128,7 +128,6 @@ func ValidatorSetSig(ctx context.Context, network *localnetwork.LocalNetwork) {
 	offchainMessages, icmEnabledChainConfigWithMsg := utils.InitOffChainMessageChainConfigValidatorSetSig(
 		networkID,
 		L1B,
-		validatorSetSigContractAddress,
 		[]validatorsetsig.ValidatorSetSigMessage{vssMessage1, vssMessage2, vssMessage3},
 	)
 

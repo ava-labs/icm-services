@@ -11,8 +11,8 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -24,11 +24,10 @@ const (
 
 func ValidatorChurn(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo, l1BInfo := network.GetTwoL1s()
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	//
@@ -85,7 +84,7 @@ func ValidatorChurn(
 	defer cancel()
 	newNodes := network.GetExtraNodes(newNodeCount)
 	validatorManagerProxy, poaManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
-	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1AInfo.RPCClient)
+	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	pChainInfo := utils.GetPChainInfo(network.GetPrimaryNetworkInfo())
 	Expect(err).Should(BeNil())
@@ -127,7 +126,7 @@ func ValidatorChurn(
 	// proposer VM is updated on all L1s.
 	for _, l1Info := range network.GetL1Infos() {
 		err = utils.IssueTxsToAdvanceChain(
-			ctx, l1Info.EVMChainID, fundedKey, l1Info.WSClient, 5,
+			ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5,
 		)
 		Expect(err).Should(BeNil())
 	}
@@ -136,16 +135,15 @@ func ValidatorChurn(
 	// Attempt to deliver the warp message signed by the old validator set. This should fail.
 	//
 	// Construct the transaction to send the Warp message to the destination chain
-	signedTx := utils.CreateReceiveCrossChainMessageTransaction(
+	signedTx := teleporter.CreateReceiveCrossChainMessageTransaction(
 		ctx,
 		signedWarpMessage,
-		teleporterContractAddress,
 		fundedKey,
 		l1BInfo,
 	)
 
 	log.Info("Sending transaction to destination chain")
-	utils.SendTransactionAndWaitForFailure(ctx, l1BInfo, signedTx)
+	utils.SendTransactionAndWaitForFailure(ctx, l1BInfo.EthClient, signedTx)
 
 	// Verify the message was not delivered
 	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
@@ -166,7 +164,7 @@ func ValidatorChurn(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt = utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt = utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	teleporter.RelayTeleporterMessage(
 		ctx,

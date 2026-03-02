@@ -7,13 +7,13 @@ import (
 	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
 func RetrySuccessfulExecution(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -28,15 +28,15 @@ func RetrySuccessfulExecution(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
+		l1AInfo.EVMTestInfo,
 	)
 	testMessengerContractAddressB, l1BTestMessenger := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
+		l1BInfo.EVMTestInfo,
 	)
 
 	//
@@ -56,7 +56,7 @@ func RetrySuccessfulExecution(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,

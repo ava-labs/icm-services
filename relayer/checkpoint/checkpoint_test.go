@@ -11,6 +11,7 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -65,7 +66,9 @@ func TestCommitHeight(t *testing.T) {
 		id := database.RelayerID{
 			ID: common.BytesToHash(crypto.Keccak256([]byte(test.name))),
 		}
-		cm, err := NewCheckpointManager(logging.NoLog{}, db, nil, id, test.currentMaxHeight)
+		registry := prometheus.NewRegistry()
+		metrics := NewCheckpointManagerMetrics(registry)
+		cm, err := NewCheckpointManager(logging.NoLog{}, metrics, db, nil, id, test.currentMaxHeight)
 		require.NoError(t, err)
 		heap.Init(test.pendingHeights)
 		cm.pendingCommits = test.pendingHeights

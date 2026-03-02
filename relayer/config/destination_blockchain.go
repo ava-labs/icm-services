@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/set"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/precompile/contracts/warp"
 )
 
 const (
@@ -163,7 +163,7 @@ func (s *DestinationBlockchain) initializeWarpConfigs(ctx context.Context) error
 		return nil
 	}
 
-	client, err := utils.NewEthClientWithConfig(
+	client, err := utils.DialWithConfig(
 		ctx,
 		s.RPCEndpoint.BaseURL,
 		s.RPCEndpoint.HTTPHeaders,
@@ -173,7 +173,7 @@ func (s *DestinationBlockchain) initializeWarpConfigs(ctx context.Context) error
 	if err != nil {
 		return fmt.Errorf("failed to dial destination blockchain %s: %w", blockchainID, err)
 	}
-	subnetWarpConfig, err := getWarpConfig(client)
+	subnetWarpConfig, err := getWarpConfig(&rpcClient{c: client})
 	if err != nil {
 		return fmt.Errorf("failed to fetch warp config for blockchain %s: %w", blockchainID, err)
 	}

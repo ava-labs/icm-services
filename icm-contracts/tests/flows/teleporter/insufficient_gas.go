@@ -6,13 +6,13 @@ import (
 
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
 func InsufficientGas(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -24,16 +24,16 @@ func InsufficientGas(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
+		l1AInfo.EVMTestInfo,
 	)
 	// Deploy TestMessenger to L1s B
 	testMessengerContractB, l1BTestMessenger := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Send message from L1A to L1B with 0 execution gas, which should fail to execute
@@ -54,7 +54,7 @@ func InsufficientGas(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,

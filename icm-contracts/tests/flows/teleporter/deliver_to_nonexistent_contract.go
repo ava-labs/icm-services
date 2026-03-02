@@ -8,9 +8,9 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -19,7 +19,7 @@ const HELLO_WORLD = "Hello, world!"
 
 func DeliverToNonExistentContract(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
@@ -37,9 +37,9 @@ func DeliverToNonExistentContract(
 
 	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(10)) // 10eth
 	fundDeployerTx := utils.CreateNativeTransferTransaction(
-		ctx, l1BInfo, fundedKey, deployerAddress, fundAmount,
+		ctx, &l1BInfo.EVMTestInfo, fundedKey, deployerAddress, fundAmount,
 	)
-	utils.SendTransactionAndWaitForSuccess(ctx, l1BInfo, fundDeployerTx)
+	utils.SendTransactionAndWaitForSuccess(ctx, l1BInfo.EthClient, fundDeployerTx)
 
 	//
 	// Deploy ExampleMessenger to L1 A, but not to L1 B
@@ -50,12 +50,12 @@ func DeliverToNonExistentContract(
 		ctx,
 		fundedKey,
 		fundedAddress,
-		teleporter.TeleporterRegistryAddress(l1AInfo),
-		l1AInfo,
+		teleporter.TeleporterRegistryAddress(l1AInfo.BlockchainID),
+		l1AInfo.EVMTestInfo,
 	)
 
 	// Derive the eventual address of the destination contract on L1 B
-	nonce, err := l1BInfo.RPCClient.NonceAt(ctx, deployerAddress, nil)
+	nonce, err := l1BInfo.EthClient.NonceAt(ctx, deployerAddress, nil)
 	Expect(err).Should(BeNil())
 	destinationContractAddress := crypto.CreateAddress(deployerAddress, nonce)
 
@@ -78,7 +78,7 @@ func DeliverToNonExistentContract(
 	Expect(err).Should(BeNil())
 
 	// Wait for the transaction to be mined
-	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo, tx.Hash())
+	receipt := utils.WaitForTransactionSuccess(ctx, l1AInfo.EthClient, tx.Hash())
 
 	sendEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,
@@ -141,8 +141,8 @@ func DeliverToNonExistentContract(
 		ctx,
 		deployerKey,
 		deployerAddress,
-		teleporter.TeleporterRegistryAddress(l1BInfo),
-		l1BInfo,
+		teleporter.TeleporterRegistryAddress(l1BInfo.BlockchainID),
+		l1BInfo.EVMTestInfo,
 	)
 
 	// Confirm that it was deployed at the expected address

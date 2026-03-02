@@ -7,27 +7,27 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
-	"github.com/ava-labs/icm-services/icm-contracts/tests/interfaces"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	teleporterutils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
 
 func SendSpecificReceipts(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	l1ATeleporterMessenger := teleporter.TeleporterMessenger(l1AInfo)
 	l1BTeleporterMessenger := teleporter.TeleporterMessenger(l1BInfo)
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo)
+	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	_, fundedKey := network.GetFundedAccountInfo()
 
 	aggregator := network.GetSignatureAggregator()
@@ -254,8 +254,8 @@ func SendSpecificReceipts(
 func receiptIncluded(
 	teleporterMessengerAddress common.Address,
 	expectedMessageID ids.ID,
-	sourceL1 interfaces.L1TestInfo,
-	destinationL1 interfaces.L1TestInfo,
+	sourceL1 testinfo.L1TestInfo,
+	destinationL1 testinfo.L1TestInfo,
 	receipts []teleportermessenger.TeleporterMessageReceipt,
 ) bool {
 	for _, receipt := range receipts {
@@ -279,7 +279,7 @@ func receiptIncluded(
 // and that each message individually had a fee of {feePerMessage}.
 func checkExpectedRewardAmounts(
 	teleporter utils.TeleporterTestInfo,
-	sourceL1 interfaces.L1TestInfo,
+	sourceL1 testinfo.L1TestInfo,
 	receiveEvent1 *teleportermessenger.TeleporterMessengerReceiveCrossChainMessage,
 	receiveEvent2 *teleportermessenger.TeleporterMessengerReceiveCrossChainMessage,
 	tokenAddress common.Address,
@@ -290,23 +290,26 @@ func checkExpectedRewardAmounts(
 	// it should be able to redeem {feePerMessage}*2. Otherwise,
 	// each distinct reward redeemer should be able to redeem {feePerMessage}.
 	if receiveEvent1.RewardRedeemer == receiveEvent2.RewardRedeemer {
-		amount, err := teleporter[sourceL1.BlockchainID].TeleporterMessenger.CheckRelayerRewardAmount(
+		amount, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent1.RewardRedeemer,
-			tokenAddress)
+			tokenAddress,
+		)
 		Expect(err).Should(BeNil())
 		Expect(amount).Should(Equal(new(big.Int).Mul(feePerMessage, big.NewInt(2))))
 	} else {
-		amount1, err := teleporter[sourceL1.BlockchainID].TeleporterMessenger.CheckRelayerRewardAmount(
+		amount1, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent1.RewardRedeemer,
-			tokenAddress)
+			tokenAddress,
+		)
 		Expect(err).Should(BeNil())
 		Expect(amount1).Should(Equal(feePerMessage))
-		amount2, err := teleporter[sourceL1.BlockchainID].TeleporterMessenger.CheckRelayerRewardAmount(
+		amount2, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent2.RewardRedeemer,
-			tokenAddress)
+			tokenAddress,
+		)
 		Expect(err).Should(BeNil())
 		Expect(amount2).Should(Equal(feePerMessage))
 	}

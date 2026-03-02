@@ -8,8 +8,8 @@ import (
 	erc20tokenremote "github.com/ava-labs/icm-services/abi-bindings/go/ictt/TokenRemote/ERC20TokenRemote"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -21,7 +21,7 @@ import (
  */
 func NativeTokenHomeERC20TokenRemote(
 	ctx context.Context,
-	network *localnetwork.LocalNetwork,
+	network *localnetwork.LocalAvalancheNetwork,
 	teleporter utils.TeleporterTestInfo,
 ) {
 	cChainInfo := network.GetPrimaryNetworkInfo()
@@ -186,5 +186,5 @@ func NativeTokenHomeERC20TokenRemote(
 		transferredAmount,
 	)
 
-	utils.CheckBalance(ctx, recipientAddress, transferredAmount, cChainInfo.RPCClient)
+	utils.CheckBalance(ctx, recipientAddress, transferredAmount, cChainInfo.EthClient)
 }

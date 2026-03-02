@@ -12,7 +12,7 @@ import (
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
-	"github.com/ava-labs/subnet-evm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	. "github.com/onsi/gomega"
 )
 
@@ -32,7 +32,7 @@ import (
  * - Deliver the Warp message to the L1
  * - Verify that the validator is delisted from the staking contract
  */
-func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalNetwork) {
+func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalAvalancheNetwork) {
 	// Get the L1s info
 	cChainInfo := network.GetPrimaryNetworkInfo()
 	l1AInfo, _ := network.GetTwoL1s()
@@ -52,7 +52,7 @@ func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalN
 	validatorManagerProxy, stakingManagerProxy := network.GetValidatorManager(l1AInfo.SubnetID)
 	nativeStakingManager, err := nativetokenstakingmanager.NewNativeTokenStakingManager(
 		stakingManagerProxy.Address,
-		l1AInfo.RPCClient,
+		l1AInfo.EthClient,
 	)
 	Expect(err).Should(BeNil())
 	utils.AddNativeMinterAdmin(ctx, l1AInfo, fundedKey, stakingManagerProxy.Address)
@@ -68,7 +68,7 @@ func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalN
 	//
 	// Delist one initial validator
 	//
-	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.RPCClient)
+	posStakingManager, err := istakingmanager.NewIStakingManager(stakingManagerProxy.Address, l1AInfo.EthClient)
 	Expect(err).Should(BeNil())
 	utils.InitiateAndCompleteEndInitialPoSValidation(
 		ctx,
@@ -143,7 +143,7 @@ func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalN
 
 		// Gather subnet-evm Warp signatures for the L1ValidatorWeightMessage & relay to the P-Chain
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,
@@ -209,7 +209,7 @@ func NativeTokenStakingManager(ctx context.Context, network *localnetwork.LocalN
 		// Gather subnet-evm Warp signatures for the SetL1ValidatorWeightMessage & relay to the P-Chain
 		// (Sending to the P-Chain will be skipped for now)
 		signedWarpMessage := utils.ConstructSignedWarpMessage(
-			context.Background(),
+			ctx,
 			receipt,
 			l1AInfo,
 			pChainInfo,
