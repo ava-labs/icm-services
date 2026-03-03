@@ -15,6 +15,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
@@ -48,7 +49,7 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	log.Info("Starting local Ethereum network")
 
 	// Get the repository root
-	repoRoot, err := getRepoRoot()
+	repoRoot, err := utils.GetRepoRoot()
 	Expect(err).Should(BeNil())
 
 	scriptPath := filepath.Join(repoRoot, "ethereum", "run_ethereum_network.sh")
@@ -186,25 +187,5 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 			}
 			// Continue polling
 		}
-	}
-}
-
-// getRepoRoot finds the repository root by looking for the go.mod file
-func getRepoRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("could not find repository root (no go.mod found)")
-		}
-		dir = parent
 	}
 }

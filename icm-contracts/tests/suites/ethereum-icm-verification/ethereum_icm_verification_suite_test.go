@@ -43,9 +43,9 @@ func TestEthereumICMVerification(t *testing.T) {
 	ginkgo.RunSpecs(t, "Ethereum ICM Verification e2e test")
 }
 
-var _ = ginkgo.BeforeSuite(func() {
+var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Create the local network instances
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	localAvalancheNetworkInstance = localnetwork.NewLocalAvalancheNetwork(
