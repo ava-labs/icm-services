@@ -349,17 +349,17 @@ library ValidatorSets {
         }
         // Unpack validator changes
         {
-            uint32 numChanges;
-            for (uint256 i; i < 4; ++i) {
-                numChanges |= uint32(uint8(data[offset + i])) << uint32((8 * (3 - i)));
-            }
-            offset += 4;
-
             uint32 numAdded;
             for (uint256 i; i < 4; ++i) {
                 numAdded |= uint32(uint8(data[offset + i])) << uint32((8 * (3 - i)));
             }
             diff.numAdded = numAdded;
+            offset += 4;
+
+            uint32 numChanges;
+            for (uint256 i; i < 4; ++i) {
+                numChanges |= uint32(uint8(data[offset + i])) << uint32((8 * (3 - i)));
+            }
             offset += 4;
 
             diff.changes = new ValidatorChange[](numChanges);
@@ -536,8 +536,8 @@ library ValidatorSets {
             diff.currentHeight,
             diff.currentTimestamp,
             diff.currentValidatorSetHash,
-            uint32(diff.changes.length),
-            uint32(diff.numAdded)
+            uint32(diff.numAdded),
+            uint32(diff.changes.length)
         );
         for (uint256 i = 0; i < diff.changes.length; i++) {
             data = abi.encodePacked(data, serializeValidatorChange(diff.changes[i]));
