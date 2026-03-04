@@ -78,7 +78,8 @@ type Config struct {
 	TLSCertPath                     string                   `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"` //nolint:lll
 	TLSKeyPath                      string                   `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
 	InitialConnectionTimeoutSeconds uint64                   `mapstructure:"initial-connection-timeout-seconds" json:"initial-connection-timeout-seconds,omitempty"` // nolint:lll
-	MaxConcurrentMessages           uint64                   `mapstructure:"max-concurrent-messages" json:"max-concurrent-messages,omitempty"`                       //nolint:lll
+	MaxConcurrentMessages           uint64                       `mapstructure:"max-concurrent-messages" json:"max-concurrent-messages,omitempty"`                       //nolint:lll
+	ExternalEVMDestinations         []*ExternalEVMDestination    `mapstructure:"external-evm-destinations" json:"external-evm-destinations,omitempty"`                   //nolint:lll
 
 	// convenience field to fetch a blockchain's subnet ID
 	tlsCert                *tls.Certificate
