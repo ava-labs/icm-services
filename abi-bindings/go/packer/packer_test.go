@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"testing"
 
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	validatorsetsig "github.com/ava-labs/icm-services/abi-bindings/go/governance/ValidatorSetSig"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
@@ -36,6 +37,7 @@ var fs = token.NewFileSet()
 var packerTypes = map[string]ABIPacker{
 	"ValidatorSetSigMessage": &validatorsetsig.ValidatorSetSigMessage{},
 	"TeleporterMessage":      &teleportermessenger.TeleporterMessage{},
+	"TeleporterMessageV2":    &teleportermessengerv2.TeleporterMessageV2{},
 	"ProtocolRegistryEntry":  &teleporterregistry.ProtocolRegistryEntry{},
 }
 

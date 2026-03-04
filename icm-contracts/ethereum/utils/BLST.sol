@@ -551,7 +551,7 @@ library BLST {
     ) internal pure returns (int256) {
         uint256 compare = 1;
         if (key1.length != 96 || key2.length != 96) {
-            revert("Uncompressed public keys should by 96 bytes");
+            revert("Uncompressed public keys should be 96 bytes");
         }
         assembly {
             for { let i := 1 } lt(i, 4) { i := add(i, 1) } {

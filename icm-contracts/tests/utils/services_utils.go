@@ -144,7 +144,7 @@ func CreateDefaultRelayerConfig(
 			},
 
 			MessageContracts: map[string]relayercfg.MessageProtocolConfig{
-				teleporter.TeleporterMessengerAddress(l1Info).Hex(): {
+				teleporter.TeleporterMessengerAddress(l1Info.BlockchainID).Hex(): {
 					MessageFormat: relayercfg.TELEPORTER.String(),
 					Settings: map[string]interface{}{
 						"reward-address": fundedAddress.Hex(),
@@ -153,7 +153,7 @@ func CreateDefaultRelayerConfig(
 				offchainregistry.OffChainRegistrySourceAddress.Hex(): {
 					MessageFormat: relayercfg.OFF_CHAIN_REGISTRY.String(),
 					Settings: map[string]interface{}{
-						"teleporter-registry-address": teleporter.TeleporterRegistryAddress(l1Info).Hex(),
+						"teleporter-registry-address": teleporter.TeleporterRegistryAddress(l1Info.BlockchainID).Hex(),
 					},
 				},
 			},
@@ -572,7 +572,7 @@ func DeployBatchCrossChainMessenger(
 	address, tx, exampleMessenger, err := batchcrosschainmessenger.DeployBatchCrossChainMessenger(
 		opts,
 		l1.EthClient,
-		teleporter.TeleporterRegistryAddress(l1),
+		teleporter.TeleporterRegistryAddress(l1.BlockchainID),
 		teleporterManager,
 		teleporter.GetLatestTeleporterVersion(l1),
 	)
