@@ -46,14 +46,13 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
             diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
             "Diff anchor timestamp mismatch"
         );
-        require(diff.currentHeight > currentValidatorSet.pChainHeight, "Invalid blockchain height");
+        require(diff.currentHeight > currentValidatorSet.pChainHeight, "P-Chain height too low");
         require(
-            diff.currentTimestamp > currentValidatorSet.pChainTimestamp,
-            "Invalid blockchain timestamp"
+            diff.currentTimestamp > currentValidatorSet.pChainTimestamp, "P-Chain timestamp too low"
         );
         require(
             diff.previousValidatorSetHash
-                == sha256(ValidatorSets.serializeValidators(currentPartialValSet.validators)),
+                == sha256(ValidatorSets.serializeValidators(currentValidatorSet.validators)),
             "Previous validator hash mismatch"
         );
 
@@ -71,11 +70,11 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         );
 
         // Update Intermediate State
-        if (currentPartialValSet.shardsReceived == 0){
+        if (currentPartialValSet.shardsReceived == 0) {
             // The partial validator set is still at the previous height/timestamp until all shards are applied
             currentPartialValSet.pChainHeight = diff.previousHeight;
             currentPartialValSet.pChainTimestamp = diff.previousTimestamp;
-        } 
+        }
         applyPartialUpdate(chainID, newValidators, newWeight);
         currentPartialValSet.shardsReceived += 1;
 
@@ -125,12 +124,10 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
 
         // Safety Checks
         require(diff.avalancheBlockchainID == chainID, "Blockchain ID mismatch");
-        require(
-            diff.previousHeight == currentValidatorSet.pChainHeight, "Diff anchor height mismatch"
-        );
+        require(diff.previousHeight == currentValidatorSet.pChainHeight, "P-Chain height too low");
         require(
             diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
-            "Diff anchor timestamp mismatch"
+            "P-Chain timestamp too low"
         );
         require(
             diff.previousValidatorSetHash
@@ -140,12 +137,12 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         require(
             diff.currentHeight > currentValidatorSet.pChainHeight
                 && diff.currentHeight == validatorSetMetadata.pChainHeight,
-            "Invalid diff height"
+            "P-Chain height too low"
         );
         require(
             diff.currentTimestamp > currentValidatorSet.pChainTimestamp
                 && diff.currentTimestamp == validatorSetMetadata.pChainTimestamp,
-            "Invalid diff timestamp"
+            "P-Chain timestamp too low"
         );
 
         // Apply

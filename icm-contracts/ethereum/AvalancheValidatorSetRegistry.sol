@@ -122,7 +122,8 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             );
 
             if (!isRegistered(message.sourceBlockchainID)) {
-                _validatorSets[validatorSetMetadata.avalancheBlockchainID].avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
+                _validatorSets[validatorSetMetadata.avalancheBlockchainID].avalancheBlockchainID =
+                    validatorSetMetadata.avalancheBlockchainID;
             }
         } else {
             // Store the validator set.
