@@ -50,11 +50,6 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         require(
             diff.currentTimestamp > currentValidatorSet.pChainTimestamp, "P-Chain timestamp too low"
         );
-        require(
-            diff.previousValidatorSetHash
-                == sha256(ValidatorSets.serializeValidators(currentValidatorSet.validators)),
-            "Previous validator hash mismatch"
-        );
 
         // Apply Diff
         (Validator[] memory newValidators, uint64 newWeight) =
@@ -125,11 +120,6 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         require(
             diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
             "P-Chain timestamp too low"
-        );
-        require(
-            diff.previousValidatorSetHash
-                == sha256(ValidatorSets.serializeValidators(currentValidatorSet.validators)),
-            "Previous validator hash mismatch"
         );
         require(
             diff.currentHeight > currentValidatorSet.pChainHeight
