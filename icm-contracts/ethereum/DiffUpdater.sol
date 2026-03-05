@@ -70,11 +70,8 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         );
 
         // Update Intermediate State
-        if (currentPartialValSet.shardsReceived == 0) {
-            // The partial validator set is still at the previous height/timestamp until all shards are applied
-            currentPartialValSet.pChainHeight = diff.previousHeight;
-            currentPartialValSet.pChainTimestamp = diff.previousTimestamp;
-        }
+        currentPartialValSet.pChainHeight = diff.currentHeight;
+        currentPartialValSet.pChainTimestamp = diff.currentTimestamp;
         applyPartialUpdate(chainID, newValidators, newWeight);
         currentPartialValSet.shardsReceived += 1;
 
@@ -83,8 +80,8 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
             currentPartialValSet.inProgress = false;
             ValidatorSets.replaceValidators(_validatorSets[chainID].validators, newValidators);
             _validatorSets[chainID].totalWeight = currentPartialValSet.partialWeight;
-            _validatorSets[chainID].pChainHeight = diff.currentHeight;
-            _validatorSets[chainID].pChainTimestamp = diff.currentTimestamp;
+            _validatorSets[chainID].pChainHeight = currentPartialValSet.pChainHeight;
+            _validatorSets[chainID].pChainTimestamp = currentPartialValSet.pChainTimestamp;
             emit ValidatorSetUpdated(chainID);
         }
     }
