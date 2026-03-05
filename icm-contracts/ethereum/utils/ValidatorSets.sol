@@ -74,7 +74,6 @@ struct ValidatorSetDiff {
     // Previous state
     uint64 previousHeight;
     uint64 previousTimestamp;
-    bytes32 previousValidatorSetHash;
     // Current state
     uint64 currentHeight;
     uint64 currentTimestamp;
@@ -296,9 +295,6 @@ library ValidatorSets {
             offset += 8;
             diff.previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
             offset += 8;
-            diff.previousValidatorSetHash =
-                abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
-            offset += 32;
         }
 
         // Current State
@@ -467,7 +463,6 @@ library ValidatorSets {
             diff.avalancheBlockchainID,
             diff.previousHeight,
             diff.previousTimestamp,
-            diff.previousValidatorSetHash,
             diff.currentHeight,
             diff.currentTimestamp,
             diff.currentValidatorSetHash,
