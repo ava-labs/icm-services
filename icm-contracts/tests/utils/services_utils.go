@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -651,5 +652,25 @@ func WaitForChannelClose(ctx context.Context, ch <-chan struct{}) {
 	case <-ch:
 	case <-ctx.Done():
 		Expect(false).To(BeTrue(), "Channel did not close in time")
+	}
+}
+
+// GetRepoRoot finds the repository root by looking for the go.mod file
+func GetRepoRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("could not find repository root (no go.mod found)")
+		}
+		dir = parent
 	}
 }
