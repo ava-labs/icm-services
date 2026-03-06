@@ -124,7 +124,6 @@ contract ValidatorSetsTest is Test {
         bytes32 avalancheBlockchainID,
         uint64 previousHeight,
         uint64 previousTimestamp,
-        bytes32 previousValidatorSetHash,
         uint64 currentHeight,
         uint64 currentTimestamp,
         bytes32 currentValidatorSetHash,
@@ -148,7 +147,6 @@ contract ValidatorSetsTest is Test {
             avalancheBlockchainID: avalancheBlockchainID,
             previousHeight: previousHeight,
             previousTimestamp: previousTimestamp,
-            previousValidatorSetHash: previousValidatorSetHash,
             currentHeight: currentHeight,
             currentTimestamp: currentTimestamp,
             currentValidatorSetHash: currentValidatorSetHash,
@@ -161,7 +159,6 @@ contract ValidatorSetsTest is Test {
         assertEq(valsetDiff.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(valsetDiff.previousHeight, deserialized.previousHeight);
         assertEq(valsetDiff.previousTimestamp, deserialized.previousTimestamp);
-        assertEq(valsetDiff.previousValidatorSetHash, deserialized.previousValidatorSetHash);
         assertEq(valsetDiff.currentHeight, deserialized.currentHeight);
         assertEq(valsetDiff.currentTimestamp, deserialized.currentTimestamp);
         assertEq(valsetDiff.currentValidatorSetHash, deserialized.currentValidatorSetHash);
