@@ -316,7 +316,7 @@ library ValidatorSets {
                 (diff.changes[i], offset) = parseValidatorChange(data, offset);
                 if (diff.changes[i].weight == 0) {
                     unchecked {
-                        numRemoved++;
+                        ++numRemoved;
                     }
                 }
                 unchecked {

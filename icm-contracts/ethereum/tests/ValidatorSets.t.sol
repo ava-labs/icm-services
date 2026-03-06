@@ -138,9 +138,9 @@ contract ValidatorSetsTest is Test {
             (bool added, ValidatorChange memory change) = _createValidatorChange(i + 1);
             changes[i] = change;
             if (added) {
-                numAdded++;
+                ++numAdded;
             } else {
-                numRemoved++;
+                ++numRemoved;
             }
         }
         ValidatorSetDiff memory valsetDiff = ValidatorSetDiff({
