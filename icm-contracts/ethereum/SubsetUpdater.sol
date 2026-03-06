@@ -52,6 +52,10 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
                 _partialValidatorSets[avalancheBlockchainID].validators;
             _validatorSets[avalancheBlockchainID].totalWeight =
                 _partialValidatorSets[avalancheBlockchainID].partialWeight;
+            _validatorSets[avalancheBlockchainID].pChainHeight =
+                _partialValidatorSets[avalancheBlockchainID].pChainHeight;
+            _validatorSets[avalancheBlockchainID].pChainTimestamp =
+                _partialValidatorSets[avalancheBlockchainID].pChainTimestamp;
         }
     }
 
