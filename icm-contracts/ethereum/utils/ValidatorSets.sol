@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {ByteSlicer} from "./ByteSlicer.sol";
 import {BLST} from "./BLST.sol";
 
 struct Validator {
@@ -278,50 +277,50 @@ library ValidatorSets {
      * @return diff The parsed ValidatorSetDiff
      */
     function parseValidatorSetDiff(
-        bytes memory data,
+        bytes calldata data,
         uint256 currentValidatorCount
     ) public pure returns (ValidatorSetDiff memory diff) {
-        // TODO: Replace ByteSlicer library with more efficient approach. See issue https://github.com/ava-labs/icm-services/issues/1190
         {
             require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
-            uint32 payloadTypeID = uint32(bytes4(ByteSlicer.slice(data, 2, 4)));
+            uint32 payloadTypeID = uint32(bytes4(data[2:6]));
             require(payloadTypeID == 5, "Invalid ValidatorSetDiff payload type ID");
         }
         uint256 offset = 6;
-        diff.avalancheBlockchainID = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+        diff.avalancheBlockchainID = bytes32(data[offset:offset + 32]);
         offset += 32;
         // Previous State
         {
-            diff.previousHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.previousHeight = uint64(bytes8(data[offset:offset + 8]));
             offset += 8;
-            diff.previousTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.previousTimestamp = uint64(bytes8(data[offset:offset + 8]));
             offset += 8;
-            diff.previousValidatorSetHash =
-                abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+            diff.previousValidatorSetHash = bytes32(data[offset:offset + 32]);
             offset += 32;
         }
 
         // Current State
         {
-            diff.currentHeight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.currentHeight = uint64(bytes8(data[offset:offset + 8]));
             offset += 8;
-            diff.currentTimestamp = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+            diff.currentTimestamp = uint64(bytes8(data[offset:offset + 8]));
             offset += 8;
-            diff.currentValidatorSetHash = abi.decode(ByteSlicer.slice(data, offset, 32), (bytes32));
+            diff.currentValidatorSetHash = bytes32(data[offset:offset + 32]);
             offset += 32;
         }
         // Validator Changes
         {
-            uint32 numChanges = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+            uint32 numChanges = uint32(bytes4(data[offset:offset + 4]));
             offset += 4;
-            diff.numAdded = uint32(bytes4(ByteSlicer.slice(data, offset, 4)));
+            diff.numAdded = uint32(bytes4(data[offset:offset + 4]));
             offset += 4;
             diff.changes = new ValidatorChange[](numChanges);
             uint256 numRemoved = 0;
             for (uint32 i = 0; i < numChanges;) {
                 (diff.changes[i], offset) = parseValidatorChange(data, offset);
                 if (diff.changes[i].weight == 0) {
-                    numRemoved++;
+                    unchecked {
+                        numRemoved++;
+                    }
                 }
                 unchecked {
                     ++i;
@@ -340,16 +339,15 @@ library ValidatorSets {
      * @return newOffset The new offset after parsing
      */
     function parseValidatorChange(
-        bytes memory data,
+        bytes calldata data,
         uint256 offset
     ) public pure returns (ValidatorChange memory change, uint256 newOffset) {
-        // TODO: Replace ByteSlicer library with more efficient approach. See issue https://github.com/ava-labs/icm-services/issues/1190
-        bytes20 nodeID = bytes20(ByteSlicer.slice(data, offset, 20));
+        bytes20 nodeID = bytes20(data[offset:offset + 20]);
         offset += 20;
-        bytes memory unformattedPublicKey = ByteSlicer.slice(data, offset, 96);
+        bytes memory unformattedPublicKey = data[offset:offset + 96];
         bytes memory blsPublicKey = BLST.padUncompressedBLSPublicKey(unformattedPublicKey);
         offset += 96;
-        uint64 weight = uint64(bytes8(ByteSlicer.slice(data, offset, 8)));
+        uint64 weight = uint64(bytes8(data[offset:offset + 8]));
         offset += 8;
         change = ValidatorChange({nodeID: nodeID, blsPublicKey: blsPublicKey, weight: weight});
         return (change, offset);
