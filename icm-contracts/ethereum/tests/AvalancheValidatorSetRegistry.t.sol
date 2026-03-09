@@ -167,7 +167,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             }
         }
 
-        // Shard 1
+        // Compute shards
         {
             Validator[] memory shard1Validators = new Validator[](1);
             shard1Validators[0] = validators[0];
@@ -180,23 +180,9 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             });
             shardHashes[0] = sha256(
                 ValidatorSets.serializeValidatorSetDiff(
-                    initialPChainValidatorSetDiff(vs1, pChainHeight - 1, pChainTimestamp - 1)
+                    allAdditionsValidatorSetDiff(vs1, pChainHeight - 1, pChainTimestamp - 1)
                 )
             );
-        }
-
-        // Shard 2
-        {
-            Validator[] memory cumulativeValidators = new Validator[](2);
-            cumulativeValidators[0] = validators[0];
-            cumulativeValidators[1] = validators[1];
-            ValidatorSet memory vs2 = ValidatorSet({
-                avalancheBlockchainID: L1_BLOCKCHAIN_ID,
-                validators: cumulativeValidators,
-                totalWeight: totalWeight,
-                pChainHeight: pChainHeight,
-                pChainTimestamp: pChainTimestamp
-            });
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
                 nodeID: bytes20(0),
@@ -204,11 +190,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
                 weight: validators[1].weight
             });
             shardHashes[1] = sha256(
-                ValidatorSets.serializeValidatorSetDiff(
-                    customPChainValidatorSetDiff(
-                        vs2, pChainHeight - 1, pChainTimestamp - 1, shard2Changes
-                    )
-                )
+                ValidatorSets.serializeValidatorSetDiff(customValidatorSetDiff(vs1, 0, 0, 1, shard2Changes))
             );
         }
 
@@ -222,6 +204,103 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         bytes memory raw = ValidatorSets.serializeValidatorSetMetadata(metadata);
 
         return (validators, raw);
+    }
+
+    function registerValidatorSetDiffFixture2(
+        Validator[] memory existingValidators,
+        uint64 pChainHeight,
+        uint64 pChainTimestamp
+    ) public view returns (Validator[] memory, bytes memory) {
+        Validator[] memory newValidators = new Validator[](2);
+        bytes32[] memory shardHashes = new bytes32[](2);
+        uint64 totalWeight = 0;
+
+        // Create new validators with different secret keys
+        {
+            bytes memory previousPublicKey =
+                new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
+            for (uint256 i = 0; i <= 1; i++) {
+                newValidators[i] = Validator({
+                    blsPublicKey: BLST.getPublicKeyFromSecret(i + 6),
+                    weight: uint64(i + 6)
+                });
+                assertEq(
+                    BLST.comparePublicKeys(
+                        BLST.unPadUncompressedBlsPublicKey(newValidators[i].blsPublicKey),
+                        previousPublicKey
+                    ),
+                    1
+                );
+                previousPublicKey = BLST.unPadUncompressedBlsPublicKey(newValidators[i].blsPublicKey);
+                totalWeight += newValidators[i].weight;
+            }
+        }
+
+        // Shard 1: remove all existing validators, add newValidators[0]
+        {
+            ValidatorChange[] memory shard1Changes = new ValidatorChange[](existingValidators.length + 1);
+            for (uint256 i = 0; i < existingValidators.length; i++) {
+                shard1Changes[i] = ValidatorChange({
+                    nodeID: bytes20(0),
+                    blsPublicKey: existingValidators[i].blsPublicKey,
+                    weight: 0
+                });
+            }
+            shard1Changes[existingValidators.length] = ValidatorChange({
+                nodeID: bytes20(0),
+                blsPublicKey: newValidators[0].blsPublicKey,
+                weight: newValidators[0].weight
+            });
+
+            ValidatorSet memory existingSet = ValidatorSet({
+                avalancheBlockchainID: L1_BLOCKCHAIN_ID,
+                validators: existingValidators,
+                totalWeight: 0,
+                pChainHeight: pChainHeight,
+                pChainTimestamp: pChainTimestamp
+            });
+            shardHashes[0] = sha256(
+                ValidatorSets.serializeValidatorSetDiff(
+                    customValidatorSetDiff(existingSet, pChainHeight - 1, pChainTimestamp - 1, 1, shard1Changes)
+                )
+            );
+        }
+
+        // Shard 2: add newValidators[1]
+        {
+            Validator[] memory shard1Result = new Validator[](1);
+            shard1Result[0] = newValidators[0];
+            ValidatorSet memory afterShard1 = ValidatorSet({
+                avalancheBlockchainID: L1_BLOCKCHAIN_ID,
+                validators: shard1Result,
+                totalWeight: uint64(newValidators[0].weight),
+                pChainHeight: pChainHeight,
+                pChainTimestamp: pChainTimestamp
+            });
+            ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
+            shard2Changes[0] = ValidatorChange({
+                nodeID: bytes20(0),
+                blsPublicKey: newValidators[1].blsPublicKey,
+                weight: newValidators[1].weight
+            });
+            shardHashes[1] = sha256(
+                ValidatorSets.serializeValidatorSetDiff(
+                    customValidatorSetDiff(afterShard1, pChainHeight - 1, pChainTimestamp - 1, 1, shard2Changes)
+                )
+            );
+        }
+
+        // Metadata
+        {
+            ValidatorSetMetadata memory metadata = ValidatorSetMetadata({
+                avalancheBlockchainID: L1_BLOCKCHAIN_ID,
+                pChainHeight: pChainHeight,
+                pChainTimestamp: pChainTimestamp,
+                shardHashes: shardHashes
+            });
+            bytes memory raw = ValidatorSets.serializeValidatorSetMetadata(metadata);
+            return (newValidators, raw);
+        }
     }
 
     /**
@@ -295,6 +374,23 @@ contract AvalancheValidatorSetRegistryCommon is Test {
     ) public view returns (Validator[] memory, ICMMessage memory) {
         (Validator[] memory validators, bytes memory raw) =
             registerValidatorSetDiffFixture(pChainHeight, pChainTimestamp);
+        bytes memory signature = l1ValidatorSetSign(raw);
+        ICMMessage memory message = ICMMessage({
+            rawMessage: raw,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: L1_BLOCKCHAIN_ID,
+            attestation: signature
+        });
+        return (validators, message);
+    }
+
+    function registerValidatorSetAgainDiffFixture2(
+        Validator[] memory existingValidators,
+        uint64 pChainHeight,
+        uint64 pChainTimestamp
+    ) public view returns (Validator[] memory, ICMMessage memory) {
+        (Validator[] memory validators, bytes memory raw) =
+            registerValidatorSetDiffFixture2(existingValidators, pChainHeight, pChainTimestamp);
         bytes memory signature = l1ValidatorSetSign(raw);
         ICMMessage memory message = ICMMessage({
             rawMessage: raw,
@@ -420,7 +516,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         }
     }
 
-    function initialPChainValidatorSetDiff(
+    function allAdditionsValidatorSetDiff(
         ValidatorSet memory validatorSet,
         uint64 previousHeight,
         uint64 previousTimestamp
@@ -448,30 +544,36 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         return diff;
     }
 
-    function customPChainValidatorSetDiff(
-        ValidatorSet memory validatorSet,
+    function customValidatorSetDiff(
+        ValidatorSet memory currentPartialValidatorSet,
         uint64 previousHeight,
         uint64 previousTimestamp,
+        uint32 numAdded,
         ValidatorChange[] memory changes
     ) public pure returns (ValidatorSetDiff memory) {
         sortValidatorChanges(changes);
-        uint32 numAdded = 0;
+        uint32 numRemoved = 0;
         for (uint256 i = 0; i < changes.length; i++) {
-            if (changes[i].weight > 0) {
-                numAdded++;
+            if (changes[i].weight == 0) {
+                numRemoved++;
             }
         }
-        return ValidatorSetDiff({
-            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+        ValidatorSetDiff memory diff = ValidatorSetDiff({
+            avalancheBlockchainID: currentPartialValidatorSet.avalancheBlockchainID,
             previousHeight: previousHeight,
             previousTimestamp: previousTimestamp,
-            currentHeight: validatorSet.pChainHeight,
-            currentTimestamp: validatorSet.pChainTimestamp,
-            currentValidatorSetHash: sha256(ValidatorSets.serializeValidators(validatorSet.validators)),
+            currentHeight: currentPartialValidatorSet.pChainHeight,
+            currentTimestamp: currentPartialValidatorSet.pChainTimestamp,
+            currentValidatorSetHash: bytes32(0),
             changes: changes,
             numAdded: numAdded,
-            newSize: validatorSet.validators.length
+            newSize: 0
         });
+        diff.newSize = currentPartialValidatorSet.validators.length + numAdded - numRemoved;
+        (Validator[] memory newValidators,) =
+            ValidatorSets.applyValidatorSetDiff(currentPartialValidatorSet.validators, diff);
+        diff.currentValidatorSetHash = sha256(ValidatorSets.serializeValidators(newValidators));
+        return diff;
     }
 
     function _emptyICMMessage() internal pure returns (ICMMessage memory) {
@@ -510,7 +612,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
 
     function setUpDiffUpdater() public {
         (ValidatorSet memory validatorSet,) = dummyPChainValidatorSetForDiff();
-        ValidatorSetDiff memory diff = initialPChainValidatorSetDiff(validatorSet, 0, 0);
+        ValidatorSetDiff memory diff = allAdditionsValidatorSetDiff(validatorSet, 0, 0);
         bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
         bytes32[] memory shardHashes = new bytes32[](1);
         shardHashes[0] = sha256(diffBytes);
@@ -543,7 +645,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(validatorSetForDiff, 0, 0)
+                allAdditionsValidatorSetDiff(validatorSetForDiff, 0, 0)
             ),
             message: _emptyICMMessage()
         });
@@ -569,7 +671,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(validatorSetForDiff, 0, 0)
+                allAdditionsValidatorSetDiff(validatorSetForDiff, 0, 0)
             ),
             message: _emptyICMMessage()
         });
@@ -594,7 +696,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(validatorSetForDiff, 0, 0)
+                allAdditionsValidatorSetDiff(validatorSetForDiff, 0, 0)
             ),
             message: _emptyICMMessage()
         });
@@ -632,7 +734,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(validatorSetForDiff, 0, 0)
+                allAdditionsValidatorSetDiff(validatorSetForDiff, 0, 0)
             ),
             message: _emptyICMMessage()
         });
@@ -669,7 +771,7 @@ contract AvalancheValidatorSetRegistryInitialization is AvalancheValidatorSetReg
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(validatorSetForDiff, 0, 0)
+                allAdditionsValidatorSetDiff(validatorSetForDiff, 0, 0)
             ),
             message: messageForDiff
         });
@@ -797,7 +899,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
 
     function setUpDiffUpdater() public {
         (ValidatorSet memory validatorSetForDiff,) = dummyPChainValidatorSetForDiff();
-        ValidatorSetDiff memory diff = initialPChainValidatorSetDiff(validatorSetForDiff, 0, 0);
+        ValidatorSetDiff memory diff = allAdditionsValidatorSetDiff(validatorSetForDiff, 0, 0);
         bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
         bytes32[] memory shardHashes = new bytes32[](1);
         shardHashes[0] = sha256(diffBytes);
@@ -844,7 +946,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(validatorSetForDiff, 0, 0)
+                allAdditionsValidatorSetDiff(validatorSetForDiff, 0, 0)
             ),
             message: messageForDiff
         });
@@ -885,28 +987,19 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
                 pChainTimestamp: 1
             });
             diffShards[0] =
-                ValidatorSets.serializeValidatorSetDiff(initialPChainValidatorSetDiff(vs1, 0, 0));
+                ValidatorSets.serializeValidatorSetDiff(allAdditionsValidatorSetDiff(vs1, 0, 0));
 
             // Shard 2
             Validator[] memory cumulative = new Validator[](2);
             cumulative[0] = validators[0];
             cumulative[1] = validators[1];
-            ValidatorSet memory vs2 = ValidatorSet({
-                avalancheBlockchainID: messageForDiff.sourceBlockchainID,
-                validators: cumulative,
-                totalWeight: uint64(validators[0].weight + validators[1].weight),
-                pChainHeight: 1,
-                pChainTimestamp: 1
-            });
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
                 nodeID: bytes20(0),
                 blsPublicKey: validators[1].blsPublicKey,
                 weight: validators[1].weight
             });
-            diffShards[1] = ValidatorSets.serializeValidatorSetDiff(
-                customPChainValidatorSetDiff(vs2, 0, 0, shard2Changes)
-            );
+            diffShards[1] = ValidatorSets.serializeValidatorSetDiff(customValidatorSetDiff(vs1, 0, 0, 1, shard2Changes));
         }
 
         // Test
@@ -960,7 +1053,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(vsForDiff, 0, 0)
+                allAdditionsValidatorSetDiff(vsForDiff, 0, 0)
             ),
             message: messageForDiff
         });
@@ -1003,28 +1096,18 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
                 pChainTimestamp: 1
             });
             diffShards[0] =
-                ValidatorSets.serializeValidatorSetDiff(initialPChainValidatorSetDiff(vs1, 0, 0));
+                ValidatorSets.serializeValidatorSetDiff(allAdditionsValidatorSetDiff(vs1, 0, 0));
 
             Validator[] memory cumulative = new Validator[](2);
             cumulative[0] = validators[0];
             cumulative[1] = validators[1];
-            ValidatorSet memory vs2 = ValidatorSet({
-                avalancheBlockchainID: messageForDiff.sourceBlockchainID,
-                validators: cumulative,
-                totalWeight: uint64(validators[0].weight + validators[1].weight),
-                pChainHeight: 1,
-                pChainTimestamp: 1
-            });
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
                 nodeID: bytes20(0),
                 blsPublicKey: validators[1].blsPublicKey,
                 weight: validators[1].weight
             });
-            diffShards[1] = ValidatorSets.serializeValidatorSetDiff(
-                customPChainValidatorSetDiff(vs2, 0, 0, shard2Changes)
-            );
-
+            diffShards[1] = ValidatorSets.serializeValidatorSetDiff(customValidatorSetDiff(vs1, 0, 0, 1, shard2Changes));
             // Re-registration attempt uses same diff as shard 1
             diffShards[2] = diffShards[0];
         }
@@ -1078,7 +1161,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(vsForDiff, 9, 9)
+                allAdditionsValidatorSetDiff(vsForDiff, 9, 9)
             ),
             message: messageForDiff
         });
@@ -1174,7 +1257,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(newValidatorSetForDiff, 0, 1)
+                allAdditionsValidatorSetDiff(newValidatorSetForDiff, 0, 1)
             ),
             message: newMessageForDiff
         });
@@ -1216,7 +1299,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         testCases[1] = RegistryTestCase({
             registry: _diffRegistry,
             shardBytes: ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(newVsForDiff, 1, 0)
+                allAdditionsValidatorSetDiff(newVsForDiff, 1, 0)
             ),
             message: newMessageForDiff
         });
@@ -1329,27 +1412,18 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
                 pChainTimestamp: 1
             });
             diffShards[0] =
-                ValidatorSets.serializeValidatorSetDiff(initialPChainValidatorSetDiff(vs1, 0, 0));
+                ValidatorSets.serializeValidatorSetDiff(allAdditionsValidatorSetDiff(vs1, 0, 0));
 
             Validator[] memory cumulative = new Validator[](2);
             cumulative[0] = validators[0];
             cumulative[1] = validators[1];
-            ValidatorSet memory vs2 = ValidatorSet({
-                avalancheBlockchainID: messageForDiff.sourceBlockchainID,
-                validators: cumulative,
-                totalWeight: uint64(validators[0].weight + validators[1].weight),
-                pChainHeight: 1,
-                pChainTimestamp: 1
-            });
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
                 nodeID: bytes20(0),
                 blsPublicKey: validators[1].blsPublicKey,
                 weight: validators[1].weight
             });
-            diffShards[1] = ValidatorSets.serializeValidatorSetDiff(
-                customPChainValidatorSetDiff(vs2, 0, 0, shard2Changes)
-            );
+            diffShards[1] = ValidatorSets.serializeValidatorSetDiff(customValidatorSetDiff(vs1, 0, 0, 1, shard2Changes));
         }
         ICMMessage[] memory subsetMessages = new ICMMessage[](1);
         subsetMessages[0] = message;
@@ -1397,16 +1471,29 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         uint64 previousTimestamp
     ) internal returns (RegistryTestCaseMultiStep[] memory) {
         Validator[] memory newValidators;
+        Validator[] memory newValidatorsForDiff;
         ICMMessage memory newMessage;
         ICMMessage memory newMessageForDiff;
+
+        // Get existing L1 validators (keys 2,3 from initial registration)
+        Validator[] memory existingValidators = new Validator[](2);
+        existingValidators[0] = Validator({
+            blsPublicKey: BLST.getPublicKeyFromSecret(2),
+            weight: 2
+        });
+        existingValidators[1] = Validator({
+            blsPublicKey: BLST.getPublicKeyFromSecret(3),
+            weight: 3
+        });
 
         {
             (Validator[] memory v, ICMMessage memory m) =
                 registerValidatorSetAgainFixture(pChainHeight, pChainTimestamp);
-            (, ICMMessage memory md) =
-                registerValidatorSetAgainDiffFixture(pChainHeight, pChainTimestamp);
+            (Validator[] memory vd, ICMMessage memory md) =
+                registerValidatorSetAgainDiffFixture2(existingValidators, pChainHeight, pChainTimestamp);
             newValidators = v;
             newMessage = m;
+            newValidatorsForDiff = vd;
             newMessageForDiff = md;
         }
 
@@ -1422,41 +1509,53 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             subsetShards[1] = ValidatorSets.serializeValidators(validatorShard);
         }
 
-        // Compute diff shard 1
+        // Compute diff shard 1: remove existing validators, add newValidatorsForDiff[0]
         {
-            validatorShard[0] = newValidators[0];
-            ValidatorSet memory vs1 = ValidatorSet({
+            ValidatorChange[] memory shard1Changes =
+                new ValidatorChange[](existingValidators.length + 1);
+            for (uint256 i = 0; i < existingValidators.length; i++) {
+                shard1Changes[i] = ValidatorChange({
+                    nodeID: bytes20(0),
+                    blsPublicKey: existingValidators[i].blsPublicKey,
+                    weight: 0
+                });
+            }
+            shard1Changes[existingValidators.length] = ValidatorChange({
+                nodeID: bytes20(0),
+                blsPublicKey: newValidatorsForDiff[0].blsPublicKey,
+                weight: newValidatorsForDiff[0].weight
+            });
+            ValidatorSet memory existingSet = ValidatorSet({
                 avalancheBlockchainID: newMessageForDiff.sourceBlockchainID,
-                validators: validatorShard,
-                totalWeight: uint64(newValidators[0].weight),
+                validators: existingValidators,
+                totalWeight: 0,
                 pChainHeight: pChainHeight,
                 pChainTimestamp: pChainTimestamp
             });
             diffShards[0] = ValidatorSets.serializeValidatorSetDiff(
-                initialPChainValidatorSetDiff(vs1, previousHeight, previousTimestamp)
+                customValidatorSetDiff(existingSet, previousHeight, previousTimestamp, 1, shard1Changes)
             );
         }
 
-        // Compute diff shard 2
+        // Compute diff shard 2: add newValidatorsForDiff[1]
         {
-            Validator[] memory cumulative = new Validator[](2);
-            cumulative[0] = newValidators[0];
-            cumulative[1] = newValidators[1];
-            ValidatorSet memory vs2 = ValidatorSet({
+            Validator[] memory shard1Result = new Validator[](1);
+            shard1Result[0] = newValidatorsForDiff[0];
+            ValidatorSet memory afterShard1 = ValidatorSet({
                 avalancheBlockchainID: newMessageForDiff.sourceBlockchainID,
-                validators: cumulative,
-                totalWeight: uint64(newValidators[0].weight + newValidators[1].weight),
+                validators: shard1Result,
+                totalWeight: uint64(newValidatorsForDiff[0].weight),
                 pChainHeight: pChainHeight,
                 pChainTimestamp: pChainTimestamp
             });
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
                 nodeID: bytes20(0),
-                blsPublicKey: newValidators[1].blsPublicKey,
-                weight: newValidators[1].weight
+                blsPublicKey: newValidatorsForDiff[1].blsPublicKey,
+                weight: newValidatorsForDiff[1].weight
             });
             diffShards[1] = ValidatorSets.serializeValidatorSetDiff(
-                customPChainValidatorSetDiff(vs2, previousHeight, previousTimestamp, shard2Changes)
+                customValidatorSetDiff(afterShard1, previousHeight, previousTimestamp, 1, shard2Changes)
             );
         }
 
