@@ -5,8 +5,10 @@ import {Test} from "@forge-std/Test.sol";
 import {BLST} from "../utils/BLST.sol";
 import {
     Validator,
+    ValidatorChange,
     ValidatorSet,
     ValidatorSets,
+    ValidatorSetDiff,
     ValidatorSetSignature,
     ValidatorSetMetadata,
     ValidatorSetShard
@@ -118,6 +120,82 @@ contract ValidatorSetsTest is Test {
     /*
      * @dev Test to make sure a round trip of serialization is a no-op
      */
+    function testRoundTripValidatorSetDiff(
+        bytes32 avalancheBlockchainID,
+        uint64 previousHeight,
+        uint64 previousTimestamp,
+        uint64 currentHeight,
+        uint64 currentTimestamp,
+        bytes32 currentValidatorSetHash,
+        uint256 numChanges
+    ) public view {
+        vm.assume(numChanges < 10);
+        ValidatorChange[] memory changes = new ValidatorChange[](numChanges);
+        uint32 numAdded = 0;
+        uint32 numRemoved = 0;
+        for (uint256 i; i < numChanges; i++) {
+            // we start from index 1 to ensure there are at least as many additions as removals
+            (bool added, ValidatorChange memory change) = _createValidatorChange(i + 1);
+            changes[i] = change;
+            if (added) {
+                ++numAdded;
+            } else {
+                ++numRemoved;
+            }
+        }
+        ValidatorSetDiff memory valsetDiff = ValidatorSetDiff({
+            avalancheBlockchainID: avalancheBlockchainID,
+            previousHeight: previousHeight,
+            previousTimestamp: previousTimestamp,
+            currentHeight: currentHeight,
+            currentTimestamp: currentTimestamp,
+            currentValidatorSetHash: currentValidatorSetHash,
+            changes: changes,
+            numAdded: numAdded,
+            newSize: numAdded - numRemoved
+        });
+        bytes memory serialized = ValidatorSets.serializeValidatorSetDiff(valsetDiff);
+        ValidatorSetDiff memory deserialized = ValidatorSets.parseValidatorSetDiff(serialized, 0);
+        assertEq(valsetDiff.avalancheBlockchainID, deserialized.avalancheBlockchainID);
+        assertEq(valsetDiff.previousHeight, deserialized.previousHeight);
+        assertEq(valsetDiff.previousTimestamp, deserialized.previousTimestamp);
+        assertEq(valsetDiff.currentHeight, deserialized.currentHeight);
+        assertEq(valsetDiff.currentTimestamp, deserialized.currentTimestamp);
+        assertEq(valsetDiff.currentValidatorSetHash, deserialized.currentValidatorSetHash);
+        for (uint256 i; i < numChanges; i++) {
+            assertEq(valsetDiff.changes[i].nodeID, deserialized.changes[i].nodeID);
+            assertEq(valsetDiff.changes[i].blsPublicKey, deserialized.changes[i].blsPublicKey);
+            assertEq(valsetDiff.changes[i].weight, deserialized.changes[i].weight);
+        }
+        assertEq(valsetDiff.numAdded, deserialized.numAdded);
+        assertEq(valsetDiff.newSize, deserialized.newSize);
+    }
+
+    /*
+     * @dev Test to make sure a round trip of serialization is a no-op
+     */
+    function testRoundTripValidatorChange(
+        bytes20 nodeID,
+        uint64 weight,
+        uint256 secretKey
+    ) public view {
+        ValidatorChange memory valChange = ValidatorChange({
+            nodeID: nodeID,
+            blsPublicKey: BLST.getPublicKeyFromSecret(secretKey),
+            weight: weight
+        });
+        bytes memory serialized = ValidatorSets.serializeValidatorChange(valChange);
+        /* solhint-disable-next-line no-unused-vars */
+        (ValidatorChange memory deserialized, uint256 offset) =
+            ValidatorSets.parseValidatorChange(serialized, 0);
+        assertEq(valChange.nodeID, deserialized.nodeID);
+        assertEq(valChange.blsPublicKey, deserialized.blsPublicKey);
+        assertEq(valChange.weight, deserialized.weight);
+    }
+
+    /*
+     * @dev Test to make sure a round trip of serialization is a no-op
+     */
     function testRoundTripValidatorSet(
         uint256 numValidators
     ) public pure {
@@ -220,6 +298,27 @@ contract ValidatorSetsTest is Test {
             totalWeight += uint64(i);
         }
         return (validators, totalWeight);
+    }
+
+    /*
+     * @dev Create a validator change from an index
+     */
+    function _createValidatorChange(
+        uint256 i
+    ) private view returns (bool, ValidatorChange memory) {
+        bytes20 nodeID;
+        /* solhint-disable-next-line no-inline-assembly */
+        assembly {
+            mstore(nodeID, i)
+        }
+        return (
+            i % 2 != 0,
+            ValidatorChange({
+                nodeID: nodeID,
+                blsPublicKey: BLST.getPublicKeyFromSecret(i),
+                weight: uint64(i % 2)
+            })
+        );
     }
 
     /*
