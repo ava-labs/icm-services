@@ -78,7 +78,7 @@ geth --dev \
     --http.vhosts "*" \
     --http.corsdomain "*" \
     --datadir "$data_dir" \
-    --http.api "eth,net,web3,personal" \
+    --http.api "eth,net,web3,debug" \
     --rpc.txfeecap 20 \
     --rpc.allow-unprotected-txs \
     --dev.period 1 &

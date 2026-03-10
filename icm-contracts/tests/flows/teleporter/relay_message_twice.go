@@ -45,7 +45,7 @@ func RelayMessageTwice(
 	)
 	receipt, teleporterMessageID := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(l1AInfo),
+		teleporter.TeleporterMessenger(&l1AInfo),
 		l1AInfo,
 		l1BInfo,
 		sendCrossChainMessageInput,
@@ -73,7 +73,7 @@ func RelayMessageTwice(
 	// Check Teleporter message received on the destination
 	//
 	log.Info("Checking the message was received on the destination")
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 		&bind.CallOpts{}, teleporterMessageID,
 	)
 	Expect(err).Should(BeNil())

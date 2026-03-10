@@ -128,7 +128,7 @@ func RelayMessageAPI(
 
 		receiveEvent, err := utils.GetEventFromLogs(
 			receipt.Logs,
-			teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage,
+			teleporter.TeleporterMessenger(&l1BInfo).ParseReceiveCrossChainMessage,
 		)
 		Expect(err).Should(BeNil())
 		Expect(ids.ID(receiveEvent.MessageID)).Should(Equal(teleporterMessageID))
