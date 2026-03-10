@@ -9,14 +9,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
+	"github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/peers/clients"
+	"github.com/ava-labs/icm-services/relayer"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
@@ -64,25 +70,64 @@ func SubsetUpdater(
 	fundedAddress, fundedKey := avalancheNetwork.GetFundedAccountInfo()
 
 	// =========================================================================
-	// Step 1: Deploy ValidatorSets library, then SubsetUpdater contract
+	// Step 1: Fetch primary network validators for P-chain bootstrap
+	// =========================================================================
+	primaryNetworkInfo := avalancheNetwork.GetPrimaryNetworkInfo()
+	pChainClient := clients.NewCanonicalValidatorClient(&config.APIConfig{
+		BaseURL: primaryNetworkInfo.NodeURIs[0],
+	})
+	pChainHeight, err := pChainClient.GetLatestHeight(ctx)
+	Expect(err).Should(BeNil())
+
+	pChainWarpSet, err := pChainClient.GetProposedValidators(ctx, ids.Empty)
+	Expect(err).Should(BeNil())
+
+	pChainValidators := make([]*message.Validator, len(pChainWarpSet.Validators))
+	for i, vdr := range pChainWarpSet.Validators {
+		pChainValidators[i] = &message.Validator{
+			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+			Weight:                     vdr.Weight,
+		}
+	}
+	sort.Slice(pChainValidators, func(i, j int) bool {
+		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) <
+			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
+	})
+
+	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidators(pChainValidators, testShardSize)
+	Expect(err).Should(BeNil())
+
+	pChainShardHashesBytes := make([][32]byte, len(pChainShardHashes))
+	for i, h := range pChainShardHashes {
+		pChainShardHashesBytes[i] = h
+	}
+
+	log.Info("Fetched primary network validators",
+		zap.Int("numValidators", len(pChainValidators)),
+		zap.Int("numShards", len(pChainShardBytesList)),
+		zap.Uint64("pChainHeight", pChainHeight),
+	)
+
+	// =========================================================================
+	// Step 2: Deploy ValidatorSets library, then SubsetUpdater contract
 	// =========================================================================
 	txOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, chainID)
 	Expect(err).Should(BeNil())
 
 	libAddr := deployValidatorSetsLibrary(ctx, log, txOpts, ethClient)
 
-	// Link the library address into the SubsetUpdater bytecode
 	const libPlaceholder = "__$aaf4ae346b84a712cc43f25bb66199d6fb$__"
 	libAddrHex := strings.ToLower(libAddr.Hex()[2:])
 	origBin := subsetupdater.SubsetUpdaterBin
 	subsetupdater.SubsetUpdaterBin = strings.ReplaceAll(origBin, libPlaceholder, libAddrHex)
 	defer func() { subsetupdater.SubsetUpdaterBin = origBin }()
 
+	var pChainID [32]byte // all zeros = PlatformChainID
 	initialMetadata := subsetupdater.ValidatorSetMetadata{
-		AvalancheBlockchainID: blockchainID,
-		PChainHeight:          0,
-		PChainTimestamp:       0,
-		ShardHashes:           [][32]byte{},
+		AvalancheBlockchainID: pChainID,
+		PChainHeight:          pChainHeight,
+		PChainTimestamp:       uint64(time.Now().Unix()),
+		ShardHashes:           pChainShardHashesBytes,
 	}
 	contractAddr, deployTx, contract, err := subsetupdater.DeploySubsetUpdater(
 		txOpts, ethClient, networkID, initialMetadata,
@@ -98,15 +143,41 @@ func SubsetUpdater(
 		zap.String("txHash", deployTx.Hash().Hex()),
 	)
 
-	// Verify initial state: no validator set registered yet
+	// =========================================================================
+	// Step 3: Bootstrap P-chain validators via updateValidatorSet
+	// =========================================================================
+	for i, shardBytes := range pChainShardBytesList {
+		shard := subsetupdater.ValidatorSetShard{
+			ShardNumber:           uint64(i + 1),
+			AvalancheBlockchainID: pChainID,
+		}
+		tx, err := contract.UpdateValidatorSet(txOpts, shard, shardBytes)
+		Expect(err).Should(BeNil())
+		receipt, err := bind.WaitMined(ctx, ethClient, tx)
+		Expect(err).Should(BeNil())
+		Expect(receipt.Status).Should(Equal(uint64(1)),
+			"updateValidatorSet shard %d failed", i+1)
+		log.Info("Bootstrapped P-chain shard",
+			zap.Int("shardNumber", i+1),
+			zap.Int("totalShards", len(pChainShardBytesList)),
+		)
+	}
+
 	callOpts := &bind.CallOpts{Context: ctx}
+	pChainInitialized, err := contract.PChainInitialized(callOpts)
+	Expect(err).Should(BeNil())
+	Expect(pChainInitialized).Should(BeTrue(), "P-chain validator set should be initialized")
+
+	log.Info("P-chain validators bootstrapped successfully")
+
+	// Verify L1 validator set not yet registered
 	onChainVS, err := contract.GetValidatorSet(callOpts, blockchainID)
 	Expect(err).Should(BeNil())
 	Expect(onChainVS.TotalWeight).Should(Equal(uint64(0)),
-		"Contract should start with empty validator set")
+		"L1 validator set should start empty")
 
 	// =========================================================================
-	// Step 2: Configure and start the relayer
+	// Step 4: Configure and start the relayer
 	// =========================================================================
 	log.Info("Configuring relayer with ExternalEVMDestination")
 
@@ -146,7 +217,7 @@ func SubsetUpdater(
 	log.Info("Relayer started, waiting for validator set registration...")
 
 	// =========================================================================
-	// Step 3: Wait for the relayer to register the validator set
+	// Step 5: Wait for the relayer to register the validator set
 	// =========================================================================
 	pollCtx, pollCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer pollCancel()
@@ -172,7 +243,7 @@ func SubsetUpdater(
 			}
 
 			// =========================================================================
-			// Step 4: Verify the registered validator set
+			// Step 6: Verify the registered validator set
 			// =========================================================================
 			log.Info("Validator set registered by relayer!",
 				zap.Int("validatorCount", len(vs.Validators)),

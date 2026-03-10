@@ -13,6 +13,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
@@ -136,25 +137,35 @@ func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 		return nil
 	}
 
+	isFirstRegistration := onChainVS.TotalWeight == 0
+
 	s.logger.Info("Validator set update needed",
 		zap.Uint64("onChainHeight", onChainVS.PChainHeight),
 		zap.Uint64("pChainHeight", pChainHeight),
+		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 
-	return s.performFullSetUpdate(ctx, pChainHeight)
+	return s.performFullSetUpdate(ctx, pChainHeight, isFirstRegistration)
 }
 
 // ---------------------------------------------------------------------------
 // Full-set (subset/shard) update
 // ---------------------------------------------------------------------------
 
-func (s *SubsetSetUpdater) performFullSetUpdate(ctx context.Context, pChainHeight uint64) error {
+func (s *SubsetSetUpdater) performFullSetUpdate(ctx context.Context, pChainHeight uint64, isFirstRegistration bool) error {
 	_, shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to build subset update: %w", err)
 	}
 
-	signedMsg, err := s.signMessage(ctx, subsetUpdateMsg)
+	var signingSubnet ids.ID
+	if isFirstRegistration {
+		signingSubnet = constants.PrimaryNetworkID
+	} else {
+		signingSubnet = s.subnetID
+	}
+
+	signedMsg, err := s.signMessage(ctx, subsetUpdateMsg, signingSubnet)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
@@ -171,7 +182,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		return nil, nil, nil, err
 	}
 
-	shardBytesList, shardHashes, err := shardValidators(validators, s.shardSize)
+	shardBytesList, shardHashes, err := ShardValidators(validators, s.shardSize)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -304,9 +315,9 @@ func (s *SubsetSetUpdater) fetchSortedValidators(
 	return validators, nil
 }
 
-// shardValidators splits a sorted validator slice into shards, marshaling
+// ShardValidators splits a sorted validator slice into shards, marshaling
 // each shard and computing its sha256 hash.
-func shardValidators(
+func ShardValidators(
 	validators []*message.Validator,
 	shardSize uint32,
 ) ([][]byte, []ids.ID, error) {
@@ -340,6 +351,7 @@ func shardValidators(
 func (s *SubsetSetUpdater) signMessage(
 	ctx context.Context,
 	unsignedMsg *avalancheWarp.UnsignedMessage,
+	signingSubnet ids.ID,
 ) (*avalancheWarp.Message, error) {
 	pChainHeight, err := s.pChainClient.GetLatestHeight(ctx)
 	if err != nil {
@@ -351,7 +363,7 @@ func (s *SubsetSetUpdater) signMessage(
 		s.logger,
 		unsignedMsg,
 		nil,
-		constants.PrimaryNetworkID,
+		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
 		pChainHeight,
@@ -368,9 +380,23 @@ func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage
 		return subsetupdater.ICMMessage{}, fmt.Errorf("failed to parse addressed call from signed message: %w", err)
 	}
 
-	unsignedBytes := signedMsg.UnsignedMessage.Bytes()
-	allBytes := signedMsg.Bytes()
-	attestation := allBytes[len(unsignedBytes):]
+	bitSetSig, ok := signedMsg.Signature.(*avalancheWarp.BitSetSignature)
+	if !ok {
+		return subsetupdater.ICMMessage{}, fmt.Errorf("expected BitSetSignature, got %T", signedMsg.Signature)
+	}
+
+	// The contract expects uncompressed BLS signatures (192 bytes) whereas the
+	// warp BitSetSignature stores compressed signatures (96 bytes).
+	sig, err := bls.SignatureFromBytes(bitSetSig.Signature[:])
+	if err != nil {
+		return subsetupdater.ICMMessage{}, fmt.Errorf("failed to decompress BLS signature: %w", err)
+	}
+	uncompressedSig := sig.Serialize()
+
+	// Contract-expected attestation format: raw signers bitset || uncompressed BLS signature (192 bytes)
+	attestation := make([]byte, 0, len(bitSetSig.Signers)+len(uncompressedSig))
+	attestation = append(attestation, bitSetSig.Signers...)
+	attestation = append(attestation, uncompressedSig...)
 
 	return subsetupdater.ICMMessage{
 		RawMessage:         addressedCall.Payload,
@@ -387,7 +413,12 @@ func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage
 // PerformSingleUpdate is a convenience method for tests: builds, signs, and sends
 // a single subset update at the given P-chain height.
 func (s *SubsetSetUpdater) PerformSingleUpdate(ctx context.Context, pChainHeight uint64) error {
-	return s.performFullSetUpdate(ctx, pChainHeight)
+	onChainVS, err := s.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, s.blockchainID)
+	if err != nil {
+		return fmt.Errorf("failed to get on-chain validator set: %w", err)
+	}
+	isFirstRegistration := onChainVS.TotalWeight == 0
+	return s.performFullSetUpdate(ctx, pChainHeight, isFirstRegistration)
 }
 
 // GetOnChainValidatorSet returns the validator set stored on-chain for the updater's blockchain ID.
