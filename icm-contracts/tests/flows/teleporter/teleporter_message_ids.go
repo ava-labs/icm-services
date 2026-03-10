@@ -29,7 +29,7 @@ func CalculateMessageID(
 	destinationBlockchainID := common.HexToHash("0x1234567812345678123456781234567812345678123456781234567812345678")
 	nonce := big.NewInt(42)
 
-	expectedMessageID, err := teleporter.TeleporterMessenger(l1Info).CalculateMessageID(
+	expectedMessageID, err := teleporter.TeleporterMessenger(&l1Info).CalculateMessageID(
 		&bind.CallOpts{},
 		sourceBlockchainID,
 		destinationBlockchainID,

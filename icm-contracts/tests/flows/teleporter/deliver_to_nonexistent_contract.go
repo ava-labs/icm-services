@@ -82,7 +82,7 @@ func DeliverToNonExistentContract(
 
 	sendEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1AInfo).ParseSendCrossChainMessage,
+		teleporter.TeleporterMessenger(&l1AInfo).ParseSendCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 	Expect(sendEvent.DestinationBlockchainID[:]).Should(Equal(l1BInfo.BlockchainID[:]))
@@ -108,14 +108,14 @@ func DeliverToNonExistentContract(
 		aggregator,
 	)
 	receiveEvent, err :=
-		utils.GetEventFromLogs(receipt.Logs, teleporter.TeleporterMessenger(l1AInfo).ParseReceiveCrossChainMessage)
+		utils.GetEventFromLogs(receipt.Logs, teleporter.TeleporterMessenger(&l1AInfo).ParseReceiveCrossChainMessage)
 	Expect(err).Should(BeNil())
 
 	//
 	// Check that the message was successfully relayed
 	//
 	log.Info("Checking the message was successfully relayed")
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 		&bind.CallOpts{},
 		teleporterMessageID,
 	)
@@ -128,7 +128,7 @@ func DeliverToNonExistentContract(
 	log.Info("Checking the message was not successfully executed")
 	executionFailedEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1AInfo).ParseMessageExecutionFailed,
+		teleporter.TeleporterMessenger(&l1AInfo).ParseMessageExecutionFailed,
 	)
 	Expect(err).Should(BeNil())
 	Expect(executionFailedEvent.MessageID).Should(Equal(receiveEvent.MessageID))
@@ -155,7 +155,7 @@ func DeliverToNonExistentContract(
 	receipt = utils.RetryMessageExecutionAndWaitForAcceptance(
 		ctx,
 		l1AInfo.BlockchainID,
-		teleporter.TeleporterMessenger(l1BInfo),
+		teleporter.TeleporterMessenger(&l1BInfo),
 		l1BInfo,
 		receiveEvent.Message,
 		fundedKey,
@@ -163,7 +163,7 @@ func DeliverToNonExistentContract(
 	log.Info("Checking the message was successfully executed")
 	messageExecutedEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1AInfo).ParseMessageExecuted,
+		teleporter.TeleporterMessenger(&l1AInfo).ParseMessageExecuted,
 	)
 	Expect(err).Should(BeNil())
 	Expect(messageExecutedEvent.MessageID).Should(Equal(receiveEvent.MessageID))

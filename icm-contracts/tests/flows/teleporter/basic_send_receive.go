@@ -62,7 +62,7 @@ func BasicSendReceive(
 
 	receipt, teleporterMessageID := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(l1AInfo),
+		teleporter.TeleporterMessenger(&l1AInfo),
 		l1AInfo,
 		l1BInfo,
 		sendCrossChainMessageInput,
@@ -83,12 +83,12 @@ func BasicSendReceive(
 	)
 	receiveEvent, err := utils.GetEventFromLogs(
 		deliveryReceipt.Logs,
-		teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage,
+		teleporter.TeleporterMessenger(&l1BInfo).ParseReceiveCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 
 	// Check Teleporter message received on the destination
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 		&bind.CallOpts{}, teleporterMessageID,
 	)
 	Expect(err).Should(BeNil())
@@ -99,7 +99,7 @@ func BasicSendReceive(
 	sendCrossChainMessageInput.FeeInfo.Amount = big.NewInt(0)
 	receipt, teleporterMessageID = utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(l1BInfo),
+		teleporter.TeleporterMessenger(&l1BInfo),
 		l1BInfo,
 		l1AInfo,
 		sendCrossChainMessageInput,
@@ -121,10 +121,10 @@ func BasicSendReceive(
 	Expect(utils.CheckReceiptReceived(
 		deliveryReceipt,
 		expectedReceiptID,
-		teleporter.TeleporterMessenger(l1AInfo))).Should(BeTrue())
+		teleporter.TeleporterMessenger(&l1AInfo))).Should(BeTrue())
 
 	// Check Teleporter message received on the destination
-	delivered, err = teleporter.TeleporterMessenger(l1AInfo).MessageReceived(
+	delivered, err = teleporter.TeleporterMessenger(&l1AInfo).MessageReceived(
 		&bind.CallOpts{}, teleporterMessageID,
 	)
 	Expect(err).Should(BeNil())
@@ -134,7 +134,7 @@ func BasicSendReceive(
 	// transactions on L1 A, then redeem the rewards.
 	if receiveEvent.RewardRedeemer == fundedAddress {
 		utils.RedeemRelayerRewardsAndConfirm(
-			ctx, teleporter.TeleporterMessenger(l1AInfo), l1AInfo, feeToken, feeTokenAddress, fundedKey, feeAmount,
+			ctx, teleporter.TeleporterMessenger(&l1AInfo), l1AInfo, feeToken, feeTokenAddress, fundedKey, feeAmount,
 		)
 	}
 }
