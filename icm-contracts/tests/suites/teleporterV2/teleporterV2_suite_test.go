@@ -86,9 +86,9 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	var teleporterContractAddress common.Address
 	if e2eFlags.NetworkDir() == "" {
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterContractAddress = utils.DeployTeleporterV2(ctx, &l1, fundedKey)
+			teleporterContractAddress = utils.DeployTeleporterV2(ctx, l1, fundedKey)
 			teleporterInfo.SetTeleporterV2(teleporterContractAddress, l1.BlockchainID)
-			teleporterInfo.DeployTeleporterRegistry(ctx, l1, fundedKey)
+			teleporterInfo.DeployTeleporterRegistry(ctx, *l1, fundedKey)
 		}
 
 		registryAddresseses := make(map[string]string)

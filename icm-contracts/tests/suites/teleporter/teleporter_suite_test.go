@@ -113,7 +113,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			// Choose weights such that we can test validator churn
 			localNetworkInstance.ConvertSubnet(
 				ctx,
-				subnet,
+				*subnet,
 				utils.PoAValidatorManager,
 				[]uint64{units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle},
 				[]uint64{balance, balance, balance, balance, balance},
@@ -124,7 +124,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
-			teleporterInfo.DeployTeleporterRegistry(ctx, l1, fundedKey)
+			teleporterInfo.DeployTeleporterRegistry(ctx, *l1, fundedKey)
 		}
 
 		// Save the Teleporter registry address and validator addresses to files

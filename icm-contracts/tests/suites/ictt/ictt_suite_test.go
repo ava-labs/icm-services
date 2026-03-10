@@ -113,7 +113,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
-			teleporterInfo.DeployTeleporterRegistry(ctx, l1, fundedKey)
+			teleporterInfo.DeployTeleporterRegistry(ctx, *l1, fundedKey)
 		}
 
 		jsonData, err := json.Marshal(teleporterInfo.StringifyRegistryAddresses())

@@ -574,8 +574,8 @@ func (n *LocalAvalancheNetwork) GetL1Info(subnetID ids.ID) testinfo.L1TestInfo {
 }
 
 // Returns all l1 info sorted in lexicographic order of L1Name.
-func (n *LocalAvalancheNetwork) GetL1Infos() []testinfo.L1TestInfo {
-	l1s := make([]testinfo.L1TestInfo, len(n.Network.Subnets))
+func (n *LocalAvalancheNetwork) GetL1Infos() []*testinfo.L1TestInfo {
+	l1s := make([]*testinfo.L1TestInfo, len(n.Network.Subnets))
 	for i, l1 := range n.Network.Subnets {
 		var nodeURIs []string
 		for _, nodeID := range l1.ValidatorIDs {
@@ -594,7 +594,7 @@ func (n *LocalAvalancheNetwork) GetL1Infos() []testinfo.L1TestInfo {
 		Expect(err).Should(BeNil())
 		spec, ok := n.deployedL1Specs[l1.Name]
 		Expect(ok).Should(BeTrue())
-		l1s[i] = testinfo.L1TestInfo{
+		l1s[i] = &testinfo.L1TestInfo{
 			EVMTestInfo: testinfo.EVMTestInfo{
 				EthClient:  ethClient,
 				EVMChainID: evmChainID,
@@ -610,9 +610,10 @@ func (n *LocalAvalancheNetwork) GetL1Infos() []testinfo.L1TestInfo {
 }
 
 // Returns L1 info for all L1s, including the primary network
-func (n *LocalAvalancheNetwork) GetAllL1Infos() []testinfo.L1TestInfo {
+func (n *LocalAvalancheNetwork) GetAllL1Infos() []*testinfo.L1TestInfo {
 	l1s := n.GetL1Infos()
-	return append(l1s, n.GetPrimaryNetworkInfo())
+	primaryNetworkInfo := n.GetPrimaryNetworkInfo()
+	return append(l1s, &primaryNetworkInfo)
 }
 
 func (n *LocalAvalancheNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.PrivateKey) {
@@ -710,7 +711,7 @@ func (n *LocalAvalancheNetwork) GetTwoL1s() (
 ) {
 	l1s := n.GetL1Infos()
 	Expect(len(l1s)).Should(BeNumerically(">=", 2))
-	return l1s[0], l1s[1]
+	return *l1s[0], *l1s[1]
 }
 
 func (n *LocalAvalancheNetwork) SaveValidatorAddress(

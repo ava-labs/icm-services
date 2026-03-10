@@ -55,7 +55,7 @@ type ChainTeleporterInfo struct {
 
 type TeleporterTestInfo map[ids.ID]*ChainTeleporterInfo
 
-func NewTeleporterTestInfo(l1s []testinfo.L1TestInfo) TeleporterTestInfo {
+func NewTeleporterTestInfo(l1s []*testinfo.L1TestInfo) TeleporterTestInfo {
 	t := make(TeleporterTestInfo)
 	for _, l1 := range l1s {
 		t[l1.BlockchainID] = &ChainTeleporterInfo{}
@@ -997,7 +997,7 @@ func SetTeleporterInfoFromFile(
 	fileName string,
 	teleporterContractAddress common.Address,
 	teleporterInfo TeleporterTestInfo,
-	l1s []testinfo.L1TestInfo,
+	l1s []*testinfo.L1TestInfo,
 ) {
 	// Read the Teleporter registry address from the file
 	registryAddresseses := make(map[string]string)
