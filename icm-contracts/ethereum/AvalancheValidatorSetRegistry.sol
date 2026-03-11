@@ -121,11 +121,12 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             );
 
             if (!isRegistered(avalancheBlockchainID)) {
-                ValidatorSet storage valSet =
-                    _validatorSets[validatorSetMetadata.avalancheBlockchainID];
-                valSet.avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
-                valSet.pChainHeight = validatorSetMetadata.pChainHeight;
-                valSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
+                _validatorSets[validatorSetMetadata.avalancheBlockchainID].avalancheBlockchainID =
+                    validatorSetMetadata.avalancheBlockchainID;
+                _partialValidatorSets[avalancheBlockchainID].pChainHeight =
+                    validatorSetMetadata.pChainHeight;
+                _partialValidatorSets[avalancheBlockchainID].pChainTimestamp =
+                    validatorSetMetadata.pChainTimestamp;
             }
         } else {
             // Store the validator set.
