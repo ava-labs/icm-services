@@ -1,11 +1,12 @@
-// SPDX-License-Identifier: MIT
-
+// (c) 2026, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+// SPDX-License-Identifier: LicenseRef-Ecosystem
 pragma solidity ^0.8.30;
 
 import {BLST} from "./BLST.sol";
 
 /**
- * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
+ * THIS IS LIBRARY IS UN-AUDITED CODE.
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 struct Validator {
