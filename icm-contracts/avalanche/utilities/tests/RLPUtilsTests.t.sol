@@ -52,7 +52,7 @@ library RLP {
         uint256 val
     ) private pure returns (bytes memory) {
         if (val == 0) return new bytes(0);
-        uint256 len;
+        uint256 len = 0;
         uint256 temp = val;
         while (temp > 0) {
             len++;
@@ -271,7 +271,7 @@ contract RLPUtilsTest is Test {
         bytes32[] memory topics,
         bytes memory data
     ) internal pure returns (bytes memory) {
-        bytes memory topicsConcat;
+        bytes memory topicsConcat = new bytes(0);
         for (uint256 i; i < topics.length; i++) {
             topicsConcat = abi.encodePacked(topicsConcat, uint256(topics[i]).encodeUint());
         }
@@ -288,7 +288,7 @@ contract RLPUtilsTest is Test {
         bytes memory bloom,
         bytes[] memory encodedLogs
     ) internal pure returns (bytes memory) {
-        bytes memory logsConcat;
+        bytes memory logsConcat = new bytes(0);
         for (uint256 i; i < encodedLogs.length; i++) {
             logsConcat = abi.encodePacked(logsConcat, encodedLogs[i]);
         }
