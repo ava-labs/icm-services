@@ -573,6 +573,14 @@ func (n *LocalAvalancheNetwork) GetL1Info(subnetID ids.ID) testinfo.L1TestInfo {
 	return testinfo.L1TestInfo{}
 }
 
+func (n *LocalAvalancheNetwork) GetNetworkInfo() []testinfo.NetworkTestInfo {
+	networks := make([]testinfo.NetworkTestInfo, 0, len(n.Network.Subnets))
+	for _, l1 := range n.GetAllL1Infos() {
+		networks = append(networks, &l1)
+	}
+	return networks
+}
+
 // Returns all l1 info sorted in lexicographic order of L1Name.
 func (n *LocalAvalancheNetwork) GetL1Infos() []testinfo.L1TestInfo {
 	l1s := make([]testinfo.L1TestInfo, len(n.Network.Subnets))

@@ -31,7 +31,7 @@ func DeployWithNicksMethod(
 	)
 	SendTransactionAndWaitForSuccess(ctx, evmInfo.EthClient, fundDeployerTx)
 
-	log.Info("Finished funding contract deployer", zap.String("blockchainID", testInfo.ChainID()))
+	log.Info("Finished funding contract deployer", zap.String("blockchainID", testInfo.ChainID().String()))
 
 	// Deploy contract
 	rpcClient := testInfo.RPCClient(ctx)
