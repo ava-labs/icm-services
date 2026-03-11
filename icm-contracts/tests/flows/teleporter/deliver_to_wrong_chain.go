@@ -26,7 +26,7 @@ func DeliverToWrongChain(
 	//
 	// Get the expected teleporter message ID for L1 C
 	//
-	expectedAtoCMessageID, err := teleporter.TeleporterMessenger(l1AInfo).GetNextMessageID(
+	expectedAtoCMessageID, err := teleporter.TeleporterMessenger(&l1AInfo).GetNextMessageID(
 		&bind.CallOpts{},
 		L1CInfo.BlockchainID,
 	)
@@ -54,7 +54,7 @@ func DeliverToWrongChain(
 
 	receipt, _ := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(l1AInfo),
+		teleporter.TeleporterMessenger(&l1AInfo),
 		l1AInfo,
 		l1BInfo,
 		sendCrossChainMessageInput,
@@ -78,7 +78,7 @@ func DeliverToWrongChain(
 	//
 	// Check that the message was not received on the L1 C
 	//
-	delivered, err := teleporter.TeleporterMessenger(L1CInfo).MessageReceived(
+	delivered, err := teleporter.TeleporterMessenger(&L1CInfo).MessageReceived(
 		&bind.CallOpts{}, expectedAtoCMessageID,
 	)
 	Expect(err).Should(BeNil())

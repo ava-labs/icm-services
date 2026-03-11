@@ -37,7 +37,7 @@ func ResubmitAlteredMessage(
 	}
 
 	receipt, messageID := utils.SendCrossChainMessageAndWaitForAcceptance(
-		ctx, teleporter.TeleporterMessenger(l1AInfo), l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey)
+		ctx, teleporter.TeleporterMessenger(&l1AInfo), l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey)
 
 	aggregator := network.GetSignatureAggregator()
 	defer aggregator.Shutdown()
@@ -55,14 +55,14 @@ func ResubmitAlteredMessage(
 	)
 
 	log.Info("Checking the message was received on the destination")
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
 	Expect(err).Should(BeNil())
 	Expect(delivered).Should(BeTrue())
 
 	// Get the Teleporter message from receive event
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage,
+		teleporter.TeleporterMessenger(&l1BInfo).ParseReceiveCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 	Expect(event.MessageID[:]).Should(Equal(messageID[:]))
@@ -79,7 +79,7 @@ func ResubmitAlteredMessage(
 	log.Info("Submitting the altered Teleporter message on the source chain")
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1AInfo.EVMChainID)
 	Expect(err).Should(BeNil())
-	tx, err := teleporter.TeleporterMessenger(l1AInfo).RetrySendCrossChainMessage(opts, teleporterMessage)
+	tx, err := teleporter.TeleporterMessenger(&l1AInfo).RetrySendCrossChainMessage(opts, teleporterMessage)
 	Expect(err).ShouldNot(BeNil())
 
 	// We expect the tx to be nil because the ICM message failed verification, which happens in the predicate

@@ -7,7 +7,6 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
-import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {
     TeleporterMessageReceipt,
     TeleporterMessageInput,
@@ -23,6 +22,8 @@ import {SafeERC20TransferFrom} from "@utilities/SafeERC20TransferFrom.sol";
 import {TeleporterMessage} from "@teleporter/ITeleporterMessenger.sol";
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 import {ReentrancyGuards} from "@utilities/ReentrancyGuards.sol";
+import {Initializable} from
+    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -38,7 +39,7 @@ import {ReentrancyGuards} from "@utilities/ReentrancyGuards.sol";
  *
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
-contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards {
+contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Initializable {
     using SafeERC20 for IERC20;
     using ReceiptQueue for ReceiptQueue.TeleporterMessageReceiptQueue;
 
@@ -50,12 +51,6 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards {
         bytes32 messageHash;
         TeleporterFeeInfo feeInfo;
     }
-
-    /**
-     * @notice Warp precompile used for sending and receiving Warp messages.
-     */
-    IWarpMessenger public constant WARP_MESSENGER =
-        IWarpMessenger(0x0200000000000000000000000000000000000005);
 
     IMessageSender public immutable messageSender;
     IMessageVerifier public immutable messageVerifier;
@@ -123,9 +118,15 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards {
     constructor(
         address verifierSender
     ) {
-        blockchainID = WARP_MESSENGER.getBlockchainID(); // TODO decide how to set this for external chains
         messageVerifier = IMessageVerifier(verifierSender);
         messageSender = IMessageSender(verifierSender);
+    }
+
+    function initialize(
+        bytes32 blockchainID_
+    ) external initializer {
+        // TODO: Determine how we want to set this
+        blockchainID = blockchainID_;
     }
 
     /**

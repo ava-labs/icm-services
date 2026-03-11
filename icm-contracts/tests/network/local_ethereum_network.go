@@ -108,6 +108,12 @@ func (n *LocalEthereumNetwork) EthereumTestInfo() *testinfo.EthereumTestInfo {
 	}
 }
 
+func (n *LocalEthereumNetwork) GetNetworkInfo() []testinfo.NetworkTestInfo {
+	networks := make([]testinfo.NetworkTestInfo, 1)
+	networks[0] = n.EthereumTestInfo()
+	return networks
+}
+
 func (n *LocalEthereumNetwork) TearDownNetwork() {
 	log.Info("Tearing down local Ethereum network")
 

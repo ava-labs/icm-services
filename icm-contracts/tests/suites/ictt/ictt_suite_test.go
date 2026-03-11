@@ -93,7 +93,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		2,
 		e2eFlags,
 	)
-	teleporterInfo = utils.NewTeleporterTestInfo(localNetworkInstance.GetAllL1Infos())
+	teleporterInfo = localnetwork.NewTeleporterTestInfo(localNetworkInstance)
 	log.Info("Started local network")
 
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
@@ -113,7 +113,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			teleporterInfo.SetTeleporter(teleporterContractAddress, l1.BlockchainID)
-			teleporterInfo.DeployTeleporterRegistry(ctx, l1, fundedKey)
+			teleporterInfo.DeployTeleporterRegistry(ctx, &l1, fundedKey)
 		}
 
 		jsonData, err := json.Marshal(teleporterInfo.StringifyRegistryAddresses())

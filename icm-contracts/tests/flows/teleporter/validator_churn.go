@@ -48,7 +48,7 @@ func ValidatorChurn(
 
 	receipt, teleporterMessageID := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(l1AInfo),
+		teleporter.TeleporterMessenger(&l1AInfo),
 		l1AInfo,
 		l1BInfo,
 		sendCrossChainMessageInput,
@@ -57,7 +57,7 @@ func ValidatorChurn(
 
 	sendEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1AInfo).ParseSendCrossChainMessage,
+		teleporter.TeleporterMessenger(&l1AInfo).ParseSendCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 	sentTeleporterMessage := sendEvent.Message
@@ -146,7 +146,7 @@ func ValidatorChurn(
 	utils.SendTransactionAndWaitForFailure(ctx, l1BInfo.EthClient, signedTx)
 
 	// Verify the message was not delivered
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 		&bind.CallOpts{}, teleporterMessageID,
 	)
 	Expect(err).Should(BeNil())
@@ -158,7 +158,7 @@ func ValidatorChurn(
 	log.Info("Retrying message sending on source chain")
 	optsA, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1AInfo.EVMChainID)
 	Expect(err).Should(BeNil())
-	tx, err := teleporter.TeleporterMessenger(l1AInfo).RetrySendCrossChainMessage(
+	tx, err := teleporter.TeleporterMessenger(&l1AInfo).RetrySendCrossChainMessage(
 		optsA, sentTeleporterMessage,
 	)
 	Expect(err).Should(BeNil())
@@ -178,7 +178,7 @@ func ValidatorChurn(
 	)
 
 	// Verify the message was delivered
-	delivered, err = teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+	delivered, err = teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 		&bind.CallOpts{}, teleporterMessageID,
 	)
 	Expect(err).Should(BeNil())

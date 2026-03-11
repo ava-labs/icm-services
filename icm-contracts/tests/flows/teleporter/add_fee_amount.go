@@ -54,7 +54,7 @@ func AddFeeAmount(
 
 	sendCrossChainMsgReceipt, messageID := utils.SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(l1AInfo),
+		teleporter.TeleporterMessenger(&l1AInfo),
 		l1AInfo,
 		l1BInfo,
 		sendCrossChainMessageInput,
@@ -71,7 +71,7 @@ func AddFeeAmount(
 		additionalFeeAmount,
 		mockTokenAddress,
 		fundedKey,
-		teleporter.TeleporterMessenger(l1AInfo),
+		teleporter.TeleporterMessenger(&l1AInfo),
 	)
 
 	aggregator := network.GetSignatureAggregator()
@@ -89,16 +89,16 @@ func AddFeeAmount(
 	)
 	receiveEvent, err := utils.GetEventFromLogs(
 		deliveryReceipt.Logs,
-		teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage)
+		teleporter.TeleporterMessenger(&l1BInfo).ParseReceiveCrossChainMessage)
 	Expect(err).Should(BeNil())
 
 	// Check Teleporter message received on the destination (L1 B)
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
 	Expect(err).Should(BeNil())
 	Expect(delivered).Should(BeTrue())
 
 	// Check the initial relayer reward amount on L1 A.
-	initialRewardAmount, err := teleporter.TeleporterMessenger(l1AInfo).CheckRelayerRewardAmount(
+	initialRewardAmount, err := teleporter.TeleporterMessenger(&l1AInfo).CheckRelayerRewardAmount(
 		&bind.CallOpts{},
 		receiveEvent.RewardRedeemer,
 		mockTokenAddress)
@@ -107,7 +107,7 @@ func AddFeeAmount(
 	// Send a message from L1 B back to L1 A that includes the specific receipt for the message.
 	sendSpecificReceiptsReceipt, sendSpecificReceiptsMessageID := utils.SendSpecifiedReceiptsAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(l1BInfo),
+		teleporter.TeleporterMessenger(&l1BInfo),
 		l1BInfo,
 		l1AInfo.BlockchainID,
 		[][32]byte{receiveEvent.MessageID},
@@ -132,7 +132,7 @@ func AddFeeAmount(
 	)
 
 	// Check message delivered
-	delivered, err = teleporter.TeleporterMessenger(l1AInfo).MessageReceived(
+	delivered, err = teleporter.TeleporterMessenger(&l1AInfo).MessageReceived(
 		&bind.CallOpts{},
 		sendSpecificReceiptsMessageID,
 	)
@@ -141,7 +141,7 @@ func AddFeeAmount(
 
 	// Check the updated relayer reward amount
 	expectedIncrease := new(big.Int).Add(initFeeAmount, additionalFeeAmount)
-	newRewardAmount, err := teleporter.TeleporterMessenger(l1AInfo).CheckRelayerRewardAmount(
+	newRewardAmount, err := teleporter.TeleporterMessenger(&l1AInfo).CheckRelayerRewardAmount(
 		&bind.CallOpts{},
 		receiveEvent.RewardRedeemer,
 		mockTokenAddress)
@@ -152,7 +152,7 @@ func AddFeeAmount(
 	if fundedAddress == receiveEvent.RewardRedeemer {
 		utils.RedeemRelayerRewardsAndConfirm(
 			ctx,
-			teleporter.TeleporterMessenger(l1AInfo),
+			teleporter.TeleporterMessenger(&l1AInfo),
 			l1AInfo,
 			mockToken,
 			mockTokenAddress,

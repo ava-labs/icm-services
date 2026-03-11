@@ -55,14 +55,6 @@ type ChainTeleporterInfo struct {
 
 type TeleporterTestInfo map[ids.ID]*ChainTeleporterInfo
 
-func NewTeleporterTestInfo(l1s []testinfo.L1TestInfo) TeleporterTestInfo {
-	t := make(TeleporterTestInfo)
-	for _, l1 := range l1s {
-		t[l1.BlockchainID] = &ChainTeleporterInfo{}
-	}
-	return t
-}
-
 func (t TeleporterTestInfo) StringifyRegistryAddresses() map[string]string {
 	registryAddresseses := make(map[string]string)
 	for l1, teleporterInfo := range t {
@@ -72,10 +64,24 @@ func (t TeleporterTestInfo) StringifyRegistryAddresses() map[string]string {
 }
 
 func (t TeleporterTestInfo) TeleporterMessenger(
-	l1 testinfo.L1TestInfo,
+	l1 testinfo.NetworkTestInfo,
 ) *teleportermessenger.TeleporterMessenger {
 	teleporterMessenger, err := teleportermessenger.NewTeleporterMessenger(
-		t.TeleporterMessengerAddress(l1.BlockchainID), l1.EthClient,
+		t.TeleporterMessengerAddress(l1.ChainID()), l1.GetEVMTestInfo().EthClient,
+	)
+	Expect(err).Should(BeNil())
+
+	return teleporterMessenger
+}
+
+func (t TeleporterTestInfo) TeleporterMessengerV2(
+	network testinfo.NetworkTestInfo,
+) *teleportermessengerv2.TeleporterMessengerV2 {
+	if t[network.ChainID()].teleporterProtocol != TELEPORTER_V2 {
+		panic("no TeleporterV2 deployed on this network")
+	}
+	teleporterMessenger, err := teleportermessengerv2.NewTeleporterMessengerV2(
+		t.TeleporterMessengerAddress(network.ChainID()), network.GetEVMTestInfo().EthClient,
 	)
 	Expect(err).Should(BeNil())
 
@@ -124,25 +130,25 @@ func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, blockc
 
 func (t TeleporterTestInfo) DeployTeleporterRegistry(
 	ctx context.Context,
-	l1 testinfo.L1TestInfo,
+	l1 testinfo.NetworkTestInfo,
 	deployerKey *ecdsa.PrivateKey,
 ) {
 	entries := []teleporterregistry.ProtocolRegistryEntry{
 		{
 			Version:         big.NewInt(1),
-			ProtocolAddress: t.TeleporterMessengerAddress(l1.BlockchainID),
+			ProtocolAddress: t.TeleporterMessengerAddress(l1.ChainID()),
 		},
 	}
-	opts, err := bind.NewKeyedTransactorWithChainID(deployerKey, l1.EVMChainID)
+	opts, err := bind.NewKeyedTransactorWithChainID(deployerKey, l1.GetEVMTestInfo().EVMChainID)
 	Expect(err).Should(BeNil())
 	teleporterRegistryAddress, tx, _, err := teleporterregistry.DeployTeleporterRegistry(
-		opts, l1.EthClient, entries,
+		opts, l1.GetEVMTestInfo().EthClient, entries,
 	)
 	Expect(err).Should(BeNil())
 	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
+	WaitForTransactionSuccess(ctx, l1.GetEVMTestInfo().EthClient, tx.Hash())
 
-	info := t[l1.BlockchainID]
+	info := t[l1.ChainID()]
 	info.teleporterRegistryAddress = teleporterRegistryAddress
 }
 
@@ -326,8 +332,8 @@ func (t TeleporterTestInfo) SendExampleCrossChainMessageAndVerify(
 	// Wait for the transaction to be mined
 	receipt := WaitForTransactionSuccess(ctx, source.EthClient, tx.Hash())
 
-	sourceTeleporterMessenger := t.TeleporterMessenger(source)
-	destTeleporterMessenger := t.TeleporterMessenger(destination)
+	sourceTeleporterMessenger := t.TeleporterMessenger(&source)
+	destTeleporterMessenger := t.TeleporterMessenger(&destination)
 
 	event, err := GetEventFromLogs(receipt.Logs, sourceTeleporterMessenger.ParseSendCrossChainMessage)
 	Expect(err).Should(BeNil())
@@ -429,9 +435,9 @@ func (t TeleporterTestInfo) ClearReceiptQueue(
 	destination testinfo.L1TestInfo,
 	signatureAggregator *SignatureAggregator,
 ) {
-	sourceTeleporterMessenger := t.TeleporterMessenger(source)
+	sourceTeleporterMessenger := t.TeleporterMessenger(&source)
 	outstandReceiptCount := GetOutstandingReceiptCount(
-		t.TeleporterMessenger(source),
+		t.TeleporterMessenger(&source),
 		destination.BlockchainID,
 	)
 	for outstandReceiptCount.Cmp(big.NewInt(0)) != 0 {
@@ -497,17 +503,16 @@ func DeployWarpAdapterContract(
 func DeployTeleporterV2(
 	ctx context.Context,
 	testInfo testinfo.NetworkTestInfo,
+	adapterAddress common.Address,
 	fundedKey *ecdsa.PrivateKey,
 ) common.Address {
-	warpAdapterAddress := DeployWarpAdapterContract(ctx, testInfo, fundedKey)
-
 	byteCode, err := deploymentUtils.ExtractByteCodeFromFile("./out/TeleporterMessengerV2.sol/TeleporterMessengerV2.json")
 	Expect(err).Should(BeNil())
 
 	teleporterABI, err := teleportermessengerv2.TeleporterMessengerV2MetaData.GetAbi()
 	Expect(err).Should(BeNil())
 
-	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(teleporterABI, byteCode, warpAdapterAddress)
+	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(teleporterABI, byteCode, adapterAddress)
 	Expect(err).Should(BeNil())
 
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
@@ -526,6 +531,17 @@ func DeployTeleporterV2(
 		fundedKey,
 	)
 
+	// Initialize the contract with the blockchain ID
+	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, testInfo.GetEVMTestInfo().EVMChainID)
+	Expect(err).Should(BeNil())
+	teleporterMessenger, err := teleportermessengerv2.NewTeleporterMessengerV2(
+		contractAddress, testInfo.GetEVMTestInfo().EthClient,
+	)
+	Expect(err).Should(BeNil())
+	tx, err := teleporterMessenger.Initialize(opts, testInfo.ChainID())
+	Expect(err).Should(BeNil())
+	// Wait for the transaction to be accepted
+	WaitForTransactionSuccess(ctx, testInfo.GetEVMTestInfo().EthClient, tx.Hash())
 	return contractAddress
 }
 
