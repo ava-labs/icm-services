@@ -15,8 +15,10 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
+	poamanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/PoAManager"
 	"github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
@@ -45,6 +47,9 @@ const (
 //     build a SubsetUpdate warp message, aggregate signatures, and submit the
 //     registerValidatorSet / updateValidatorSet transactions.
 //  4. Verifies the on-chain validator set matches expectations.
+//  5. Adds a new validator to the L1 to trigger a re-registration (non-first-time).
+//  6. Waits for the relayer to detect the validator set change and re-register.
+//  7. Verifies the updated on-chain validator set includes the new validator.
 func SubsetUpdater(
 	ctx context.Context,
 	log logging.Logger,
@@ -225,6 +230,10 @@ func SubsetUpdater(
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	var firstPChainHeight uint64
+	var firstValidatorCount int
+
+registrationLoop:
 	for {
 		select {
 		case <-pollCtx.Done():
@@ -276,13 +285,129 @@ func SubsetUpdater(
 			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
 				"Total weight should match sum of individual validator weights")
 
-			log.Info("SubsetUpdater e2e test PASSED",
+			firstPChainHeight = vs.PChainHeight
+			firstValidatorCount = len(vs.Validators)
+
+			log.Info("First registration verified",
 				zap.String("contractAddress", contractAddr.Hex()),
-				zap.Int("validatorCount", len(vs.Validators)),
+				zap.Int("validatorCount", firstValidatorCount),
 				zap.Uint64("totalWeight", vs.TotalWeight),
-				zap.Uint64("pChainHeight", vs.PChainHeight),
+				zap.Uint64("pChainHeight", firstPChainHeight),
 			)
-			return
+			break registrationLoop
+		}
+	}
+
+	// =========================================================================
+	// Step 7: Add a new validator to trigger re-registration
+	// =========================================================================
+	log.Info("Adding a new validator to trigger re-registration...")
+
+	validatorManagerProxy, poaManagerProxy := avalancheNetwork.GetValidatorManager(l1Info.SubnetID)
+	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1Info.EthClient)
+	Expect(err).Should(BeNil())
+
+	pChainInfo := utils.GetPChainInfo(avalancheNetwork.GetPrimaryNetworkInfo())
+	aggregator := avalancheNetwork.GetSignatureAggregatorWithPort(8082)
+	defer aggregator.Shutdown()
+
+	newNodes := avalancheNetwork.GetExtraNodes(1)
+	Expect(len(newNodes)).Should(Equal(1), "Should have at least 1 extra node available")
+
+	log.Info("Adding extra node as subnet validator",
+		zap.Stringer("nodeID", newNodes[0].NodeID),
+	)
+	l1Info = avalancheNetwork.AddSubnetValidators(newNodes, l1Info, true)
+
+	addValidatorCtx, addValidatorCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer addValidatorCancel()
+
+	expiry := uint64(time.Now().Add(24 * time.Hour).Unix())
+	pop, err := newNodes[0].GetProofOfPossession()
+	Expect(err).Should(BeNil())
+
+	node := utils.Node{
+		NodeID:  newNodes[0].NodeID,
+		NodePoP: pop,
+		Weight:  units.Schmeckle / 5,
+	}
+
+	log.Info("Initiating PoA validator registration",
+		zap.Stringer("nodeID", node.NodeID),
+		zap.Uint64("weight", node.Weight),
+	)
+
+	utils.InitiateAndCompletePoAValidatorRegistration(
+		addValidatorCtx,
+		aggregator,
+		fundedKey,
+		l1Info,
+		pChainInfo,
+		poaManager,
+		poaManagerProxy.Address,
+		validatorManagerProxy.Address,
+		expiry,
+		node,
+		avalancheNetwork.GetPChainWallet(),
+		avalancheNetwork.GetNetworkID(),
+	)
+
+	log.Info("New validator added, waiting for relayer to detect and re-register...")
+
+	err = utils.IssueTxsToAdvanceChain(ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5)
+	Expect(err).Should(BeNil())
+
+	// =========================================================================
+	// Step 8: Wait for re-registration with updated validator set
+	// =========================================================================
+	updateCtx, updateCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer updateCancel()
+
+	updateTicker := time.NewTicker(2 * time.Second)
+	defer updateTicker.Stop()
+
+	for {
+		select {
+		case <-updateCtx.Done():
+			Expect(false).Should(BeTrue(),
+				"Timed out waiting for relayer to re-register validator set after validator change")
+		case <-updateTicker.C:
+			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
+			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
+				continue
+			}
+
+			if len(vs.Validators) > firstValidatorCount && vs.PChainHeight > firstPChainHeight {
+				log.Info("Validator set re-registered by relayer!",
+					zap.Int("validatorCount", len(vs.Validators)),
+					zap.Uint64("totalWeight", vs.TotalWeight),
+					zap.Uint64("pChainHeight", vs.PChainHeight),
+					zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
+				)
+
+				Expect(len(vs.Validators)).Should(BeNumerically(">", firstValidatorCount),
+					"Updated validator set should have more validators after adding one")
+				Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
+					"Updated validator set should have higher P-chain height")
+				Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
+					"Updated validator set should have positive timestamp")
+
+				log.Info("SubsetUpdater e2e test PASSED",
+					zap.String("contractAddress", contractAddr.Hex()),
+					zap.Int("firstValidatorCount", firstValidatorCount),
+					zap.Int("updatedValidatorCount", len(vs.Validators)),
+					zap.Uint64("firstPChainHeight", firstPChainHeight),
+					zap.Uint64("updatedPChainHeight", vs.PChainHeight),
+				)
+				return
+			}
+
+			log.Debug("Waiting for validator set re-registration...",
+				zap.Int("currentValidatorCount", len(vs.Validators)),
+				zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
+				zap.Uint64("currentPChainHeight", vs.PChainHeight),
+			)
 		}
 	}
 }

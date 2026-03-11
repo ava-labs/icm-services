@@ -145,25 +145,22 @@ func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 
-	return s.performFullSetUpdate(ctx, pChainHeight, isFirstRegistration)
+	return s.performFullSetUpdate(ctx, pChainHeight)
 }
 
 // ---------------------------------------------------------------------------
 // Full-set (subset/shard) update
 // ---------------------------------------------------------------------------
 
-func (s *SubsetSetUpdater) performFullSetUpdate(ctx context.Context, pChainHeight uint64, isFirstRegistration bool) error {
+func (s *SubsetSetUpdater) performFullSetUpdate(ctx context.Context, pChainHeight uint64) error {
 	_, shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to build subset update: %w", err)
 	}
 
-	var signingSubnet ids.ID
-	if isFirstRegistration {
-		signingSubnet = constants.PrimaryNetworkID
-	} else {
-		signingSubnet = s.subnetID
-	}
+	// The SubsetUpdater contract always verifies signatures against the P-chain
+	// validator set, regardless of whether this is a first registration or update.
+	signingSubnet := constants.PrimaryNetworkID
 
 	signedMsg, err := s.signMessage(ctx, subsetUpdateMsg, signingSubnet)
 	if err != nil {
@@ -413,12 +410,7 @@ func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage
 // PerformSingleUpdate is a convenience method for tests: builds, signs, and sends
 // a single subset update at the given P-chain height.
 func (s *SubsetSetUpdater) PerformSingleUpdate(ctx context.Context, pChainHeight uint64) error {
-	onChainVS, err := s.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, s.blockchainID)
-	if err != nil {
-		return fmt.Errorf("failed to get on-chain validator set: %w", err)
-	}
-	isFirstRegistration := onChainVS.TotalWeight == 0
-	return s.performFullSetUpdate(ctx, pChainHeight, isFirstRegistration)
+	return s.performFullSetUpdate(ctx, pChainHeight)
 }
 
 // GetOnChainValidatorSet returns the validator set stored on-chain for the updater's blockchain ID.
