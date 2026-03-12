@@ -190,7 +190,6 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		s.blockchainID,
 		pChainHeight,
 		pChainTimestamp,
-		s.shardSize,
 		shardHashes,
 	)
 	if err != nil {

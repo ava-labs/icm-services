@@ -32,7 +32,7 @@ function extract_commit() {
 export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 # Don't export them as they're used in the context of other calls
 #AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/avalanchego)")}
-AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'c8c0b4e3500131878e3d13cb5f109ff38014f9be'}
+AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'65a3a518fa8f6abd1c157366bcbfb89e6924ea32'}
 #SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/subnet-evm)")}
 SUBNET_EVM_VERSION=${SUBNET_EVM_VERSION:-'7fc05124d976a3247dc1c32f87c5e4003ed6fb6b'}
 LIBEVM_VERSION=${LIBEVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/libevm)")}

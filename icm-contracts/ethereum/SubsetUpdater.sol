@@ -46,6 +46,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
 
         // We have received all shards. Place this validator set into the mapping
         if (shard.shardNumber == _partialValidatorSets[avalancheBlockchainID].shardHashes.length) {
+            // mark this set as complete
             _partialValidatorSets[avalancheBlockchainID].inProgress = false;
             _validatorSets[avalancheBlockchainID].validators =
                 _partialValidatorSets[avalancheBlockchainID].validators;
@@ -83,11 +84,14 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         ICMMessage calldata icmMessage,
         bytes calldata shardBytes
     ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
+        // Parse the validator set state payload.
         ValidatorSetMetadata memory validatorSetMetadata =
             _parseSubsetUpdate(icmMessage.rawMessage);
+        // Check that the first validator set shard hash matches the hash of the serialized validator set.
         require(
             validatorSetMetadata.shardHashes[0] == sha256(shardBytes), "Validator set hash mismatch"
         );
+        // Parse the validators.
         (Validator[] memory validators, uint64 totalWeight) =
             ValidatorSets.parseValidators(shardBytes);
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
@@ -108,7 +112,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
     /**
      * @dev Parses a Go-codec-serialized SubsetUpdate payload.
      * Layout: codecVersion(2) | typeID(4) | blockchainID(32) | pChainHeight(8)
-     *         | pChainTimestamp(8) | shardSize(4) | shardCount(4) | shardHashes(32 each)
+     *         | pChainTimestamp(8) | shardCount(4) | shardHashes(32 each)
      */
     function _parseSubsetUpdate(
         bytes calldata data
@@ -120,11 +124,10 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         bytes32 avalancheBlockchainID = bytes32(data[6:38]);
         uint64 pChainHeight = uint64(bytes8(data[38:46]));
         uint64 pChainTimestamp = uint64(bytes8(data[46:54]));
-        // data[54:58] is shardSize (uint32), not needed for metadata
-        uint32 shardCount = uint32(bytes4(data[58:62]));
+        uint32 shardCount = uint32(bytes4(data[54:58]));
         bytes32[] memory shardHashes = new bytes32[](shardCount);
         for (uint32 i = 0; i < shardCount; i++) {
-            uint256 offset = 62 + uint256(i) * 32;
+            uint256 offset = 58 + uint256(i) * 32;
             shardHashes[i] = bytes32(data[offset:offset + 32]);
         }
 
