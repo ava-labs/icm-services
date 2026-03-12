@@ -17,7 +17,7 @@ import (
 // NetworkTestInfo Abstraction over the info for Avalanche L1s and Ethereum networks.
 type NetworkTestInfo interface {
 	GetEVMTestInfo() *EVMTestInfo
-	ChainID() string
+	ChainID() ids.ID
 	RPCClient(ctx context.Context) rpcclient.RpcClient
 }
 
@@ -40,8 +40,8 @@ func (l1 *L1TestInfo) GetEVMTestInfo() *EVMTestInfo {
 	return &l1.EVMTestInfo
 }
 
-func (l1 *L1TestInfo) ChainID() string {
-	return l1.BlockchainID.String()
+func (l1 *L1TestInfo) ChainID() ids.ID {
+	return l1.BlockchainID
 }
 
 func (l1 *L1TestInfo) RPCClient(ctx context.Context) rpcclient.RpcClient {
@@ -67,8 +67,10 @@ func (e *EthereumTestInfo) GetEVMTestInfo() *EVMTestInfo {
 	return &e.EVMTestInfo
 }
 
-func (e *EthereumTestInfo) ChainID() string {
-	return e.EVMChainID.String()
+func (e *EthereumTestInfo) ChainID() ids.ID {
+	blockchainID, err := ids.ToID(e.EVMChainID.FillBytes(make([]byte, 32)))
+	Expect(err).Should(BeNil())
+	return blockchainID
 }
 
 func (e *EthereumTestInfo) RPCClient(ctx context.Context) rpcclient.RpcClient {
