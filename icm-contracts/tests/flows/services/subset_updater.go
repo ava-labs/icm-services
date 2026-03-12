@@ -308,7 +308,7 @@ registrationLoop:
 	Expect(err).Should(BeNil())
 
 	pChainInfo := utils.GetPChainInfo(avalancheNetwork.GetPrimaryNetworkInfo())
-	aggregator := avalancheNetwork.GetSignatureAggregatorWithPort(8082)
+	aggregator := avalancheNetwork.GetSignatureAggregator()
 	defer aggregator.Shutdown()
 
 	newNodes := avalancheNetwork.GetExtraNodes(1)
@@ -433,6 +433,8 @@ func createSubsetUpdaterRelayerConfig(
 	)
 
 	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
+
+	baseConfig.APIPort = 8082
 
 	baseConfig.ExternalEVMDestinations = []*relayercfg.ExternalEVMDestination{
 		{

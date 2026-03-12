@@ -33,7 +33,6 @@ const (
 type SignatureAggregator struct {
 	cmd        *exec.Cmd
 	cancelFunc context.CancelFunc
-	apiPort    int
 }
 
 type SignatureAggregatorConfig struct {
@@ -68,11 +67,6 @@ func (s *SignatureAggregator) Shutdown() {
 
 // Aggregator utils
 func NewSignatureAggregator(apiUri string, subnetIDs []ids.ID) *SignatureAggregator {
-	return NewSignatureAggregatorWithPort(apiUri, subnetIDs, DEFAULT_API_PORT)
-}
-
-// NewSignatureAggregatorWithPort creates a new SignatureAggregator with a custom API port
-func NewSignatureAggregatorWithPort(apiUri string, subnetIDs []ids.ID, apiPort int) *SignatureAggregator {
 	sigAggPath := os.Getenv("SIG_AGG_PATH")
 	Expect(sigAggPath).ShouldNot(BeEmpty())
 	subnetIDStrings := make([]string, 0, len(subnetIDs))
@@ -87,7 +81,7 @@ func NewSignatureAggregatorWithPort(apiUri string, subnetIDs []ids.ID, apiPort i
 			BaseURL: apiUri,
 		},
 		SubnetIDs:       subnetIDStrings,
-		ApiPort:         apiPort,
+		ApiPort:         DEFAULT_API_PORT,
 		AllowPrivateIPs: true,
 	}
 	// write config to a JSON file in /tmp directory
@@ -121,7 +115,6 @@ func NewSignatureAggregatorWithPort(apiUri string, subnetIDs []ids.ID, apiPort i
 	return &SignatureAggregator{
 		cancelFunc: cancel,
 		cmd:        cmd,
-		apiPort:    apiPort,
 	}
 }
 
@@ -174,7 +167,7 @@ func (s *SignatureAggregator) createSignedMessage(
 	client := &http.Client{
 		Timeout: 20 * time.Second,
 	}
-	requestURL := fmt.Sprintf("http://localhost:%d%s", s.apiPort, SIG_AGG_API_PATH)
+	requestURL := fmt.Sprintf("http://localhost:%d%s", DEFAULT_API_PORT, SIG_AGG_API_PATH)
 	reqBody := AggregateSignaturesRequest{
 		Message:          hex.EncodeToString(unsignedMessage.Bytes()),
 		Justification:    hex.EncodeToString(justification),
