@@ -40,7 +40,7 @@ type LocalEthereumNetwork struct {
 
 const (
 	localEthereumNetworkBaseURL   = "http://127.0.0.1:5050"
-	localEthereumNetworkFundedKey = "764a4a322753120b4667a20b6309cb5ec754a22bdbcbd62398be8f803b255337"
+	localEthereumNetworkFundedKey = "764A4A322753120B4667A20B6309CB5EC754A22BDBCBD62398BE8F803B255337"
 	ethereumNetworkStartupTimeout = 60 * time.Second
 )
 
