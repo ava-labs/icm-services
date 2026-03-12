@@ -258,8 +258,13 @@ library ValidatorSets {
         // Parse the pChainTimestamp`
         uint64 pChainTimestamp = uint64(bytes8(data[46:54]));
 
-        // Parse the shardHashes
-        bytes32[] memory shardHashes = abi.decode(data[54:], (bytes32[]));
+        uint32 shardCount = uint32(bytes4(data[54:58]));
+        
+        bytes32[] memory shardHashes = new bytes32[](shardCount);
+        for (uint32 i = 0; i < shardCount; i++) {
+            uint256 offset = 58 + uint256(i) * 32;
+            shardHashes[i] = bytes32(data[offset:offset + 32]);
+        }
 
         return ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,

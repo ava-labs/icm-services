@@ -186,7 +186,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 
 	pChainTimestamp := uint64(time.Now().Unix())
 
-	subsetUpdatePayload, err := message.NewSubsetUpdate(
+	subsetUpdatePayload, err := message.NewValidatorSetMetadata(
 		s.blockchainID,
 		pChainHeight,
 		pChainTimestamp,

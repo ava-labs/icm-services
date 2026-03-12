@@ -86,7 +86,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
     ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
         // Parse the validator set state payload.
         ValidatorSetMetadata memory validatorSetMetadata =
-            _parseSubsetUpdate(icmMessage.rawMessage);
+            ValidatorSets.parseValidatorSetMetadata(icmMessage.rawMessage);
         // Check that the first validator set shard hash matches the hash of the serialized validator set.
         require(
             validatorSetMetadata.shardHashes[0] == sha256(shardBytes), "Validator set hash mismatch"
@@ -107,35 +107,5 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         require(validators.length > 0, "Validator set cannot be empty");
         require(totalWeight > 0, "Total weight must exceed 0");
         return (validatorSetMetadata, validators, totalWeight);
-    }
-
-    /**
-     * @dev Parses a Go-codec-serialized SubsetUpdate payload.
-     * Layout: codecVersion(2) | typeID(4) | blockchainID(32) | pChainHeight(8)
-     *         | pChainTimestamp(8) | shardCount(4) | shardHashes(32 each)
-     */
-    function _parseSubsetUpdate(
-        bytes calldata data
-    ) internal pure returns (ValidatorSetMetadata memory) {
-        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
-        uint32 payloadTypeID = uint32(bytes4(data[2:6]));
-        require(payloadTypeID == 6, "Invalid SubsetUpdate payload type ID");
-
-        bytes32 avalancheBlockchainID = bytes32(data[6:38]);
-        uint64 pChainHeight = uint64(bytes8(data[38:46]));
-        uint64 pChainTimestamp = uint64(bytes8(data[46:54]));
-        uint32 shardCount = uint32(bytes4(data[54:58]));
-        bytes32[] memory shardHashes = new bytes32[](shardCount);
-        for (uint32 i = 0; i < shardCount; i++) {
-            uint256 offset = 58 + uint256(i) * 32;
-            shardHashes[i] = bytes32(data[offset:offset + 32]);
-        }
-
-        return ValidatorSetMetadata({
-            avalancheBlockchainID: avalancheBlockchainID,
-            pChainHeight: pChainHeight,
-            pChainTimestamp: pChainTimestamp,
-            shardHashes: shardHashes
-        });
     }
 }

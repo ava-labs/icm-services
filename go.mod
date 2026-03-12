@@ -9,7 +9,7 @@ tool (
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.14.2-0.20260312025052-65a3a518fa8f
+	github.com/ava-labs/avalanchego v1.14.2-0.20260312144754-474a1835f482
 	github.com/ava-labs/avalanchego/graft/subnet-evm v0.8.2
 	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
 	github.com/aws/aws-sdk-go-v2 v1.41.3
