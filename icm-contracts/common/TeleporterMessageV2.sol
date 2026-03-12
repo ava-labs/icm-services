@@ -7,6 +7,10 @@ pragma solidity 0.8.30;
 import {ICM, ICMMessage} from "./ICM.sol";
 import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 
+/**
+ * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
+ * DO NOT USE THIS CODE IN PRODUCTION.
+ */
 struct TeleporterMessageV2 {
     uint256 messageNonce;
     address originSenderAddress;

@@ -1,4 +1,6 @@
-// SPDX-License-Identifier: MIT
+// (c) 2026, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+// SPDX-License-Identifier: LicenseRef-Ecosystem
 pragma solidity ^0.8.30;
 
 import {ICMMessage} from "../common/ICM.sol";
