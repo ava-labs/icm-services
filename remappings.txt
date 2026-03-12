@@ -7,3 +7,4 @@
 @utilities=icm-contracts/avalanche/utilities
 @common=icm-contracts/common
 @ethereum=icm-contracts/ethereum
+@solidity-merkle-trees/=lib/solidity-merkle-trees/src/
