@@ -69,9 +69,9 @@ func SubsetUpdater(
 		zap.Uint32("networkID", networkID),
 	)
 
-	ethClient := ethereumNetwork.EthClient()
+	ethClient := ethereumNetwork.EthClient
 	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
-	chainID := ethereumNetwork.ChainID()
+	chainID := ethereumNetwork.ChainID
 	fundedAddress, fundedKey := avalancheNetwork.GetFundedAccountInfo()
 
 	// =========================================================================
@@ -438,7 +438,7 @@ func createSubsetUpdaterRelayerConfig(
 
 	baseConfig.ExternalEVMDestinations = []*relayercfg.ExternalEVMDestination{
 		{
-			RPCEndpoint:         ethereumNetwork.RPCURL(),
+			RPCEndpoint:         ethereumNetwork.BaseURL,
 			PrivateKey:          hex.EncodeToString(crypto.FromECDSA(ethFundedKey)),
 			ContractAddress:     contractAddress,
 			BlockchainID:        blockchainID,

@@ -23,32 +23,36 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// LocalEthereumNetwork is a separate network type for external Ethereum chains.
+// It does not implement the same interface as LocalNetwork (Avalanche) since
+// the functionality is different.
+
 var _ LocalNetwork = (*LocalEthereumNetwork)(nil)
 
 type LocalEthereumNetwork struct {
-	rpcURL     string
-	ethClient  *ethclient.Client
+	BaseURL    string
+	EthClient  *ethclient.Client
 	fundedKey  *ecdsa.PrivateKey
 	fundedAddr common.Address
-	chainID    *big.Int
+	ChainID    *big.Int
 	cmd        *exec.Cmd
 }
 
 const (
-	defaultGethURL                = "http://127.0.0.1:5050"
-	gethFundedKeyHex              = "764a4a322753120b4667a20b6309cb5ec754a22bdbcbd62398be8f803b255337"
+	localEthereumNetworkBaseURL   = "http://127.0.0.1:5050"
+	localEthereumNetworkFundedKey = "764a4a322753120b4667a20b6309cb5ec754a22bdbcbd62398be8f803b255337"
 	ethereumNetworkStartupTimeout = 60 * time.Second
 )
 
 func NewLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
-	return NewLocalEthereumNetworkFromURL(ctx, defaultGethURL)
+	return NewLocalEthereumNetworkFromURL(ctx, localEthereumNetworkBaseURL)
 }
 
 func NewLocalEthereumNetworkFromURL(ctx context.Context, rpcURL string) *LocalEthereumNetwork {
 	ethClient, err := ethclient.DialContext(ctx, rpcURL)
 	Expect(err).Should(BeNil())
 
-	fundedKey, err := crypto.HexToECDSA(gethFundedKeyHex)
+	fundedKey, err := crypto.HexToECDSA(localEthereumNetworkFundedKey)
 	Expect(err).Should(BeNil())
 	fundedAddr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 
@@ -56,11 +60,11 @@ func NewLocalEthereumNetworkFromURL(ctx context.Context, rpcURL string) *LocalEt
 	Expect(err).Should(BeNil())
 
 	return &LocalEthereumNetwork{
-		rpcURL:     rpcURL,
-		ethClient:  ethClient,
+		BaseURL:    rpcURL,
+		EthClient:  ethClient,
 		fundedKey:  fundedKey,
 		fundedAddr: fundedAddr,
-		chainID:    chainID,
+		ChainID:    chainID,
 	}
 }
 
@@ -69,11 +73,13 @@ func NewLocalEthereumNetworkFromURL(ctx context.Context, rpcURL string) *LocalEt
 func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	log.Info("Starting local Ethereum network")
 
+	// Get the repository root
 	repoRoot, err := utils.GetRepoRoot()
 	Expect(err).Should(BeNil())
 
 	scriptPath := filepath.Join(repoRoot, "ethereum", "run_ethereum_network.sh")
 
+	// Start the Ethereum network script in the background
 	// Use exec.Command instead of CommandContext to prevent context cancellation
 	// from sending SIGKILL before we can gracefully shutdown with SIGTERM
 	cmd := exec.Command(scriptPath)
@@ -85,16 +91,18 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 
 	log.Info(fmt.Sprintf("Started Ethereum network process with PID %d", cmd.Process.Pid))
 
+	// Wait for the network to be ready
 	startTime := time.Now()
 	client, err := waitForEthereumNetwork(ctx, ethereumNetworkStartupTimeout)
 	Expect(err).Should(BeNil(), "Ethereum network failed to become ready")
 
 	log.Info(fmt.Sprintf("Ethereum network is ready after %s", time.Since(startTime)))
 
+	// Get the chain ID of the local Ethereum network
 	chainID, err := client.ChainID(ctx)
 	Expect(err).Should(BeNil())
 
-	fundedKeyBytes, err := hex.DecodeString(gethFundedKeyHex)
+	fundedKeyBytes, err := hex.DecodeString(localEthereumNetworkFundedKey)
 	Expect(err).Should(BeNil())
 	secp256k1Key, err := secp256k1.ToPrivateKey(fundedKeyBytes)
 	Expect(err).Should(BeNil())
@@ -102,11 +110,11 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	fundedAddr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 
 	return &LocalEthereumNetwork{
-		rpcURL:     defaultGethURL,
-		ethClient:  client,
+		BaseURL:    localEthereumNetworkBaseURL,
+		EthClient:  client,
 		fundedKey:  fundedKey,
 		fundedAddr: fundedAddr,
-		chainID:    chainID,
+		ChainID:    chainID,
 		cmd:        cmd,
 	}
 }
@@ -115,44 +123,36 @@ func (n *LocalEthereumNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.Pr
 	return n.fundedAddr, n.fundedKey
 }
 
-func (n *LocalEthereumNetwork) EthClient() *ethclient.Client {
-	return n.ethClient
-}
-
-func (n *LocalEthereumNetwork) ChainID() *big.Int {
-	return n.chainID
-}
-
-func (n *LocalEthereumNetwork) RPCURL() string {
-	return n.rpcURL
-}
-
 func (n *LocalEthereumNetwork) EthereumTestInfo() *testinfo.EthereumTestInfo {
 	return &testinfo.EthereumTestInfo{
 		EVMTestInfo: testinfo.EVMTestInfo{
-			EthClient:  n.ethClient,
-			EVMChainID: n.chainID,
+			EthClient:  n.EthClient,
+			EVMChainID: n.ChainID,
 		},
-		BaseURL: n.rpcURL,
+		BaseURL: n.BaseURL,
 	}
 }
 
 func (n *LocalEthereumNetwork) TearDownNetwork() {
+	log.Info("Tearing down local Ethereum network")
+
+	// Stop the Ethereum network process if it was started by us
 	if n.cmd == nil || n.cmd.Process == nil {
-		if n.ethClient != nil {
-			n.ethClient.Close()
+		if n.EthClient != nil {
+			n.EthClient.Close()
 		}
 		return
 	}
 
-	log.Info("Tearing down local Ethereum network")
 	log.Info(fmt.Sprintf("Stopping Ethereum network process (PID %d)", n.cmd.Process.Pid))
 
+	// Send interrupt signal to allow graceful shutdown
 	err := n.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
 		log.Warn(fmt.Sprintf("Failed to send interrupt signal to Ethereum network: %v", err))
 	}
 
+	// Wait for the process to exit (with timeout)
 	done := make(chan error, 1)
 	go func() {
 		done <- n.cmd.Wait()
@@ -162,7 +162,7 @@ func (n *LocalEthereumNetwork) TearDownNetwork() {
 	case <-time.After(10 * time.Second):
 		log.Warn("Ethereum network process did not exit gracefully, killing it")
 		_ = n.cmd.Process.Kill()
-		<-done
+		<-done // Wait for Wait() to complete
 	case err := <-done:
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
@@ -196,13 +196,14 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 			return nil, fmt.Errorf("timeout waiting for Ethereum network to be ready")
 		case <-ticker.C:
 			resp, err := http.Post(
-				defaultGethURL,
+				localEthereumNetworkBaseURL,
 				"application/json",
 				nil,
 			)
 			if err == nil {
 				resp.Body.Close()
-				client, err := ethclient.Dial(defaultGethURL)
+				// Successfully connected, now try to create a proper client
+				client, err := ethclient.Dial(localEthereumNetworkBaseURL)
 				if err == nil {
 					return client, nil
 				} else {
@@ -211,6 +212,7 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 			} else {
 				log.Debug("Failed to connect to Ethereum RPC endpoint, retrying in 1 second")
 			}
+			// Continue polling
 		}
 	}
 }
