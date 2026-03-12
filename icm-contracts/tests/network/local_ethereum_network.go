@@ -83,6 +83,7 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	// Use exec.Command instead of CommandContext to prevent context cancellation
 	// from sending SIGKILL before we can gracefully shutdown with SIGTERM
 	cmd := exec.Command(scriptPath)
+	// Inherit stdout/stderr for debugging
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -104,9 +105,9 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 
 	fundedKeyBytes, err := hex.DecodeString(localEthereumNetworkFundedKey)
 	Expect(err).Should(BeNil())
-	secp256k1Key, err := secp256k1.ToPrivateKey(fundedKeyBytes)
+	globalFundedKey, err := secp256k1.ToPrivateKey(fundedKeyBytes)
 	Expect(err).Should(BeNil())
-	fundedKey := secp256k1Key.ToECDSA()
+	fundedKey := globalFundedKey.ToECDSA()
 	fundedAddr := crypto.PubkeyToAddress(fundedKey.PublicKey)
 
 	return &LocalEthereumNetwork{
@@ -165,6 +166,7 @@ func (n *LocalEthereumNetwork) TearDownNetwork() {
 		<-done // Wait for Wait() to complete
 	case err := <-done:
 		if err != nil {
+			// Exit codes 130 (SIGINT) and 143 (SIGTERM) are expected when we terminate the process
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				exitCode := exitErr.ExitCode()
 				if exitCode == 130 || exitCode == 143 {
@@ -195,6 +197,7 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 		case <-ctx.Done():
 			return nil, fmt.Errorf("timeout waiting for Ethereum network to be ready")
 		case <-ticker.C:
+			// Try to connect to the RPC endpoint
 			resp, err := http.Post(
 				localEthereumNetworkBaseURL,
 				"application/json",
