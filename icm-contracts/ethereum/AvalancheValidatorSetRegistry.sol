@@ -105,7 +105,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             uint64 validatorWeight
         ) = parseValidatorSetMetadata(message, shardBytes);
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
-        require(message.sourceBlockchainID == avalancheBlockchainID, "Source chain ID mismatch");
         uint256 numValidators = validators.length;
 
         // This validator set is sharded
@@ -117,13 +116,13 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             partialSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
             partialSet.shardHashes = validatorSetMetadata.shardHashes;
             partialSet.shardsReceived = 1;
-            partialSet.partialWeight = validatorWeight;
+            partialSet.partialWeight = 0;
             partialSet.inProgress = true;
             applyPartialUpdate(
                 validatorSetMetadata.avalancheBlockchainID, validators, validatorWeight
             );
 
-            if (!isRegistered(message.sourceBlockchainID)) {
+            if (!isRegistered(avalancheBlockchainID)) {
                 _validatorSets[validatorSetMetadata.avalancheBlockchainID].avalancheBlockchainID =
                     validatorSetMetadata.avalancheBlockchainID;
                 _partialValidatorSets[avalancheBlockchainID].pChainHeight =
@@ -267,8 +266,19 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
         ValidatorSetSignature memory sig =
             ValidatorSets.parseValidatorSetSignature(message.attestation);
+        // Reconstruct the unsigned warp message bytes that were signed by validators.
+        // Layout: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
+        //         | addressedCallCodec(2) | typeID(4) | srcAddrLen(4) | innerPayloadLen(4) | rawMessage
         bytes memory signedData = abi.encodePacked(
-            message.sourceNetworkID, message.sourceBlockchainID, message.rawMessage
+            bytes2(0),
+            message.sourceNetworkID,
+            message.sourceBlockchainID,
+            uint32(message.rawMessage.length + 14),
+            bytes2(0),
+            uint32(1),
+            uint32(0),
+            uint32(message.rawMessage.length),
+            message.rawMessage
         );
         require(
             ValidatorSets.verifyValidatorSetSignature(
