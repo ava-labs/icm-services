@@ -35,7 +35,7 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
      */
     function applyShard(
         ValidatorSetShard calldata shard,
-        bytes memory shardBytes
+        bytes calldata shardBytes
     ) public override {
         bytes32 chainID = shard.avalancheBlockchainID;
         PartialValidatorSet storage currentPartialValSet = _partialValidatorSets[chainID];
@@ -58,6 +58,23 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         );
 
         // Apply Diff
+        Validator[] memory newValidators = applyDiff(chainID, diff);
+        // Update Final State
+        if (shard.shardNumber == _partialValidatorSets[chainID].shardHashes.length) {
+            currentPartialValSet.inProgress = false;
+            ValidatorSets.replaceValidators(_validatorSets[chainID].validators, newValidators);
+            _validatorSets[chainID].totalWeight = currentPartialValSet.partialWeight;
+            _validatorSets[chainID].pChainHeight = currentPartialValSet.pChainHeight;
+            _validatorSets[chainID].pChainTimestamp = currentPartialValSet.pChainTimestamp;
+            emit ValidatorSetUpdated(chainID);
+        }
+    }
+
+    function applyDiff(
+        bytes32 chainID,
+        ValidatorSetDiff memory diff
+    ) public returns (Validator[] memory) {
+        PartialValidatorSet storage currentPartialValSet = _partialValidatorSets[chainID];
         (Validator[] memory newValidators, uint64 newWeight) =
             ValidatorSets.applyValidatorSetDiff(currentPartialValSet.validators, diff);
         require(
@@ -75,16 +92,7 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         currentPartialValSet.pChainTimestamp = diff.currentTimestamp;
         applyPartialUpdate(chainID, newValidators, newWeight);
         currentPartialValSet.shardsReceived += 1;
-
-        // Update Final State
-        if (shard.shardNumber == _partialValidatorSets[chainID].shardHashes.length) {
-            currentPartialValSet.inProgress = false;
-            ValidatorSets.replaceValidators(_validatorSets[chainID].validators, newValidators);
-            _validatorSets[chainID].totalWeight = currentPartialValSet.partialWeight;
-            _validatorSets[chainID].pChainHeight = currentPartialValSet.pChainHeight;
-            _validatorSets[chainID].pChainTimestamp = currentPartialValSet.pChainTimestamp;
-            emit ValidatorSetUpdated(chainID);
-        }
+        return newValidators;
     }
 
     /**
