@@ -26,6 +26,8 @@ const (
 // DeployDiffUpdater Deploys an instance of the `DiffUpdater` contract using
 // Nick's method. Crucially, this function assumes that the initial validator
 // set size is small enough so that sharding is not required.
+//
+// Returns the shard bytes needed to initialize the first validator set
 func DeployDiffUpdater(
 	ctx context.Context,
 	testInfo testinfo.NetworkTestInfo,
@@ -34,7 +36,7 @@ func DeployDiffUpdater(
 	avalancheChainID ids.ID,
 	avalancheSubnetID ids.ID,
 	pChainClient *platformvm.Client,
-) {
+) [][]byte {
 	// Get the p-chain block height
 	pChainHeight, err := pChainClient.GetHeight(ctx)
 	Expect(err).Should(BeNil())
@@ -115,6 +117,11 @@ func DeployDiffUpdater(
 		contractAddress,
 		fundedKey,
 	)
+
+	// Return the shard bytes needed to initialize the first validator set
+	shardBytes := make([][]byte, 1)
+	shardBytes[0] = serializedDiff
+	return shardBytes
 }
 
 // SerializeValidatorSetDiff Serializes a `ValidatorSetDiff` to bytes in the same manner as the
