@@ -65,7 +65,13 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	)
 	log.Info("Started local Avalanche network", zap.Any("networkID", localAvalancheNetworkInstance.NetworkID))
 
-	localEthereumNetworkInstance = localnetwork.StartLocalEthereumNetwork(ctx)
+	if os.Getenv("GETH_RPC_URL") != "" {
+		localEthereumNetworkInstance = localnetwork.NewLocalEthereumNetworkFromURL(
+			ctx, os.Getenv("GETH_RPC_URL"),
+		)
+	} else {
+		localEthereumNetworkInstance = localnetwork.StartLocalEthereumNetwork(ctx)
+	}
 	log.Info("Started local Ethereum network", zap.Any("chainID", localEthereumNetworkInstance.ChainID))
 	log.Info("Set up ginkgo before suite")
 })

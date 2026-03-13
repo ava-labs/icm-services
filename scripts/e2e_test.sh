@@ -162,8 +162,8 @@ function stop_ethereum_network() {
 trap stop_ethereum_network EXIT
 
 for component in $(echo $components | tr ',' ' '); do
-    # Start Ethereum network for services tests
-    if [[ "$component" == "services" ]] && [ -z "$ETHEREUM_PID" ]; then
+    # Start Ethereum network for tests that need it
+    if [[ "$component" == "services" || "$component" == "ethereum-icm-verification" ]] && [ -z "$ETHEREUM_PID" ]; then
         start_ethereum_network
     fi
 
