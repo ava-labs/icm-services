@@ -264,8 +264,13 @@ library ValidatorSets {
         // Parse the pChainTimestamp`
         uint64 pChainTimestamp = uint64(bytes8(data[46:54]));
 
-        // Parse the shardHashes
-        bytes32[] memory shardHashes = abi.decode(data[54:], (bytes32[]));
+        uint32 shardCount = uint32(bytes4(data[54:58]));
+
+        bytes32[] memory shardHashes = new bytes32[](shardCount);
+        for (uint32 i = 0; i < shardCount; i++) {
+            uint256 offset = 58 + uint256(i) * 32;
+            shardHashes[i] = bytes32(data[offset:offset + 32]);
+        }
 
         return ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,
@@ -444,14 +449,18 @@ library ValidatorSets {
     ) public pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000004);
-        return abi.encodePacked(
+        bytes memory result = abi.encodePacked(
             codec,
             payloadType,
             payload.avalancheBlockchainID,
             payload.pChainHeight,
             payload.pChainTimestamp,
-            abi.encode(payload.shardHashes)
+            uint32(payload.shardHashes.length)
         );
+        for (uint256 i = 0; i < payload.shardHashes.length; i++) {
+            result = abi.encodePacked(result, payload.shardHashes[i]);
+        }
+        return result;
     }
 
     /*
@@ -577,8 +586,8 @@ library ValidatorSets {
     }
 
     /*
-     * @dev Traverse the bits in signers from left to right, using it as bitvector to determine
-     * which validators to select from the provided list.
+     * @dev The signers bitset is encoded as Go's big.Int.Bytes() (big-endian).
+     * Bit i of the big.Int corresponds to bit (i%8) of byte signers[signers.length-1 - i/8].
      * @return The aggregate public key and stake weight of the filtered validators
      */
     function filterValidators(
@@ -591,14 +600,14 @@ library ValidatorSets {
             revert("Cannot validate against an empty list of validators");
         }
 
-        uint256 byteIndex = 0;
-        uint8 bitMask = 1 << 7;
-        uint8 currentByte = uint8(signers[byteIndex]);
-
-        // we traverse the validator set from left to right
         for (uint256 i = 0; i < validators.length; i++) {
-            // check if the bit is set
-            if (currentByte & bitMask == bitMask) {
+            uint256 byteOffset = i / 8;
+            if (byteOffset >= signers.length) {
+                break;
+            }
+            uint256 byteIdx = signers.length - 1 - byteOffset;
+            uint8 bitPos = uint8(i % 8);
+            if (uint8(signers[byteIdx]) & (uint8(1) << bitPos) != 0) {
                 Validator memory validator = validators[i];
                 if (aggregateWeight > 0) {
                     aggregatePublicKey = BLST.addG1(aggregatePublicKey, validator.blsPublicKey);
@@ -606,14 +615,6 @@ library ValidatorSets {
                     aggregatePublicKey = validator.blsPublicKey;
                 }
                 aggregateWeight += validator.weight;
-            }
-
-            // shift one bit to the right
-            bitMask = bitMask >> 1;
-            if (bitMask == 0) {
-                byteIndex += 1;
-                currentByte = uint8(signers[byteIndex]);
-                bitMask = 1 << 7;
             }
         }
         return (aggregatePublicKey, aggregateWeight);
