@@ -55,14 +55,6 @@ type ChainTeleporterInfo struct {
 
 type TeleporterTestInfo map[ids.ID]*ChainTeleporterInfo
 
-func NewTeleporterTestInfo(l1s []testinfo.L1TestInfo) TeleporterTestInfo {
-	t := make(TeleporterTestInfo)
-	for _, l1 := range l1s {
-		t[l1.BlockchainID] = &ChainTeleporterInfo{}
-	}
-	return t
-}
-
 func (t TeleporterTestInfo) StringifyRegistryAddresses() map[string]string {
 	registryAddresseses := make(map[string]string)
 	for l1, teleporterInfo := range t {
