@@ -67,6 +67,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	localEthereumNetworkInstance = localnetwork.StartLocalEthereumNetwork(ctx)
 	log.Info("Started local Ethereum network", zap.Any("chainID", localEthereumNetworkInstance.ChainID))
+
 	log.Info("Set up ginkgo before suite")
 })
 
@@ -87,6 +88,15 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				localAvalancheNetworkInstance,
 				localEthereumNetworkInstance,
 				ecdsaVerifierByteCodeFile,
+			)
+		})
+	ginkgo.It("Test AvalancheValidatorSetRegistry",
+		ginkgo.Label(ethereumICMVerificationLabel),
+		func(ctx context.Context) {
+			ethereumIcmVerification.AvalancheValidatorSetRegistry(
+				ctx,
+				localAvalancheNetworkInstance,
+				localEthereumNetworkInstance,
 			)
 		})
 })
