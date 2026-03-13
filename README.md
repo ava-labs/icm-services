@@ -17,7 +17,7 @@ Currently implemented applications are
 > The `avalanchego` dependency used by both the relayer and signature aggregator applications must be kept up to date with the minimum required `avalanchego` version on a given network.
 
 Applications in this repository depend on the following upstream repositories, both directly in terms of code imports defined in the `go.mod` file as well as indirectly for E2E tests where binary versions are used to spin up the test network via `tmpnet`:
-
+ 
 1. [avalanchego](https://github.com/ava-labs/avalanchego/)
 2. [subnet-evm](https://github.com/ava-labs/subnet-evm)
 
