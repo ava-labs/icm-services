@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
 	"time"
 
 	"github.com/ava-labs/avalanchego/api/info"

@@ -16,9 +16,9 @@ import {
 
 contract ValidatorSetsTest is Test {
     function testFilterValidators() public view {
-        // 0100_1000_0110_0000_1000_0000 in hex. This corresponds to validators
-        // 2, 5, 10, 11, and 17
-        bytes memory signers = hex"486080";
+        // big.Int with bits 1,4,9,10,16 set = 0x010612. This corresponds to
+        // validators at indices 1,4,9,10,16 (0-indexed) with weights 2,5,10,11,17
+        bytes memory signers = hex"010612";
         (Validator[] memory validators,) = _createValidatorSet(20);
         (bytes memory aggregateKey, uint64 aggregateWeight) =
             ValidatorSets.filterValidators(signers, validators);
@@ -46,9 +46,9 @@ contract ValidatorSetsTest is Test {
             pChainHeight: uint64(0),
             pChainTimestamp: uint64(0)
         });
-        // 0000_0111_1100_0000 in hex. This corresponds to validators
-        // 6, 7, 8, 9, and  10. This is a quorum (weight 40 out of 55)
-        bytes memory signers = hex"07C0";
+        // big.Int with bits 5,6,7,8,9 set = 0x03E0. This corresponds to
+        // validators at indices 5-9 (0-indexed) with weights 6-10 (quorum: 40/55)
+        bytes memory signers = hex"03E0";
         uint256[] memory secretKeys = new uint256[](5);
         for (uint256 i = 6; i <= 10; i++) {
             secretKeys[i - 6] = i;
@@ -74,9 +74,9 @@ contract ValidatorSetsTest is Test {
             pChainHeight: uint64(0),
             pChainTimestamp: uint64(0)
         });
-        // 1111_1000_0000_0000 in hex. This corresponds to validators
-        // 1, 2, 3, 4, and  5. This is not a quorum (weight 15 out of 55)
-        bytes memory signers = hex"F800";
+        // big.Int with bits 0,1,2,3,4 set = 0x1F. This corresponds to
+        // validators at indices 0-4 (0-indexed) with weights 1-5 (not a quorum: 15/55)
+        bytes memory signers = hex"1F";
         uint256[] memory secretKeys = new uint256[](5);
         for (uint256 i = 1; i <= 5; i++) {
             secretKeys[i - 1] = i;
@@ -102,10 +102,10 @@ contract ValidatorSetsTest is Test {
             pChainHeight: uint64(0),
             pChainTimestamp: uint64(0)
         });
-        // 0000_0111_1100_0000 in hex. This corresponds to validators
-        // 6, 7, 8, 9, and  10. This is a quorum (weight 40 out of 55)
+        // big.Int with bits 5,6,7,8,9 set = 0x03E0. This corresponds to
+        // validators at indices 5-9 (0-indexed) with weights 6-10 (quorum: 40/55).
         // But this is not the set that signs the message.
-        bytes memory signers = hex"07C0";
+        bytes memory signers = hex"03E0";
         uint256[] memory secretKeys = new uint256[](5);
         for (uint256 i = 1; i <= 5; i++) {
             secretKeys[i - 1] = i;

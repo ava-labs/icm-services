@@ -60,26 +60,26 @@ icm-relayer --help                                      Display icm-relayer usag
 
 // Top-level configuration
 type Config struct {
-	LogLevel                        string                   `mapstructure:"log-level" json:"log-level"`
-	StorageLocation                 string                   `mapstructure:"storage-location" json:"storage-location"`
-	RedisURL                        string                   `mapstructure:"redis-url" json:"redis-url" sensitive:"true"`
-	APIPort                         uint16                   `mapstructure:"api-port" json:"api-port"`
-	MetricsPort                     uint16                   `mapstructure:"metrics-port" json:"metrics-port"`
-	DBWriteIntervalSeconds          uint64                   `mapstructure:"db-write-interval-seconds" json:"db-write-interval-seconds"` //nolint:lll
-	PChainAPI                       *basecfg.APIConfig       `mapstructure:"p-chain-api" json:"p-chain-api"`
-	InfoAPI                         *basecfg.APIConfig       `mapstructure:"info-api" json:"info-api"`
-	SourceBlockchains               []*SourceBlockchain      `mapstructure:"source-blockchains" json:"source-blockchains"`           //nolint:lll
-	DestinationBlockchains          []*DestinationBlockchain `mapstructure:"destination-blockchains" json:"destination-blockchains"` //nolint:lll
-	ProcessMissedBlocks             bool                     `mapstructure:"process-missed-blocks" json:"process-missed-blocks"`     //nolint:lll
-	DeciderURL                      string                   `mapstructure:"decider-url" json:"decider-url"`
-	SignatureCacheSize              uint64                   `mapstructure:"signature-cache-size" json:"signature-cache-size"`     //nolint:lll
-	ManuallyTrackedPeers            []*basecfg.PeerConfig    `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"` //nolint:lll
-	AllowPrivateIPs                 bool                     `mapstructure:"allow-private-ips" json:"allow-private-ips"`
-	TLSCertPath                     string                   `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"` //nolint:lll
-	TLSKeyPath                      string                   `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
-	InitialConnectionTimeoutSeconds uint64                   `mapstructure:"initial-connection-timeout-seconds" json:"initial-connection-timeout-seconds,omitempty"` // nolint:lll
-	MaxConcurrentMessages           uint64                       `mapstructure:"max-concurrent-messages" json:"max-concurrent-messages,omitempty"`                       //nolint:lll
-	ExternalEVMDestinations         []*ExternalEVMDestination    `mapstructure:"external-evm-destinations" json:"external-evm-destinations,omitempty"`                   //nolint:lll
+	LogLevel                        string                    `mapstructure:"log-level" json:"log-level"`
+	StorageLocation                 string                    `mapstructure:"storage-location" json:"storage-location"`
+	RedisURL                        string                    `mapstructure:"redis-url" json:"redis-url" sensitive:"true"`
+	APIPort                         uint16                    `mapstructure:"api-port" json:"api-port"`
+	MetricsPort                     uint16                    `mapstructure:"metrics-port" json:"metrics-port"`
+	DBWriteIntervalSeconds          uint64                    `mapstructure:"db-write-interval-seconds" json:"db-write-interval-seconds"` //nolint:lll
+	PChainAPI                       *basecfg.APIConfig        `mapstructure:"p-chain-api" json:"p-chain-api"`
+	InfoAPI                         *basecfg.APIConfig        `mapstructure:"info-api" json:"info-api"`
+	SourceBlockchains               []*SourceBlockchain       `mapstructure:"source-blockchains" json:"source-blockchains"`           //nolint:lll
+	DestinationBlockchains          []*DestinationBlockchain  `mapstructure:"destination-blockchains" json:"destination-blockchains"` //nolint:lll
+	ProcessMissedBlocks             bool                      `mapstructure:"process-missed-blocks" json:"process-missed-blocks"`     //nolint:lll
+	DeciderURL                      string                    `mapstructure:"decider-url" json:"decider-url"`
+	SignatureCacheSize              uint64                    `mapstructure:"signature-cache-size" json:"signature-cache-size"`     //nolint:lll
+	ManuallyTrackedPeers            []*basecfg.PeerConfig     `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"` //nolint:lll
+	AllowPrivateIPs                 bool                      `mapstructure:"allow-private-ips" json:"allow-private-ips"`
+	TLSCertPath                     string                    `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"` //nolint:lll
+	TLSKeyPath                      string                    `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
+	InitialConnectionTimeoutSeconds uint64                    `mapstructure:"initial-connection-timeout-seconds" json:"initial-connection-timeout-seconds,omitempty"` // nolint:lll
+	MaxConcurrentMessages           uint64                    `mapstructure:"max-concurrent-messages" json:"max-concurrent-messages,omitempty"`                       //nolint:lll
+	ExternalEVMDestinations         []*ExternalEVMDestination `mapstructure:"external-evm-destinations" json:"external-evm-destinations,omitempty"`                   //nolint:lll
 
 	// convenience field to fetch a blockchain's subnet ID
 	tlsCert                *tls.Certificate

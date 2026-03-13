@@ -259,7 +259,7 @@ library ValidatorSets {
         uint64 pChainTimestamp = uint64(bytes8(data[46:54]));
 
         uint32 shardCount = uint32(bytes4(data[54:58]));
-        
+
         bytes32[] memory shardHashes = new bytes32[](shardCount);
         for (uint32 i = 0; i < shardCount; i++) {
             uint256 offset = 58 + uint256(i) * 32;
@@ -443,14 +443,18 @@ library ValidatorSets {
     ) public pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000004);
-        return abi.encodePacked(
+        bytes memory result = abi.encodePacked(
             codec,
             payloadType,
             payload.avalancheBlockchainID,
             payload.pChainHeight,
             payload.pChainTimestamp,
-            abi.encode(payload.shardHashes)
+            uint32(payload.shardHashes.length)
         );
+        for (uint256 i = 0; i < payload.shardHashes.length; i++) {
+            result = abi.encodePacked(result, payload.shardHashes[i]);
+        }
+        return result;
     }
 
     /*
