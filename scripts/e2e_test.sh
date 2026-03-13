@@ -127,13 +127,52 @@ forge build --skip test
 FOUNDRY_PROFILE=common forge build --skip test
 FOUNDRY_PROFILE=ethereum forge build --skip test
 
+# Start Ethereum network if running services tests
+ETHEREUM_PID=
+function start_ethereum_network() {
+    echo "Starting local Ethereum network..."
+    "${REPO_PATH}/ethereum/docker/run_ethereum_network.sh" > /dev/null 2>&1 &
+    ETHEREUM_PID=$!
+
+    # Wait for Ethereum network to be ready
+    echo "Waiting for Ethereum network to be ready..."
+    for i in {1..30}; do
+        if curl -s -X POST -H "Content-Type: application/json" \
+            --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+            http://127.0.0.1:5050 > /dev/null 2>&1; then
+            echo "Ethereum network is ready"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "Failed to start Ethereum network"
+    return 1
+}
+
+function stop_ethereum_network() {
+    if [ -n "$ETHEREUM_PID" ]; then
+        echo "Stopping Ethereum network (PID: $ETHEREUM_PID)..."
+        kill $ETHEREUM_PID 2>/dev/null || true
+        wait $ETHEREUM_PID 2>/dev/null || true
+        ETHEREUM_PID=
+    fi
+}
+
+# Cleanup on exit
+trap stop_ethereum_network EXIT
+
 for component in $(echo $components | tr ',' ' '); do
+    # Start Ethereum network for tests that need it
+    if [[ "$component" == "services" || "$component" == "ethereum-icm-verification" ]] && [ -z "$ETHEREUM_PID" ]; then
+        start_ethereum_network
+    fi
+
     echo "Building e2e tests for $component"
     go run github.com/onsi/ginkgo/v2/ginkgo build ${REPO_PATH}/icm-contracts/tests/suites/$component
 
     echo "Running e2e tests for $component"
 
-    RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${REPO_PATH}/build/signature-aggregator ./icm-contracts/tests/suites/$component/$component.test \
+    RUN_E2E=true LOG_LEVEL=${LOG_LEVEL} SIG_AGG_PATH=${REPO_PATH}/build/signature-aggregator GETH_RPC_URL=http://127.0.0.1:5050 ./icm-contracts/tests/suites/$component/$component.test \
     --root-network-dir=${root_dir} \
     --reuse-network=${reuse_network} \
     --network-dir=${network_dir} \
