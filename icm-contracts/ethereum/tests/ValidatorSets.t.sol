@@ -165,7 +165,6 @@ contract ValidatorSetsTest is Test {
         assertEq(valsetDiff.currentTimestamp, deserialized.currentTimestamp);
         assertEq(valsetDiff.currentValidatorSetHash, deserialized.currentValidatorSetHash);
         for (uint256 i; i < numChanges; i++) {
-            assertEq(valsetDiff.changes[i].nodeID, deserialized.changes[i].nodeID);
             assertEq(valsetDiff.changes[i].blsPublicKey, deserialized.changes[i].blsPublicKey);
             assertEq(valsetDiff.changes[i].weight, deserialized.changes[i].weight);
         }
@@ -176,21 +175,13 @@ contract ValidatorSetsTest is Test {
     /*
      * @dev Test to make sure a round trip of serialization is a no-op
      */
-    function testRoundTripValidatorChange(
-        bytes20 nodeID,
-        uint64 weight,
-        uint256 secretKey
-    ) public view {
-        ValidatorChange memory valChange = ValidatorChange({
-            nodeID: nodeID,
-            blsPublicKey: BLST.getPublicKeyFromSecret(secretKey),
-            weight: weight
-        });
+    function testRoundTripValidatorChange(uint64 weight, uint256 secretKey) public view {
+        ValidatorChange memory valChange =
+            ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(secretKey), weight: weight});
         bytes memory serialized = ValidatorSets.serializeValidatorChange(valChange);
         /* solhint-disable-next-line no-unused-vars */
         (ValidatorChange memory deserialized, uint256 offset) =
             ValidatorSets.parseValidatorChange(serialized, 0);
-        assertEq(valChange.nodeID, deserialized.nodeID);
         assertEq(valChange.blsPublicKey, deserialized.blsPublicKey);
         assertEq(valChange.weight, deserialized.weight);
     }
@@ -308,18 +299,9 @@ contract ValidatorSetsTest is Test {
     function _createValidatorChange(
         uint256 i
     ) private view returns (bool, ValidatorChange memory) {
-        bytes20 nodeID;
-        /* solhint-disable-next-line no-inline-assembly */
-        assembly {
-            mstore(nodeID, i)
-        }
         return (
             i % 2 != 0,
-            ValidatorChange({
-                nodeID: nodeID,
-                blsPublicKey: BLST.getPublicKeyFromSecret(i),
-                weight: uint64(i % 2)
-            })
+            ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(i), weight: uint64(i % 2)})
         );
     }
 

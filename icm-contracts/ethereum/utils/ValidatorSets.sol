@@ -68,7 +68,6 @@ struct ValidatorSetSignature {
 
 // ValidatorChange represents a single validator addition, removal, or modification
 struct ValidatorChange {
-    bytes20 nodeID; // 20 bytes
     bytes blsPublicKey; // 96 bytes uncompressed
     uint64 weight; // Weight at current height (0 for removals)
 }
@@ -345,14 +344,12 @@ library ValidatorSets {
         bytes calldata data,
         uint256 offset
     ) public pure returns (ValidatorChange memory change, uint256 newOffset) {
-        bytes20 nodeID = bytes20(data[offset:offset + 20]);
-        offset += 20;
         bytes memory unformattedPublicKey = data[offset:offset + 96];
         bytes memory blsPublicKey = BLST.padUncompressedBLSPublicKey(unformattedPublicKey);
         offset += 96;
         uint64 weight = uint64(bytes8(data[offset:offset + 8]));
         offset += 8;
-        change = ValidatorChange({nodeID: nodeID, blsPublicKey: blsPublicKey, weight: weight});
+        change = ValidatorChange({blsPublicKey: blsPublicKey, weight: weight});
         return (change, offset);
     }
 
@@ -486,9 +483,8 @@ library ValidatorSets {
     function serializeValidatorChange(
         ValidatorChange memory change
     ) public pure returns (bytes memory) {
-        return abi.encodePacked(
-            change.nodeID, BLST.unPadUncompressedBlsPublicKey(change.blsPublicKey), change.weight
-        );
+        return
+            abi.encodePacked(BLST.unPadUncompressedBlsPublicKey(change.blsPublicKey), change.weight);
     }
 
     /*
