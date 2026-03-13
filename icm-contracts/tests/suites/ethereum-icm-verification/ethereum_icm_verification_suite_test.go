@@ -97,4 +97,13 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				teleporterInfo,
 			)
 		})
+	ginkgo.It("Test AvalancheValidatorSetRegistry",
+		ginkgo.Label(ethereumICMVerificationLabel),
+		func(ctx context.Context) {
+			ethereumIcmVerification.AvalancheValidatorSetRegistry(
+				ctx,
+				localAvalancheNetworkInstance,
+				localEthereumNetworkInstance,
+			)
+		})
 })
