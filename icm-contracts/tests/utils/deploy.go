@@ -24,7 +24,7 @@ func DeployWithNicksMethod(
 	fundedKey *ecdsa.PrivateKey,
 ) {
 	// Fund the deployer address
-	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(11)) // 11 native token
+	fundAmount := big.NewInt(0).Mul(big.NewInt(1e18), big.NewInt(50)) // 50 native token
 	evmInfo := testInfo.GetEVMTestInfo()
 	fundDeployerTx := CreateNativeTransferTransaction(
 		ctx, evmInfo, fundedKey, deployerAddress, fundAmount,

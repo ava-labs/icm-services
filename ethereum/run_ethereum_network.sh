@@ -78,8 +78,8 @@ geth --dev \
     --http.vhosts "*" \
     --http.corsdomain "*" \
     --datadir "$data_dir" \
-    --http.api "eth,net,web3,personal" \
-    --rpc.txfeecap 20 \
+    --http.api "eth,net,web3,debug" \
+    --rpc.txfeecap 50 \
     --rpc.allow-unprotected-txs \
     --dev.period 1 &
 node_pid=$!

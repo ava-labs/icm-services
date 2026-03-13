@@ -471,6 +471,7 @@ func DeployWarpAdapterContract(
 		byteCode,
 		nil,
 		deploymentUtils.GetDefaultContractCreationGasPrice(),
+		nil,
 	)
 	Expect(err).Should(BeNil())
 
@@ -506,6 +507,7 @@ func DeployTeleporterV2(
 		byteCode,
 		nil,
 		deploymentUtils.GetDefaultContractCreationGasPrice(),
+		nil,
 	)
 	Expect(err).Should(BeNil())
 
@@ -538,6 +540,7 @@ func DeployNewTeleporterVersion(
 		byteCode,
 		nil,
 		contractCreationGasPrice,
+		nil,
 	)
 	Expect(err).Should(BeNil())
 
