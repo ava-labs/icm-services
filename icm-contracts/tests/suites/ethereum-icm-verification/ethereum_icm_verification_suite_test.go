@@ -10,6 +10,7 @@ import (
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	ethereumIcmVerification "github.com/ava-labs/icm-services/icm-contracts/tests/flows/ethereum_icm_verification"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,6 +26,7 @@ const (
 var (
 	localAvalancheNetworkInstance *localnetwork.LocalAvalancheNetwork
 	localEthereumNetworkInstance  *localnetwork.LocalEthereumNetwork
+	teleporterInfo                utils.TeleporterTestInfo
 	e2eFlags                      *e2e.FlagVars
 )
 
@@ -71,6 +73,11 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}
 	localEthereumNetworkInstance = localnetwork.NewLocalEthereumNetworkFromURL(ctx, gethRPCURL)
 	log.Info("Started local Ethereum network", zap.Any("chainID", localEthereumNetworkInstance.ChainID))
+
+	teleporterInfo = localnetwork.NewTeleporterTestInfo(
+		localAvalancheNetworkInstance,
+		localEthereumNetworkInstance,
+	)
 	log.Info("Set up ginkgo before suite")
 })
 
@@ -91,6 +98,7 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				localAvalancheNetworkInstance,
 				localEthereumNetworkInstance,
 				ecdsaVerifierByteCodeFile,
+				teleporterInfo,
 			)
 		})
 })
