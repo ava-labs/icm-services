@@ -61,7 +61,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				NodeCount:  1,
 			},
 		},
-		1,
+		4,
 		1,
 		e2eFlags,
 	)
