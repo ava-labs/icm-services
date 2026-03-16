@@ -16,6 +16,7 @@ import (
 	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
+	"github.com/ava-labs/libevm/common"
 	. "github.com/onsi/gomega"
 )
 
@@ -36,7 +37,7 @@ func DeployDiffUpdater(
 	avalancheChainID ids.ID,
 	avalancheSubnetID ids.ID,
 	pChainClient *platformvm.Client,
-) [][]byte {
+) (common.Address, [][]byte) {
 	// Get the p-chain block height
 	pChainHeight, err := pChainClient.GetHeight(ctx)
 	Expect(err).Should(BeNil())
@@ -65,14 +66,15 @@ func DeployDiffUpdater(
 
 	// Create the initial validator set diff
 	initialDiff := diffupdater.ValidatorSetDiff{
-		AvalancheBlockchainID: avalancheChainID,
-		PreviousHeight:        0,
-		PreviousTimestamp:     0,
-		CurrentHeight:         pChainHeight,
-		CurrentTimestamp:      uint64(banffBlock.Timestamp().Unix()),
-		Changes:               changes,
-		NumAdded:              uint32(len(canonicalValidatorSet.Validators)),
-		NewSize:               big.NewInt(int64(len(canonicalValidatorSet.Validators))),
+		AvalancheBlockchainID:   avalancheChainID,
+		PreviousHeight:          0,
+		PreviousTimestamp:       0,
+		CurrentHeight:           pChainHeight,
+		CurrentTimestamp:        uint64(banffBlock.Timestamp().Unix()),
+		Changes:                 changes,
+		NumAdded:                uint32(len(canonicalValidatorSet.Validators)),
+		NewSize:                 big.NewInt(int64(len(canonicalValidatorSet.Validators))),
+		CurrentValidatorSetHash: InitialValidatorSetHash(changes),
 	}
 	serializedDiff := SerializeValidatorSetDiff(&initialDiff)
 	shardHashes := make([][32]byte, 1)
@@ -81,8 +83,8 @@ func DeployDiffUpdater(
 	// Create the metadata used to initialize the `DiffUpdater` contract
 	initialValidatorSetData := diffupdater.ValidatorSetMetadata{
 		AvalancheBlockchainID: avalancheChainID,
-		PChainHeight:          pChainHeight,
-		PChainTimestamp:       uint64(banffBlock.Timestamp().Unix()),
+		PChainHeight:          0,
+		PChainTimestamp:       0,
 		ShardHashes:           shardHashes,
 	}
 
@@ -121,7 +123,29 @@ func DeployDiffUpdater(
 	// Return the shard bytes needed to initialize the first validator set
 	shardBytes := make([][]byte, 1)
 	shardBytes[0] = serializedDiff
-	return shardBytes
+	return contractAddress, shardBytes
+}
+
+// InitialValidatorSetHash Calculates the hash of the initial validator set being registered.
+func InitialValidatorSetHash(
+	changes []diffupdater.ValidatorChange,
+) [32]byte {
+	codec := []byte{0x00, 0x00}
+	numValidators := make([]byte, 4)
+	binary.BigEndian.PutUint32(numValidators, uint32(len(changes)))
+	data := bytes.Join([][]byte{codec, numValidators}, nil)
+
+	// Serialize each validator change
+	for _, change := range changes {
+		// Append the 96-byte uncompressed BLS public key
+		data = append(data, change.BlsPublicKey...)
+
+		// Append the 8-byte weight
+		weightBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(weightBytes, change.Weight)
+		data = append(data, weightBytes...)
+	}
+	return sha256.Sum256(data)
 }
 
 // SerializeValidatorSetDiff Serializes a `ValidatorSetDiff` to bytes in the same manner as the
