@@ -100,7 +100,8 @@ contract ExecutionTest is Test {
 
     /// @notice Changing config values should break verification.
     function testVerifyConfigMutation() public {
-        (Execution.Proof memory proof, bytes32 beaconBlockRoot) = _buildFullProof(bytes32(uint256(0xcafe)), 0, 1);
+        (Execution.Proof memory proof, bytes32 beaconBlockRoot) =
+            _buildFullProof(bytes32(uint256(0xcafe)), 0, 1);
 
         // Changing gIndexBlockStateRoot breaks anchor check
         Execution.BeaconConfig memory c1 = _defaultConfig;
@@ -118,7 +119,8 @@ contract ExecutionTest is Test {
 
         // Shrink the valid historical slots vector
         _harness.setConfig(_defaultConfig);
-        (Execution.Proof memory farProof, bytes32 farRoot) = _buildFullProof(bytes32(uint256(0xcafe)), 1000, 1000 + 5000);
+        (Execution.Proof memory farProof, bytes32 farRoot) =
+            _buildFullProof(bytes32(uint256(0xcafe)), 1000, 1000 + 5000);
         // Verify it passes with default config
         _harness.verify(farRoot, farProof);
         // Now shrink the vector and the verification should fail
@@ -234,7 +236,8 @@ contract ExecutionTest is Test {
         uint64 targetSlot
     ) internal view returns (uint256) {
         uint256 vectorIndex = uint256(targetSlot) % _harness.getConfig().stateRootsVectorSize;
-        return (_harness.getConfig().gIndexBaseStateRoots << _harness.getConfig().stateRootsDepth) + vectorIndex;
+        return (_harness.getConfig().gIndexBaseStateRoots << _harness.getConfig().stateRootsDepth)
+            + vectorIndex;
     }
 
     function _buildProof(
