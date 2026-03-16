@@ -25,8 +25,8 @@ func SendSpecificReceipts(
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
-	l1ATeleporterMessenger := teleporter.TeleporterMessenger(l1AInfo)
-	l1BTeleporterMessenger := teleporter.TeleporterMessenger(l1BInfo)
+	l1ATeleporterMessenger := teleporter.TeleporterMessenger(&l1AInfo)
+	l1BTeleporterMessenger := teleporter.TeleporterMessenger(&l1BInfo)
 	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	_, fundedKey := network.GetFundedAccountInfo()
 
@@ -290,7 +290,7 @@ func checkExpectedRewardAmounts(
 	// it should be able to redeem {feePerMessage}*2. Otherwise,
 	// each distinct reward redeemer should be able to redeem {feePerMessage}.
 	if receiveEvent1.RewardRedeemer == receiveEvent2.RewardRedeemer {
-		amount, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
+		amount, err := teleporter.TeleporterMessenger(&sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent1.RewardRedeemer,
 			tokenAddress,
@@ -298,14 +298,14 @@ func checkExpectedRewardAmounts(
 		Expect(err).Should(BeNil())
 		Expect(amount).Should(Equal(new(big.Int).Mul(feePerMessage, big.NewInt(2))))
 	} else {
-		amount1, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
+		amount1, err := teleporter.TeleporterMessenger(&sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent1.RewardRedeemer,
 			tokenAddress,
 		)
 		Expect(err).Should(BeNil())
 		Expect(amount1).Should(Equal(feePerMessage))
-		amount2, err := teleporter.TeleporterMessenger(sourceL1).CheckRelayerRewardAmount(
+		amount2, err := teleporter.TeleporterMessenger(&sourceL1).CheckRelayerRewardAmount(
 			&bind.CallOpts{},
 			receiveEvent2.RewardRedeemer,
 			tokenAddress,

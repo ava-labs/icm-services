@@ -47,7 +47,7 @@ func UnallowedRelayer(
 		zap.Stringer("destinationBlockchainID", l1BInfo.BlockchainID),
 	)
 	receipt, teleporterMessageID := utils.SendCrossChainMessageAndWaitForAcceptance(
-		ctx, teleporter.TeleporterMessenger(l1AInfo), l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey,
+		ctx, teleporter.TeleporterMessenger(&l1AInfo), l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey,
 	)
 
 	aggregator := network.GetSignatureAggregator()
@@ -70,7 +70,7 @@ func UnallowedRelayer(
 	//
 	// Check Teleporter message was not received on the destination
 	//
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 		&bind.CallOpts{}, teleporterMessageID,
 	)
 	Expect(err).Should(BeNil())

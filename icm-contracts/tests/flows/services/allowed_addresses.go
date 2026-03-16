@@ -236,7 +236,7 @@ func AllowedAddresses(
 		allowedAddresses[generalAllowedAddressIdx],
 	)
 	Consistently(func() bool {
-		delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+		delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 			&bind.CallOpts{}, id,
 		)
 		Expect(err).Should(BeNil())
@@ -286,7 +286,7 @@ func AllowedAddresses(
 		allowedAddresses[generalAllowedAddressIdx], // not allowed
 	)
 	Consistently(func() bool {
-		delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+		delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 			&bind.CallOpts{}, id,
 		)
 		Expect(err).Should(BeNil())
@@ -335,7 +335,7 @@ func AllowedAddresses(
 		allowedAddresses[generalAllowedAddressIdx],
 	)
 	Consistently(func() bool {
-		delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+		delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 			&bind.CallOpts{}, id,
 		)
 		Expect(err).Should(BeNil())
