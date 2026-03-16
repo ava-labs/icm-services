@@ -708,7 +708,12 @@ func SetupProposerVM(ctx context.Context, fundedKey *ecdsa.PrivateKey, network *
 	Expect(err).Should(BeNil())
 	uri := HttpToWebsocketURI(node.URI, chainID.String())
 
-	client, err := ethclient.Dial(uri)
+	var client *ethclient.Client
+	Eventually(func() error {
+		var err error
+		client, err = ethclient.Dial(uri)
+		return err
+	}, 30*time.Second, 1*time.Second).Should(Succeed(), "Failed to dial websocket client")
 	Expect(err).Should(BeNil())
 	chainIDInt, err := client.ChainID(ctx)
 	Expect(err).Should(BeNil())

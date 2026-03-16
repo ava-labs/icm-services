@@ -16,7 +16,53 @@ import {
     ValidatorSetShard
 } from "../utils/ValidatorSets.sol";
 
+contract ValidatorSetsTestHarness {
+    function parseValidatorSetDiff(
+        bytes calldata data,
+        uint256 currentValidatorCount
+    ) public pure returns (ValidatorSetDiff memory) {
+        return ValidatorSets.parseValidatorSetDiff(data, currentValidatorCount);
+    }
+
+    function parseValidatorChange(
+        bytes calldata data,
+        uint256 offset
+    ) public pure returns (ValidatorChange memory, uint256) {
+        return ValidatorSets.parseValidatorChange(data, offset);
+    }
+
+    function parseValidators(
+        bytes calldata data
+    ) public pure returns (Validator[] memory, uint64) {
+        return ValidatorSets.parseValidators(data);
+    }
+
+    function parseValidatorSetMetadata(
+        bytes calldata data
+    ) public pure returns (ValidatorSetMetadata memory) {
+        return ValidatorSets.parseValidatorSetMetadata(data);
+    }
+
+    function parseValidatorSetSignature(
+        bytes calldata signatureBytes
+    ) public pure returns (ValidatorSetSignature memory) {
+        return ValidatorSets.parseValidatorSetSignature(signatureBytes);
+    }
+
+    function parseValidatorSetShard(
+        bytes calldata shardBytes
+    ) public pure returns (ValidatorSetShard memory) {
+        return ValidatorSets.parseValidatorSetShard(shardBytes);
+    }
+}
+
 contract ValidatorSetsTest is Test {
+    ValidatorSetsTestHarness private _harness;
+
+    function setUp() public {
+        _harness = new ValidatorSetsTestHarness();
+    }
+
     function testFilterValidators() public view {
         // 0100_1000_0110_0000_1000_0000 in hex. This corresponds to validators
         // 2, 5, 10, 11, and 17
@@ -157,7 +203,7 @@ contract ValidatorSetsTest is Test {
             newSize: numAdded - numRemoved
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetDiff(valsetDiff);
-        ValidatorSetDiff memory deserialized = ValidatorSets.parseValidatorSetDiff(serialized, 0);
+        ValidatorSetDiff memory deserialized = _harness.parseValidatorSetDiff(serialized, 0);
         assertEq(valsetDiff.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(valsetDiff.previousHeight, deserialized.previousHeight);
         assertEq(valsetDiff.previousTimestamp, deserialized.previousTimestamp);
@@ -165,7 +211,6 @@ contract ValidatorSetsTest is Test {
         assertEq(valsetDiff.currentTimestamp, deserialized.currentTimestamp);
         assertEq(valsetDiff.currentValidatorSetHash, deserialized.currentValidatorSetHash);
         for (uint256 i; i < numChanges; i++) {
-            assertEq(valsetDiff.changes[i].nodeID, deserialized.changes[i].nodeID);
             assertEq(valsetDiff.changes[i].blsPublicKey, deserialized.changes[i].blsPublicKey);
             assertEq(valsetDiff.changes[i].weight, deserialized.changes[i].weight);
         }
@@ -176,21 +221,13 @@ contract ValidatorSetsTest is Test {
     /*
      * @dev Test to make sure a round trip of serialization is a no-op
      */
-    function testRoundTripValidatorChange(
-        bytes20 nodeID,
-        uint64 weight,
-        uint256 secretKey
-    ) public view {
-        ValidatorChange memory valChange = ValidatorChange({
-            nodeID: nodeID,
-            blsPublicKey: BLST.getPublicKeyFromSecret(secretKey),
-            weight: weight
-        });
+    function testRoundTripValidatorChange(uint64 weight, uint256 secretKey) public view {
+        ValidatorChange memory valChange =
+            ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(secretKey), weight: weight});
         bytes memory serialized = ValidatorSets.serializeValidatorChange(valChange);
         /* solhint-disable-next-line no-unused-vars */
         (ValidatorChange memory deserialized, uint256 offset) =
-            ValidatorSets.parseValidatorChange(serialized, 0);
-        assertEq(valChange.nodeID, deserialized.nodeID);
+            _harness.parseValidatorChange(serialized, 0);
         assertEq(valChange.blsPublicKey, deserialized.blsPublicKey);
         assertEq(valChange.weight, deserialized.weight);
     }
@@ -200,7 +237,7 @@ contract ValidatorSetsTest is Test {
      */
     function testRoundTripValidatorSet(
         uint256 numValidators
-    ) public pure {
+    ) public view {
         vm.assume(numValidators < 10);
         uint64 totalWeight = 0;
         Validator[] memory validators = new Validator[](numValidators);
@@ -214,7 +251,7 @@ contract ValidatorSetsTest is Test {
         }
         bytes memory serialized = ValidatorSets.serializeValidators(validators);
         (Validator[] memory deserialized, uint64 deserializedTotalWeight) =
-            ValidatorSets.parseValidators(serialized);
+            _harness.parseValidators(serialized);
         assertEq(totalWeight, deserializedTotalWeight);
         assertEq(deserialized.length, validators.length);
         for (uint256 i = 0; i < numValidators; i++) {
@@ -231,7 +268,7 @@ contract ValidatorSetsTest is Test {
         uint64 pChainHeight,
         uint64 pChainTimestamp,
         bytes32[] memory shardHashes
-    ) public pure {
+    ) public view {
         ValidatorSetMetadata memory payload = ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,
             pChainHeight: pChainHeight,
@@ -239,8 +276,7 @@ contract ValidatorSetsTest is Test {
             shardHashes: shardHashes
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetMetadata(payload);
-        ValidatorSetMetadata memory deserialized =
-            ValidatorSets.parseValidatorSetMetadata(serialized);
+        ValidatorSetMetadata memory deserialized = _harness.parseValidatorSetMetadata(serialized);
         assertEq(payload.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(payload.pChainHeight, deserialized.pChainHeight);
         assertEq(payload.pChainTimestamp, deserialized.pChainTimestamp);
@@ -253,15 +289,14 @@ contract ValidatorSetsTest is Test {
     function testRoundTripValidatorSetSignature(
         bytes memory signers,
         bytes32[6] memory signature
-    ) public pure {
+    ) public view {
         bytes memory sig = abi.encodePacked(
             signature[0], signature[1], signature[2], signature[3], signature[4], signature[5]
         );
         ValidatorSetSignature memory validatorSetSig =
             ValidatorSetSignature({signers: signers, signature: sig});
         bytes memory serialized = ValidatorSets.serializeValidatorSetSignature(validatorSetSig);
-        ValidatorSetSignature memory deserialized =
-            ValidatorSets.parseValidatorSetSignature(serialized);
+        ValidatorSetSignature memory deserialized = _harness.parseValidatorSetSignature(serialized);
         assertEq(deserialized.signers, signers);
         assertEq(deserialized.signature, sig);
     }
@@ -272,13 +307,13 @@ contract ValidatorSetsTest is Test {
     function testRoundTripValidatorSetShard(
         uint64 shardNumber,
         bytes32 avalancheBlockchainID
-    ) public pure {
+    ) public view {
         ValidatorSetShard memory validatorSetShard = ValidatorSetShard({
             shardNumber: shardNumber,
             avalancheBlockchainID: avalancheBlockchainID
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetShard(validatorSetShard);
-        ValidatorSetShard memory deserialized = ValidatorSets.parseValidatorSetShard(serialized);
+        ValidatorSetShard memory deserialized = _harness.parseValidatorSetShard(serialized);
 
         assertEq(deserialized.shardNumber, shardNumber);
         assertEq(deserialized.avalancheBlockchainID, avalancheBlockchainID);
@@ -308,18 +343,9 @@ contract ValidatorSetsTest is Test {
     function _createValidatorChange(
         uint256 i
     ) private view returns (bool, ValidatorChange memory) {
-        bytes20 nodeID;
-        /* solhint-disable-next-line no-inline-assembly */
-        assembly {
-            mstore(nodeID, i)
-        }
         return (
             i % 2 != 0,
-            ValidatorChange({
-                nodeID: nodeID,
-                blsPublicKey: BLST.getPublicKeyFromSecret(i),
-                weight: uint64(i % 2)
-            })
+            ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(i), weight: uint64(i % 2)})
         );
     }
 

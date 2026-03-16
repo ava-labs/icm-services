@@ -68,7 +68,6 @@ struct ValidatorSetSignature {
 
 // ValidatorChange represents a single validator addition, removal, or modification
 struct ValidatorChange {
-    bytes20 nodeID; // 20 bytes
     bytes blsPublicKey; // 96 bytes uncompressed
     uint64 weight; // Weight at current height (0 for removals)
 }
@@ -114,20 +113,105 @@ library ValidatorSets {
     uint256 private constant VALIDATOR_BYTES =
         BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH + VALIDATOR_WEIGHT_LENGTH;
 
+    /**
+     * @dev Gas-optimized replacement of a storage array with a memory array.
+     * Overwrites existing slots, then pushes or pops the difference.
+     * @param oldArray The existing array in contract storage.
+     * @param newArray The new array loaded in memory.
+     */
+    function replaceValidators(
+        Validator[] storage oldArray,
+        Validator[] memory newArray
+    ) internal {
+        uint256 oldLen = oldArray.length;
+        uint256 newLen = newArray.length;
+        uint256 minLen = oldLen < newLen ? oldLen : newLen;
+        uint256 i = 0;
+        // Overwrite
+        for (; i < minLen;) {
+            oldArray[i] = newArray[i];
+            unchecked {
+                ++i;
+            }
+        }
+        // Push
+        if (newLen > oldLen) {
+            for (; i < newLen;) {
+                oldArray.push(newArray[i]);
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+        // Pop
+        else if (oldLen > newLen) {
+            uint256 diffLen = oldLen - newLen;
+            for (uint256 j = 0; j < diffLen;) {
+                oldArray.pop();
+                unchecked {
+                    ++j;
+                }
+            }
+        }
+    }
+
     /*
      * @notice Verifies that a quorum of the input validator set produced the input signature over the input message
      */
     function verifyValidatorSetSignature(
-        ValidatorSetSignature calldata signature,
-        bytes calldata message,
-        ValidatorSet calldata validatorSet
-    ) public view returns (bool) {
+        ValidatorSetSignature memory signature,
+        bytes memory message,
+        ValidatorSet memory validatorSet
+    ) internal view returns (bool) {
         (bytes memory aggregateKey, uint64 aggregateWeight) =
             filterValidators(signature.signers, validatorSet.validators);
         if (!verifyWeight(aggregateWeight, validatorSet.totalWeight)) {
             return false;
         }
         return BLST.verifySignature(aggregateKey, signature.signature, message);
+    }
+
+    /*
+     * @dev Traverse the bits in signers from left to right, using it as bitvector to determine
+     * which validators to select from the provided list.
+     * @return The aggregate public key and stake weight of the filtered validators
+     */
+    function filterValidators(
+        bytes memory signers,
+        Validator[] memory validators
+    ) internal view returns (bytes memory, uint64) {
+        bytes memory aggregatePublicKey;
+        uint64 aggregateWeight = 0;
+        if (validators.length == 0) {
+            revert("Cannot validate against an empty list of validators");
+        }
+
+        uint256 byteIndex = 0;
+        uint8 bitMask = 1 << 7;
+        uint8 currentByte = uint8(signers[byteIndex]);
+
+        // we traverse the validator set from left to right
+        for (uint256 i = 0; i < validators.length; i++) {
+            // check if the bit is set
+            if (currentByte & bitMask == bitMask) {
+                Validator memory validator = validators[i];
+                if (aggregateWeight > 0) {
+                    aggregatePublicKey = BLST.addG1(aggregatePublicKey, validator.blsPublicKey);
+                } else {
+                    aggregatePublicKey = validator.blsPublicKey;
+                }
+                aggregateWeight += validator.weight;
+            }
+
+            // shift one bit to the right
+            bitMask = bitMask >> 1;
+            if (bitMask == 0) {
+                byteIndex += 1;
+                currentByte = uint8(signers[byteIndex]);
+                bitMask = 1 << 7;
+            }
+        }
+        return (aggregatePublicKey, aggregateWeight);
     }
 
     /**
@@ -142,7 +226,7 @@ library ValidatorSets {
      */
     function parseValidators(
         bytes calldata data
-    ) public pure returns (Validator[] memory, uint64) {
+    ) internal pure returns (Validator[] memory, uint64) {
         // Check the codec ID is 0
         require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
 
@@ -193,7 +277,7 @@ library ValidatorSets {
 
     function serializeValidators(
         Validator[] memory validators
-    ) public pure returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         bytes memory serialized = new bytes(2 + 4 + validators.length * VALIDATOR_BYTES);
 
         assembly ("memory-safe") {
@@ -245,7 +329,7 @@ library ValidatorSets {
      */
     function parseValidatorSetMetadata(
         bytes calldata data
-    ) public pure returns (ValidatorSetMetadata memory) {
+    ) internal pure returns (ValidatorSetMetadata memory) {
         // Check the codec ID is 0
         require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
 
@@ -284,7 +368,7 @@ library ValidatorSets {
     function parseValidatorSetDiff(
         bytes calldata data,
         uint256 currentValidatorCount
-    ) public pure returns (ValidatorSetDiff memory diff) {
+    ) internal pure returns (ValidatorSetDiff memory diff) {
         {
             require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
             uint32 payloadTypeID = uint32(bytes4(data[2:6]));
@@ -344,15 +428,13 @@ library ValidatorSets {
     function parseValidatorChange(
         bytes calldata data,
         uint256 offset
-    ) public pure returns (ValidatorChange memory change, uint256 newOffset) {
-        bytes20 nodeID = bytes20(data[offset:offset + 20]);
-        offset += 20;
+    ) internal pure returns (ValidatorChange memory change, uint256 newOffset) {
         bytes memory unformattedPublicKey = data[offset:offset + 96];
         bytes memory blsPublicKey = BLST.padUncompressedBLSPublicKey(unformattedPublicKey);
         offset += 96;
         uint64 weight = uint64(bytes8(data[offset:offset + 8]));
         offset += 8;
-        change = ValidatorChange({nodeID: nodeID, blsPublicKey: blsPublicKey, weight: weight});
+        change = ValidatorChange({blsPublicKey: blsPublicKey, weight: weight});
         return (change, offset);
     }
 
@@ -366,7 +448,7 @@ library ValidatorSets {
     function applyValidatorSetDiff(
         Validator[] memory currentValSet,
         ValidatorSetDiff memory diff
-    ) public pure returns (Validator[] memory, uint64) {
+    ) internal pure returns (Validator[] memory, uint64) {
         uint64 newTotalWeight = 0;
         uint256 newSize = diff.newSize;
         Validator[] memory modified = new Validator[](newSize);
@@ -441,7 +523,7 @@ library ValidatorSets {
      */
     function serializeValidatorSetMetadata(
         ValidatorSetMetadata memory payload
-    ) public pure returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000004);
         return abi.encodePacked(
@@ -459,7 +541,7 @@ library ValidatorSets {
      */
     function serializeValidatorSetDiff(
         ValidatorSetDiff memory diff
-    ) public pure returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000005);
         bytes memory data = abi.encodePacked(
@@ -485,10 +567,9 @@ library ValidatorSets {
      */
     function serializeValidatorChange(
         ValidatorChange memory change
-    ) public pure returns (bytes memory) {
-        return abi.encodePacked(
-            change.nodeID, BLST.unPadUncompressedBlsPublicKey(change.blsPublicKey), change.weight
-        );
+    ) internal pure returns (bytes memory) {
+        return
+            abi.encodePacked(BLST.unPadUncompressedBlsPublicKey(change.blsPublicKey), change.weight);
     }
 
     /*
@@ -496,7 +577,7 @@ library ValidatorSets {
      */
     function parseValidatorSetSignature(
         bytes calldata signatureBytes
-    ) public pure returns (ValidatorSetSignature memory) {
+    ) internal pure returns (ValidatorSetSignature memory) {
         bytes memory signers = signatureBytes[0:signatureBytes.length - BLST.BLS_SIGNATURE_LENGTH];
         bytes memory signature = signatureBytes[signatureBytes.length - BLST.BLS_SIGNATURE_LENGTH:];
         return ValidatorSetSignature({signers: signers, signature: signature});
@@ -507,7 +588,7 @@ library ValidatorSets {
      */
     function serializeValidatorSetSignature(
         ValidatorSetSignature memory signature
-    ) public pure returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         return abi.encodePacked(signature.signers, signature.signature);
     }
 
@@ -516,7 +597,7 @@ library ValidatorSets {
      */
     function parseValidatorSetShard(
         bytes calldata shardBytes
-    ) public pure returns (ValidatorSetShard memory) {
+    ) internal pure returns (ValidatorSetShard memory) {
         uint64 shardNumber = uint64(bytes8(shardBytes[0:8]));
         bytes32 avalancheBlockchainID = bytes32(shardBytes[8:40]);
         return ValidatorSetShard({
@@ -530,93 +611,8 @@ library ValidatorSets {
      */
     function serializeValidatorSetShard(
         ValidatorSetShard memory shard
-    ) public pure returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         return abi.encodePacked(shard.shardNumber, shard.avalancheBlockchainID);
-    }
-
-    /**
-     * @dev Gas-optimized replacement of a storage array with a memory array.
-     * Overwrites existing slots, then pushes or pops the difference.
-     * @param oldArray The existing array in contract storage.
-     * @param newArray The new array loaded in memory.
-     */
-    function replaceValidators(
-        Validator[] storage oldArray,
-        Validator[] memory newArray
-    ) internal {
-        uint256 oldLen = oldArray.length;
-        uint256 newLen = newArray.length;
-        uint256 minLen = oldLen < newLen ? oldLen : newLen;
-        uint256 i = 0;
-        // Overwrite
-        for (; i < minLen;) {
-            oldArray[i] = newArray[i];
-            unchecked {
-                ++i;
-            }
-        }
-        // Push
-        if (newLen > oldLen) {
-            for (; i < newLen;) {
-                oldArray.push(newArray[i]);
-                unchecked {
-                    ++i;
-                }
-            }
-        }
-        // Pop
-        else if (oldLen > newLen) {
-            uint256 diffLen = oldLen - newLen;
-            for (uint256 j = 0; j < diffLen;) {
-                oldArray.pop();
-                unchecked {
-                    ++j;
-                }
-            }
-        }
-    }
-
-    /*
-     * @dev Traverse the bits in signers from left to right, using it as bitvector to determine
-     * which validators to select from the provided list.
-     * @return The aggregate public key and stake weight of the filtered validators
-     */
-    function filterValidators(
-        bytes memory signers,
-        Validator[] memory validators
-    ) internal view returns (bytes memory, uint64) {
-        bytes memory aggregatePublicKey;
-        uint64 aggregateWeight = 0;
-        if (validators.length == 0) {
-            revert("Cannot validate against an empty list of validators");
-        }
-
-        uint256 byteIndex = 0;
-        uint8 bitMask = 1 << 7;
-        uint8 currentByte = uint8(signers[byteIndex]);
-
-        // we traverse the validator set from left to right
-        for (uint256 i = 0; i < validators.length; i++) {
-            // check if the bit is set
-            if (currentByte & bitMask == bitMask) {
-                Validator memory validator = validators[i];
-                if (aggregateWeight > 0) {
-                    aggregatePublicKey = BLST.addG1(aggregatePublicKey, validator.blsPublicKey);
-                } else {
-                    aggregatePublicKey = validator.blsPublicKey;
-                }
-                aggregateWeight += validator.weight;
-            }
-
-            // shift one bit to the right
-            bitMask = bitMask >> 1;
-            if (bitMask == 0) {
-                byteIndex += 1;
-                currentByte = uint8(signers[byteIndex]);
-                bitMask = 1 << 7;
-            }
-        }
-        return (aggregatePublicKey, aggregateWeight);
     }
 
     /*

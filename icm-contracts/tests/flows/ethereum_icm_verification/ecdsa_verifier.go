@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	ecdsaverifier "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ECDSAVerifier"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
@@ -30,12 +31,12 @@ func EcdsaVerifier(
 	localAvalancheNetwork *localnetwork.LocalAvalancheNetwork,
 	localEthereumNetwork *localnetwork.LocalEthereumNetwork,
 	ecdsaVerifierByteCodeFile string,
+	teleporterInfo utils.TeleporterTestInfo,
 ) {
 	_, fundedAvalancheKey := localAvalancheNetwork.GetFundedAccountInfo()
 	primaryNetworkInfo := localAvalancheNetwork.GetPrimaryNetworkInfo()
 	_, fundedEthereumKey := localEthereumNetwork.GetFundedAccountInfo()
-	var ethereumBlockchainID ids.ID
-	copy(ethereumBlockchainID[:], localEthereumNetwork.ChainID.Bytes()[:])
+	ethereumBlockchainID := localEthereumNetwork.EthereumTestInfo().ChainID()
 
 	// Get a private key to sign messages from Ethereum
 	ecdsaSigner, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
@@ -98,41 +99,74 @@ func EcdsaVerifier(
 	// Wait for the transaction to be accepted
 	utils.WaitForTransactionSuccess(ctx, localEthereumNetwork.EthClient, tx.Hash())
 
-	// send a message to the ECDSAVerifier on Ethereum and retrieve the event
+	// Deploy the TeleporterV2 contracts to Avalanche and Ethereum
+	var teleporterContractAddress common.Address
+	// Deploy the Teleporter registry contracts to all subnets and the C-Chain.
+	for _, l1 := range localAvalancheNetwork.GetAllL1Infos() {
+		teleporterContractAddress = utils.DeployTeleporterV2(ctx, &l1, ecdsaVerifierContractAddress, fundedAvalancheKey)
+		teleporterInfo.SetTeleporterV2(teleporterContractAddress, l1.BlockchainID)
+	}
+	// Deploy the Teleporter registry contracts to the Ethereum network.
+	teleporterContractAddress = utils.DeployTeleporterV2(
+		ctx,
+		localEthereumNetwork.EthereumTestInfo(),
+		ecdsaVerifierContractAddress,
+		fundedEthereumKey,
+	)
+	teleporterInfo.SetTeleporterV2(teleporterContractAddress, localEthereumNetwork.EthereumTestInfo().ChainID())
 
-	// this is a dummy message
-	message := ecdsaverifier.TeleporterMessageV2{
-		MessageNonce:            big.NewInt(1),
-		OriginSenderAddress:     common.Address{},
-		OriginTeleporterAddress: common.Address{},
+	// send a message to the TeleporterMessengerV2 on Ethereum and retrieve the event
+	ethTeleporter := teleporterInfo.TeleporterMessengerV2(localEthereumNetwork.EthereumTestInfo())
+
+	message := teleportermessengerv2.TeleporterMessageInput{
 		DestinationBlockchainID: primaryNetworkInfo.BlockchainID,
 		DestinationAddress:      common.Address{},
+		FeeInfo: teleportermessengerv2.TeleporterFeeInfo{
+			FeeTokenAddress: common.Address{},
+			Amount:          big.NewInt(0),
+		},
 		RequiredGasLimit:        big.NewInt(10),
 		AllowedRelayerAddresses: []common.Address{},
-		Receipts:                []ecdsaverifier.TeleporterMessageReceipt{},
 		Message:                 []byte("Hello Avalanche!"),
 	}
-	tx, err = ethereumEcdsaVerifier.SendMessage(opts, message)
+	tx, err = ethTeleporter.SendCrossChainMessage(opts, message)
 	Expect(err).Should(BeNil())
 	receipt := utils.WaitForTransactionSuccess(ctx, localEthereumNetwork.EthClient, tx.Hash())
 	// get the event from the receipt
 	event, err := utils.GetEventFromLogs(receipt.Logs, ethereumEcdsaVerifier.ParseECDSAVerifierSendMessage)
 	Expect(err).Should(BeNil())
-	Expect(event.Message).Should(Equal(message))
+	// check that the event contains the correct message
+	Expect(event.Message.Message).Should(Equal(message.Message))
 
 	// sign the message
 	attestation := signMessage(event.Message, ethereumBlockchainID, ecdsaVerifierContractAddress, ecdsaSigner)
-	msg := ecdsaverifier.TeleporterICMMessage{
-		Message:            event.Message,
+	msg := teleportermessengerv2.TeleporterICMMessage{
+		Message: teleportermessengerv2.TeleporterMessageV2{
+			MessageNonce:            event.Message.MessageNonce,
+			OriginSenderAddress:     event.Message.OriginSenderAddress,
+			OriginTeleporterAddress: event.Message.OriginTeleporterAddress,
+			DestinationBlockchainID: event.Message.DestinationBlockchainID,
+			DestinationAddress:      event.Message.DestinationAddress,
+			RequiredGasLimit:        event.Message.RequiredGasLimit,
+			AllowedRelayerAddresses: event.Message.AllowedRelayerAddresses,
+			Message:                 event.Message.Message,
+		},
 		SourceNetworkID:    0,
 		SourceBlockchainID: ethereumBlockchainID,
 		Attestation:        attestation,
 	}
 
-	// submit the signed message to the ECDSAVerifier contract on Avalanche for verification
-	valid, err := avalancheEcdsaVerifier.VerifyMessage(&bind.CallOpts{}, msg)
+	// submit the signed message to the TeleporterMessengerV2 contract on Avalanche for verification
+	avalancheTeleporter := teleporterInfo.TeleporterMessengerV2(&primaryNetworkInfo)
+	opts, err = bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, primaryNetworkInfo.EVMChainID)
 	Expect(err).Should(BeNil())
-	Expect(valid).Should(BeTrue())
+	tx, err = avalancheTeleporter.ReceiveCrossChainMessage(opts, msg, common.Address{})
+	Expect(err).Should(BeNil())
+	receipt = utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
+	// get the event from the receipt
+	receiptEvent, err := utils.GetEventFromLogs(receipt.Logs, avalancheTeleporter.ParseReceiveCrossChainMessage)
+	Expect(err).Should(BeNil())
+	Expect(receiptEvent.Message.Message).Should(Equal(msg.Message.Message))
 }
 
 // Signs a message expected by the ECDSAVerifier according to the EIP-191 standard
