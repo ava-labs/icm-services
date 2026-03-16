@@ -44,7 +44,7 @@ interface IAvalancheValidatorSetRegistry {
      */
     function updateValidatorSet(
         ValidatorSetShard calldata shard,
-        bytes memory shardBytes
+        bytes calldata shardBytes
     ) external;
 
     /**
