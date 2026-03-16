@@ -92,6 +92,14 @@ library Execution {
         Proof calldata proof,
         BeaconConfig storage config
     ) internal view {
+        // Verify the target beacon state root is in the anchor's history. This is possible since beacon states contain a vector of historical state roots 'state_roots' (referencing the last 8192 slots).
+        // Safety Check. Can only prove history within the state roots vector size.
+        require(proof.targetSlot < proof.anchorSlot, "Target slot must be less than anchor slot");
+        require(
+            proof.anchorSlot - proof.targetSlot <= config.stateRootsVectorSize,
+            "Target slot is too old"
+        );
+
         // Anchor check: Verify the anchor beacon state root is valid against a trusted beacon block root
         bool validAnchor = SSZ.isValidMerkleProof(
             proof.anchorBeaconStateRoot,
@@ -100,13 +108,6 @@ library Execution {
             trustedBeaconBlockRoot
         );
         require(validAnchor, "Invalid anchor state root");
-
-        // Verify the target beacon state root is in the anchor's history. This is possible since beacon states contain a vector of historical state roots 'state_roots' (referencing the last 8192 slots).
-        // Safety Check. Can only prove history within the state roots vector size.
-        require(proof.targetSlot < proof.anchorSlot, "Target must be in the past");
-        require(
-            proof.anchorSlot - proof.targetSlot <= config.stateRootsVectorSize, "Target too old"
-        );
 
         // Calculate the specific G-Index for 'state_roots[targetSlot]' within the beacon state SSZ structure.
         uint256 vectorIndex = proof.targetSlot % config.stateRootsVectorSize;

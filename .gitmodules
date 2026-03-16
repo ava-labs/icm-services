@@ -8,3 +8,6 @@
 [submodule "lib/solidity-merkle-trees"]
 	path = lib/solidity-merkle-trees
 	url = https://github.com/polytope-labs/solidity-merkle-trees
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
