@@ -16,7 +16,53 @@ import {
     ValidatorSetShard
 } from "../utils/ValidatorSets.sol";
 
+contract ValidatorSetsTestHarness {
+    function parseValidatorSetDiff(
+        bytes calldata data,
+        uint256 currentValidatorCount
+    ) public pure returns (ValidatorSetDiff memory) {
+        return ValidatorSets.parseValidatorSetDiff(data, currentValidatorCount);
+    }
+
+    function parseValidatorChange(
+        bytes calldata data,
+        uint256 offset
+    ) public pure returns (ValidatorChange memory, uint256) {
+        return ValidatorSets.parseValidatorChange(data, offset);
+    }
+
+    function parseValidators(
+        bytes calldata data
+    ) public pure returns (Validator[] memory, uint64) {
+        return ValidatorSets.parseValidators(data);
+    }
+
+    function parseValidatorSetMetadata(
+        bytes calldata data
+    ) public pure returns (ValidatorSetMetadata memory) {
+        return ValidatorSets.parseValidatorSetMetadata(data);
+    }
+
+    function parseValidatorSetSignature(
+        bytes calldata signatureBytes
+    ) public pure returns (ValidatorSetSignature memory) {
+        return ValidatorSets.parseValidatorSetSignature(signatureBytes);
+    }
+
+    function parseValidatorSetShard(
+        bytes calldata shardBytes
+    ) public pure returns (ValidatorSetShard memory) {
+        return ValidatorSets.parseValidatorSetShard(shardBytes);
+    }
+}
+
 contract ValidatorSetsTest is Test {
+    ValidatorSetsTestHarness private _harness;
+
+    function setUp() public {
+        _harness = new ValidatorSetsTestHarness();
+    }
+
     function testFilterValidators() public view {
         // 0100_1000_0110_0000_1000_0000 in hex. This corresponds to validators
         // 2, 5, 10, 11, and 17
@@ -157,7 +203,7 @@ contract ValidatorSetsTest is Test {
             newSize: numAdded - numRemoved
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetDiff(valsetDiff);
-        ValidatorSetDiff memory deserialized = ValidatorSets.parseValidatorSetDiff(serialized, 0);
+        ValidatorSetDiff memory deserialized = _harness.parseValidatorSetDiff(serialized, 0);
         assertEq(valsetDiff.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(valsetDiff.previousHeight, deserialized.previousHeight);
         assertEq(valsetDiff.previousTimestamp, deserialized.previousTimestamp);
@@ -181,7 +227,7 @@ contract ValidatorSetsTest is Test {
         bytes memory serialized = ValidatorSets.serializeValidatorChange(valChange);
         /* solhint-disable-next-line no-unused-vars */
         (ValidatorChange memory deserialized, uint256 offset) =
-            ValidatorSets.parseValidatorChange(serialized, 0);
+            _harness.parseValidatorChange(serialized, 0);
         assertEq(valChange.blsPublicKey, deserialized.blsPublicKey);
         assertEq(valChange.weight, deserialized.weight);
     }
@@ -191,7 +237,7 @@ contract ValidatorSetsTest is Test {
      */
     function testRoundTripValidatorSet(
         uint256 numValidators
-    ) public pure {
+    ) public view {
         vm.assume(numValidators < 10);
         uint64 totalWeight = 0;
         Validator[] memory validators = new Validator[](numValidators);
@@ -205,7 +251,7 @@ contract ValidatorSetsTest is Test {
         }
         bytes memory serialized = ValidatorSets.serializeValidators(validators);
         (Validator[] memory deserialized, uint64 deserializedTotalWeight) =
-            ValidatorSets.parseValidators(serialized);
+            _harness.parseValidators(serialized);
         assertEq(totalWeight, deserializedTotalWeight);
         assertEq(deserialized.length, validators.length);
         for (uint256 i = 0; i < numValidators; i++) {
@@ -222,7 +268,7 @@ contract ValidatorSetsTest is Test {
         uint64 pChainHeight,
         uint64 pChainTimestamp,
         bytes32[] memory shardHashes
-    ) public pure {
+    ) public view {
         ValidatorSetMetadata memory payload = ValidatorSetMetadata({
             avalancheBlockchainID: avalancheBlockchainID,
             pChainHeight: pChainHeight,
@@ -230,8 +276,7 @@ contract ValidatorSetsTest is Test {
             shardHashes: shardHashes
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetMetadata(payload);
-        ValidatorSetMetadata memory deserialized =
-            ValidatorSets.parseValidatorSetMetadata(serialized);
+        ValidatorSetMetadata memory deserialized = _harness.parseValidatorSetMetadata(serialized);
         assertEq(payload.avalancheBlockchainID, deserialized.avalancheBlockchainID);
         assertEq(payload.pChainHeight, deserialized.pChainHeight);
         assertEq(payload.pChainTimestamp, deserialized.pChainTimestamp);
@@ -244,15 +289,14 @@ contract ValidatorSetsTest is Test {
     function testRoundTripValidatorSetSignature(
         bytes memory signers,
         bytes32[6] memory signature
-    ) public pure {
+    ) public view {
         bytes memory sig = abi.encodePacked(
             signature[0], signature[1], signature[2], signature[3], signature[4], signature[5]
         );
         ValidatorSetSignature memory validatorSetSig =
             ValidatorSetSignature({signers: signers, signature: sig});
         bytes memory serialized = ValidatorSets.serializeValidatorSetSignature(validatorSetSig);
-        ValidatorSetSignature memory deserialized =
-            ValidatorSets.parseValidatorSetSignature(serialized);
+        ValidatorSetSignature memory deserialized = _harness.parseValidatorSetSignature(serialized);
         assertEq(deserialized.signers, signers);
         assertEq(deserialized.signature, sig);
     }
@@ -263,13 +307,13 @@ contract ValidatorSetsTest is Test {
     function testRoundTripValidatorSetShard(
         uint64 shardNumber,
         bytes32 avalancheBlockchainID
-    ) public pure {
+    ) public view {
         ValidatorSetShard memory validatorSetShard = ValidatorSetShard({
             shardNumber: shardNumber,
             avalancheBlockchainID: avalancheBlockchainID
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetShard(validatorSetShard);
-        ValidatorSetShard memory deserialized = ValidatorSets.parseValidatorSetShard(serialized);
+        ValidatorSetShard memory deserialized = _harness.parseValidatorSetShard(serialized);
 
         assertEq(deserialized.shardNumber, shardNumber);
         assertEq(deserialized.avalancheBlockchainID, avalancheBlockchainID);

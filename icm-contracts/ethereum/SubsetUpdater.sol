@@ -33,7 +33,7 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
      */
     function applyShard(
         ValidatorSetShard calldata shard,
-        bytes memory shardBytes
+        bytes calldata shardBytes
     ) public override {
         bytes32 avalancheBlockchainID = shard.avalancheBlockchainID;
         // Parse the validators.
