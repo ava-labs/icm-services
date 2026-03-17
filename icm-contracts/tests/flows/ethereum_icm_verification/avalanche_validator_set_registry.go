@@ -50,10 +50,10 @@ func AvalancheValidatorSetRegistry(
 		tx, err := avalancheValidatorSetRegistry.UpdateValidatorSet(opts, shard, shardBytes)
 		Expect(err).Should(BeNil())
 		receipt := utils.WaitForTransactionSuccess(ctx, localEthereumNetwork.EthClient, tx.Hash())
-		if i == len(serializedShards) {
+		if i+1 == len(serializedShards) {
 			event, err := utils.GetEventFromLogs(receipt.Logs, avalancheValidatorSetRegistry.ParseValidatorSetUpdated)
 			Expect(err).Should(BeNil())
-			Expect(event.AvalancheBlockchainID).Should(Equal(primaryNetworkInfo.BlockchainID))
+			Expect(event.AvalancheBlockchainID).Should(Equal([32]byte(primaryNetworkInfo.BlockchainID)))
 		}
 	}
 	registered, err := avalancheValidatorSetRegistry.IsRegistered(&bind.CallOpts{}, primaryNetworkInfo.BlockchainID)
