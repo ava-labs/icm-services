@@ -120,9 +120,7 @@ func DeployDiffUpdater(
 	)
 
 	// Return the shard bytes needed to initialize the first validator set
-	shardBytes := make([][]byte, 1)
-	shardBytes[0] = serializedDiff
-	return contractAddress, shardBytes
+	return contractAddress, [][]byte{serializedDiff}
 }
 
 // InitialValidatorSetHash Calculates the hash of the initial validator set being registered.
