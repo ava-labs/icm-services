@@ -54,17 +54,17 @@ library Execution {
     }
 
     /// @notice A cryptographic proof bundle establishing that an execution layer receipt root is valid for a specified beacon chain slot.
-    /// @dev This struct containing inclusion proofs required to verify an execution layer event (receipt) statelessly.
-    /// 1. Anchor Check: Verifies the `anchorBeaconState` is valid against a trusted beacon block root stored in this contract (specified by `anchorSlot`).
-    /// 2. History Check: Verifies the `targetBeaconState` exists within the `anchorBeaconState`'s historical state roots vector.
+    /// @dev This struct contains inclusion proofs required to verify an execution layer event, i.e., a transaction receipt.
+    /// 1. Anchor Check: Verifies the `anchorBeaconState` is valid against a trusted beacon block root.
+    /// 2. History Check: Verifies the `targetBeaconState` exists within the `anchorBeaconState` historical state roots vector.
     /// 3. Execution Check: Verifies the `targetExecutionHeader` root is included in the `targetBeaconState`.
     /// 4. Receipts Check: Verifies the `targetReceiptsRoot` is included in the `targetExecutionHeader`.
     struct Proof {
-        // The specific slot where the transaction happened
-        uint64 targetSlot;
         // The specific slot for the beacon block root we are using as the anchor
         uint64 anchorSlot;
-        // The Anchor State Proof (Block -> State)
+        // The specific slot where the transaction happened
+        uint64 targetSlot;
+        // The Anchor State Proof (Trusted Beacon Block -> Anchor Beacon State)
         bytes32 anchorBeaconStateRoot;
         bytes32[] anchorBeaconStateProof;
         // The History Proof (Anchor Beacon State -> Target Beacon State)
@@ -81,7 +81,7 @@ library Execution {
     /**
      * @notice Verifies an execution-layer receipts root by tracing it back through a chain of trust to a beacon block root.
      * @dev Chain of trust: Trusted Beacon Block -> Anchor Beacon State -> Target Inter-Epoch Beacon State -> Execution Header -> Receipts Root
-     * 1. Anchor check: Validates an anchor beacon state against a trusted block root stored
+     * 1. Anchor check: Validates an anchor beacon state against a trusted block root.
      * 2. History check: Validates the target beacon state against the anchor beacon state's `state_roots` history vector.
      * 3. Execution check: Validates the execution payload header against the target beacon state.
      * 4. Receipts check: Validates the receipts root against the execution payload header.
@@ -92,7 +92,6 @@ library Execution {
         Proof calldata proof,
         BeaconConfig storage config
     ) internal view {
-        // Verify the target beacon state root is in the anchor's history. This is possible since beacon states contain a vector of historical state roots 'state_roots' (referencing the last 8192 slots).
         // Safety Check. Can only prove history within the state roots vector size.
         require(proof.targetSlot < proof.anchorSlot, "Target slot must be less than anchor slot");
         require(
@@ -114,6 +113,7 @@ library Execution {
         uint256 targetGIndex = (config.gIndexBaseStateRoots << config.stateRootsDepth) + vectorIndex;
 
         // History check: Prove that the target beacon state root is in the anchor beacon state's history using the G-index and the SSZ Merkle proof.
+        // This is possible since beacon states contain a vector of historical state roots `state_roots` referencing the last 8192 slots.
         bool validBeacon = SSZ.isValidMerkleProof(
             proof.targetBeaconStateRoot,
             targetGIndex,
@@ -147,19 +147,25 @@ library Receipt {
 
     /// @notice Contains all the data required to prove a specific log/event was emitted.
     struct Proof {
-        bytes[] proof; // The Merkle Patricia Trie inclusion proof (array of rlp-encoded nodes).
-        bytes key; // The RLP-encoded transaction index
-        bytes value; // The RLP-encoded receipt data
-        uint256 logIndex; // The specific index of the log in the receipt
-        address expectedEmitter; // Contract address that should have emitted the log
-        bytes32 expectedTopic0; // The event signature
+        // The Merkle Patricia Trie inclusion proof (array of rlp-encoded nodes).
+        bytes[] proof;
+        // The RLP-encoded transaction index
+        bytes key;
+        // The RLP-encoded receipt data
+        bytes value;
+        // The specific index of the log in the receipt
+        uint256 logIndex;
+        // Contract address that should have emitted the log
+        address expectedEmitter;
+        // The event signature
+        bytes32 expectedTopic0;
     }
 
     /**
      * @notice Verifies that a specific receipt exists in the receipts Merkle trie and that it contains a specific log.
      * @param trustedReceiptsRoot A trusted receipts root to verify against.
      * @param logProof The log proof establishing the receipt and log inclusion against a trusted receipts root.
-     * @return logData The non-indexed data from the log (for the caller to decode).
+     * @return logData The non-indexed data from the log. The caller must decode this.
      */
     function verifyAndExtractLog(
         bytes32 trustedReceiptsRoot,
