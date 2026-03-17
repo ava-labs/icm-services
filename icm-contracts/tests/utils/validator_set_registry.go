@@ -130,7 +130,7 @@ func InitialValidatorSetHash(
 	codec := []byte{0x00, 0x00}
 	numValidators := make([]byte, 4)
 	binary.BigEndian.PutUint32(numValidators, uint32(len(changes)))
-	data := bytes.Join([][]byte{codec, numValidators}, nil)
+	data := append(codec, numValidators...)
 
 	// Serialize each validator change
 	for _, change := range changes {
