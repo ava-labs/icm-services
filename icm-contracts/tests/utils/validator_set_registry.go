@@ -123,28 +123,6 @@ func DeployDiffUpdater(
 	return contractAddress, [][]byte{serializedDiff}
 }
 
-// InitialValidatorSetHash Calculates the hash of the initial validator set being registered.
-func InitialValidatorSetHash(
-	changes []diffupdater.ValidatorChange,
-) [32]byte {
-	codec := []byte{0x00, 0x00}
-	numValidators := make([]byte, 4)
-	binary.BigEndian.PutUint32(numValidators, uint32(len(changes)))
-	data := append(codec, numValidators...)
-
-	// Serialize each validator change
-	for _, change := range changes {
-		// Append the 96-byte uncompressed BLS public key
-		data = append(data, change.BlsPublicKey...)
-
-		// Append the 8-byte weight
-		weightBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(weightBytes, change.Weight)
-		data = append(data, weightBytes...)
-	}
-	return sha256.Sum256(data)
-}
-
 // SerializeValidatorSetDiff Serializes a `ValidatorSetDiff` to bytes in the same manner as the
 // `DiffUpdater` contract expects it to be serialized. This is based on the
 // `serializeValidatorSetDiff` function in the `ValidatorSets` library.
