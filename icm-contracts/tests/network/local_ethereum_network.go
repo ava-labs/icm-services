@@ -30,12 +30,11 @@ import (
 var _ LocalNetwork = (*LocalEthereumNetwork)(nil)
 
 type LocalEthereumNetwork struct {
-	BaseURL    string
-	EthClient  *ethclient.Client
-	fundedKey  *ecdsa.PrivateKey
-	fundedAddr common.Address
-	ChainID    *big.Int
-	cmd        *exec.Cmd
+	BaseURL         string
+	EthClient       *ethclient.Client
+	ChainID         *big.Int
+	globalFundedKey *secp256k1.PrivateKey
+	cmd             *exec.Cmd
 }
 
 const (
@@ -43,30 +42,6 @@ const (
 	localEthereumNetworkFundedKey = "764A4A322753120B4667A20B6309CB5EC754A22BDBCBD62398BE8F803B255337"
 	ethereumNetworkStartupTimeout = 60 * time.Second
 )
-
-func NewLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
-	return NewLocalEthereumNetworkFromURL(ctx, localEthereumNetworkBaseURL)
-}
-
-func NewLocalEthereumNetworkFromURL(ctx context.Context, rpcURL string) *LocalEthereumNetwork {
-	ethClient, err := ethclient.DialContext(ctx, rpcURL)
-	Expect(err).Should(BeNil())
-
-	fundedKey, err := crypto.HexToECDSA(localEthereumNetworkFundedKey)
-	Expect(err).Should(BeNil())
-	fundedAddr := crypto.PubkeyToAddress(fundedKey.PublicKey)
-
-	chainID, err := ethClient.ChainID(ctx)
-	Expect(err).Should(BeNil())
-
-	return &LocalEthereumNetwork{
-		BaseURL:    rpcURL,
-		EthClient:  ethClient,
-		fundedKey:  fundedKey,
-		fundedAddr: fundedAddr,
-		ChainID:    chainID,
-	}
-}
 
 // StartLocalEthereumNetwork starts a local Ethereum network
 // and waits for it to be ready.
@@ -107,21 +82,26 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	Expect(err).Should(BeNil())
 	globalFundedKey, err := secp256k1.ToPrivateKey(fundedKeyBytes)
 	Expect(err).Should(BeNil())
-	fundedKey := globalFundedKey.ToECDSA()
-	fundedAddr := crypto.PubkeyToAddress(fundedKey.PublicKey)
+
+	// Wait for the funded account to have a non-zero balance.
+	// The startup script transfers funds asynchronously after geth becomes
+	// reachable, so we need to poll until the transfer is mined.
+	fundedAddr := crypto.PubkeyToAddress(globalFundedKey.ToECDSA().PublicKey)
+	waitForBalance(ctx, client, fundedAddr, ethereumNetworkStartupTimeout)
 
 	return &LocalEthereumNetwork{
-		BaseURL:    localEthereumNetworkBaseURL,
-		EthClient:  client,
-		fundedKey:  fundedKey,
-		fundedAddr: fundedAddr,
-		ChainID:    chainID,
-		cmd:        cmd,
+		BaseURL:         localEthereumNetworkBaseURL,
+		EthClient:       client,
+		ChainID:         chainID,
+		globalFundedKey: globalFundedKey,
+		cmd:             cmd,
 	}
 }
 
 func (n *LocalEthereumNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.PrivateKey) {
-	return n.fundedAddr, n.fundedKey
+	ecdsaKey := n.globalFundedKey.ToECDSA()
+	fundedAddress := crypto.PubkeyToAddress(ecdsaKey.PublicKey)
+	return fundedAddress, ecdsaKey
 }
 
 func (n *LocalEthereumNetwork) EthereumTestInfo() *testinfo.EthereumTestInfo {
@@ -145,12 +125,8 @@ func (n *LocalEthereumNetwork) TearDownNetwork() {
 
 	// Stop the Ethereum network process if it was started by us
 	if n.cmd == nil || n.cmd.Process == nil {
-		if n.EthClient != nil {
-			n.EthClient.Close()
-		}
 		return
 	}
-
 	log.Info(fmt.Sprintf("Stopping Ethereum network process (PID %d)", n.cmd.Process.Pid))
 
 	// Send interrupt signal to allow graceful shutdown
@@ -222,6 +198,31 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 				log.Debug("Failed to connect to Ethereum RPC endpoint, retrying in 1 second")
 			}
 			// Continue polling
+		}
+	}
+}
+
+// waitForBalance polls until the given address has a non-zero balance or the
+// timeout is reached. This is needed because the startup script funds the test
+// address asynchronously after the RPC becomes reachable.
+func waitForBalance(ctx context.Context, client *ethclient.Client, addr common.Address, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			Expect(ctx.Err()).ShouldNot(HaveOccurred(),
+				"Timed out waiting for funded account to have non-zero balance")
+		case <-ticker.C:
+			bal, err := client.BalanceAt(ctx, addr, nil)
+			if err == nil && bal.Sign() > 0 {
+				log.Info(fmt.Sprintf("Funded account %s has balance %s wei", addr.Hex(), bal.String()))
+				return
+			}
 		}
 	}
 }

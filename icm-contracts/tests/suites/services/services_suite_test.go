@@ -172,12 +172,9 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}()
 	log.Info("Started decider service")
 
-	// Initialize local Ethereum network for subset updater test
-	if os.Getenv("GETH_RPC_URL") != "" {
-		localEthereumNetworkInstance = network.NewLocalEthereumNetworkFromURL(
-			networkStartCtx, os.Getenv("GETH_RPC_URL"),
-		)
-	}
+	// Start local Ethereum network for subset updater test
+	localEthereumNetworkInstance = network.StartLocalEthereumNetwork(networkStartCtx)
+	log.Info("Started local Ethereum network", zap.Any("chainID", localEthereumNetworkInstance.ChainID))
 
 	log.Info("Set up ginkgo before suite")
 
@@ -258,9 +255,6 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 	ginkgo.It("SubsetUpdater",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
-			if localEthereumNetworkInstance == nil {
-				ginkgo.Skip("GETH_RPC_URL not set; skipping SubsetUpdater test")
-			}
 			servicesFlows.SubsetUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
 })
