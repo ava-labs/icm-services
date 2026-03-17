@@ -83,6 +83,12 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 	globalFundedKey, err := secp256k1.ToPrivateKey(fundedKeyBytes)
 	Expect(err).Should(BeNil())
 
+	// Wait for the funded account to have a non-zero balance.
+	// The startup script transfers funds asynchronously after geth becomes
+	// reachable, so we need to poll until the transfer is mined.
+	fundedAddr := crypto.PubkeyToAddress(globalFundedKey.ToECDSA().PublicKey)
+	waitForBalance(ctx, client, fundedAddr, ethereumNetworkStartupTimeout)
+
 	return &LocalEthereumNetwork{
 		BaseURL:         localEthereumNetworkBaseURL,
 		EthClient:       client,
@@ -192,6 +198,31 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 				log.Debug("Failed to connect to Ethereum RPC endpoint, retrying in 1 second")
 			}
 			// Continue polling
+		}
+	}
+}
+
+// waitForBalance polls until the given address has a non-zero balance or the
+// timeout is reached. This is needed because the startup script funds the test
+// address asynchronously after the RPC becomes reachable.
+func waitForBalance(ctx context.Context, client *ethclient.Client, addr common.Address, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			Expect(ctx.Err()).ShouldNot(HaveOccurred(),
+				"Timed out waiting for funded account to have non-zero balance")
+		case <-ticker.C:
+			bal, err := client.BalanceAt(ctx, addr, nil)
+			if err == nil && bal.Sign() > 0 {
+				log.Info(fmt.Sprintf("Funded account %s has balance %s wei", addr.Hex(), bal.String()))
+				return
+			}
 		}
 	}
 }

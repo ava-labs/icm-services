@@ -36,8 +36,9 @@ const (
 var (
 	log logging.Logger
 
-	localNetworkInstance *network.LocalAvalancheNetwork
-	teleporterInfo       utils.TeleporterTestInfo
+	localNetworkInstance         *network.LocalAvalancheNetwork
+	localEthereumNetworkInstance *network.LocalEthereumNetwork
+	teleporterInfo               utils.TeleporterTestInfo
 
 	decider *exec.Cmd
 
@@ -115,8 +116,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				RequirePrimaryNetworkSigners: true,
 			},
 		},
-		4,
-		4,
+		6,
+		6,
 		e2eFlags,
 	)
 
@@ -171,6 +172,10 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}()
 	log.Info("Started decider service")
 
+	// Start local Ethereum network for subset updater test
+	localEthereumNetworkInstance = network.StartLocalEthereumNetwork(networkStartCtx)
+	log.Info("Started local Ethereum network", zap.Any("chainID", localEthereumNetworkInstance.ChainID))
+
 	log.Info("Set up ginkgo before suite")
 
 	ginkgo.AddReportEntry(
@@ -183,6 +188,10 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 func cleanup() {
 	if decider != nil {
 		decider = nil
+	}
+	if localEthereumNetworkInstance != nil {
+		localEthereumNetworkInstance.TearDownNetwork()
+		localEthereumNetworkInstance = nil
 	}
 	if localNetworkInstance != nil {
 		localNetworkInstance.TearDownNetwork()
@@ -242,5 +251,10 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
 			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("SubsetUpdater",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.SubsetUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
 })
