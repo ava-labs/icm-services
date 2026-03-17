@@ -126,7 +126,6 @@ func createShards(
 
 	diffs := make([]diffupdater.ValidatorSetDiff, shardNumber)
 	addedAccumulator := 0
-	validatorAccumulator := make([]diffupdater.ValidatorChange, 0)
 
 	for s := 0; s < int(shardNumber); s++ {
 		var validatorShard []*validators.Warp
@@ -143,16 +142,15 @@ func createShards(
 			}
 		}
 		addedAccumulator += len(changes)
-		validatorAccumulator = append(validatorAccumulator, changes...)
 		diffs[s] = diffupdater.ValidatorSetDiff{
-			AvalancheBlockchainID:   avalancheChainID,
-			PreviousHeight:          0,
-			PreviousTimestamp:       0,
-			CurrentHeight:           pChainHeight,
-			CurrentTimestamp:        uint64(banffBlock.Timestamp().Unix()),
-			Changes:                 changes,
-			NumAdded:                uint32(len(changes)),
-			NewSize:                 big.NewInt(int64(addedAccumulator)),
+			AvalancheBlockchainID: avalancheChainID,
+			PreviousHeight:        0,
+			PreviousTimestamp:     0,
+			CurrentHeight:         pChainHeight,
+			CurrentTimestamp:      uint64(banffBlock.Timestamp().Unix()),
+			Changes:               changes,
+			NumAdded:              uint32(len(changes)),
+			NewSize:               big.NewInt(int64(addedAccumulator)),
 		}
 	}
 	return diffs
