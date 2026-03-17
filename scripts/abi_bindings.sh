@@ -26,7 +26,7 @@ ECDSAVerifier"
 
 DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2"
 
-DEFAULT_ETHEREUM_CONTRACT_LIST="AvalancheValidatorSetRegistry SubsetUpdater DiffUpdater"
+DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater"
 
 PROXY_LIST="TransparentUpgradeableProxy ProxyAdmin"
 ACCESS_LIST="OwnableUpgradeable"

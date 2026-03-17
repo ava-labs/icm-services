@@ -297,7 +297,7 @@ func SendBasicTeleporterMessageAsync(
 	)
 	_, teleporterMessageID := SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(source),
+		teleporter.TeleporterMessenger(&source),
 		source,
 		destination,
 		input,
@@ -334,7 +334,7 @@ func SendBasicTeleporterMessage(
 	)
 	receipt, teleporterMessageID := SendCrossChainMessageAndWaitForAcceptance(
 		ctx,
-		teleporter.TeleporterMessenger(source),
+		teleporter.TeleporterMessenger(&source),
 		source,
 		destination,
 		input,
@@ -342,7 +342,7 @@ func SendBasicTeleporterMessage(
 	)
 	sendEvent, err := GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(source).ParseSendCrossChainMessage,
+		teleporter.TeleporterMessenger(&source).ParseSendCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 
@@ -374,7 +374,7 @@ func RelayBasicMessage(
 	)
 
 	log.Info("Waiting for Teleporter message delivery")
-	err = WaitTeleporterMessageDelivered(ctx, teleporter.TeleporterMessenger(destination), teleporterMessageID)
+	err = WaitTeleporterMessageDelivered(ctx, teleporter.TeleporterMessenger(&destination), teleporterMessageID)
 	Expect(err).Should(BeNil())
 }
 
@@ -539,18 +539,18 @@ func TriggerProcessMissedBlocks(
 	<-newHeads
 
 	log.Info("Waiting for Teleporter message delivery")
-	err = WaitTeleporterMessageDelivered(ctx, teleporter.TeleporterMessenger(destinationSubnetInfo), id3)
+	err = WaitTeleporterMessageDelivered(ctx, teleporter.TeleporterMessenger(&destinationSubnetInfo), id3)
 	Expect(err).Should(BeNil())
 
-	delivered1, err := teleporter.TeleporterMessenger(destinationSubnetInfo).MessageReceived(
+	delivered1, err := teleporter.TeleporterMessenger(&destinationSubnetInfo).MessageReceived(
 		&bind.CallOpts{}, id1,
 	)
 	Expect(err).Should(BeNil())
-	delivered2, err := teleporter.TeleporterMessenger(destinationSubnetInfo).MessageReceived(
+	delivered2, err := teleporter.TeleporterMessenger(&destinationSubnetInfo).MessageReceived(
 		&bind.CallOpts{}, id2,
 	)
 	Expect(err).Should(BeNil())
-	delivered3, err := teleporter.TeleporterMessenger(destinationSubnetInfo).MessageReceived(
+	delivered3, err := teleporter.TeleporterMessenger(&destinationSubnetInfo).MessageReceived(
 		&bind.CallOpts{}, id3,
 	)
 	Expect(err).Should(BeNil())

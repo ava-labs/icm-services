@@ -58,7 +58,7 @@ func InsufficientGas(
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1AInfo).ParseSendCrossChainMessage,
+		teleporter.TeleporterMessenger(&l1AInfo).ParseSendCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 	Expect(event.DestinationBlockchainID[:]).Should(Equal(l1BInfo.BlockchainID[:]))
@@ -82,13 +82,13 @@ func InsufficientGas(
 
 	// Check Teleporter message received on the destination
 	delivered, err :=
-		teleporter.TeleporterMessenger(l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
+		teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
 	Expect(err).Should(BeNil())
 	Expect(delivered).Should(BeTrue())
 
 	// Check message execution failed event
 	failedMessageExecutionEvent, err := utils.GetEventFromLogs(
-		receipt.Logs, teleporter.TeleporterMessenger(l1BInfo).ParseMessageExecutionFailed,
+		receipt.Logs, teleporter.TeleporterMessenger(&l1BInfo).ParseMessageExecutionFailed,
 	)
 	Expect(err).Should(BeNil())
 	Expect(failedMessageExecutionEvent.MessageID[:]).Should(Equal(messageID[:]))
@@ -99,14 +99,14 @@ func InsufficientGas(
 	receipt = utils.RetryMessageExecutionAndWaitForAcceptance(
 		ctx,
 		l1AInfo.BlockchainID,
-		teleporter.TeleporterMessenger(l1BInfo),
+		teleporter.TeleporterMessenger(&l1BInfo),
 		l1BInfo,
 		failedMessageExecutionEvent.Message,
 		fundedKey,
 	)
 	executedEvent, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1BInfo).ParseMessageExecuted,
+		teleporter.TeleporterMessenger(&l1BInfo).ParseMessageExecuted,
 	)
 	Expect(err).Should(BeNil())
 	Expect(executedEvent.MessageID[:]).Should(Equal(messageID[:]))

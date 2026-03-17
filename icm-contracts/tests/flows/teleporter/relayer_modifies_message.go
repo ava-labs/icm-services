@@ -47,7 +47,7 @@ func RelayerModifiesMessage(
 	}
 
 	receipt, messageID := utils.SendCrossChainMessageAndWaitForAcceptance(
-		ctx, teleporter.TeleporterMessenger(l1AInfo), l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey)
+		ctx, teleporter.TeleporterMessenger(&l1AInfo), l1AInfo, l1BInfo, sendCrossChainMessageInput, fundedKey)
 
 	// Relay the message to the destination
 	// Relayer modifies the message in flight
@@ -61,7 +61,7 @@ func RelayerModifiesMessage(
 	)
 
 	// Check Teleporter message was not received on the destination
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(&bind.CallOpts{}, messageID)
 	Expect(err).Should(BeNil())
 	Expect(delivered).Should(BeFalse())
 }
@@ -77,7 +77,7 @@ func relayAlteredMessage(
 	// Fetch the Teleporter message from the logs
 	sendEvent, err := utils.GetEventFromLogs(
 		sourceReceipt.Logs,
-		teleporter.TeleporterMessenger(source).ParseSendCrossChainMessage,
+		teleporter.TeleporterMessenger(&source).ParseSendCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 
