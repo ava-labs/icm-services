@@ -82,10 +82,6 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
             "Resulting validator set size mismatch"
         );
         require(newWeight > 0, "Total weight must exceed 0");
-        require(
-            diff.currentValidatorSetHash == sha256(ValidatorSets.serializeValidators(newValidators)),
-            "Current validator hash mismatch"
-        );
 
         // Update Intermediate State
         currentPartialValSet.pChainHeight = diff.currentHeight;
@@ -154,10 +150,6 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
             "Resulting validator set size mismatch"
         );
         require(newWeight > 0, "Total weight must exceed 0");
-        require(
-            diff.currentValidatorSetHash == sha256(ValidatorSets.serializeValidators(newValidators)),
-            "Current validator hash mismatch"
-        );
         return (validatorSetMetadata, newValidators, newWeight);
     }
 }
