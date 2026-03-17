@@ -153,7 +153,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      */
     function updateValidatorSet(
         ValidatorSetShard calldata shard,
-        bytes memory shardBytes
+        bytes calldata shardBytes
     ) external {
         require(
             isRegistrationInProgress(shard.avalancheBlockchainID), "Registration is not in progress"
@@ -189,8 +189,12 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      * @param shard Indicates the sequence number of the shard and blockchain affected by this update
      * @param shardBytes the actual data of the shard which
      */
-    /* solhint-disable-next-line no-unused-vars */
-    function applyShard(ValidatorSetShard calldata shard, bytes memory shardBytes) public virtual {
+    function applyShard(
+        /* solhint-disable-next-line no-unused-vars */
+        ValidatorSetShard calldata shard,
+        /* solhint-disable-next-line no-unused-vars */
+        bytes calldata shardBytes
+    ) public virtual {
         revert("Not implemented");
     }
 

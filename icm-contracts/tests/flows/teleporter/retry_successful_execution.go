@@ -60,7 +60,7 @@ func RetrySuccessfulExecution(
 
 	event, err := utils.GetEventFromLogs(
 		receipt.Logs,
-		teleporter.TeleporterMessenger(l1AInfo).ParseSendCrossChainMessage,
+		teleporter.TeleporterMessenger(&l1AInfo).ParseSendCrossChainMessage,
 	)
 	Expect(err).Should(BeNil())
 	Expect(event.DestinationBlockchainID[:]).Should(Equal(l1BInfo.BlockchainID[:]))
@@ -84,14 +84,14 @@ func RetrySuccessfulExecution(
 		aggregator,
 	)
 	receiveEvent, err :=
-		utils.GetEventFromLogs(receipt.Logs, teleporter.TeleporterMessenger(l1BInfo).ParseReceiveCrossChainMessage)
+		utils.GetEventFromLogs(receipt.Logs, teleporter.TeleporterMessenger(&l1BInfo).ParseReceiveCrossChainMessage)
 	Expect(err).Should(BeNil())
 	deliveredTeleporterMessage := receiveEvent.Message
 
 	//
 	// Check Teleporter message received on the destination
 	//
-	delivered, err := teleporter.TeleporterMessenger(l1BInfo).MessageReceived(
+	delivered, err := teleporter.TeleporterMessenger(&l1BInfo).MessageReceived(
 		&bind.CallOpts{}, teleporterMessageID,
 	)
 	Expect(err).Should(BeNil())
@@ -110,7 +110,7 @@ func RetrySuccessfulExecution(
 	optsB, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1BInfo.EVMChainID)
 	Expect(err).Should(BeNil())
 
-	tx, err = teleporter.TeleporterMessenger(l1BInfo).RetryMessageExecution(
+	tx, err = teleporter.TeleporterMessenger(&l1BInfo).RetryMessageExecution(
 		optsB,
 		l1AInfo.BlockchainID,
 		deliveredTeleporterMessage,

@@ -411,7 +411,6 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         ValidatorChange[] memory changes = new ValidatorChange[](validatorSet.validators.length);
         for (uint256 i = 0; i < validatorSet.validators.length; i++) {
             changes[i] = ValidatorChange({
-                nodeID: bytes20(0),
                 blsPublicKey: validatorSet.validators[i].blsPublicKey,
                 weight: validatorSet.validators[i].weight
             });
@@ -498,17 +497,11 @@ contract AvalancheValidatorSetRegistryCommon is Test {
     ) internal pure returns (bytes32) {
         ValidatorChange[] memory changes = new ValidatorChange[](existingValidators.length + 1);
         for (uint256 i = 0; i < existingValidators.length; i++) {
-            changes[i] = ValidatorChange({
-                nodeID: bytes20(0),
-                blsPublicKey: existingValidators[i].blsPublicKey,
-                weight: 0
-            });
+            changes[i] =
+                ValidatorChange({blsPublicKey: existingValidators[i].blsPublicKey, weight: 0});
         }
-        changes[existingValidators.length] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: newValidator.blsPublicKey,
-            weight: newValidator.weight
-        });
+        changes[existingValidators.length] =
+            ValidatorChange({blsPublicKey: newValidator.blsPublicKey, weight: newValidator.weight});
         Validator[] memory startSet =
             existingValidators.length > 0 ? existingValidators : new Validator[](0);
         ValidatorSet memory vs = ValidatorSet({
@@ -541,11 +534,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             pChainTimestamp: pChainTimestamp
         });
         ValidatorChange[] memory changes = new ValidatorChange[](1);
-        changes[0] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: newValidator.blsPublicKey,
-            weight: newValidator.weight
-        });
+        changes[0] =
+            ValidatorChange({blsPublicKey: newValidator.blsPublicKey, weight: newValidator.weight});
         return sha256(
             ValidatorSets.serializeValidatorSetDiff(
                 customValidatorSetDiff(
@@ -965,7 +955,6 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             cumulative[1] = validators[1];
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
-                nodeID: bytes20(0),
                 blsPublicKey: validators[1].blsPublicKey,
                 weight: validators[1].weight
             });
@@ -1075,7 +1064,6 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             cumulative[1] = validators[1];
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
-                nodeID: bytes20(0),
                 blsPublicKey: validators[1].blsPublicKey,
                 weight: validators[1].weight
             });
@@ -1353,7 +1341,6 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             cumulative[1] = validators[1];
             ValidatorChange[] memory shard2Changes = new ValidatorChange[](1);
             shard2Changes[0] = ValidatorChange({
-                nodeID: bytes20(0),
                 blsPublicKey: validators[1].blsPublicKey,
                 weight: validators[1].weight
             });
@@ -1506,17 +1493,11 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
     ) internal returns (bytes memory) {
         ValidatorChange[] memory changes = new ValidatorChange[](existingValidators.length + 1);
         for (uint256 i = 0; i < existingValidators.length; i++) {
-            changes[i] = ValidatorChange({
-                nodeID: bytes20(0),
-                blsPublicKey: existingValidators[i].blsPublicKey,
-                weight: 0
-            });
+            changes[i] =
+                ValidatorChange({blsPublicKey: existingValidators[i].blsPublicKey, weight: 0});
         }
-        changes[existingValidators.length] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: newValidator.blsPublicKey,
-            weight: newValidator.weight
-        });
+        changes[existingValidators.length] =
+            ValidatorChange({blsPublicKey: newValidator.blsPublicKey, weight: newValidator.weight});
         ValidatorSet memory existingSet = ValidatorSet({
             avalancheBlockchainID: blockchainID,
             validators: existingValidators,
@@ -1548,11 +1529,8 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             pChainTimestamp: pChainTimestamp
         });
         ValidatorChange[] memory changes = new ValidatorChange[](1);
-        changes[0] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: newValidator.blsPublicKey,
-            weight: newValidator.weight
-        });
+        changes[0] =
+            ValidatorChange({blsPublicKey: newValidator.blsPublicKey, weight: newValidator.weight});
         return ValidatorSets.serializeValidatorSetDiff(
             customValidatorSetDiff(afterShard1, previousHeight, previousTimestamp, 1, changes)
         );
@@ -1610,11 +1588,7 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
         Validator[] memory validators
     ) public {
         ValidatorChange[] memory postChanges = new ValidatorChange[](1);
-        postChanges[0] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: BLST.getPublicKeyFromSecret(7),
-            weight: 5
-        });
+        postChanges[0] = ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(7), weight: 5});
         // Diff
         ValidatorSetDiff memory postDiff = ValidatorSetDiff({
             avalancheBlockchainID: chainID,
@@ -1669,7 +1643,6 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             new ValidatorChange[](validatorSet.validators.length);
         for (uint256 i = 0; i < validatorSet.validators.length; i++) {
             initialChanges[i] = ValidatorChange({
-                nodeID: bytes20(0),
                 blsPublicKey: validatorSet.validators[i].blsPublicKey,
                 weight: validatorSet.validators[i].weight
             });
@@ -1691,21 +1664,13 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
 
         // Compute second diff
         ValidatorChange[] memory changes = new ValidatorChange[](3);
-        changes[0] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: validatorSet.validators[0].blsPublicKey,
-            weight: 0
-        }); // Remove
+        changes[0] =
+            ValidatorChange({blsPublicKey: validatorSet.validators[0].blsPublicKey, weight: 0}); // Remove
         changes[1] = ValidatorChange({
-            nodeID: bytes20(0),
             blsPublicKey: validatorSet.validators[1].blsPublicKey,
             weight: uint64(validatorSet.validators[1].weight + 10)
         }); // Modify
-        changes[2] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: BLST.getPublicKeyFromSecret(6),
-            weight: 1
-        }); // Add
+        changes[2] = ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(6), weight: 1}); // Add
         _sortValidatorChanges(changes);
         ValidatorSetDiff memory diff = ValidatorSetDiff({
             avalancheBlockchainID: chainID,
@@ -1759,7 +1724,6 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             new ValidatorChange[](validatorSet.validators.length);
         for (uint256 i = 0; i < validatorSet.validators.length; i++) {
             initialChanges[i] = ValidatorChange({
-                nodeID: bytes20(0),
                 blsPublicKey: validatorSet.validators[i].blsPublicKey,
                 weight: validatorSet.validators[i].weight
             });
@@ -1781,21 +1745,13 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
 
         // Compute invalid diff
         ValidatorChange[] memory changes = new ValidatorChange[](3);
-        changes[0] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: validatorSet.validators[0].blsPublicKey,
-            weight: 0
-        }); // Remove
+        changes[0] =
+            ValidatorChange({blsPublicKey: validatorSet.validators[0].blsPublicKey, weight: 0}); // Remove
         changes[1] = ValidatorChange({
-            nodeID: bytes20(0),
             blsPublicKey: validatorSet.validators[1].blsPublicKey,
             weight: uint64(validatorSet.validators[1].weight + 10)
         }); // Modify
-        changes[2] = ValidatorChange({
-            nodeID: bytes20(0),
-            blsPublicKey: BLST.getPublicKeyFromSecret(6),
-            weight: 1
-        }); // Add
+        changes[2] = ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(6), weight: 1}); // Add
         _sortValidatorChanges(changes);
         ValidatorSetDiff memory diff = ValidatorSetDiff({
             avalancheBlockchainID: chainID,
