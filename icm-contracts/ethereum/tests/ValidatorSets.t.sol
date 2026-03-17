@@ -174,7 +174,6 @@ contract ValidatorSetsTest is Test {
         uint64 previousTimestamp,
         uint64 currentHeight,
         uint64 currentTimestamp,
-        bytes32 currentValidatorSetHash,
         uint256 numChanges
     ) public view {
         vm.assume(numChanges < 10);
@@ -197,7 +196,6 @@ contract ValidatorSetsTest is Test {
             previousTimestamp: previousTimestamp,
             currentHeight: currentHeight,
             currentTimestamp: currentTimestamp,
-            currentValidatorSetHash: currentValidatorSetHash,
             changes: changes,
             numAdded: numAdded,
             newSize: numAdded - numRemoved
@@ -209,7 +207,6 @@ contract ValidatorSetsTest is Test {
         assertEq(valsetDiff.previousTimestamp, deserialized.previousTimestamp);
         assertEq(valsetDiff.currentHeight, deserialized.currentHeight);
         assertEq(valsetDiff.currentTimestamp, deserialized.currentTimestamp);
-        assertEq(valsetDiff.currentValidatorSetHash, deserialized.currentValidatorSetHash);
         for (uint256 i; i < numChanges; i++) {
             assertEq(valsetDiff.changes[i].blsPublicKey, deserialized.changes[i].blsPublicKey);
             assertEq(valsetDiff.changes[i].weight, deserialized.changes[i].weight);
