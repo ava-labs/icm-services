@@ -1,5 +1,6 @@
 @openzeppelin/contracts@5.0.2=lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts
 @openzeppelin/contracts-upgradeable@5.0.2=lib/openzeppelin-contracts-upgradeable/contracts
+@openzeppelin/contracts/=lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/
 @forge-std=lib/forge-std/src
 @teleporter=icm-contracts/avalanche/teleporter
 @subnet-evm=icm-contracts/avalanche/subnet-evm
@@ -8,3 +9,4 @@
 @common=icm-contracts/common
 @ethereum=icm-contracts/ethereum
 @solidity-merkle-trees/=lib/solidity-merkle-trees/src/
+@risc0/contracts/=lib/risc0-ethereum/contracts/src/
