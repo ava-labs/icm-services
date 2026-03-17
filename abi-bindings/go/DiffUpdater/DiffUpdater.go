@@ -43,6 +43,12 @@ type Validator struct {
 	Weight       uint64
 }
 
+// ValidatorChange is an auto generated low-level Go binding around an user-defined struct.
+type ValidatorChange struct {
+	BlsPublicKey []byte
+	Weight       uint64
+}
+
 // ValidatorSet is an auto generated low-level Go binding around an user-defined struct.
 type ValidatorSet struct {
 	AvalancheBlockchainID [32]byte
@@ -50,6 +56,19 @@ type ValidatorSet struct {
 	TotalWeight           uint64
 	PChainHeight          uint64
 	PChainTimestamp       uint64
+}
+
+// ValidatorSetDiff is an auto generated low-level Go binding around an user-defined struct.
+type ValidatorSetDiff struct {
+	AvalancheBlockchainID   [32]byte
+	PreviousHeight          uint64
+	PreviousTimestamp       uint64
+	CurrentHeight           uint64
+	CurrentTimestamp        uint64
+	CurrentValidatorSetHash [32]byte
+	Changes                 []ValidatorChange
+	NumAdded                uint32
+	NewSize                 *big.Int
 }
 
 // ValidatorSetMetadata is an auto generated low-level Go binding around an user-defined struct.
@@ -516,6 +535,27 @@ func (_DiffUpdater *DiffUpdaterSession) VerifyICMMessage(message ICMMessage, ava
 // Solidity: function verifyICMMessage((bytes,uint32,bytes32,bytes) message, bytes32 avalancheBlockchainID) view returns()
 func (_DiffUpdater *DiffUpdaterCallerSession) VerifyICMMessage(message ICMMessage, avalancheBlockchainID [32]byte) error {
 	return _DiffUpdater.Contract.VerifyICMMessage(&_DiffUpdater.CallOpts, message, avalancheBlockchainID)
+}
+
+// ApplyDiff is a paid mutator transaction binding the contract method 0xd579a4c4.
+//
+// Solidity: function applyDiff(bytes32 chainID, (bytes32,uint64,uint64,uint64,uint64,bytes32,(bytes,uint64)[],uint32,uint256) diff) returns((bytes,uint64)[])
+func (_DiffUpdater *DiffUpdaterTransactor) ApplyDiff(opts *bind.TransactOpts, chainID [32]byte, diff ValidatorSetDiff) (*types.Transaction, error) {
+	return _DiffUpdater.contract.Transact(opts, "applyDiff", chainID, diff)
+}
+
+// ApplyDiff is a paid mutator transaction binding the contract method 0xd579a4c4.
+//
+// Solidity: function applyDiff(bytes32 chainID, (bytes32,uint64,uint64,uint64,uint64,bytes32,(bytes,uint64)[],uint32,uint256) diff) returns((bytes,uint64)[])
+func (_DiffUpdater *DiffUpdaterSession) ApplyDiff(chainID [32]byte, diff ValidatorSetDiff) (*types.Transaction, error) {
+	return _DiffUpdater.Contract.ApplyDiff(&_DiffUpdater.TransactOpts, chainID, diff)
+}
+
+// ApplyDiff is a paid mutator transaction binding the contract method 0xd579a4c4.
+//
+// Solidity: function applyDiff(bytes32 chainID, (bytes32,uint64,uint64,uint64,uint64,bytes32,(bytes,uint64)[],uint32,uint256) diff) returns((bytes,uint64)[])
+func (_DiffUpdater *DiffUpdaterTransactorSession) ApplyDiff(chainID [32]byte, diff ValidatorSetDiff) (*types.Transaction, error) {
+	return _DiffUpdater.Contract.ApplyDiff(&_DiffUpdater.TransactOpts, chainID, diff)
 }
 
 // ApplyPartialUpdate is a paid mutator transaction binding the contract method 0xef8c0bf0.
