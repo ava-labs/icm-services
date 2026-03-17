@@ -66,15 +66,14 @@ func DeployDiffUpdater(
 
 	// Create the initial validator set diff
 	initialDiff := diffupdater.ValidatorSetDiff{
-		AvalancheBlockchainID:   avalancheChainID,
-		PreviousHeight:          0,
-		PreviousTimestamp:       0,
-		CurrentHeight:           pChainHeight,
-		CurrentTimestamp:        uint64(banffBlock.Timestamp().Unix()),
-		Changes:                 changes,
-		NumAdded:                uint32(len(canonicalValidatorSet.Validators)),
-		NewSize:                 big.NewInt(int64(len(canonicalValidatorSet.Validators))),
-		CurrentValidatorSetHash: InitialValidatorSetHash(changes),
+		AvalancheBlockchainID: avalancheChainID,
+		PreviousHeight:        0,
+		PreviousTimestamp:     0,
+		CurrentHeight:         pChainHeight,
+		CurrentTimestamp:      uint64(banffBlock.Timestamp().Unix()),
+		Changes:               changes,
+		NumAdded:              uint32(len(canonicalValidatorSet.Validators)),
+		NewSize:               big.NewInt(int64(len(canonicalValidatorSet.Validators))),
 	}
 	serializedDiff := SerializeValidatorSetDiff(&initialDiff)
 	shardHashes := make([][32]byte, 1)
@@ -180,7 +179,6 @@ func SerializeValidatorSetDiff(
 		previousTimestamp,
 		currentHeight,
 		currentTimestamp,
-		diff.CurrentValidatorSetHash[:],
 		numChanges,
 		numAdded,
 	}, nil)
