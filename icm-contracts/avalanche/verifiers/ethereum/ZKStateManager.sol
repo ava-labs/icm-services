@@ -3,12 +3,14 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-// Based on code from: https://github.com/boundless-xyz/boundless-transceiver
+// Based on code from: https://github.com/boundless-xyz/boundless-transceiver/blob/fa9d4c67872ad6ea916e647da3cc971c8eeee209/src/BlockRootOracle.sol
+// Original code licensed under Apache-2.0 (see external/LICENSE)
+// Modified: Added execution layer and receipt proof verification
 
 pragma solidity ^0.8.30;
 
 import {AccessControl} from "@openzeppelin/contracts@5.0.2/access/AccessControl.sol";
-import {IRiscZeroVerifier} from "@risc0/contracts/IRiscZeroVerifier.sol";
+import {IRiscZeroVerifier} from "./external/IRiscZeroVerifier.sol";
 import {Consensus, Execution, Receipt} from "./StateManagerLibrary.sol";
 
 /**
