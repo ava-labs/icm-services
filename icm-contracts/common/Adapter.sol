@@ -34,10 +34,10 @@ contract Adapter is IAdapter {
     function verifyMessage(
         TeleporterICMMessage calldata message
     ) external returns (bool) {
-        TeleporterMessengerV2 teleporter = TeleporterMessengerV2(msg.sender);
-        if (teleporter.blockchainID() == chain1) {
+
+        if (message.message.destinationBlockchainID == chain1) {
             return IMessageVerifier(adapter1).verifyMessage(message);
-        } else if (teleporter.blockchainID() == chain2) {
+        } else if (message.message.destinationBlockchainID == chain2) {
             return IMessageVerifier(adapter2).verifyMessage(message);
         } else {
             revert("Unexpected blockchain ID");
@@ -48,9 +48,9 @@ contract Adapter is IAdapter {
         TeleporterMessageV2 calldata message
     ) external {
         TeleporterMessengerV2 teleporter = TeleporterMessengerV2(msg.sender);
-        if (teleporter.blockchainID() == chain1) {
+        if (message.destinationBlockchainID == chain2) {
             return IMessageSender(adapter1).sendMessage(message);
-        } else if (teleporter.blockchainID() == chain2) {
+        } else if (message.destinationBlockchainID == chain1) {
             return IMessageSender(adapter2).sendMessage(message);
         } else {
             revert("Unexpected blockchain ID");

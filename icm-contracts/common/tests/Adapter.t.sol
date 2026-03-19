@@ -66,7 +66,7 @@ contract AdapterTest is Test {
         _teleporter2.sendCrossChainMessage(input2);
 
         TeleporterMessageInput memory input3 = TeleporterMessageInput({
-            destinationBlockchainID: _BLOCKCHAIN2,
+            destinationBlockchainID: _BLOCKCHAIN3,
             destinationAddress: address(_adapter2),
             feeInfo: TeleporterFeeInfo({feeTokenAddress: address(0), amount: 0}),
             requiredGasLimit: 0,
