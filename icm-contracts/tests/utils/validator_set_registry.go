@@ -119,6 +119,8 @@ func createShards(
 
 	// compute the size of each shard
 	shardSize := len(canonicalValidatorSet.Validators) / int(shardNumber)
+	// If the number of shards exceeds the number of validators, then shardSize will be 0.
+	// In this case, shardSize will be set to 1 and shardNumber will be equal to the number of validators.
 	if shardSize == 0 {
 		shardSize = 1
 		shardNumber = uint32(len(canonicalValidatorSet.Validators))
