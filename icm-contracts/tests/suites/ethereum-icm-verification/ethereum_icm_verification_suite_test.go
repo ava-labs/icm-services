@@ -61,7 +61,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				NodeCount:  1,
 			},
 		},
-		1,
+		4,
 		1,
 		e2eFlags,
 	)
@@ -95,6 +95,15 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				localEthereumNetworkInstance,
 				ecdsaVerifierByteCodeFile,
 				teleporterInfo,
+			)
+		})
+	ginkgo.It("Test AvalancheValidatorSetRegistry",
+		ginkgo.Label(ethereumICMVerificationLabel),
+		func(ctx context.Context) {
+			ethereumIcmVerification.AvalancheValidatorSetRegistry(
+				ctx,
+				localAvalancheNetworkInstance,
+				localEthereumNetworkInstance,
 			)
 		})
 })
