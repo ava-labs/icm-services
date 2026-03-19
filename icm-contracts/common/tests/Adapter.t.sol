@@ -29,7 +29,8 @@ contract AdapterTest is Test {
     function setUp() public {
         _adapter1 = new AtoB();
         _adapter2 = new BtoA();
-        _multiplexAdapter = new Adapter(_BLOCKCHAIN1, _BLOCKCHAIN2, address(_adapter1), address(_adapter2));
+        _multiplexAdapter =
+            new Adapter(_BLOCKCHAIN1, _BLOCKCHAIN2, address(_adapter1), address(_adapter2));
         _teleporter1 = new TeleporterMessengerV2(address(_multiplexAdapter));
         _teleporter1.initialize(_BLOCKCHAIN1);
         _teleporter2 = new TeleporterMessengerV2(address(_multiplexAdapter));

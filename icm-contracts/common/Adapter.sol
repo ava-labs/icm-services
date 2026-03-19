@@ -5,7 +5,7 @@
 
 pragma solidity 0.8.30;
 
-import {IAdapter, IMessageSender, IMessageVerifier} from "./ITeleporterMessengerV2.sol";
+import {IAdapter} from "./ITeleporterMessengerV2.sol";
 import {TeleporterICMMessage, TeleporterMessageV2} from "./TeleporterMessageV2.sol";
 
 /**
