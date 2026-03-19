@@ -44,7 +44,9 @@ contract ExecutionTest is Test {
         _harness.setConfig(_defaultConfig);
     }
 
-    /// @notice Corrupting any single step's proof should revert at exactly that step.
+    /**
+     * @notice Corrupting any single step's proof should revert at exactly that step.
+     */
     function testVerifyRevertOnCorruptedProofAtEachStep() public {
         (Execution.Proof memory proof, bytes32 beaconBlockRoot) =
             _buildFullProof(bytes32(uint256(0xCAFE)), 0, 1);
@@ -98,7 +100,9 @@ contract ExecutionTest is Test {
         _harness.verify(bytes32(uint256(0xBEEF)), proof);
     }
 
-    /// @notice Changing config values should break verification.
+    /**
+     * @notice Changing config values should break verification.
+     */
     function testVerifyConfigMutation() public {
         (Execution.Proof memory proof, bytes32 beaconBlockRoot) =
             _buildFullProof(bytes32(uint256(0xcafe)), 0, 1);
@@ -131,7 +135,9 @@ contract ExecutionTest is Test {
         _harness.verify(farRoot, farProof);
     }
 
-    /// @notice Invalid slot relationships should always revert.
+    /**
+     * @notice Invalid slot relationships should always revert.
+     */
     function testFuzzVerifyRevertInvalidSlots(uint64 target, uint64 anchor) public {
         vm.assume(target >= anchor);
         Execution.Proof memory proof = _makeBaseProof();
@@ -141,7 +147,9 @@ contract ExecutionTest is Test {
         _harness.verify(bytes32(uint256(0xBEEF)), proof);
     }
 
-    /// @notice Full happy path. Builds valid proofs, sanity checks each step, then verifies the chain.
+    /**
+     * @notice Full happy path. Builds valid proofs, sanity checks each step, then verifies the chain.
+     */
     function testVerifySuccessFullChainOfTrust() public view {
         bytes32 receiptsRoot = bytes32(uint256(0xcafe));
         uint64 targetSlot = 0;
@@ -185,7 +193,9 @@ contract ExecutionTest is Test {
         _harness.verify(beaconBlockRoot, proof);
     }
 
-    /// @notice Any non-zero receipts root with valid slots should pass.
+    /**
+     * @notice Any non-zero receipts root with valid slots should pass.
+     */
     function testFuzzVerifySuccessArbitraryInputs(
         bytes32 receiptsRoot,
         uint64 targetSlot,

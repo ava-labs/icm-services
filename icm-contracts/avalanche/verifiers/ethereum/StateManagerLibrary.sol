@@ -24,13 +24,17 @@ library Consensus {
         Checkpoint finalizedCheckpoint;
     }
 
-    /// @notice Compares two consensus states structs for equality.
+    /**
+     * @notice Compares two consensus states structs for equality.
+     */
     function compareState(State memory a, State memory b) internal pure returns (bool) {
         return compareCheckpoint(a.currentJustifiedCheckpoint, b.currentJustifiedCheckpoint)
             && compareCheckpoint(a.finalizedCheckpoint, b.finalizedCheckpoint);
     }
 
-    /// @notice Compares two consensus checkpoints by checking if they have the same epoch number and root.
+    /**
+     * @notice Compares two consensus checkpoints by checking if they have the same epoch number and root.
+     */
     function compareCheckpoint(
         Checkpoint memory a,
         Checkpoint memory b
@@ -38,7 +42,9 @@ library Consensus {
         return a.epoch == b.epoch && a.root == b.root;
     }
 
-    /// @notice Generates a unique hash for block that was included in the chain at the given slot
+    /**
+     * @notice Generates a unique hash for block that was included in the chain at the given slot
+     */
     function checkpointHash(uint64 slot, bytes32 root) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(slot, root));
     }
@@ -54,12 +60,14 @@ library Execution {
         uint256 stateRootsVectorSize;
     }
 
-    /// @notice A cryptographic proof bundle establishing that an execution layer receipt root is valid for a specified beacon chain slot.
-    /// @dev This struct contains inclusion proofs required to verify an execution layer event, i.e., a transaction receipt.
-    /// 1. Anchor Check: Verifies the `anchorBeaconState` is valid against a trusted beacon block root.
-    /// 2. History Check: Verifies the `targetBeaconState` exists within the `anchorBeaconState` historical state roots vector.
-    /// 3. Execution Check: Verifies the `targetExecutionHeader` root is included in the `targetBeaconState`.
-    /// 4. Receipts Check: Verifies the `targetReceiptsRoot` is included in the `targetExecutionHeader`.
+    /**
+     * @notice A cryptographic proof bundle establishing that an execution layer receipt root is valid for a specified beacon chain slot.
+     * @dev This struct contains inclusion proofs required to verify an execution layer event, i.e., a transaction receipt.
+     * 1. Anchor Check: Verifies the `anchorBeaconState` is valid against a trusted beacon block root.
+     * 2. History Check: Verifies the `targetBeaconState` exists within the `anchorBeaconState` historical state roots vector.
+     * 3. Execution Check: Verifies the `targetExecutionHeader` root is included in the `targetBeaconState`.
+     * 4. Receipts Check: Verifies the `targetReceiptsRoot` is included in the `targetExecutionHeader`.
+     */
     struct Proof {
         // The specific slot for the beacon block root we are using as the anchor
         uint64 anchorSlot;
@@ -146,7 +154,9 @@ library Execution {
 library Receipt {
     using RLPReader for bytes;
 
-    /// @notice Contains all the data required to prove a specific log/event was emitted.
+    /**
+     * @notice Contains all the data required to prove a specific log/event was emitted.
+     */
     struct Proof {
         // The Merkle Patricia Trie inclusion proof (array of rlp-encoded nodes).
         bytes[] proof;
