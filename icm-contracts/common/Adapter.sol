@@ -20,23 +20,23 @@ import {TeleporterICMMessage, TeleporterMessageV2} from "./TeleporterMessageV2.s
 contract Adapter is IAdapter {
     bytes32 public immutable chain1;
     bytes32 public immutable chain2;
-    address public immutable adapter1;
-    address public immutable adapter2;
+    IAdapter public immutable adapter1;
+    IAdapter public immutable adapter2;
 
     constructor(bytes32 chain1_, bytes32 chain2_, address adapter1_, address adapter2_) {
         chain1 = chain1_;
         chain2 = chain2_;
-        adapter1 = adapter1_;
-        adapter2 = adapter2_;
+        adapter1 = IAdapter(adapter1_);
+        adapter2 = IAdapter(adapter2_);
     }
 
     function verifyMessage(
         TeleporterICMMessage calldata message
     ) external returns (bool) {
         if (message.message.destinationBlockchainID == chain1) {
-            return IMessageVerifier(adapter1).verifyMessage(message);
+            return adapter1.verifyMessage(message);
         } else if (message.message.destinationBlockchainID == chain2) {
-            return IMessageVerifier(adapter2).verifyMessage(message);
+            return adapter2.verifyMessage(message);
         } else {
             revert("Unexpected blockchain ID");
         }
@@ -46,9 +46,9 @@ contract Adapter is IAdapter {
         TeleporterMessageV2 calldata message
     ) external {
         if (message.destinationBlockchainID == chain2) {
-            return IMessageSender(adapter1).sendMessage(message);
+            return adapter1.sendMessage(message);
         } else if (message.destinationBlockchainID == chain1) {
-            return IMessageSender(adapter2).sendMessage(message);
+            return adapter2.sendMessage(message);
         } else {
             revert("Unexpected blockchain ID");
         }

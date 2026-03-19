@@ -22,19 +22,19 @@ contract AdapterTest is Test {
     TeleporterMessengerV2 private _teleporter1;
     TeleporterMessengerV2 private _teleporter2;
     TeleporterMessengerV2 private _teleporter3;
-    Adapter private _adapter;
+    Adapter private _multiplexAdapter;
     IAdapter private _adapter1;
     IAdapter private _adapter2;
 
     function setUp() public {
         _adapter1 = new AtoB();
         _adapter2 = new BtoA();
-        _adapter = new Adapter(_BLOCKCHAIN1, _BLOCKCHAIN2, address(_adapter1), address(_adapter2));
-        _teleporter1 = new TeleporterMessengerV2(address(_adapter));
+        _multiplexAdapter = new Adapter(_BLOCKCHAIN1, _BLOCKCHAIN2, address(_adapter1), address(_adapter2));
+        _teleporter1 = new TeleporterMessengerV2(address(_multiplexAdapter));
         _teleporter1.initialize(_BLOCKCHAIN1);
-        _teleporter2 = new TeleporterMessengerV2(address(_adapter));
+        _teleporter2 = new TeleporterMessengerV2(address(_multiplexAdapter));
         _teleporter2.initialize(_BLOCKCHAIN2);
-        _teleporter3 = new TeleporterMessengerV2(address(_adapter));
+        _teleporter3 = new TeleporterMessengerV2(address(_multiplexAdapter));
         _teleporter3.initialize(_BLOCKCHAIN3);
     }
 
