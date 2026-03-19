@@ -53,6 +53,7 @@ func EcdsaVerifier(
 		byteCode,
 		nil,
 		deploymentUtils.GetDefaultContractCreationGasPrice(),
+		nil,
 	)
 	Expect(err).Should(BeNil())
 	// Deploy the ECDSAVerifier contract on the C-Chain
