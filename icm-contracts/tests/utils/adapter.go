@@ -43,6 +43,7 @@ func DeployAdapter(
 		byteCode,
 		nil,
 		deploymentUtils.GetDefaultContractCreationGasPrice(),
+		nil,
 	)
 	Expect(err).Should(BeNil())
 

@@ -6,7 +6,6 @@
 pragma solidity 0.8.30;
 
 import {IAdapter, IMessageSender, IMessageVerifier} from "./ITeleporterMessengerV2.sol";
-import {TeleporterMessengerV2} from "./TeleporterMessengerV2.sol";
 import {TeleporterICMMessage, TeleporterMessageV2} from "./TeleporterMessageV2.sol";
 
 /**
@@ -34,7 +33,6 @@ contract Adapter is IAdapter {
     function verifyMessage(
         TeleporterICMMessage calldata message
     ) external returns (bool) {
-
         if (message.message.destinationBlockchainID == chain1) {
             return IMessageVerifier(adapter1).verifyMessage(message);
         } else if (message.message.destinationBlockchainID == chain2) {
@@ -47,7 +45,6 @@ contract Adapter is IAdapter {
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
-        TeleporterMessengerV2 teleporter = TeleporterMessengerV2(msg.sender);
         if (message.destinationBlockchainID == chain2) {
             return IMessageSender(adapter1).sendMessage(message);
         } else if (message.destinationBlockchainID == chain1) {
