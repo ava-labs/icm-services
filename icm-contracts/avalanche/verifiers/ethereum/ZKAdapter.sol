@@ -18,7 +18,9 @@ struct Attestation {
     Receipt.Proof logProof;
 }
 
-/// @notice Adapts ZKStateManager for the Teleporter messaging protocol.
+/**
+ * @notice Adapts ZKStateManager for the Teleporter messaging protocol.
+ */
 contract ZKAdapter is ZKStateManager, IMessageVerifier {
     constructor(
         uint256 sourceChainId,
@@ -41,10 +43,12 @@ contract ZKAdapter is ZKStateManager, IMessageVerifier {
             superAdmin
         )
     {}
+    /**
+     * @notice Verifies a Teleporter message by validating the attestation.
+     * @dev Decodes the attestation from the message and delegates to proveLogAndExecute.
+     * Reverts if verification fails.
+     */
 
-    /// @notice Verifies a Teleporter message by validating the attestation.
-    /// @dev Decodes the attestation from the message and delegates to proveLogAndExecute.
-    /// Reverts if verification fails.
     function verifyMessage(
         TeleporterICMMessage calldata message
     ) external returns (bool) {
@@ -53,8 +57,10 @@ contract ZKAdapter is ZKStateManager, IMessageVerifier {
         return true;
     }
 
-    /// @notice Teleporter-specific logic to handle the imported event.
-    /// @dev Override to process verified cross-chain events.
+    /**
+     * @notice Teleporter-specific logic to handle the imported event.
+     * @dev Override to process verified cross-chain events.
+     */
     function _onEventImport(
         ZKEventInfo memory eventInfo
     ) internal override 

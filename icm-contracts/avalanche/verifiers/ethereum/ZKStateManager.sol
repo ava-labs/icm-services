@@ -20,9 +20,11 @@ import {Consensus, Execution, Receipt} from "./StateManagerLibrary.sol";
 
 // TODO: Add e2e testing for verifying Ethereum events on the C-chain. See https://github.com/ava-labs/icm-services/issues/1239
 
-/// @notice Contains the data required to verify and perform a beacon chain state transition.
-/// @dev This struct bundles the ZK proof (seal) with the public inputs (journal) required to
-/// verify that the Beacon Chain has successfully advanced to a new finalized state.
+/**
+ * @notice Contains the data required to verify and perform a beacon chain state transition.
+ * @dev This struct bundles the ZK proof (seal) with the public inputs (journal) required to
+ * verify that the Beacon Chain has successfully advanced to a new finalized state.
+ */
 struct ConsensusData {
     /// @dev Encoded Journal struct containing pre- and post-consensus states and finalized slot
     bytes journalData;
@@ -32,8 +34,10 @@ struct ConsensusData {
     uint64 finalizedSlot;
 }
 
-/// @notice Contains the complete state transition data for ZK proof verification
-/// @dev Used as journal data in RISC Zero proofs to validate beacon state transitions
+/**
+ * @notice Contains the complete state transition data for ZK proof verification
+ * @dev Used as journal data in RISC Zero proofs to validate beacon state transitions
+ */
 struct Journal {
     /// @dev The consensus state before the transition (must match the contract's stored `_currentState`).
     Consensus.State preState;
@@ -43,7 +47,9 @@ struct Journal {
     uint64 finalizedSlot;
 }
 
-/// @notice Information about an imported event from the beacon chain.
+/**
+ * @notice Information about an imported event from the beacon chain.
+ */
 struct ZKEventInfo {
     uint256 sourceChainId;
     uint256 beaconSlot;
@@ -61,29 +67,41 @@ contract ZKStateManager is AccessControl {
 
     uint256 public immutable sourceChainId;
 
-    /// @notice The current consensus state of the beacon chain
-    /// @dev Updated atomically through state transitions to ensure consistency
+    /**
+     * @notice The current consensus state of the beacon chain
+     * @dev Updated atomically through state transitions to ensure consistency
+     */
     Consensus.State private _currentState;
 
-    /// @notice The beacon chain config used to verify execution layer data.
+    /**
+     * @notice The beacon chain config used to verify execution layer data.
+     */
     Execution.BeaconConfig internal _beaconConfig;
 
-    /// @notice Maps a beacon chain slot to its verified beacon block root
-    /// @dev Used to track the beacon chain slots that are trusted and finalized through verified state transitions
+    /**
+     * @notice Maps a beacon chain slot to its verified beacon block root
+     * @dev Used to track the beacon chain slots that are trusted and finalized through verified state transitions
+     */
     mapping(uint64 slot => bytes32 beaconBlockRoot) internal _allowedBeaconBlocks;
 
-    /// @notice The RISC Zero program ID used to verify Ethereum consensus transitions
-    /// @dev This image ID corresponds to the ZK program (Signal Ethereum) that validates state transitions.
-    /// Normally it stays constant, but it can be updated if the consensus program is upgraded, for example.
-    /// All proofs are verified against this program.
+    /**
+     * @notice The RISC Zero program ID used to verify Ethereum consensus transitions
+     * @dev This image ID corresponds to the ZK program (Signal Ethereum) that validates state transitions.
+     * Normally it stays constant, but it can be updated if the consensus program is upgraded, for example.
+     * All proofs are verified against this program.
+     */
     bytes32 public imageID;
 
-    /// @notice The address of the RISC Zero verifier contract
-    /// @dev Used to validate zero-knowledge proofs of beacon state transitions
+    /**
+     * @notice The address of the RISC Zero verifier contract
+     * @dev Used to validate zero-knowledge proofs of beacon state transitions
+     */
     address public verifier;
 
-    /// @notice Maximum allowed time span for state transitions in seconds
-    /// @dev Used to prevent acceptance of stale beacon state transitions
+    /**
+     * @notice Maximum allowed time span for state transitions in seconds
+     * @dev Used to prevent acceptance of stale beacon state transitions
+     */
     uint24 public permissibleTimespan;
 
     /// @notice Events
@@ -109,17 +127,19 @@ contract ZKStateManager is AccessControl {
     error InvalidPreState();
     error PermissibleTimespanLapsed();
 
-    /// @notice Initializes the ZKStateManager contract with all required parameters
-    /// @dev Sets up the initial consensus state, configures verification parameters, and establishes cross-chain
-    /// communication
-    /// @param newSourceChainId The ID of the chain this contract will track
-    /// @param startingState The initial consensus state of the beacon chain
-    /// @param beaconConfig The beacon config used to verify execution layer data
-    /// @param permissibleTimespan_ Maximum allowed time span for state transitions in seconds
-    /// @param verifier_ Address of the RISC Zero verifier contract for proof validation
-    /// @param imageID_ The RISC Zero image ID for the beacon state transition program
-    /// @param admin Address to be granted the ADMIN_ROLE
-    /// @param superAdmin Address to be granted the DEFAULT_ADMIN_ROLE
+    /**
+     * @notice Initializes the ZKStateManager contract with all required parameters
+     * @dev Sets up the initial consensus state, configures verification parameters, and establishes cross-chain
+     * communication
+     * @param newSourceChainId The ID of the chain this contract will track
+     * @param startingState The initial consensus state of the beacon chain
+     * @param beaconConfig The beacon config used to verify execution layer data
+     * @param permissibleTimespan_ Maximum allowed time span for state transitions in seconds
+     * @param verifier_ Address of the RISC Zero verifier contract for proof validation
+     * @param imageID_ The RISC Zero image ID for the beacon state transition program
+     * @param admin Address to be granted the ADMIN_ROLE
+     * @param superAdmin Address to be granted the DEFAULT_ADMIN_ROLE
+     */
     constructor(
         uint256 newSourceChainId,
         Consensus.State memory startingState,
@@ -130,7 +150,7 @@ contract ZKStateManager is AccessControl {
         address admin,
         address superAdmin
     ) {
-        require(sourceChainId != 0, "Invalid chain ID");
+        require(newSourceChainId != 0, "Invalid chain ID");
         sourceChainId = newSourceChainId;
 
         _grantRole(ADMIN_ROLE, admin);
@@ -143,12 +163,14 @@ contract ZKStateManager is AccessControl {
         imageID = imageID_;
     }
 
-    /// @notice Performs a full state transition from a trusted beacon checkpoint to a new finalized state.
-    /// @dev The function performs the following steps:
-    /// 1. Verifies the ZK proof of the beacon (consensus) state transition to the new finalized checkpoint.
-    /// 2. Validates the Merkle chain of execution state roots from the prior epoch boundary to the new finalized execution state root.
-    /// 3. Verifies that all receipt roots are included in their respective execution state roots using Merkle proofs.
-    /// 4. Updates the global state to reflect the new trusted consensus, execution, and receipt roots.
+    /**
+     * @notice Performs a full state transition from a trusted beacon checkpoint to a new finalized state.
+     * @dev The function performs the following steps:
+     * 1. Verifies the ZK proof of the beacon (consensus) state transition to the new finalized checkpoint.
+     * 2. Validates the Merkle chain of execution state roots from the prior epoch boundary to the new finalized execution state root.
+     * 3. Verifies that all receipt roots are included in their respective execution state roots using Merkle proofs.
+     * 4. Updates the global state to reflect the new trusted consensus, execution, and receipt roots.
+     */
     function transition(
         ConsensusData calldata consensus
     ) external {
@@ -160,13 +182,15 @@ contract ZKStateManager is AccessControl {
         _transition(journal, consensus.finalizedSlot);
     }
 
-    /// @notice Proves that a specific log was emitted on the beacon chain and executes application logic.
-    /// @dev This is the main entry point for bridging events. It performs two key verifications:
-    /// 1. Execution Verification: Validates that the provided `targetReceiptsRoot` is part of the canonical beacon chain history using the `execProof`.
-    /// 2. Log Verification: Uses the validated `targetReceiptsRoot` to verify the inclusion  of a specific Receipt (and Log) via the `logProof`.
-    /// Once verified, it emits a `ZKEventImported` event and passes the verified data to the internal `_onEventImport` handler for application-specific processing.
-    /// @param execProof The execution proof linking a receipt root to a trusted beacon block root.
-    /// @param logProof The log proof establishing the receipt and log inclusion against a trusted receipts root.
+    /**
+     * @notice Proves that a specific log was emitted on the beacon chain and executes application logic.
+     * @dev This is the main entry point for bridging events. It performs two key verifications:
+     * 1. Execution Verification: Validates that the provided `targetReceiptsRoot` is part of the canonical beacon chain history using the `execProof`.
+     * 2. Log Verification: Uses the validated `targetReceiptsRoot` to verify the inclusion  of a specific Receipt (and Log) via the `logProof`.
+     * Once verified, it emits a `ZKEventImported` event and passes the verified data to the internal `_onEventImport` handler for application-specific processing.
+     * @param execProof The execution proof linking a receipt root to a trusted beacon block root.
+     * @param logProof The log proof establishing the receipt and log inclusion against a trusted receipts root.
+     */
     function proveLogAndExecute(
         Execution.Proof calldata execProof,
         Receipt.Proof calldata logProof
@@ -222,8 +246,10 @@ contract ZKStateManager is AccessControl {
         permissibleTimespan = newPermissibleTimespan;
     }
 
-    /// @notice Manually applies a beacon state transition without proof verification
-    /// @dev Admin-only function for emergency state updates.
+    /**
+     * @notice Manually applies a beacon state transition without proof verification
+     * @dev Admin-only function for emergency state updates.
+     */
     function manualTransition(
         bytes calldata journalData,
         uint64 finalizedSlot
@@ -232,8 +258,10 @@ contract ZKStateManager is AccessControl {
         _transition(journal, finalizedSlot);
     }
 
-    /// @notice Outputs the beacon block root associated with the provided `slot`.
-    /// @param slot The beacon chain slot to look up
+    /**
+     * @notice Outputs the beacon block root associated with the provided `slot`.
+     * @param slot The beacon chain slot to look up
+     */
     function getBeaconBlockRoot(
         uint64 slot
     ) external view returns (bytes32 root, bool valid) {
@@ -241,15 +269,19 @@ contract ZKStateManager is AccessControl {
         valid = root != UNDEFINED_ROOT;
     }
 
-    /// @notice Application-specific logic to handle the imported event.
-    /// @dev Override this in derived contracts to process verified cross-chain events.
+    /**
+     * @notice Application-specific logic to handle the imported event.
+     * @dev Override this in derived contracts to process verified cross-chain events.
+     */
     function _onEventImport(
         ZKEventInfo memory eventInfo
     ) internal virtual 
     // solhint-disable-next-line no-empty-blocks
     {}
 
-    /// @notice Transitions and updates the consensus state of the contract to the new post-state.
+    /**
+     * @notice Transitions and updates the consensus state of the contract to the new post-state.
+     */
     function _transition(Journal memory journal, uint64 finalizedSlot) internal {
         _currentState = journal.postState;
         emit Transitioned(
@@ -261,7 +293,9 @@ contract ZKStateManager is AccessControl {
         _confirmBeaconBlock(finalizedSlot, journal.postState.finalizedCheckpoint.root);
     }
 
-    /// @notice Confirms and stores a beacon block root for a given slot.
+    /**
+     * @notice Confirms and stores a beacon block root for a given slot.
+     */
     function _confirmBeaconBlock(uint64 slot, bytes32 root) internal {
         if (_allowedBeaconBlocks[slot] == UNDEFINED_ROOT) {
             _allowedBeaconBlocks[slot] = root;
@@ -269,12 +303,15 @@ contract ZKStateManager is AccessControl {
         emit ConfirmedBeaconBlock(slot, root);
     }
 
-    /// @notice Verifies the consensus state transition using the provided ZK proof and journal data.
-    /// @dev Verifies that the transition from `journal.preState` to `journal.postState` is valid using the cryptographic ZK proof.
-    /// This function implements two key checks:
-    /// 1. The consensus pre-state of the journal matches the current trusted state of the contract.
-    /// 2. The consensus post-state can be transitioned to following Ethereum consensus rules (Casper FFG) starting at the pre-state. This step is verified by the ZK proof.
-    /// Note: This function solely performs verification. The state update must be handled by the caller.
+    /**
+     * @notice Verifies the consensus state transition using the provided ZK proof and journal data.
+     * @dev Verifies that the transition from `journal.preState` to `journal.postState` is valid using the cryptographic ZK proof.
+     *
+     * This function implements two key checks:
+     * 1. The consensus pre-state of the journal matches the current trusted state of the contract.
+     * 2. The consensus post-state can be transitioned to following Ethereum consensus rules (Casper FFG) starting at the pre-state.
+     * This step is verified by the ZK proof. Note: This function solely performs verification. The state update must be handled by the caller.
+     */
     function _verify(Journal memory journal, ConsensusData calldata consensus) internal view {
         // Ensure the proof is anchored to the current contract state.
         // The `preState` claimed in the ZK journal must match the `_currentState` actually stored in this contract.
