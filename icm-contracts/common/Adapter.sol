@@ -5,7 +5,7 @@
 
 pragma solidity 0.8.30;
 
-import {IAdapter} from "./ITeleporterMessengerV2.sol";
+import {IAdapter, IMessageSender, IMessageVerifier} from "./ITeleporterMessengerV2.sol";
 import {TeleporterMessengerV2} from "./TeleporterMessengerV2.sol";
 import {TeleporterICMMessage, TeleporterMessageV2} from "./TeleporterMessageV2.sol";
 
@@ -36,9 +36,9 @@ contract Adapter is IAdapter {
     ) external returns (bool) {
         TeleporterMessengerV2 teleporter = TeleporterMessengerV2(msg.sender);
         if (teleporter.blockchainID() == chain1) {
-            return IAdapter(adapter1).verifyMessage(message);
+            return IMessageVerifier(adapter1).verifyMessage(message);
         } else if (teleporter.blockchainID() == chain2) {
-            return IAdapter(adapter2).verifyMessage(message);
+            return IMessageVerifier(adapter2).verifyMessage(message);
         } else {
             revert("Unexpected blockchain ID");
         }
@@ -49,9 +49,9 @@ contract Adapter is IAdapter {
     ) external {
         TeleporterMessengerV2 teleporter = TeleporterMessengerV2(msg.sender);
         if (teleporter.blockchainID() == chain1) {
-            return IAdapter(adapter1).sendMessage(message);
+            return IMessageSender(adapter1).sendMessage(message);
         } else if (teleporter.blockchainID() == chain2) {
-            return IAdapter(adapter2).sendMessage(message);
+            return IMessageSender(adapter2).sendMessage(message);
         } else {
             revert("Unexpected blockchain ID");
         }
