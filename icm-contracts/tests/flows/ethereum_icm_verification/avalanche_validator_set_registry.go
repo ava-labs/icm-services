@@ -30,7 +30,10 @@ func AvalancheValidatorSetRegistry(
 		primaryNetworkInfo.BlockchainID,
 		primaryNetworkInfo.SubnetID,
 		platformvm.NewClient(primaryNetworkInfo.NodeURIs[0]),
+		5,
 	)
+	// sanity check
+	Expect(len(serializedShards)).Should(Equal(4))
 
 	avalancheValidatorSetRegistry, err := diffupdater.NewDiffUpdater(
 		contractAddress,

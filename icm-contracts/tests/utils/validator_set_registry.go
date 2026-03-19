@@ -37,47 +37,16 @@ func DeployDiffUpdater(
 	avalancheChainID ids.ID,
 	avalancheSubnetID ids.ID,
 	pChainClient *platformvm.Client,
+	shardNumber uint32,
 ) (common.Address, [][]byte) {
-	// Get the p-chain block height
-	pChainHeight, err := pChainClient.GetHeight(ctx)
-	Expect(err).Should(BeNil())
-
-	// Get the p-chain block at the given height
-	pChainBlockBytes, err := pChainClient.GetBlockByHeight(ctx, pChainHeight)
-	Expect(err).Should(BeNil())
-	pChainBlock, err := block.Parse(block.Codec, pChainBlockBytes)
-	Expect(err).Should(BeNil())
-	banffBlock, ok := pChainBlock.(block.BanffBlock)
-	Expect(ok).Should(BeTrue())
-
-	// Get the validators from the block height
-	rawValidators, err := pChainClient.GetValidatorsAt(ctx, avalancheSubnetID, api.Height(pChainHeight))
-	Expect(err).Should(BeNil())
-	canonicalValidatorSet, err := validators.FlattenValidatorSet(rawValidators)
-	Expect(err).Should(BeNil())
-
-	changes := make([]diffupdater.ValidatorChange, len(canonicalValidatorSet.Validators))
-	for i, validator := range canonicalValidatorSet.Validators {
-		changes[i] = diffupdater.ValidatorChange{
-			BlsPublicKey: validator.PublicKeyBytes,
-			Weight:       validator.Weight,
-		}
+	// Create the shards for initializing the p-chain validator set
+	diffs := createShards(ctx, avalancheChainID, avalancheSubnetID, pChainClient, shardNumber)
+	shardBytes := make([][]byte, len(diffs))
+	shardHashes := make([][32]byte, len(diffs))
+	for i, diff := range diffs {
+		shardBytes[i] = SerializeValidatorSetDiff(&diff)
+		shardHashes[i] = sha256.Sum256(shardBytes[i])
 	}
-
-	// Create the initial validator set diff
-	initialDiff := diffupdater.ValidatorSetDiff{
-		AvalancheBlockchainID: avalancheChainID,
-		PreviousHeight:        0,
-		PreviousTimestamp:     0,
-		CurrentHeight:         pChainHeight,
-		CurrentTimestamp:      uint64(banffBlock.Timestamp().Unix()),
-		Changes:               changes,
-		NumAdded:              uint32(len(canonicalValidatorSet.Validators)),
-		NewSize:               big.NewInt(int64(len(canonicalValidatorSet.Validators))),
-	}
-	serializedDiff := SerializeValidatorSetDiff(&initialDiff)
-	shardHashes := make([][32]byte, 1)
-	shardHashes[0] = sha256.Sum256(serializedDiff)
 
 	// Create the metadata used to initialize the `DiffUpdater` contract
 	initialValidatorSetData := diffupdater.ValidatorSetMetadata{
@@ -120,7 +89,73 @@ func DeployDiffUpdater(
 	)
 
 	// Return the shard bytes needed to initialize the first validator set
-	return contractAddress, [][]byte{serializedDiff}
+	return contractAddress, shardBytes
+}
+
+func createShards(
+	ctx context.Context,
+	avalancheChainID ids.ID,
+	avalancheSubnetID ids.ID,
+	pChainClient *platformvm.Client,
+	shardNumber uint32,
+) []diffupdater.ValidatorSetDiff {
+	// Get the p-chain block height
+	pChainHeight, err := pChainClient.GetHeight(ctx)
+	Expect(err).Should(BeNil())
+
+	// Get the p-chain block at the given height
+	pChainBlockBytes, err := pChainClient.GetBlockByHeight(ctx, pChainHeight)
+	Expect(err).Should(BeNil())
+	pChainBlock, err := block.Parse(block.Codec, pChainBlockBytes)
+	Expect(err).Should(BeNil())
+	banffBlock, ok := pChainBlock.(block.BanffBlock)
+	Expect(ok).Should(BeTrue())
+
+	// Get the validators from the block height
+	rawValidators, err := pChainClient.GetValidatorsAt(ctx, avalancheSubnetID, api.Height(pChainHeight))
+	Expect(err).Should(BeNil())
+	canonicalValidatorSet, err := validators.FlattenValidatorSet(rawValidators)
+	Expect(err).Should(BeNil())
+
+	// compute the size of each shard
+	shardSize := len(canonicalValidatorSet.Validators) / int(shardNumber)
+	// If the number of shards exceeds the number of validators, then shardSize will be 0.
+	// In this case, shardSize will be set to 1 and shardNumber will be equal to the number of validators.
+	if shardSize == 0 {
+		shardSize = 1
+		shardNumber = uint32(len(canonicalValidatorSet.Validators))
+	}
+
+	diffs := make([]diffupdater.ValidatorSetDiff, shardNumber)
+	addedAccumulator := 0
+
+	for s := 0; s < int(shardNumber); s++ {
+		var validatorShard []*validators.Warp
+		if s == int(shardNumber)-1 {
+			validatorShard = canonicalValidatorSet.Validators[s*shardSize:]
+		} else {
+			validatorShard = canonicalValidatorSet.Validators[s*shardSize : (s+1)*shardSize]
+		}
+		changes := make([]diffupdater.ValidatorChange, len(validatorShard))
+		for i, validator := range validatorShard {
+			changes[i] = diffupdater.ValidatorChange{
+				BlsPublicKey: validator.PublicKeyBytes,
+				Weight:       validator.Weight,
+			}
+		}
+		addedAccumulator += len(changes)
+		diffs[s] = diffupdater.ValidatorSetDiff{
+			AvalancheBlockchainID: avalancheChainID,
+			PreviousHeight:        0,
+			PreviousTimestamp:     0,
+			CurrentHeight:         pChainHeight,
+			CurrentTimestamp:      uint64(banffBlock.Timestamp().Unix()),
+			Changes:               changes,
+			NumAdded:              uint32(len(changes)),
+			NewSize:               big.NewInt(int64(addedAccumulator)),
+		}
+	}
+	return diffs
 }
 
 // SerializeValidatorSetDiff Serializes a `ValidatorSetDiff` to bytes in the same manner as the
