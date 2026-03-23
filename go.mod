@@ -9,7 +9,7 @@ tool (
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.14.2-0.20260312144754-474a1835f482
+	github.com/ava-labs/avalanchego v1.14.2-0.20260318140222-8204d2ef8900
 	github.com/ava-labs/avalanchego/graft/subnet-evm v0.8.2
 	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
 	github.com/aws/aws-sdk-go-v2 v1.41.3
@@ -28,6 +28,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/supranational/blst v0.3.14
 	go.uber.org/atomic v1.11.0
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/mock v0.6.0
@@ -330,7 +331,6 @@ require (
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/supranational/blst v0.3.14 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a // indirect
 	github.com/tdakkota/asciicheck v0.4.1 // indirect
 	github.com/tetafro/godot v1.5.0 // indirect

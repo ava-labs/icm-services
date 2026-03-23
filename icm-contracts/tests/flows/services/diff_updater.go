@@ -1,0 +1,456 @@
+// Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package tests
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"encoding/hex"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/units"
+	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
+	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
+	poamanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/PoAManager"
+	"github.com/ava-labs/icm-services/config"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
+	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/peers/clients"
+	"github.com/ava-labs/icm-services/relayer"
+	relayercfg "github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
+	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/crypto"
+	. "github.com/onsi/gomega"
+	"go.uber.org/zap"
+)
+
+// DiffUpdater tests the relayer's DiffSetUpdater end-to-end:
+//  1. Deploys a DiffUpdater contract on the external Ethereum network.
+//  2. Configures the relayer with an ExternalEVMDestination (ContractType "diff").
+//  3. Starts the relayer and waits for it to automatically detect validators,
+//     build a ValidatorSetDiff warp message, aggregate signatures, and submit the
+//     registerValidatorSet / updateValidatorSet transactions.
+//  4. Verifies the on-chain validator set matches expectations.
+//  5. Adds a new validator to the L1 to trigger a diff-based update.
+//  6. Waits for the relayer to detect the change and send a diff update.
+//  7. Verifies the updated on-chain validator set includes the new validator.
+func DiffUpdater(
+	ctx context.Context,
+	log logging.Logger,
+	avalancheNetwork *network.LocalAvalancheNetwork,
+	ethereumNetwork *network.LocalEthereumNetwork,
+	teleporter utils.TeleporterTestInfo,
+) {
+	log.Info("Starting DiffUpdater e2e test")
+
+	l1Info := avalancheNetwork.GetL1Infos()[0]
+	blockchainID := l1Info.BlockchainID
+	networkID := avalancheNetwork.GetNetworkID()
+
+	log.Info("Test configuration",
+		zap.Stringer("blockchainID", blockchainID),
+		zap.Stringer("subnetID", l1Info.SubnetID),
+		zap.Uint32("networkID", networkID),
+	)
+
+	ethClient := ethereumNetwork.EthClient
+	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
+	chainID := ethereumNetwork.ChainID
+	fundedAddress, fundedKey := avalancheNetwork.GetFundedAccountInfo()
+
+	// =========================================================================
+	// Step 1: Fetch primary network validators for P-chain bootstrap
+	// =========================================================================
+	primaryNetworkInfo := avalancheNetwork.GetPrimaryNetworkInfo()
+	pChainClient := clients.NewCanonicalValidatorClient(&config.APIConfig{
+		BaseURL: primaryNetworkInfo.NodeURIs[0],
+	})
+	pChainHeight, err := pChainClient.GetLatestHeight(ctx)
+	Expect(err).Should(BeNil())
+
+	pChainWarpSet, err := pChainClient.GetProposedValidators(ctx, ids.Empty)
+	Expect(err).Should(BeNil())
+
+	pChainValidators := make([]*message.Validator, len(pChainWarpSet.Validators))
+	for i, vdr := range pChainWarpSet.Validators {
+		pChainValidators[i] = &message.Validator{
+			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+			Weight:                     vdr.Weight,
+		}
+	}
+	sort.Slice(pChainValidators, func(i, j int) bool {
+		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) <
+			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
+	})
+
+	var pChainID [32]byte // all zeros = PlatformChainID
+	pChainTimestamp := uint64(time.Now().Unix())
+
+	bootstrapHeight := pChainHeight + 1
+	bootstrapTimestamp := pChainTimestamp + 1
+
+	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidatorsAsDiff(
+		pChainValidators,
+		testShardSize,
+		ids.ID(pChainID),
+		pChainHeight,
+		pChainTimestamp,
+		bootstrapHeight,
+		bootstrapTimestamp,
+	)
+	Expect(err).Should(BeNil())
+
+	pChainShardHashesBytes := make([][32]byte, len(pChainShardHashes))
+	for i, h := range pChainShardHashes {
+		pChainShardHashesBytes[i] = h
+	}
+
+	log.Info("Fetched primary network validators",
+		zap.Int("numValidators", len(pChainValidators)),
+		zap.Int("numShards", len(pChainShardBytesList)),
+		zap.Uint64("pChainHeight", pChainHeight),
+	)
+
+	// =========================================================================
+	// Step 2: Deploy ValidatorSets library, then DiffUpdater contract
+	// =========================================================================
+	txOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, chainID)
+	Expect(err).Should(BeNil())
+
+	libAddr := deployValidatorSetsLibrary(ctx, log, txOpts, ethClient)
+
+	const diffLibPlaceholder = "__$aaf4ae346b84a712cc43f25bb66199d6fb$__"
+	libAddrHex := strings.ToLower(libAddr.Hex()[2:])
+	origBin := diffupdater.DiffUpdaterBin
+	diffupdater.DiffUpdaterBin = strings.ReplaceAll(origBin, diffLibPlaceholder, libAddrHex)
+	defer func() { diffupdater.DiffUpdaterBin = origBin }()
+
+	initialMetadata := diffupdater.ValidatorSetMetadata{
+		AvalancheBlockchainID: pChainID,
+		PChainHeight:          pChainHeight,
+		PChainTimestamp:       pChainTimestamp,
+		ShardHashes:           pChainShardHashesBytes,
+	}
+	contractAddr, deployTx, contract, err := diffupdater.DeployDiffUpdater(
+		txOpts, ethClient, networkID, initialMetadata,
+	)
+	Expect(err).Should(BeNil())
+
+	deployReceipt, err := bind.WaitMined(ctx, ethClient, deployTx)
+	Expect(err).Should(BeNil())
+	Expect(deployReceipt.Status).Should(Equal(uint64(1)))
+
+	log.Info("Deployed DiffUpdater contract",
+		zap.String("address", contractAddr.Hex()),
+		zap.String("txHash", deployTx.Hash().Hex()),
+	)
+
+	// =========================================================================
+	// Step 3: Bootstrap P-chain validators via updateValidatorSet
+	// =========================================================================
+	for i, shardBytes := range pChainShardBytesList {
+		shard := diffupdater.ValidatorSetShard{
+			ShardNumber:           uint64(i + 1),
+			AvalancheBlockchainID: pChainID,
+		}
+		tx, err := contract.UpdateValidatorSet(txOpts, shard, shardBytes)
+		Expect(err).Should(BeNil())
+		receipt, err := bind.WaitMined(ctx, ethClient, tx)
+		Expect(err).Should(BeNil())
+		Expect(receipt.Status).Should(Equal(uint64(1)),
+			"updateValidatorSet shard %d failed", i+1)
+		log.Info("Bootstrapped P-chain shard",
+			zap.Int("shardNumber", i+1),
+			zap.Int("totalShards", len(pChainShardBytesList)),
+		)
+	}
+
+	callOpts := &bind.CallOpts{Context: ctx}
+	pChainInitialized, err := contract.PChainInitialized(callOpts)
+	Expect(err).Should(BeNil())
+	Expect(pChainInitialized).Should(BeTrue(), "P-chain validator set should be initialized")
+
+	log.Info("P-chain validators bootstrapped successfully")
+
+	onChainVS, err := contract.GetValidatorSet(callOpts, blockchainID)
+	Expect(err).Should(BeNil())
+	Expect(onChainVS.TotalWeight).Should(Equal(uint64(0)),
+		"L1 validator set should start empty")
+
+	// =========================================================================
+	// Step 4: Configure and start the relayer
+	// =========================================================================
+	log.Info("Configuring relayer with ExternalEVMDestination (diff)")
+
+	err = utils.ClearRelayerStorage()
+	Expect(err).Should(BeNil())
+
+	relayerKey, err := crypto.GenerateKey()
+	Expect(err).Should(BeNil())
+	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1Info}, fundedKey, relayerKey)
+
+	relayerConfig := createDiffUpdaterRelayerConfig(
+		log,
+		teleporter,
+		l1Info,
+		fundedAddress,
+		relayerKey,
+		ethereumNetwork,
+		contractAddr.Hex(),
+		blockchainID.String(),
+		l1Info.SubnetID.String(),
+	)
+	relayerConfigPath := utils.WriteRelayerConfig(log, relayerConfig, utils.DefaultRelayerCfgFname)
+
+	log.Info("Starting relayer")
+	relayerCleanup, readyChan := utils.RunRelayerExecutable(
+		ctx,
+		log,
+		relayerConfigPath,
+		relayerConfig,
+	)
+	defer relayerCleanup()
+
+	startupCtx, startupCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer startupCancel()
+	utils.WaitForChannelClose(startupCtx, readyChan)
+
+	log.Info("Relayer started, waiting for validator set registration...")
+
+	// =========================================================================
+	// Step 5: Wait for the relayer to register the validator set
+	// =========================================================================
+	pollCtx, pollCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer pollCancel()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	var firstPChainHeight uint64
+	var firstValidatorCount int
+
+registrationLoop:
+	for {
+		select {
+		case <-pollCtx.Done():
+			Expect(pollCtx.Err()).ShouldNot(HaveOccurred(),
+				"Timed out waiting for relayer to register validator set")
+		case <-ticker.C:
+			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
+			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
+				continue
+			}
+
+			if vs.TotalWeight == 0 {
+				log.Debug("Validator set not yet registered, waiting...")
+				continue
+			}
+
+			// =========================================================================
+			// Step 6: Verify the registered validator set
+			// =========================================================================
+			log.Info("Validator set registered by relayer!",
+				zap.Int("validatorCount", len(vs.Validators)),
+				zap.Uint64("totalWeight", vs.TotalWeight),
+				zap.Uint64("pChainHeight", vs.PChainHeight),
+				zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
+			)
+
+			Expect(vs.PChainHeight).Should(BeNumerically(">", 0),
+				"P-Chain height should be positive")
+			Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
+				"P-Chain timestamp should be positive")
+			Expect(len(vs.Validators)).Should(BeNumerically(">", 0),
+				"Should have at least one validator")
+			Expect(vs.TotalWeight).Should(BeNumerically(">", 0),
+				"Total weight should be positive")
+
+			var calculatedWeight uint64
+			for i, v := range vs.Validators {
+				Expect(len(v.BlsPublicKey)).Should(Equal(128),
+					"BLS public key should be 128 bytes (uncompressed G1)")
+				Expect(v.Weight).Should(BeNumerically(">", 0),
+					"Validator weight should be positive")
+				calculatedWeight += v.Weight
+				log.Debug("Validator details",
+					zap.Int("index", i),
+					zap.Uint64("weight", v.Weight),
+				)
+			}
+			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
+				"Total weight should match sum of individual validator weights")
+
+			firstPChainHeight = vs.PChainHeight
+			firstValidatorCount = len(vs.Validators)
+
+			log.Info("First registration verified",
+				zap.String("contractAddress", contractAddr.Hex()),
+				zap.Int("validatorCount", firstValidatorCount),
+				zap.Uint64("totalWeight", vs.TotalWeight),
+				zap.Uint64("pChainHeight", firstPChainHeight),
+			)
+			break registrationLoop
+		}
+	}
+
+	// =========================================================================
+	// Step 7: Add a new validator to trigger diff update
+	// =========================================================================
+	log.Info("Adding a new validator to trigger diff update...")
+
+	validatorManagerProxy, poaManagerProxy := avalancheNetwork.GetValidatorManager(l1Info.SubnetID)
+	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1Info.EthClient)
+	Expect(err).Should(BeNil())
+
+	pChainInfo := utils.GetPChainInfo(avalancheNetwork.GetPrimaryNetworkInfo())
+	aggregator := avalancheNetwork.GetSignatureAggregator()
+	defer aggregator.Shutdown()
+
+	newNodes := avalancheNetwork.GetExtraNodes(1)
+	Expect(len(newNodes)).Should(Equal(1), "Should have at least 1 extra node available")
+
+	log.Info("Adding extra node as subnet validator",
+		zap.Stringer("nodeID", newNodes[0].NodeID),
+	)
+	l1Info = avalancheNetwork.AddSubnetValidators(newNodes, l1Info, true)
+
+	addValidatorCtx, addValidatorCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer addValidatorCancel()
+
+	expiry := uint64(time.Now().Add(24 * time.Hour).Unix())
+	pop, err := newNodes[0].GetProofOfPossession()
+	Expect(err).Should(BeNil())
+
+	node := utils.Node{
+		NodeID:  newNodes[0].NodeID,
+		NodePoP: pop,
+		Weight:  units.Schmeckle / 5,
+	}
+
+	log.Info("Initiating PoA validator registration",
+		zap.Stringer("nodeID", node.NodeID),
+		zap.Uint64("weight", node.Weight),
+	)
+
+	utils.InitiateAndCompletePoAValidatorRegistration(
+		addValidatorCtx,
+		aggregator,
+		fundedKey,
+		l1Info,
+		pChainInfo,
+		poaManager,
+		poaManagerProxy.Address,
+		validatorManagerProxy.Address,
+		expiry,
+		node,
+		avalancheNetwork.GetPChainWallet(),
+		avalancheNetwork.GetNetworkID(),
+	)
+
+	log.Info("New validator added, waiting for relayer to detect and send diff update...")
+
+	err = utils.IssueTxsToAdvanceChain(ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5)
+	Expect(err).Should(BeNil())
+
+	// =========================================================================
+	// Step 8: Wait for diff update with updated validator set
+	// =========================================================================
+	updateCtx, updateCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer updateCancel()
+
+	updateTicker := time.NewTicker(2 * time.Second)
+	defer updateTicker.Stop()
+
+	for {
+		select {
+		case <-updateCtx.Done():
+			Expect(false).Should(BeTrue(),
+				"Timed out waiting for relayer to send diff update after validator change")
+		case <-updateTicker.C:
+			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
+			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
+				continue
+			}
+
+			if len(vs.Validators) > firstValidatorCount && vs.PChainHeight > firstPChainHeight {
+				log.Info("Validator set updated via diff by relayer!",
+					zap.Int("validatorCount", len(vs.Validators)),
+					zap.Uint64("totalWeight", vs.TotalWeight),
+					zap.Uint64("pChainHeight", vs.PChainHeight),
+					zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
+				)
+
+				Expect(len(vs.Validators)).Should(BeNumerically(">", firstValidatorCount),
+					"Updated validator set should have more validators after adding one")
+				Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
+					"Updated validator set should have higher P-chain height")
+				Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
+					"Updated validator set should have positive timestamp")
+
+				log.Info("DiffUpdater e2e test PASSED",
+					zap.String("contractAddress", contractAddr.Hex()),
+					zap.Int("firstValidatorCount", firstValidatorCount),
+					zap.Int("updatedValidatorCount", len(vs.Validators)),
+					zap.Uint64("firstPChainHeight", firstPChainHeight),
+					zap.Uint64("updatedPChainHeight", vs.PChainHeight),
+				)
+				return
+			}
+
+			log.Debug("Waiting for validator set diff update...",
+				zap.Int("currentValidatorCount", len(vs.Validators)),
+				zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
+				zap.Uint64("currentPChainHeight", vs.PChainHeight),
+			)
+		}
+	}
+}
+
+func createDiffUpdaterRelayerConfig(
+	log logging.Logger,
+	teleporter utils.TeleporterTestInfo,
+	l1Info testinfo.L1TestInfo,
+	fundedAddress common.Address,
+	relayerKey *ecdsa.PrivateKey,
+	ethereumNetwork *network.LocalEthereumNetwork,
+	contractAddress string,
+	blockchainID string,
+	subnetID string,
+) relayercfg.Config {
+	baseConfig := utils.CreateDefaultRelayerConfig(
+		log,
+		teleporter,
+		[]testinfo.L1TestInfo{l1Info},
+		[]testinfo.L1TestInfo{l1Info},
+		fundedAddress,
+		relayerKey,
+	)
+
+	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
+
+	baseConfig.APIPort = 8083
+
+	baseConfig.ExternalEVMDestinations = []*relayercfg.ExternalEVMDestination{
+		{
+			RPCEndpoint:         ethereumNetwork.BaseURL,
+			PrivateKey:          hex.EncodeToString(crypto.FromECDSA(ethFundedKey)),
+			ContractAddress:     contractAddress,
+			BlockchainID:        blockchainID,
+			SubnetID:            subnetID,
+			ShardSize:           testShardSize,
+			PollIntervalSeconds: testPollIntervalSeconds,
+			ContractType:        "diff",
+		},
+	}
+
+	return baseConfig
+}

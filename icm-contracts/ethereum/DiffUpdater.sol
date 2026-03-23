@@ -123,7 +123,7 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         require(
             validatorSetMetadata.shardHashes[0] == sha256(shardBytes), "Validator set hash mismatch"
         );
-        bytes32 chainID = icmMessage.sourceBlockchainID;
+        bytes32 chainID = validatorSetMetadata.avalancheBlockchainID;
         ValidatorSet memory currentValidatorSet = this.getValidatorSet(chainID);
         ValidatorSetDiff memory diff =
             ValidatorSets.parseValidatorSetDiff(shardBytes, currentValidatorSet.validators.length);

@@ -72,6 +72,7 @@ if ! command -v geth &> /dev/null; then
 fi
 
 geth --dev \
+    --verbosity 1 \
     --http \
     --http.addr "0.0.0.0" \
     --http.port "5050" \

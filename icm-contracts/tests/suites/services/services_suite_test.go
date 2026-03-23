@@ -257,4 +257,9 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		func(ctx context.Context) {
 			servicesFlows.SubsetUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
+	ginkgo.It("DiffUpdater",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.DiffUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
+		})
 })
