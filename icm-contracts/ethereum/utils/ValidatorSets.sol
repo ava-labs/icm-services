@@ -154,29 +154,6 @@ library ValidatorSets {
         }
     }
 
-    /**
-     * @dev Reconstructs the unsigned Warp message bytes that validators sign for ICM addressed-call payloads.
-     * Layout: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
-     *         | addressedCallCodec(2) | typeID(4) | srcAddrLen(4) | innerPayloadLen(4) | payload
-     */
-    function buildUnsignedWarpMessage(
-        uint32 networkID,
-        bytes32 sourceBlockchainID,
-        bytes memory payload
-    ) internal pure returns (bytes memory) {
-        return abi.encodePacked(
-            bytes2(0),
-            networkID,
-            sourceBlockchainID,
-            uint32(payload.length + 14),
-            bytes2(0),
-            uint32(1),
-            uint32(0),
-            uint32(payload.length),
-            payload
-        );
-    }
-
     /*
      * @notice Verifies that a quorum of the input validator set produced the input signature over the input message
      */
@@ -670,5 +647,28 @@ library ValidatorSets {
                 ++i;
             }
         }
+    }
+
+    /**
+     * @dev Reconstructs the unsigned Warp message bytes that validators sign for ICM addressed-call payloads.
+     * Layout: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
+     *         | addressedCallCodec(2) | typeID(4) | srcAddrLen(4) | innerPayloadLen(4) | payload
+     */
+    function buildUnsignedWarpMessage(
+        uint32 networkID,
+        bytes32 sourceBlockchainID,
+        bytes memory payload
+    ) internal pure returns (bytes memory) {
+        return abi.encodePacked(
+            bytes2(0),
+            networkID,
+            sourceBlockchainID,
+            uint32(payload.length + 14),
+            bytes2(0),
+            uint32(1),
+            uint32(0),
+            uint32(payload.length),
+            payload
+        );
     }
 }

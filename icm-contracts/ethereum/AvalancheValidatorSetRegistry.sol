@@ -271,9 +271,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         ValidatorSetSignature memory sig =
             ValidatorSets.parseValidatorSetSignature(message.attestation);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
-            message.sourceNetworkID,
-            message.sourceBlockchainID,
-            message.rawMessage
+            message.sourceNetworkID, message.sourceBlockchainID, message.rawMessage
         );
         require(
             ValidatorSets.verifyValidatorSetSignature(
