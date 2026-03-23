@@ -189,7 +189,7 @@ library ValidatorSets {
 
         uint256 validatorsLen = validators.length;
         uint256 signersLen = signers.length;
-        for (uint256 i = 0; i < validatorsLen; i++) {
+        for (uint256 i = 0; i < validatorsLen;) {
             uint256 byteOffset = i / 8;
             if (byteOffset >= signersLen) {
                 break;
@@ -204,6 +204,9 @@ library ValidatorSets {
                     aggregatePublicKey = validator.blsPublicKey;
                 }
                 aggregateWeight += validator.weight;
+            }
+            unchecked {
+                ++i;
             }
         }
         return (aggregatePublicKey, aggregateWeight);
