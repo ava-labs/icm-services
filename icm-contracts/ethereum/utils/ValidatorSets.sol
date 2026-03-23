@@ -522,18 +522,18 @@ library ValidatorSets {
     ) internal pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000004);
-        bytes memory result = abi.encodePacked(
+        // Shard list: uint32 count then each bytes32 with no padding — same as
+        // abi.encodePacked(uint32(length), ...hashes); static-sized elements in
+        // abi.encode would add offset/length words, so we use encodePacked only.
+        return abi.encodePacked(
             codec,
             payloadType,
             payload.avalancheBlockchainID,
             payload.pChainHeight,
             payload.pChainTimestamp,
-            uint32(payload.shardHashes.length)
+            uint32(payload.shardHashes.length),
+            payload.shardHashes
         );
-        for (uint256 i = 0; i < payload.shardHashes.length; i++) {
-            result = abi.encodePacked(result, payload.shardHashes[i]);
-        }
-        return result;
     }
 
     /*
