@@ -187,12 +187,14 @@ library ValidatorSets {
             revert("Cannot validate against an empty list of validators");
         }
 
-        for (uint256 i = 0; i < validators.length; i++) {
+        uint256 validatorsLen = validators.length;
+        uint256 signersLen = signers.length;
+        for (uint256 i = 0; i < validatorsLen; i++) {
             uint256 byteOffset = i / 8;
-            if (byteOffset >= signers.length) {
+            if (byteOffset >= signersLen) {
                 break;
             }
-            uint256 byteIdx = signers.length - 1 - byteOffset;
+            uint256 byteIdx = signersLen - 1 - byteOffset;
             uint8 bitPos = uint8(i % 8);
             if (uint8(signers[byteIdx]) & (uint8(1) << bitPos) != 0) {
                 Validator memory validator = validators[i];
@@ -344,9 +346,12 @@ library ValidatorSets {
         uint32 shardCount = uint32(bytes4(data[54:58]));
 
         bytes32[] memory shardHashes = new bytes32[](shardCount);
-        for (uint32 i = 0; i < shardCount; i++) {
+        for (uint32 i = 0; i < shardCount;) {
             uint256 offset = 58 + uint256(i) * 32;
             shardHashes[i] = bytes32(data[offset:offset + 32]);
+            unchecked {
+                ++i;
+            }
         }
 
         return ValidatorSetMetadata({
