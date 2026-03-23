@@ -81,7 +81,6 @@ struct ValidatorSetDiff {
     // Current state
     uint64 currentHeight;
     uint64 currentTimestamp;
-    bytes32 currentValidatorSetHash;
     // Changes sorted by key
     ValidatorChange[] changes;
     uint32 numAdded;
@@ -393,8 +392,6 @@ library ValidatorSets {
             offset += 8;
             diff.currentTimestamp = uint64(bytes8(data[offset:offset + 8]));
             offset += 8;
-            diff.currentValidatorSetHash = bytes32(data[offset:offset + 32]);
-            offset += 32;
         }
         // Validator Changes
         {
@@ -558,7 +555,6 @@ library ValidatorSets {
             diff.previousTimestamp,
             diff.currentHeight,
             diff.currentTimestamp,
-            diff.currentValidatorSetHash,
             uint32(diff.changes.length),
             uint32(diff.numAdded)
         );

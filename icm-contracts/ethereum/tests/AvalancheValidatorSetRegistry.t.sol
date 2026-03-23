@@ -422,7 +422,6 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             previousTimestamp: previousTimestamp,
             currentHeight: validatorSet.pChainHeight,
             currentTimestamp: validatorSet.pChainTimestamp,
-            currentValidatorSetHash: sha256(ValidatorSets.serializeValidators(validatorSet.validators)),
             changes: changes,
             numAdded: uint32(validatorSet.validators.length),
             newSize: validatorSet.validators.length
@@ -450,15 +449,11 @@ contract AvalancheValidatorSetRegistryCommon is Test {
             previousTimestamp: previousTimestamp,
             currentHeight: currentPartialValidatorSet.pChainHeight,
             currentTimestamp: currentPartialValidatorSet.pChainTimestamp,
-            currentValidatorSetHash: bytes32(0),
             changes: changes,
             numAdded: numAdded,
             newSize: 0
         });
         diff.newSize = currentPartialValidatorSet.validators.length + numAdded - numRemoved;
-        (Validator[] memory newValidators,) =
-            ValidatorSets.applyValidatorSetDiff(currentPartialValidatorSet.validators, diff);
-        diff.currentValidatorSetHash = sha256(ValidatorSets.serializeValidators(newValidators));
         return diff;
     }
 
@@ -1584,8 +1579,7 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
     function helperTestRegisterValidatorSetWithDiffSuccess(
         bytes32 chainID,
         uint64 pChainHeight,
-        uint64 pChainTimestamp,
-        Validator[] memory validators
+        uint64 pChainTimestamp
     ) public {
         ValidatorChange[] memory postChanges = new ValidatorChange[](1);
         postChanges[0] = ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(7), weight: 5});
@@ -1596,15 +1590,10 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             previousTimestamp: pChainTimestamp + 1,
             currentHeight: pChainHeight + 2,
             currentTimestamp: pChainTimestamp + 2,
-            currentValidatorSetHash: bytes32(0),
             changes: postChanges,
             numAdded: 1,
             newSize: 6
         });
-        (Validator[] memory validatorsAfterDiff,) =
-            ValidatorSets.applyValidatorSetDiff(validators, postDiff);
-        postDiff.currentValidatorSetHash =
-            sha256(ValidatorSets.serializeValidators(validatorsAfterDiff));
         bytes memory postDiffBytes = ValidatorSets.serializeValidatorSetDiff(postDiff);
         bytes32[] memory postShardHashes = new bytes32[](1);
         postShardHashes[0] = sha256(postDiffBytes);
@@ -1654,7 +1643,6 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             previousTimestamp: validatorSet.pChainTimestamp,
             currentHeight: validatorSet.pChainHeight + 1,
             currentTimestamp: validatorSet.pChainTimestamp + 1,
-            currentValidatorSetHash: sha256(ValidatorSets.serializeValidators(validatorSet.validators)),
             changes: initialChanges,
             numAdded: uint32(validatorSet.validators.length),
             newSize: validatorSet.validators.length
@@ -1678,15 +1666,10 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             previousTimestamp: validatorSet.pChainTimestamp,
             currentHeight: validatorSet.pChainHeight + 1,
             currentTimestamp: validatorSet.pChainTimestamp + 1,
-            currentValidatorSetHash: bytes32(0),
             changes: changes,
             numAdded: 1,
             newSize: validatorSet.validators.length
         });
-        (Validator[] memory validatorsAfterDiff,) =
-            ValidatorSets.applyValidatorSetDiff(validatorSet.validators, diff);
-        diff.currentValidatorSetHash =
-            sha256(ValidatorSets.serializeValidators(validatorsAfterDiff));
         bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
         shardHashes[1] = sha256(diffBytes);
 
@@ -1706,7 +1689,7 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
 
         // Test registering a new validator set
         helperTestRegisterValidatorSetWithDiffSuccess(
-            chainID, validatorSet.pChainHeight, validatorSet.pChainTimestamp, validatorsAfterDiff
+            chainID, validatorSet.pChainHeight, validatorSet.pChainTimestamp
         );
     }
 
@@ -1735,7 +1718,6 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             previousTimestamp: validatorSet.pChainTimestamp,
             currentHeight: validatorSet.pChainHeight + 1,
             currentTimestamp: validatorSet.pChainTimestamp + 1,
-            currentValidatorSetHash: sha256(ValidatorSets.serializeValidators(validatorSet.validators)),
             changes: initialChanges,
             numAdded: uint32(validatorSet.validators.length),
             newSize: validatorSet.validators.length
@@ -1759,7 +1741,6 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             previousTimestamp: validatorSet.pChainTimestamp,
             currentHeight: validatorSet.pChainHeight, // Invalid height
             currentTimestamp: validatorSet.pChainTimestamp + 1,
-            currentValidatorSetHash: bytes32(0),
             changes: changes,
             numAdded: 1,
             newSize: validatorSet.validators.length

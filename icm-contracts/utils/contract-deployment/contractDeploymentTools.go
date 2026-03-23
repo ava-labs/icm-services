@@ -47,6 +47,7 @@ func main() {
 				ContractAddressFileName:    universalContractAddressFileName,
 			},
 			deploymentUtils.GetDefaultContractCreationGasPrice(),
+			nil,
 		)
 		if err != nil {
 			log.Fatal("Failed to construct keyless transaction.", zap.Error(err))
