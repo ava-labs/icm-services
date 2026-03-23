@@ -154,6 +154,29 @@ library ValidatorSets {
         }
     }
 
+    /**
+     * @dev Reconstructs the unsigned Warp message bytes that validators sign for ICM addressed-call payloads.
+     * Layout: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
+     *         | addressedCallCodec(2) | typeID(4) | srcAddrLen(4) | innerPayloadLen(4) | payload
+     */
+    function buildUnsignedWarpMessage(
+        uint32 networkID,
+        bytes32 sourceBlockchainID,
+        bytes memory payload
+    ) internal pure returns (bytes memory) {
+        return abi.encodePacked(
+            bytes2(0),
+            networkID,
+            sourceBlockchainID,
+            uint32(payload.length + 14),
+            bytes2(0),
+            uint32(1),
+            uint32(0),
+            uint32(payload.length),
+            payload
+        );
+    }
+
     /*
      * @notice Verifies that a quorum of the input validator set produced the input signature over the input message
      */
@@ -170,15 +193,12 @@ library ValidatorSets {
         return BLST.verifySignature(aggregateKey, signature.signature, message);
     }
 
-    /*
-     * @dev Traverse the bits in signers from left to right, using it as bitvector to determine
-     * which validators to select from the provided list.
-     * @return The aggregate public key and stake weight of the filtered validators
-     */
-    /*
-     * @dev The signers bitset is encoded as Go's big.Int.Bytes() (big-endian).
-     * Bit i of the big.Int corresponds to bit (i%8) of byte signers[signers.length-1 - i/8].
-     * @return The aggregate public key and stake weight of the filtered validators
+    /**
+     * @dev Selects validators by index using the signers bitset, then aggregates their BLS public keys and weights.
+     * The bitset matches Go's big.Int.Bytes() (big-endian): bit i of the integer is
+     * bit (i % 8) of byte signers[signers.length - 1 - i / 8].
+     * @return aggregatePublicKey The aggregate BLS public key of the selected validators
+     * @return aggregateWeight The sum of weights of the selected validators
      */
     function filterValidators(
         bytes memory signers,
