@@ -296,7 +296,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
     ) public view returns (bytes memory) {
         uint256[] memory secretKeys = dummyPChainValidatorSetSecretKeys();
         bytes memory signedData =
-            _buildUnsignedWarpMessage(NETWORK_ID, avalancheBlockchainID, payload);
+            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, avalancheBlockchainID, payload);
         bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature = ValidatorSetSignature({
             // all five validators sign (bits 0-4 set = 0x1F)
@@ -315,7 +315,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         uint256[] memory secretKeys = new uint256[](2);
         secretKeys[0] = 2;
         secretKeys[1] = 3;
-        bytes memory signedData = _buildUnsignedWarpMessage(NETWORK_ID, L1_BLOCKCHAIN_ID, payload);
+        bytes memory signedData =
+            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, L1_BLOCKCHAIN_ID, payload);
         bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature = ValidatorSetSignature({
             // both validators sign (bits 0-1 set = 0x03)
@@ -334,7 +335,8 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         bytes memory signersBitmask,
         bytes memory payload
     ) public view returns (bytes memory) {
-        bytes memory signedData = _buildUnsignedWarpMessage(NETWORK_ID, chainID, payload);
+        bytes memory signedData =
+            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, chainID, payload);
         bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature =
             ValidatorSetSignature({signers: signersBitmask, signature: rawSig});
@@ -455,24 +457,6 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         });
         diff.newSize = currentPartialValidatorSet.validators.length + numAdded - numRemoved;
         return diff;
-    }
-
-    function _buildUnsignedWarpMessage(
-        uint32 networkID,
-        bytes32 sourceBlockchainID,
-        bytes memory payload
-    ) internal pure returns (bytes memory) {
-        return abi.encodePacked(
-            bytes2(0),
-            networkID,
-            sourceBlockchainID,
-            uint32(payload.length + 14),
-            bytes2(0),
-            uint32(1),
-            uint32(0),
-            uint32(payload.length),
-            payload
-        );
     }
 
     function _emptyICMMessage() internal pure returns (ICMMessage memory) {

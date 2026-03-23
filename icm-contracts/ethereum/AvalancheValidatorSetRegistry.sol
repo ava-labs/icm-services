@@ -270,19 +270,8 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
         ValidatorSetSignature memory sig =
             ValidatorSets.parseValidatorSetSignature(message.attestation);
-        // Reconstruct the unsigned warp message bytes that were signed by validators.
-        // Layout: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
-        //         | addressedCallCodec(2) | typeID(4) | srcAddrLen(4) | innerPayloadLen(4) | rawMessage
-        bytes memory signedData = abi.encodePacked(
-            bytes2(0),
-            message.sourceNetworkID,
-            message.sourceBlockchainID,
-            uint32(message.rawMessage.length + 14),
-            bytes2(0),
-            uint32(1),
-            uint32(0),
-            uint32(message.rawMessage.length),
-            message.rawMessage
+        bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
+            message.sourceNetworkID, message.sourceBlockchainID, message.rawMessage
         );
         require(
             ValidatorSets.verifyValidatorSetSignature(
