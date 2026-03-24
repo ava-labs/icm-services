@@ -271,6 +271,19 @@ registrationLoop:
 			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
 				"Total weight should match sum of individual validator weights")
 
+			// Order must match SubsetSetUpdater.fetchSortedValidators: lexicographic by 96-byte pubkey.
+			expectedL1Order := fetchSortedL1ValidatorsAtHeight(
+				ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
+			)
+			Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
+				"on-chain validator slice length should match P-chain canonical set at recorded height")
+			for i, exp := range expectedL1Order {
+				Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
+					"validator %d: weight should match P-chain sorted order", i)
+				Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
+					"validator %d: BLS public key should match P-chain sorted order (contract padded form)", i)
+			}
+
 			firstPChainHeight = vs.PChainHeight
 			firstValidatorCount = len(vs.Validators)
 
@@ -379,6 +392,18 @@ registrationLoop:
 				Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
 					"Updated validator set should have positive timestamp")
 
+				expectedL1Order := fetchSortedL1ValidatorsAtHeight(
+					ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
+				)
+				Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
+					"updated on-chain validator count should match P-chain at recorded height")
+				for i, exp := range expectedL1Order {
+					Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
+						"validator %d: weight should match P-chain sorted order after update", i)
+					Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
+						"validator %d: BLS public key should match P-chain sorted order after update", i)
+				}
+
 				log.Info("SubsetUpdater e2e test PASSED",
 					zap.String("contractAddress", contractAddr.Hex()),
 					zap.Int("firstValidatorCount", firstValidatorCount),
@@ -396,6 +421,40 @@ registrationLoop:
 			)
 		}
 	}
+}
+
+// padUncompressedBLSPublicKey matches BLST.padUncompressedBLSPublicKey (icm-contracts/ethereum/utils/BLST.sol).
+func padUncompressedBLSPublicKey(pubKey []byte) []byte {
+	Expect(len(pubKey)).Should(Equal(96))
+	res := make([]byte, 128)
+	copy(res[16:32], pubKey[0:16])
+	copy(res[32:64], pubKey[16:48])
+	copy(res[80:96], pubKey[48:64])
+	copy(res[96:128], pubKey[64:96])
+	return res
+}
+
+func fetchSortedL1ValidatorsAtHeight(
+	ctx context.Context,
+	pChainClient *clients.CanonicalValidatorClient,
+	subnetID ids.ID,
+	height uint64,
+) []*message.Validator {
+	allSets, err := pChainClient.GetAllValidatorSets(ctx, height)
+	Expect(err).Should(BeNil())
+	vdrSet, ok := allSets[subnetID]
+	Expect(ok).Should(BeTrue(), "subnet validators should exist at P-chain height %d", height)
+	validators := make([]*message.Validator, len(vdrSet.Validators))
+	for i, vdr := range vdrSet.Validators {
+		validators[i] = &message.Validator{
+			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+			Weight:                     vdr.Weight,
+		}
+	}
+	sort.Slice(validators, func(i, j int) bool {
+		return string(validators[i].UncompressedPublicKeyBytes[:]) < string(validators[j].UncompressedPublicKeyBytes[:])
+	})
+	return validators
 }
 
 func createSubsetUpdaterRelayerConfig(

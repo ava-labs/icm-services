@@ -112,6 +112,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             // initialize the partial validator set and store it
             PartialValidatorSet storage partialSet =
                 _partialValidatorSets[validatorSetMetadata.avalancheBlockchainID];
+            // Clear validators from any prior completed registration; applyPartialUpdate only
+            // appends, and copying the completed set to _validatorSets does not empty this array.
+            delete partialSet.validators;
             partialSet.pChainHeight = validatorSetMetadata.pChainHeight;
             partialSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
             partialSet.shardHashes = validatorSetMetadata.shardHashes;
