@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"math/big"
 	"sort"
 	"time"
 
@@ -145,22 +144,36 @@ func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 
-	return s.performFullSetUpdate(ctx, pChainHeight)
+	return s.performFullSetUpdate(ctx, pChainHeight, isFirstRegistration)
 }
 
 // ---------------------------------------------------------------------------
 // Full-set (subset/shard) update
 // ---------------------------------------------------------------------------
 
-func (s *SubsetSetUpdater) performFullSetUpdate(ctx context.Context, pChainHeight uint64) error {
+func (s *SubsetSetUpdater) performFullSetUpdate(
+	ctx context.Context,
+	pChainHeight uint64,
+	isFirstRegistration bool,
+) error {
+	var signingSubnet ids.ID
+	if isFirstRegistration {
+		// Contract verifies with the P-chain validator set; warp source is the P-chain.
+		signingSubnet = constants.PrimaryNetworkID
+	} else {
+		// Contract verifies with the L1's registered set; preimage must use this chain ID.
+		signingSubnet = s.subnetID
+	}
+
 	_, shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to build subset update: %w", err)
 	}
 
-	// The SubsetUpdater contract always verifies signatures against the P-chain
-	// validator set, regardless of whether this is a first registration or update.
-	signingSubnet := constants.PrimaryNetworkID
+	s.logger.Info("Signing subset update",
+		zap.Bool("isFirstRegistration", isFirstRegistration),
+		zap.Stringer("signingSubnet", signingSubnet),
+	)
 
 	signedMsg, err := s.signMessage(ctx, subsetUpdateMsg, signingSubnet)
 	if err != nil {
@@ -400,29 +413,4 @@ func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage
 		SourceBlockchainID: signedMsg.UnsignedMessage.SourceChainID,
 		Attestation:        attestation,
 	}, nil
-}
-
-// ---------------------------------------------------------------------------
-// Test / convenience helpers
-// ---------------------------------------------------------------------------
-
-// PerformSingleUpdate is a convenience method for tests: builds, signs, and sends
-// a single subset update at the given P-chain height.
-func (s *SubsetSetUpdater) PerformSingleUpdate(ctx context.Context, pChainHeight uint64) error {
-	return s.performFullSetUpdate(ctx, pChainHeight)
-}
-
-// GetOnChainValidatorSet returns the validator set stored on-chain for the updater's blockchain ID.
-func (s *SubsetSetUpdater) GetOnChainValidatorSet(
-	ctx context.Context,
-) (subsetupdater.ValidatorSet, error) {
-	return s.contract.GetValidatorSet(
-		&bind.CallOpts{Context: ctx},
-		s.blockchainID,
-	)
-}
-
-// SetTxValue sets the value on the tx opts (useful for initial deployment gas).
-func (s *SubsetSetUpdater) SetTxValue(val *big.Int) {
-	s.txOpts.Value = val
 }

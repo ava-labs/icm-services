@@ -1747,8 +1747,18 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
         _diffRegistry.updateValidatorSet(
             ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: chainID}), diffBytes
         );
+        bytes32[] memory dummyShardHashes = new bytes32[](1);
+        dummyShardHashes[0] = sha256(new bytes(0));
+        bytes memory dummyRaw = ValidatorSets.serializeValidatorSetMetadata(
+            ValidatorSetMetadata({
+                avalancheBlockchainID: chainID,
+                pChainHeight: 1,
+                pChainTimestamp: 1,
+                shardHashes: dummyShardHashes
+            })
+        );
         ICMMessage memory dummyMessage = ICMMessage({
-            rawMessage: new bytes(0),
+            rawMessage: dummyRaw,
             sourceNetworkID: NETWORK_ID,
             sourceBlockchainID: chainID,
             attestation: new bytes(0)
