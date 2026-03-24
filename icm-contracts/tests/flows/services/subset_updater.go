@@ -219,12 +219,11 @@ func SubsetUpdater(
 	var firstPChainHeight uint64
 	var firstValidatorCount int
 
-registrationLoop:
-	for {
+	for done := false; !done; {
 		select {
 		case <-pollCtx.Done():
-			Expect(pollCtx.Err()).ShouldNot(HaveOccurred(),
-				"Timed out waiting for relayer to register validator set")
+			Expect(false).Should(BeTrue(),
+				"timed out waiting for relayer to register validator set")
 		case <-ticker.C:
 			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
 			if err != nil {
@@ -293,7 +292,7 @@ registrationLoop:
 				zap.Uint64("totalWeight", vs.TotalWeight),
 				zap.Uint64("pChainHeight", firstPChainHeight),
 			)
-			break registrationLoop
+			done = true
 		}
 	}
 
