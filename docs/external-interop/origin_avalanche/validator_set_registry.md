@@ -1,6 +1,6 @@
 # Validator Set Registry
 
-Many applications on external EVM chains will want to authenticate messages originating from Avalanche or Avalanche L1s by checking it is signed by a quorum of the relevant validator set. In order for an external EVM chain to know what the relevant validator set is, a smart contract will be deployed that maintains a registry of such validator sets. This contract is called the `AvalancheValidatorSetRegisty`.
+Many applications on external EVM chains will want to authenticate messages originating from Avalanche or Avalanche L1s by checking it is signed by a quorum of the relevant validator set. In order for an external EVM chain to know what the relevant validator set is, a smart contract will be deployed that maintains a registry of such validator sets. This contract is called the `AvalancheValidatorSetRegisty` (actually, a child of this contract will be used to allow different data formats to be used).
 
 ## Validator sets
 
@@ -26,10 +26,9 @@ A challenge in passing these validator sets to the registry contract is that the
 
 To support this, there should be two main endpoints for updates to be passed to: registering a validator set and updating it. Registering a validator set is an authorized cryptographic commitment to the validator set being uploaded. If it cannot be populated in a single transaction, the update endpoint may be used as necessary to add the remaining data.
 
-
 ## Verifying messages
 
-A crucial part of the `AvalancheValidatorSetRegistry` contract is to authenticate messages received by `TeleporterV2` contracts on external EVM chains.  The `TeleporterMessenger` does this by calling into the `verifyICMMessage` function with an ICM message, which is described by the following Solidity data types:
+A crucial part of the `AvalancheValidatorSetRegistry` contract is to authenticate messages received by `TeleporterMessengerV2` contracts on external EVM chains.  The `TeleporterMessengerV2` contract does this by calling into the `verifyICMMessage` function with an ICM message, which is described by the following Solidity data types:
 ```solidity
 struct ValidatorSetSignature {
     bytes signers;
@@ -37,16 +36,17 @@ struct ValidatorSetSignature {
 }
 
 struct ICMMessage {
-    //  a serialized `ValidatorSetMetadata` instance
+    // The serialized bytes of raw message. The data and serializations formats
+    // for this data will be app / contract specific
     bytes rawMessage;
     uint32 sourceNetworkID;
     bytes32 sourceBlockchainID;
-    // This should contain a serialized `ICMSignature`
+    // This should contain a serialized `ValidatorSetSignature`
     bytes attestation;
 }
 ```
 
-The registry uses the `sourceBlockchainID` to look up a validator set. The `attestation` should deserialize to an `ValidatorSetSignature` instance. The `signers` field is a bit set indicating which validators have signed this message, utilizing the canonical validator ordering. The signers should represent a quorum of staking weight for the message to be verified. The `signature` is an aggregate BLS signature of the validators specified by the `signers` field. BLS computations require an EVM chain to be on EVM version `prague` or later.
+The registry uses the `sourceBlockchainID` to look up the corresponding validator set. The `attestation` should deserialize to an `ValidatorSetSignature` instance. The `signers` field is a bit set indicating which validators have signed this message, utilizing the canonical validator ordering. The signers should represent a quorum of staking weight for the message to be verified. The `signature` is an aggregate BLS signature of the validators specified by the `signers` field. BLS computations require an EVM chain to be on EVM version `prague` or later.
 
 ## Registering a validator set
 
@@ -59,7 +59,7 @@ struct ValidatorSetMetadata {
     bytes32[] shardHashes;
 }
 ```
-This data will be used as a cryptographic commitment to the validator set being registered. The sha256 hash of the serialized validator set should match the `validatorSetHash` field. The shard hashes are the hashes of each chunk of data that will be passed to the `updateValidatorSet` function. The included byte payload to the `registerValidatorSet` function is the first shard of the overall update.
+This data will be used as a cryptographic commitment to the validator set being registered. The shard hashes are the hashes of each chunk of data that will be passed to the `updateValidatorSet` function. The included byte payload to the `registerValidatorSet` function is the first shard of the overall update.
 
 If this L1 does not currently have one of its validator sets registered, the ICM message containing the metadata should be signed by the current primary network validator set registered to the contract. Otherwise, the current validator registered to the L1 should sign the message.
 
@@ -77,7 +77,7 @@ struct ValidatorSetShard {
 }
 ```
 
-This function should check that the byte payload's hash matches the `shardHashes` at index `shardNumber`. If so, this data can be applied to the partial validator set. How this is done is up to the specific implementation. It may be a serialization of validators or a partial diff. If this is the last shard, the validator set will be updated in the registry mapping as the most current.
+This function should check that the byte payload's hash matches the `shardHashes` at index `shardNumber`. If so, this data can be applied to the partial validator set. How this is done is up to the specific implementation, i.e. child contract of the `AvalancheValidatorSetRegistry`. It may be a serialization of a subset of the validators or a partial diff. If this is the last shard, the validator set will be updated in the registry mapping as the most current.
 
 Note that this implies a few things. The first is that shards must be delivered in the expected order. Secondly, it should not be possible to successfully call this function if the last registered metadata corresponds to a validator set that has been fully populated.
 
