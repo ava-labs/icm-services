@@ -163,10 +163,9 @@ func SubsetUpdater(
 	log.Info("P-chain validators bootstrapped successfully")
 
 	// Verify L1 validator set not yet registered
-	onChainVS, err := contract.GetValidatorSet(callOpts, blockchainID)
+	isRegistered, err := contract.IsRegistered(callOpts, blockchainID)
 	Expect(err).Should(BeNil())
-	Expect(onChainVS.TotalWeight).Should(Equal(uint64(0)),
-		"L1 validator set should start empty")
+	Expect(isRegistered).Should(BeFalse())
 
 	// =========================================================================
 	// Step 4: Configure and start the relayer
