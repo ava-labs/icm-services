@@ -7,10 +7,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
-	"encoding/json"
-	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -26,11 +23,9 @@ import (
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
-	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/ethclient"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -114,18 +109,10 @@ func SubsetUpdater(
 	)
 
 	// =========================================================================
-	// Step 2: Deploy ValidatorSets library, then SubsetUpdater contract
+	// Step 2: Deploy SubsetUpdater contract (Nick's method)
 	// =========================================================================
 	txOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, chainID)
 	Expect(err).Should(BeNil())
-
-	libAddr := deployValidatorSetsLibrary(ctx, log, txOpts, ethClient)
-
-	const libPlaceholder = "__$aaf4ae346b84a712cc43f25bb66199d6fb$__"
-	libAddrHex := strings.ToLower(libAddr.Hex()[2:])
-	origBin := subsetupdater.SubsetUpdaterBin
-	subsetupdater.SubsetUpdaterBin = strings.ReplaceAll(origBin, libPlaceholder, libAddrHex)
-	defer func() { subsetupdater.SubsetUpdaterBin = origBin }()
 
 	var pChainID [32]byte // all zeros = PlatformChainID
 	initialMetadata := subsetupdater.ValidatorSetMetadata{
@@ -134,18 +121,18 @@ func SubsetUpdater(
 		PChainTimestamp:       uint64(time.Now().Unix()),
 		ShardHashes:           pChainShardHashesBytes,
 	}
-	contractAddr, deployTx, contract, err := subsetupdater.DeploySubsetUpdater(
-		txOpts, ethClient, networkID, initialMetadata,
+	contractAddr := utils.DeploySubsetUpdater(
+		ctx,
+		ethereumNetwork.EthereumTestInfo(),
+		ethFundedKey,
+		networkID,
+		initialMetadata,
 	)
+	contract, err := subsetupdater.NewSubsetUpdater(contractAddr, ethClient)
 	Expect(err).Should(BeNil())
-
-	deployReceipt, err := bind.WaitMined(ctx, ethClient, deployTx)
-	Expect(err).Should(BeNil())
-	Expect(deployReceipt.Status).Should(Equal(uint64(1)))
 
 	log.Info("Deployed SubsetUpdater contract",
 		zap.String("address", contractAddr.Hex()),
-		zap.String("txHash", deployTx.Hash().Hex()),
 	)
 
 	// =========================================================================
@@ -449,38 +436,4 @@ func createSubsetUpdaterRelayerConfig(
 	}
 
 	return baseConfig
-}
-
-// deployValidatorSetsLibrary deploys the ValidatorSets Solidity library
-// from the forge build artifact and returns its on-chain address.
-func deployValidatorSetsLibrary(
-	ctx context.Context,
-	log logging.Logger,
-	txOpts *bind.TransactOpts,
-	client *ethclient.Client,
-) common.Address {
-	artifactBytes, err := os.ReadFile("out/ValidatorSets.sol/ValidatorSets.json")
-	Expect(err).Should(BeNil(), "forge artifact not found; run `FOUNDRY_PROFILE=ethereum forge build`")
-
-	var artifact struct {
-		Bytecode struct {
-			Object string `json:"object"`
-		} `json:"bytecode"`
-	}
-	Expect(json.Unmarshal(artifactBytes, &artifact)).Should(BeNil())
-
-	bytecodeHex := strings.TrimPrefix(artifact.Bytecode.Object, "0x")
-	libAddr, libTx, _, err := bind.DeployContract(
-		txOpts, abi.ABI{}, common.FromHex(bytecodeHex), client,
-	)
-	Expect(err).Should(BeNil())
-
-	receipt, err := bind.WaitMined(ctx, client, libTx)
-	Expect(err).Should(BeNil())
-	Expect(receipt.Status).Should(Equal(uint64(1)))
-
-	log.Info("Deployed ValidatorSets library",
-		zap.String("address", libAddr.Hex()),
-	)
-	return libAddr
 }

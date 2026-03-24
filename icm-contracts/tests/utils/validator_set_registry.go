@@ -14,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
 	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
+	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	"github.com/ava-labs/libevm/common"
@@ -21,7 +22,8 @@ import (
 )
 
 const (
-	diffUpdaterByteCodeFile = "./out/DiffUpdater.sol/DiffUpdater.json"
+	diffUpdaterByteCodeFile   = "./out/DiffUpdater.sol/DiffUpdater.json"
+	subsetUpdaterByteCodeFile = "./out/SubsetUpdater.sol/SubsetUpdater.json"
 )
 
 // DeployDiffUpdater Deploys an instance of the `DiffUpdater` contract using
@@ -90,6 +92,48 @@ func DeployDiffUpdater(
 
 	// Return the shard bytes needed to initialize the first validator set
 	return contractAddress, shardBytes
+}
+
+// DeploySubsetUpdater deploys SubsetUpdater using Nick's method (same pattern as DeployDiffUpdater).
+func DeploySubsetUpdater(
+	ctx context.Context,
+	testInfo testinfo.NetworkTestInfo,
+	fundedKey *ecdsa.PrivateKey,
+	avalancheNetworkID uint32,
+	initialValidatorSetData subsetupdater.ValidatorSetMetadata,
+) common.Address {
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(subsetUpdaterByteCodeFile)
+	Expect(err).Should(BeNil())
+
+	subsetUpdaterABI, err := subsetupdater.SubsetUpdaterMetaData.GetAbi()
+	Expect(err).Should(BeNil())
+	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
+		subsetUpdaterABI,
+		byteCode,
+		avalancheNetworkID,
+		initialValidatorSetData,
+	)
+	Expect(err).Should(BeNil())
+
+	gasLimit := uint64(10000000)
+	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
+		byteCode,
+		nil,
+		deploymentUtils.GetDefaultContractCreationGasPrice(),
+		&gasLimit,
+	)
+	Expect(err).Should(BeNil())
+
+	DeployWithNicksMethod(
+		ctx,
+		testInfo,
+		transactionBytes,
+		deployerAddress,
+		contractAddress,
+		fundedKey,
+	)
+
+	return contractAddress
 }
 
 func createShards(
