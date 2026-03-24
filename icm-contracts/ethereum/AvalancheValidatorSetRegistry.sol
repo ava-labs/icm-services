@@ -70,8 +70,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
      *
      * If this function is called to register a new validator set for chain for a which a partial
      * set exists, this function will revert.
-     * @param message The ICM message containing the validator set to register. The message must
-     * be signed by the relevant authorizing party
+     * @param message The ICM message containing the validator set to register. Signatures are
+     * verified against the P-chain validator set on first registration for the blockchain ID
+     * declared in the payload; thereafter against that chain's registered validator set. The
+     * signed warp preimage still uses `message.sourceBlockchainID` as in `verifyICMMessage`.
      * @param shardBytes The first shard of the data needed to populate the newly registered
      * validator set.
      */
@@ -82,20 +84,20 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         // Check the network ID and signature
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
 
+        ValidatorSetMetadata memory payloadMetadata =
+            ValidatorSets.parseValidatorSetMetadata(message.rawMessage);
+        bytes32 payloadBlockchainID = payloadMetadata.avalancheBlockchainID;
+
         // Check that we are not interrupting an existing registration
-        if (isRegistrationInProgress(message.sourceBlockchainID)) {
-            // check if we are interrupting an existing registration
+        if (isRegistrationInProgress(payloadBlockchainID)) {
             revert("A registration is already in progress");
         }
 
-        // Check if this is the first time this blockchain is registering a validator set
-        if (!isRegistered(message.sourceBlockchainID)) {
-            // N.B. this message should be signed by the currently registered P-chain validator set
+        // First registration for this payload chain: P-chain signs. Updates: that chain's validators sign.
+        if (!isRegistered(payloadBlockchainID)) {
             verifyICMMessage(message, pChainID);
         } else {
-            // This blockchain ID has an existing validator set registered to it which should
-            // have signed this message
-            verifyICMMessage(message, message.sourceBlockchainID);
+            verifyICMMessage(message, payloadBlockchainID);
         }
 
         // Parse and validate the validator set payload
@@ -112,6 +114,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
             // initialize the partial validator set and store it
             PartialValidatorSet storage partialSet =
                 _partialValidatorSets[validatorSetMetadata.avalancheBlockchainID];
+            // Clear validators from any prior completed registration; applyPartialUpdate only
+            // appends, and copying the completed set to _validatorSets does not empty this array.
+            delete partialSet.validators;
             partialSet.pChainHeight = validatorSetMetadata.pChainHeight;
             partialSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
             partialSet.shardHashes = validatorSetMetadata.shardHashes;
