@@ -7,10 +7,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
-	"encoding/json"
-	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -26,11 +23,9 @@ import (
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
-	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
-	"github.com/ava-labs/libevm/ethclient"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -114,18 +109,10 @@ func SubsetUpdater(
 	)
 
 	// =========================================================================
-	// Step 2: Deploy ValidatorSets library, then SubsetUpdater contract
+	// Step 2: Deploy SubsetUpdater contract (Nick's method)
 	// =========================================================================
 	txOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, chainID)
 	Expect(err).Should(BeNil())
-
-	libAddr := deployValidatorSetsLibrary(ctx, log, txOpts, ethClient)
-
-	const libPlaceholder = "__$aaf4ae346b84a712cc43f25bb66199d6fb$__"
-	libAddrHex := strings.ToLower(libAddr.Hex()[2:])
-	origBin := subsetupdater.SubsetUpdaterBin
-	subsetupdater.SubsetUpdaterBin = strings.ReplaceAll(origBin, libPlaceholder, libAddrHex)
-	defer func() { subsetupdater.SubsetUpdaterBin = origBin }()
 
 	var pChainID [32]byte // all zeros = PlatformChainID
 	initialMetadata := subsetupdater.ValidatorSetMetadata{
@@ -134,18 +121,18 @@ func SubsetUpdater(
 		PChainTimestamp:       uint64(time.Now().Unix()),
 		ShardHashes:           pChainShardHashesBytes,
 	}
-	contractAddr, deployTx, contract, err := subsetupdater.DeploySubsetUpdater(
-		txOpts, ethClient, networkID, initialMetadata,
+	contractAddr := utils.DeploySubsetUpdater(
+		ctx,
+		ethereumNetwork.EthereumTestInfo(),
+		ethFundedKey,
+		networkID,
+		initialMetadata,
 	)
+	contract, err := subsetupdater.NewSubsetUpdater(contractAddr, ethClient)
 	Expect(err).Should(BeNil())
-
-	deployReceipt, err := bind.WaitMined(ctx, ethClient, deployTx)
-	Expect(err).Should(BeNil())
-	Expect(deployReceipt.Status).Should(Equal(uint64(1)))
 
 	log.Info("Deployed SubsetUpdater contract",
 		zap.String("address", contractAddr.Hex()),
-		zap.String("txHash", deployTx.Hash().Hex()),
 	)
 
 	// =========================================================================
@@ -176,10 +163,9 @@ func SubsetUpdater(
 	log.Info("P-chain validators bootstrapped successfully")
 
 	// Verify L1 validator set not yet registered
-	onChainVS, err := contract.GetValidatorSet(callOpts, blockchainID)
+	isRegistered, err := contract.IsRegistered(callOpts, blockchainID)
 	Expect(err).Should(BeNil())
-	Expect(onChainVS.TotalWeight).Should(Equal(uint64(0)),
-		"L1 validator set should start empty")
+	Expect(isRegistered).Should(BeFalse())
 
 	// =========================================================================
 	// Step 4: Configure and start the relayer
@@ -233,12 +219,11 @@ func SubsetUpdater(
 	var firstPChainHeight uint64
 	var firstValidatorCount int
 
-registrationLoop:
-	for {
+	for done := false; !done; {
 		select {
 		case <-pollCtx.Done():
-			Expect(pollCtx.Err()).ShouldNot(HaveOccurred(),
-				"Timed out waiting for relayer to register validator set")
+			Expect(false).Should(BeTrue(),
+				"timed out waiting for relayer to register validator set")
 		case <-ticker.C:
 			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
 			if err != nil {
@@ -285,6 +270,19 @@ registrationLoop:
 			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
 				"Total weight should match sum of individual validator weights")
 
+			// Order must match SubsetSetUpdater.fetchSortedValidators: lexicographic by 96-byte pubkey.
+			expectedL1Order := fetchSortedL1ValidatorsAtHeight(
+				ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
+			)
+			Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
+				"on-chain validator slice length should match P-chain canonical set at recorded height")
+			for i, exp := range expectedL1Order {
+				Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
+					"validator %d: weight should match P-chain sorted order", i)
+				Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
+					"validator %d: BLS public key should match P-chain sorted order (contract padded form)", i)
+			}
+
 			firstPChainHeight = vs.PChainHeight
 			firstValidatorCount = len(vs.Validators)
 
@@ -294,7 +292,7 @@ registrationLoop:
 				zap.Uint64("totalWeight", vs.TotalWeight),
 				zap.Uint64("pChainHeight", firstPChainHeight),
 			)
-			break registrationLoop
+			done = true
 		}
 	}
 
@@ -393,6 +391,18 @@ registrationLoop:
 				Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
 					"Updated validator set should have positive timestamp")
 
+				expectedL1Order := fetchSortedL1ValidatorsAtHeight(
+					ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
+				)
+				Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
+					"updated on-chain validator count should match P-chain at recorded height")
+				for i, exp := range expectedL1Order {
+					Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
+						"validator %d: weight should match P-chain sorted order after update", i)
+					Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
+						"validator %d: BLS public key should match P-chain sorted order after update", i)
+				}
+
 				log.Info("SubsetUpdater e2e test PASSED",
 					zap.String("contractAddress", contractAddr.Hex()),
 					zap.Int("firstValidatorCount", firstValidatorCount),
@@ -410,6 +420,40 @@ registrationLoop:
 			)
 		}
 	}
+}
+
+// padUncompressedBLSPublicKey matches BLST.padUncompressedBLSPublicKey (icm-contracts/ethereum/utils/BLST.sol).
+func padUncompressedBLSPublicKey(pubKey []byte) []byte {
+	Expect(len(pubKey)).Should(Equal(96))
+	res := make([]byte, 128)
+	copy(res[16:32], pubKey[0:16])
+	copy(res[32:64], pubKey[16:48])
+	copy(res[80:96], pubKey[48:64])
+	copy(res[96:128], pubKey[64:96])
+	return res
+}
+
+func fetchSortedL1ValidatorsAtHeight(
+	ctx context.Context,
+	pChainClient *clients.CanonicalValidatorClient,
+	subnetID ids.ID,
+	height uint64,
+) []*message.Validator {
+	allSets, err := pChainClient.GetAllValidatorSets(ctx, height)
+	Expect(err).Should(BeNil())
+	vdrSet, ok := allSets[subnetID]
+	Expect(ok).Should(BeTrue(), "subnet validators should exist at P-chain height %d", height)
+	validators := make([]*message.Validator, len(vdrSet.Validators))
+	for i, vdr := range vdrSet.Validators {
+		validators[i] = &message.Validator{
+			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+			Weight:                     vdr.Weight,
+		}
+	}
+	sort.Slice(validators, func(i, j int) bool {
+		return string(validators[i].UncompressedPublicKeyBytes[:]) < string(validators[j].UncompressedPublicKeyBytes[:])
+	})
+	return validators
 }
 
 func createSubsetUpdaterRelayerConfig(
@@ -449,38 +493,4 @@ func createSubsetUpdaterRelayerConfig(
 	}
 
 	return baseConfig
-}
-
-// deployValidatorSetsLibrary deploys the ValidatorSets Solidity library
-// from the forge build artifact and returns its on-chain address.
-func deployValidatorSetsLibrary(
-	ctx context.Context,
-	log logging.Logger,
-	txOpts *bind.TransactOpts,
-	client *ethclient.Client,
-) common.Address {
-	artifactBytes, err := os.ReadFile("out/ValidatorSets.sol/ValidatorSets.json")
-	Expect(err).Should(BeNil(), "forge artifact not found; run `FOUNDRY_PROFILE=ethereum forge build`")
-
-	var artifact struct {
-		Bytecode struct {
-			Object string `json:"object"`
-		} `json:"bytecode"`
-	}
-	Expect(json.Unmarshal(artifactBytes, &artifact)).Should(BeNil())
-
-	bytecodeHex := strings.TrimPrefix(artifact.Bytecode.Object, "0x")
-	libAddr, libTx, _, err := bind.DeployContract(
-		txOpts, abi.ABI{}, common.FromHex(bytecodeHex), client,
-	)
-	Expect(err).Should(BeNil())
-
-	receipt, err := bind.WaitMined(ctx, client, libTx)
-	Expect(err).Should(BeNil())
-	Expect(receipt.Status).Should(Equal(uint64(1)))
-
-	log.Info("Deployed ValidatorSets library",
-		zap.String("address", libAddr.Hex()),
-	)
-	return libAddr
 }

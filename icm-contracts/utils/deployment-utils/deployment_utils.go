@@ -89,6 +89,7 @@ func ConstructKeylessTransaction(
 	byteCode []byte,
 	writeFile *KeylessTransactionFiles,
 	contractCreationGasPrice *big.Int,
+	gasLimit *uint64,
 ) ([]byte, common.Address, common.Address, error) {
 	// Convert the R and S values (which must be the same) from hex.
 	rsValue, ok := new(big.Int).SetString(rsValueHex, 16)
@@ -98,10 +99,16 @@ func ConstructKeylessTransaction(
 		)
 	}
 
+	// Use provided gas limit or fall back to default
+	gas := defaultContractCreationGasLimit
+	if gasLimit != nil {
+		gas = *gasLimit
+	}
+
 	// Construct the legacy transaction with pre-determined signature values.
 	contractCreationTx := types.NewTx(&types.LegacyTx{
 		Nonce:    0,
-		Gas:      defaultContractCreationGasLimit,
+		Gas:      gas,
 		GasPrice: contractCreationGasPrice,
 		To:       nil, // Contract creation transaction
 		Value:    big.NewInt(0),

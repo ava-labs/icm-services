@@ -19,9 +19,8 @@ import (
 )
 
 // TestValidatorSetHashRoundTrip verifies that our serializeValidatorsForHash and
-// computeValidatorSetHash produce output compatible with Solidity's format.
-// Creates validators, computes hash, builds a diff, parses it back, and verifies
-// the hash matches what we'd expect from applying the diff.
+// computeValidatorSetHash produce output compatible with Solidity's format,
+// and that ValidatorSetDiff encodes/decodes in the same layout as the EVM parser.
 func TestValidatorSetHashRoundTrip(t *testing.T) {
 	// Create validators using blst (same library as P-chain)
 	validators := make([]*message.Validator, 3)
@@ -52,7 +51,6 @@ func TestValidatorSetHashRoundTrip(t *testing.T) {
 	hash := computeValidatorSetHash(validators)
 	require.NotEqual(t, ids.Empty, hash)
 
-	// Build a diff with this hash
 	blockchainID := ids.ID{'t', 'e', 's', 't'}
 	changes := make([]message.ValidatorChange, len(validators))
 	for i, v := range validators {
@@ -66,7 +64,6 @@ func TestValidatorSetHashRoundTrip(t *testing.T) {
 		blockchainID,
 		0, 0, // prev
 		1, 1, // curr
-		hash,
 		changes,
 		uint32(len(changes)),
 	)
@@ -89,9 +86,8 @@ func TestValidatorSetHashRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Recompute hash of applied set - must match what we put in the diff
 	appliedHash := computeValidatorSetHash(applied)
-	require.Equal(t, hash, appliedHash, "Hash after apply must match diff.currentValidatorSetHash")
+	require.Equal(t, hash, appliedHash, "applied set hash must match full validator set hash")
 
 	// Verify serialized format: first 6 bytes should be 0x0000 (codec) + 0x00000005 (type) or similar
 	serialized := serializeValidatorsForHash(validators)

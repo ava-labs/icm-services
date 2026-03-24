@@ -24,7 +24,7 @@ TokenHome TokenRemote ERC20TokenHome ERC20TokenHomeUpgradeable ERC20TokenRemote 
 WrappedNativeToken MockERC20SendAndCallReceiver MockNativeSendAndCallReceiver ExampleERC20Decimals IStakingManager ACP99Manager ValidatorManager PoAManager BatchCrossChainMessenger INativeMinter
 ECDSAVerifier"
 
-DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2"
+DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2 Adapter"
 
 DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater"
 

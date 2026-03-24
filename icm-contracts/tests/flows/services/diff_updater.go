@@ -8,7 +8,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -30,6 +29,10 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
+
+// Primary-network bootstrap shards for DiffUpdater can exceed the default
+// transactor gas cap (~10M); observed estimate ~11.5M on local Ethereum.
+const diffUpdaterBootstrapGasLimit uint64 = 16_000_000
 
 // DiffUpdater tests the relayer's DiffSetUpdater end-to-end:
 //  1. Deploys a DiffUpdater contract on the external Ethereum network.
@@ -119,18 +122,11 @@ func DiffUpdater(
 	)
 
 	// =========================================================================
-	// Step 2: Deploy ValidatorSets library, then DiffUpdater contract
+	// Step 2: Deploy DiffUpdater contract (Nick's method, same as SubsetUpdater e2e)
 	// =========================================================================
 	txOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, chainID)
 	Expect(err).Should(BeNil())
-
-	libAddr := deployValidatorSetsLibrary(ctx, log, txOpts, ethClient)
-
-	const diffLibPlaceholder = "__$aaf4ae346b84a712cc43f25bb66199d6fb$__"
-	libAddrHex := strings.ToLower(libAddr.Hex()[2:])
-	origBin := diffupdater.DiffUpdaterBin
-	diffupdater.DiffUpdaterBin = strings.ReplaceAll(origBin, diffLibPlaceholder, libAddrHex)
-	defer func() { diffupdater.DiffUpdaterBin = origBin }()
+	txOpts.GasLimit = diffUpdaterBootstrapGasLimit
 
 	initialMetadata := diffupdater.ValidatorSetMetadata{
 		AvalancheBlockchainID: pChainID,
@@ -138,18 +134,18 @@ func DiffUpdater(
 		PChainTimestamp:       pChainTimestamp,
 		ShardHashes:           pChainShardHashesBytes,
 	}
-	contractAddr, deployTx, contract, err := diffupdater.DeployDiffUpdater(
-		txOpts, ethClient, networkID, initialMetadata,
+	contractAddr := utils.DeployDiffUpdaterWithMetadata(
+		ctx,
+		ethereumNetwork.EthereumTestInfo(),
+		ethFundedKey,
+		networkID,
+		initialMetadata,
 	)
+	contract, err := diffupdater.NewDiffUpdater(contractAddr, ethClient)
 	Expect(err).Should(BeNil())
-
-	deployReceipt, err := bind.WaitMined(ctx, ethClient, deployTx)
-	Expect(err).Should(BeNil())
-	Expect(deployReceipt.Status).Should(Equal(uint64(1)))
 
 	log.Info("Deployed DiffUpdater contract",
 		zap.String("address", contractAddr.Hex()),
-		zap.String("txHash", deployTx.Hash().Hex()),
 	)
 
 	// =========================================================================

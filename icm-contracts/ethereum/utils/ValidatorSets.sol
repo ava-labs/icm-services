@@ -81,7 +81,6 @@ struct ValidatorSetDiff {
     // Current state
     uint64 currentHeight;
     uint64 currentTimestamp;
-    bytes32 currentValidatorSetHash;
     // Changes sorted by key
     ValidatorChange[] changes;
     uint32 numAdded;
@@ -171,15 +170,12 @@ library ValidatorSets {
         return BLST.verifySignature(aggregateKey, signature.signature, message);
     }
 
-    /*
-     * @dev Traverse the bits in signers from left to right, using it as bitvector to determine
-     * which validators to select from the provided list.
-     * @return The aggregate public key and stake weight of the filtered validators
-     */
-    /*
-     * @dev The signers bitset is encoded as Go's big.Int.Bytes() (big-endian).
-     * Bit i of the big.Int corresponds to bit (i%8) of byte signers[signers.length-1 - i/8].
-     * @return The aggregate public key and stake weight of the filtered validators
+    /**
+     * @dev Selects validators by index using the signers bitset, then aggregates their BLS public keys and weights.
+     * The bitset matches Go's big.Int.Bytes() (big-endian): bit i of the integer is
+     * bit (i % 8) of byte signers[signers.length - 1 - i / 8].
+     * @return aggregatePublicKey The aggregate BLS public key of the selected validators
+     * @return aggregateWeight The sum of weights of the selected validators
      */
     function filterValidators(
         bytes memory signers,
@@ -191,12 +187,14 @@ library ValidatorSets {
             revert("Cannot validate against an empty list of validators");
         }
 
-        for (uint256 i = 0; i < validators.length; i++) {
+        uint256 validatorsLen = validators.length;
+        uint256 signersLen = signers.length;
+        for (uint256 i = 0; i < validatorsLen;) {
             uint256 byteOffset = i / 8;
-            if (byteOffset >= signers.length) {
+            if (byteOffset >= signersLen) {
                 break;
             }
-            uint256 byteIdx = signers.length - 1 - byteOffset;
+            uint256 byteIdx = signersLen - 1 - byteOffset;
             uint8 bitPos = uint8(i % 8);
             if (uint8(signers[byteIdx]) & (uint8(1) << bitPos) != 0) {
                 Validator memory validator = validators[i];
@@ -206,6 +204,9 @@ library ValidatorSets {
                     aggregatePublicKey = validator.blsPublicKey;
                 }
                 aggregateWeight += validator.weight;
+            }
+            unchecked {
+                ++i;
             }
         }
         return (aggregatePublicKey, aggregateWeight);
@@ -348,9 +349,12 @@ library ValidatorSets {
         uint32 shardCount = uint32(bytes4(data[54:58]));
 
         bytes32[] memory shardHashes = new bytes32[](shardCount);
-        for (uint32 i = 0; i < shardCount; i++) {
+        for (uint32 i = 0; i < shardCount;) {
             uint256 offset = 58 + uint256(i) * 32;
             shardHashes[i] = bytes32(data[offset:offset + 32]);
+            unchecked {
+                ++i;
+            }
         }
 
         return ValidatorSetMetadata({
@@ -393,8 +397,6 @@ library ValidatorSets {
             offset += 8;
             diff.currentTimestamp = uint64(bytes8(data[offset:offset + 8]));
             offset += 8;
-            diff.currentValidatorSetHash = bytes32(data[offset:offset + 32]);
-            offset += 32;
         }
         // Validator Changes
         {
@@ -528,18 +530,18 @@ library ValidatorSets {
     ) internal pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000004);
-        bytes memory result = abi.encodePacked(
+        // Shard list: uint32 count then each bytes32 with no padding — same as
+        // abi.encodePacked(uint32(length), ...hashes); static-sized elements in
+        // abi.encode would add offset/length words, so we use encodePacked only.
+        return abi.encodePacked(
             codec,
             payloadType,
             payload.avalancheBlockchainID,
             payload.pChainHeight,
             payload.pChainTimestamp,
-            uint32(payload.shardHashes.length)
+            uint32(payload.shardHashes.length),
+            payload.shardHashes
         );
-        for (uint256 i = 0; i < payload.shardHashes.length; i++) {
-            result = abi.encodePacked(result, payload.shardHashes[i]);
-        }
-        return result;
     }
 
     /*
@@ -558,7 +560,6 @@ library ValidatorSets {
             diff.previousTimestamp,
             diff.currentHeight,
             diff.currentTimestamp,
-            diff.currentValidatorSetHash,
             uint32(diff.changes.length)
         );
         for (uint256 i = 0; i < diff.changes.length; i++) {
@@ -654,5 +655,28 @@ library ValidatorSets {
                 ++i;
             }
         }
+    }
+
+    /**
+     * @dev Reconstructs the unsigned Warp message bytes that validators sign for ICM addressed-call payloads.
+     * Layout: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
+     *         | addressedCallCodec(2) | typeID(4) | srcAddrLen(4) | innerPayloadLen(4) | payload
+     */
+    function buildUnsignedWarpMessage(
+        uint32 networkID,
+        bytes32 sourceBlockchainID,
+        bytes memory payload
+    ) internal pure returns (bytes memory) {
+        return abi.encodePacked(
+            bytes2(0),
+            networkID,
+            sourceBlockchainID,
+            uint32(payload.length + 14),
+            bytes2(0),
+            uint32(1),
+            uint32(0),
+            uint32(payload.length),
+            payload
+        );
     }
 }

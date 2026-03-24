@@ -209,7 +209,12 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		return fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
 
+	// First L1 registration: contract verifies signatures against the P-chain set.
 	signingSubnet := constants.PrimaryNetworkID
+	d.logger.Info("Signing diff (first L1 registration)",
+		zap.Stringer("signingSubnet", signingSubnet),
+	)
+
 	signedMsg, err := d.signMessage(ctx, unsignedMsg, signingSubnet)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
@@ -286,7 +291,11 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		return fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
 
-	signingSubnet := constants.PrimaryNetworkID
+	// L1 already registered: contract verifyICMMessage uses that chain's registered
+	// BLS keys (same as SubsetSetUpdater after first registration).
+	signingSubnet := d.subnetID
+	d.logger.Info("Signing diff update", zap.Stringer("signingSubnet", signingSubnet))
+
 	signedMsg, err := d.signMessage(ctx, unsignedMsg, signingSubnet)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
@@ -455,7 +464,6 @@ func (d *DiffSetUpdater) shardDiff(
 		}
 
 		runningSet = applyChangesToValidators(runningSet, shardChanges)
-		runningHash := computeValidatorSetHash(runningSet)
 
 		diff, err := message.NewValidatorSetDiff(
 			blockchainID,
@@ -463,7 +471,6 @@ func (d *DiffSetUpdater) shardDiff(
 			prevTimestamp,
 			currHeight,
 			currTimestamp,
-			runningHash,
 			shardChanges,
 			shardNumAdded,
 		)
@@ -694,9 +701,7 @@ func serializeValidatorsForHash(validators []*message.Validator) []byte {
 
 // ShardValidatorsAsDiff creates ValidatorSetDiff (type ID 5) shards suitable
 // for bootstrapping a DiffUpdater contract from an empty validator set.
-// All validators are treated as additions. Each shard carries its subset
-// of changes and a running currentValidatorSetHash computed over the
-// cumulative set of validators through that shard.
+// All validators are treated as additions; each shard carries a subset of changes.
 func ShardValidatorsAsDiff(
 	validators []*message.Validator,
 	shardSize uint32,
@@ -713,8 +718,6 @@ func ShardValidatorsAsDiff(
 
 	shardBytesList := make([][]byte, numShards)
 	shardHashes := make([]ids.ID, numShards)
-
-	var runningSet []*message.Validator
 
 	for i := 0; i < numShards; i++ {
 		start := i * ss
@@ -733,16 +736,12 @@ func ShardValidatorsAsDiff(
 		}
 		numAdded := uint32(len(changes))
 
-		runningSet = append(runningSet, shardValidators...)
-		runningHash := computeValidatorSetHash(runningSet)
-
 		diff, err := message.NewValidatorSetDiff(
 			blockchainID,
 			prevHeight,
 			prevTimestamp,
 			currHeight,
 			currTimestamp,
-			runningHash,
 			changes,
 			numAdded,
 		)
