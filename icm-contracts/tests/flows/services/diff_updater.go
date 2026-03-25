@@ -232,8 +232,7 @@ func DiffUpdater(
 	var firstPChainHeight uint64
 	var firstValidatorCount int
 
-registrationLoop:
-	for {
+	for done := false; !done; {
 		select {
 		case <-pollCtx.Done():
 			Expect(pollCtx.Err()).ShouldNot(HaveOccurred(),
@@ -293,7 +292,7 @@ registrationLoop:
 				zap.Uint64("totalWeight", vs.TotalWeight),
 				zap.Uint64("pChainHeight", firstPChainHeight),
 			)
-			break registrationLoop
+			done = true
 		}
 	}
 
@@ -377,36 +376,37 @@ registrationLoop:
 				continue
 			}
 
-			if len(vs.Validators) > firstValidatorCount && vs.PChainHeight > firstPChainHeight {
-				log.Info("Validator set updated via diff by relayer!",
-					zap.Int("validatorCount", len(vs.Validators)),
-					zap.Uint64("totalWeight", vs.TotalWeight),
-					zap.Uint64("pChainHeight", vs.PChainHeight),
-					zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
+			if len(vs.Validators) <= firstValidatorCount || vs.PChainHeight <= firstPChainHeight {
+				log.Debug("Waiting for validator set re-registration...",
+					zap.Int("currentValidatorCount", len(vs.Validators)),
+					zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
+					zap.Uint64("currentPChainHeight", vs.PChainHeight),
 				)
-
-				Expect(len(vs.Validators)).Should(BeNumerically(">", firstValidatorCount),
-					"Updated validator set should have more validators after adding one")
-				Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
-					"Updated validator set should have higher P-chain height")
-				Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
-					"Updated validator set should have positive timestamp")
-
-				log.Info("DiffUpdater e2e test PASSED",
-					zap.String("contractAddress", contractAddr.Hex()),
-					zap.Int("firstValidatorCount", firstValidatorCount),
-					zap.Int("updatedValidatorCount", len(vs.Validators)),
-					zap.Uint64("firstPChainHeight", firstPChainHeight),
-					zap.Uint64("updatedPChainHeight", vs.PChainHeight),
-				)
-				return
+				continue
 			}
 
-			log.Debug("Waiting for validator set diff update...",
-				zap.Int("currentValidatorCount", len(vs.Validators)),
-				zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
-				zap.Uint64("currentPChainHeight", vs.PChainHeight),
+			log.Info("Validator set updated via diff by relayer!",
+				zap.Int("validatorCount", len(vs.Validators)),
+				zap.Uint64("totalWeight", vs.TotalWeight),
+				zap.Uint64("pChainHeight", vs.PChainHeight),
+				zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
 			)
+
+			Expect(len(vs.Validators)).Should(BeNumerically(">", firstValidatorCount),
+				"Updated validator set should have more validators after adding one")
+			Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
+				"Updated validator set should have higher P-chain height")
+			Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
+				"Updated validator set should have positive timestamp")
+
+			log.Info("DiffUpdater e2e test PASSED",
+				zap.String("contractAddress", contractAddr.Hex()),
+				zap.Int("firstValidatorCount", firstValidatorCount),
+				zap.Int("updatedValidatorCount", len(vs.Validators)),
+				zap.Uint64("firstPChainHeight", firstPChainHeight),
+				zap.Uint64("updatedPChainHeight", vs.PChainHeight),
+			)
+			return
 		}
 	}
 }
