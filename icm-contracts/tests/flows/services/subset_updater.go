@@ -362,51 +362,52 @@ func SubsetUpdater(
 				continue
 			}
 
-			if len(vs.Validators) > firstValidatorCount && vs.PChainHeight > firstPChainHeight {
-				log.Info("Validator set re-registered by relayer!",
-					zap.Int("validatorCount", len(vs.Validators)),
-					zap.Uint64("totalWeight", vs.TotalWeight),
-					zap.Uint64("pChainHeight", vs.PChainHeight),
-					zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
+			if len(vs.Validators) <= firstValidatorCount || vs.PChainHeight <= firstPChainHeight {
+				log.Debug("Waiting for validator set re-registration...",
+					zap.Int("currentValidatorCount", len(vs.Validators)),
+					zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
+					zap.Uint64("currentPChainHeight", vs.PChainHeight),
 				)
-
-				Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
-					"Updated validator set should have higher P-chain height")
-				Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
-					"Updated validator set should have positive timestamp")
-
-				expectedL1Order := fetchSortedL1ValidatorsAtHeight(
-					ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
-				)
-				Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
-					"updated on-chain validator count should match P-chain at recorded height")
-				var calculatedWeight uint64
-				for i, exp := range expectedL1Order {
-					calculatedWeight += exp.Weight
-					Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
-						"validator %d: weight should match P-chain sorted order after update", i)
-					Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
-						"validator %d: BLS public key should match P-chain sorted order after update", i)
-				}
-
-				Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
-					"Total weight should match sum of individual validator weights after update")
-
-				log.Info("SubsetUpdater e2e test PASSED",
-					zap.String("contractAddress", contractAddr.Hex()),
-					zap.Int("firstValidatorCount", firstValidatorCount),
-					zap.Int("updatedValidatorCount", len(vs.Validators)),
-					zap.Uint64("firstPChainHeight", firstPChainHeight),
-					zap.Uint64("updatedPChainHeight", vs.PChainHeight),
-				)
-				return
+				continue
 			}
 
-			log.Debug("Waiting for validator set re-registration...",
-				zap.Int("currentValidatorCount", len(vs.Validators)),
-				zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
-				zap.Uint64("currentPChainHeight", vs.PChainHeight),
+			log.Info("Validator set re-registered by relayer!",
+				zap.Int("validatorCount", len(vs.Validators)),
+				zap.Uint64("totalWeight", vs.TotalWeight),
+				zap.Uint64("pChainHeight", vs.PChainHeight),
+				zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
 			)
+
+			Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
+				"Updated validator set should have higher P-chain height")
+			Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
+				"Updated validator set should have positive timestamp")
+
+			expectedL1Order := fetchSortedL1ValidatorsAtHeight(
+				ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
+			)
+			Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
+				"updated on-chain validator count should match P-chain at recorded height")
+			var calculatedWeight uint64
+			for i, exp := range expectedL1Order {
+				calculatedWeight += exp.Weight
+				Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
+					"validator %d: weight should match P-chain sorted order after update", i)
+				Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
+					"validator %d: BLS public key should match P-chain sorted order after update", i)
+			}
+
+			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
+				"Total weight should match sum of individual validator weights after update")
+
+			log.Info("SubsetUpdater e2e test PASSED",
+				zap.String("contractAddress", contractAddr.Hex()),
+				zap.Int("firstValidatorCount", firstValidatorCount),
+				zap.Int("updatedValidatorCount", len(vs.Validators)),
+				zap.Uint64("firstPChainHeight", firstPChainHeight),
+				zap.Uint64("updatedPChainHeight", vs.PChainHeight),
+			)
+			return
 		}
 	}
 }
