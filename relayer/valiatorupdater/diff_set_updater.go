@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"math/big"
 	"sort"
@@ -662,33 +661,6 @@ func onChainValidatorsToMessage(validators []diffupdater.Validator) []*message.V
 		}
 	}
 	return result
-}
-
-// computeValidatorSetHash computes sha256 of the serialized validator set in
-// the same format as Solidity's ValidatorSets.serializeValidators:
-//
-//	[2] codec (0x0000)
-//	[4] numValidators (uint32 big-endian)
-//	per validator: [96] uncompressed BLS pubkey + [8] weight (uint64 big-endian)
-func computeValidatorSetHash(validators []*message.Validator) ids.ID {
-	serialized := serializeValidatorsForHash(validators)
-	return ids.ID(sha256.Sum256(serialized))
-}
-
-func serializeValidatorsForHash(validators []*message.Validator) []byte {
-	numValidators := uint32(len(validators))
-	// 2 (codec) + 4 (count) + N * (96 + 8)
-	buf := make([]byte, 2+4+int(numValidators)*104)
-	// codec = 0x0000 (already zero)
-	binary.BigEndian.PutUint32(buf[2:6], numValidators)
-	offset := 6
-	for _, v := range validators {
-		copy(buf[offset:offset+96], v.UncompressedPublicKeyBytes[:])
-		offset += 96
-		binary.BigEndian.PutUint64(buf[offset:offset+8], v.Weight)
-		offset += 8
-	}
-	return buf
 }
 
 // ShardValidatorsAsDiff creates ValidatorSetDiff (type ID 5) shards suitable
