@@ -94,7 +94,7 @@ func SubsetUpdater(
 			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
 	})
 
-	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidators(pChainValidators, testShardSize)
+	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidators(pChainValidators, int(testShardSize))
 	Expect(err).Should(BeNil())
 
 	pChainShardHashesBytes := make([][32]byte, len(pChainShardHashes))
@@ -250,38 +250,24 @@ func SubsetUpdater(
 				"P-Chain height should be positive")
 			Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
 				"P-Chain timestamp should be positive")
-			Expect(len(vs.Validators)).Should(BeNumerically(">", 0),
-				"Should have at least one validator")
-			Expect(vs.TotalWeight).Should(BeNumerically(">", 0),
-				"Total weight should be positive")
-
-			var calculatedWeight uint64
-			for i, v := range vs.Validators {
-				Expect(len(v.BlsPublicKey)).Should(Equal(128),
-					"BLS public key should be 128 bytes (uncompressed G1)")
-				Expect(v.Weight).Should(BeNumerically(">", 0),
-					"Validator weight should be positive")
-				calculatedWeight += v.Weight
-				log.Debug("Validator details",
-					zap.Int("index", i),
-					zap.Uint64("weight", v.Weight),
-				)
-			}
-			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
-				"Total weight should match sum of individual validator weights")
 
 			// Order must match SubsetSetUpdater.fetchSortedValidators: lexicographic by 96-byte pubkey.
 			expectedL1Order := fetchSortedL1ValidatorsAtHeight(
 				ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
 			)
+			var calculatedWeight uint64
 			Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
 				"on-chain validator slice length should match P-chain canonical set at recorded height")
 			for i, exp := range expectedL1Order {
+				calculatedWeight += exp.Weight
 				Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
 					"validator %d: weight should match P-chain sorted order", i)
 				Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
 					"validator %d: BLS public key should match P-chain sorted order (contract padded form)", i)
 			}
+
+			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
+				"Total weight should match sum of individual validator weights")
 
 			firstPChainHeight = vs.PChainHeight
 			firstValidatorCount = len(vs.Validators)
@@ -376,48 +362,52 @@ func SubsetUpdater(
 				continue
 			}
 
-			if len(vs.Validators) > firstValidatorCount && vs.PChainHeight > firstPChainHeight {
-				log.Info("Validator set re-registered by relayer!",
-					zap.Int("validatorCount", len(vs.Validators)),
-					zap.Uint64("totalWeight", vs.TotalWeight),
-					zap.Uint64("pChainHeight", vs.PChainHeight),
-					zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
+			if len(vs.Validators) <= firstValidatorCount || vs.PChainHeight <= firstPChainHeight {
+				log.Debug("Waiting for validator set re-registration...",
+					zap.Int("currentValidatorCount", len(vs.Validators)),
+					zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
+					zap.Uint64("currentPChainHeight", vs.PChainHeight),
 				)
-
-				Expect(len(vs.Validators)).Should(BeNumerically(">", firstValidatorCount),
-					"Updated validator set should have more validators after adding one")
-				Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
-					"Updated validator set should have higher P-chain height")
-				Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
-					"Updated validator set should have positive timestamp")
-
-				expectedL1Order := fetchSortedL1ValidatorsAtHeight(
-					ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
-				)
-				Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
-					"updated on-chain validator count should match P-chain at recorded height")
-				for i, exp := range expectedL1Order {
-					Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
-						"validator %d: weight should match P-chain sorted order after update", i)
-					Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
-						"validator %d: BLS public key should match P-chain sorted order after update", i)
-				}
-
-				log.Info("SubsetUpdater e2e test PASSED",
-					zap.String("contractAddress", contractAddr.Hex()),
-					zap.Int("firstValidatorCount", firstValidatorCount),
-					zap.Int("updatedValidatorCount", len(vs.Validators)),
-					zap.Uint64("firstPChainHeight", firstPChainHeight),
-					zap.Uint64("updatedPChainHeight", vs.PChainHeight),
-				)
-				return
+				continue
 			}
 
-			log.Debug("Waiting for validator set re-registration...",
-				zap.Int("currentValidatorCount", len(vs.Validators)),
-				zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
-				zap.Uint64("currentPChainHeight", vs.PChainHeight),
+			log.Info("Validator set re-registered by relayer!",
+				zap.Int("validatorCount", len(vs.Validators)),
+				zap.Uint64("totalWeight", vs.TotalWeight),
+				zap.Uint64("pChainHeight", vs.PChainHeight),
+				zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
 			)
+
+			Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
+				"Updated validator set should have higher P-chain height")
+			Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
+				"Updated validator set should have positive timestamp")
+
+			expectedL1Order := fetchSortedL1ValidatorsAtHeight(
+				ctx, pChainClient, l1Info.SubnetID, vs.PChainHeight,
+			)
+			Expect(len(vs.Validators)).Should(Equal(len(expectedL1Order)),
+				"updated on-chain validator count should match P-chain at recorded height")
+			var calculatedWeight uint64
+			for i, exp := range expectedL1Order {
+				calculatedWeight += exp.Weight
+				Expect(vs.Validators[i].Weight).Should(Equal(exp.Weight),
+					"validator %d: weight should match P-chain sorted order after update", i)
+				Expect(vs.Validators[i].BlsPublicKey).Should(Equal(padUncompressedBLSPublicKey(exp.UncompressedPublicKeyBytes[:])),
+					"validator %d: BLS public key should match P-chain sorted order after update", i)
+			}
+
+			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
+				"Total weight should match sum of individual validator weights after update")
+
+			log.Info("SubsetUpdater e2e test PASSED",
+				zap.String("contractAddress", contractAddr.Hex()),
+				zap.Int("firstValidatorCount", firstValidatorCount),
+				zap.Int("updatedValidatorCount", len(vs.Validators)),
+				zap.Uint64("firstPChainHeight", firstPChainHeight),
+				zap.Uint64("updatedPChainHeight", vs.PChainHeight),
+			)
+			return
 		}
 	}
 }

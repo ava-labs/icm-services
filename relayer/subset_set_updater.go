@@ -144,7 +144,7 @@ func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 
-	return s.performFullSetUpdate(ctx, pChainHeight, isFirstRegistration)
+	return s.performFullSetUpdate(ctx, pChainHeight, onChainVS.PChainHeight, isFirstRegistration)
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +154,7 @@ func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 func (s *SubsetSetUpdater) performFullSetUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
+	onChainPChainHeight uint64,
 	isFirstRegistration bool,
 ) error {
 	var signingSubnet ids.ID
@@ -165,7 +166,7 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		signingSubnet = s.subnetID
 	}
 
-	_, shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
+	shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to build subset update: %w", err)
 	}
@@ -175,7 +176,16 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
-	signedMsg, err := s.signMessage(ctx, subsetUpdateMsg, signingSubnet)
+	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
+		ctx,
+		s.logger,
+		subsetUpdateMsg,
+		nil,
+		signingSubnet,
+		defaultQuorumPercentage,
+		defaultQuorumPercentageBuf,
+		onChainPChainHeight,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
@@ -186,15 +196,15 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 func (s *SubsetSetUpdater) buildSubsetUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
-) ([]*message.Validator, [][]byte, *avalancheWarp.UnsignedMessage, error) {
+) ([][]byte, *avalancheWarp.UnsignedMessage, error) {
 	validators, err := s.fetchSortedValidators(ctx, pChainHeight)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	shardBytesList, shardHashes, err := ShardValidators(validators, s.shardSize)
+	shardBytesList, shardHashes, err := ShardValidators(validators, int(s.shardSize))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	pChainTimestamp := uint64(time.Now().Unix())
@@ -206,12 +216,12 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		shardHashes,
 	)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create SubsetUpdate: %w", err)
+		return nil, nil, fmt.Errorf("failed to create SubsetUpdate: %w", err)
 	}
 
 	addressedCall, err := payload.NewAddressedCall(nil, subsetUpdatePayload.Bytes())
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create addressed call: %w", err)
+		return nil, nil, fmt.Errorf("failed to create addressed call: %w", err)
 	}
 
 	unsignedMsg, err := avalancheWarp.NewUnsignedMessage(
@@ -220,7 +230,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		addressedCall.Bytes(),
 	)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create unsigned warp message: %w", err)
+		return nil, nil, fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
 
 	s.logger.Info("Built SubsetUpdate message",
@@ -229,7 +239,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		zap.Int("numShards", len(shardBytesList)),
 	)
 
-	return validators, shardBytesList, unsignedMsg, nil
+	return shardBytesList, unsignedMsg, nil
 }
 
 func (s *SubsetSetUpdater) sendSubsetUpdate(
@@ -328,11 +338,10 @@ func (s *SubsetSetUpdater) fetchSortedValidators(
 // each shard and computing its sha256 hash.
 func ShardValidators(
 	validators []*message.Validator,
-	shardSize uint32,
+	shardSize int,
 ) ([][]byte, []ids.ID, error) {
-	ss := int(shardSize)
 	numValidators := len(validators)
-	numShards := (numValidators + ss - 1) / ss
+	numShards := (numValidators + shardSize - 1) / shardSize
 	if numShards == 0 {
 		numShards = 1
 	}
@@ -340,8 +349,8 @@ func ShardValidators(
 	shardHashes := make([]ids.ID, numShards)
 	shardBytesList := make([][]byte, numShards)
 	for i := 0; i < numShards; i++ {
-		start := i * ss
-		end := start + ss
+		start := i * shardSize
+		end := start + shardSize
 		if end > numValidators {
 			end = numValidators
 		}
@@ -355,32 +364,6 @@ func ShardValidators(
 		shardBytesList[i] = shardBytes
 	}
 	return shardBytesList, shardHashes, nil
-}
-
-func (s *SubsetSetUpdater) signMessage(
-	ctx context.Context,
-	unsignedMsg *avalancheWarp.UnsignedMessage,
-	signingSubnet ids.ID,
-) (*avalancheWarp.Message, error) {
-	pChainHeight, err := s.pChainClient.GetLatestHeight(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get P-chain height for signing: %w", err)
-	}
-
-	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
-		ctx,
-		s.logger,
-		unsignedMsg,
-		nil,
-		signingSubnet,
-		defaultQuorumPercentage,
-		defaultQuorumPercentageBuf,
-		pChainHeight,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to aggregate signatures: %w", err)
-	}
-	return signedMsg, nil
 }
 
 func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage, error) {
