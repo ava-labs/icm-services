@@ -1,7 +1,7 @@
 // Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package relayer
+package valiatorupdater
 
 import (
 	"bytes"
@@ -215,7 +215,16 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
-	signedMsg, err := d.signMessage(ctx, unsignedMsg, signingSubnet)
+	signedMsg, err := d.signatureAggregator.CreateSignedMessage(
+		ctx,
+		d.logger,
+		unsignedMsg,
+		nil,
+		signingSubnet,
+		defaultQuorumPercentage,
+		defaultQuorumPercentageBuf,
+		onChainVS.PChainHeight,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
@@ -296,7 +305,16 @@ func (d *DiffSetUpdater) performDiffUpdate(
 	signingSubnet := d.subnetID
 	d.logger.Info("Signing diff update", zap.Stringer("signingSubnet", signingSubnet))
 
-	signedMsg, err := d.signMessage(ctx, unsignedMsg, signingSubnet)
+	signedMsg, err := d.signatureAggregator.CreateSignedMessage(
+		ctx,
+		d.logger,
+		unsignedMsg,
+		nil,
+		signingSubnet,
+		defaultQuorumPercentage,
+		defaultQuorumPercentageBuf,
+		onChainVS.PChainHeight,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
@@ -582,32 +600,6 @@ func (d *DiffSetUpdater) fetchSortedValidators(
 	})
 
 	return validators, nil
-}
-
-func (d *DiffSetUpdater) signMessage(
-	ctx context.Context,
-	unsignedMsg *avalancheWarp.UnsignedMessage,
-	signingSubnet ids.ID,
-) (*avalancheWarp.Message, error) {
-	pChainHeight, err := d.pChainClient.GetLatestHeight(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get P-chain height for signing: %w", err)
-	}
-
-	signedMsg, err := d.signatureAggregator.CreateSignedMessage(
-		ctx,
-		d.logger,
-		unsignedMsg,
-		nil,
-		signingSubnet,
-		defaultQuorumPercentage,
-		defaultQuorumPercentageBuf,
-		pChainHeight,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to aggregate signatures: %w", err)
-	}
-	return signedMsg, nil
 }
 
 func buildDiffICMMessage(signedMsg *avalancheWarp.Message) (diffupdater.ICMMessage, error) {

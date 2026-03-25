@@ -21,8 +21,8 @@ import (
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
-	"github.com/ava-labs/icm-services/relayer"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/relayer/valiatorupdater"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
@@ -94,7 +94,7 @@ func SubsetUpdater(
 			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
 	})
 
-	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidators(pChainValidators, int(testShardSize))
+	pChainShardBytesList, pChainShardHashes, err := valiatorupdater.ShardValidators(pChainValidators, int(testShardSize))
 	Expect(err).Should(BeNil())
 
 	pChainShardHashesBytes := make([][32]byte, len(pChainShardHashes))

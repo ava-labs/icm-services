@@ -21,8 +21,8 @@ import (
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
-	"github.com/ava-labs/icm-services/relayer"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/relayer/valiatorupdater"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
@@ -99,7 +99,7 @@ func DiffUpdater(
 	bootstrapHeight := pChainHeight + 1
 	bootstrapTimestamp := pChainTimestamp + 1
 
-	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidatorsAsDiff(
+	pChainShardBytesList, pChainShardHashes, err := valiatorupdater.ShardValidatorsAsDiff(
 		pChainValidators,
 		testShardSize,
 		ids.ID(pChainID),

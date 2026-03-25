@@ -32,6 +32,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/api"
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/relayer/valiatorupdater"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	sigAggMetrics "github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
@@ -41,6 +42,7 @@ import (
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/atomic"
+
 	// Sets GOMAXPROCS to the CPU quota for containerized environments
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
@@ -728,7 +730,7 @@ func startSubsetSetUpdater(
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
 
-	updater := relayer.NewSubsetSetUpdater(relayer.SubsetSetUpdaterConfig{
+	updater := valiatorupdater.NewSubsetSetUpdater(valiatorupdater.SubsetSetUpdaterConfig{
 		Logger:              logger,
 		PChainClient:        pChainClient,
 		SignatureAggregator: signatureAggregator,
@@ -795,7 +797,7 @@ func startDiffSetUpdater(
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
 
-	updater := relayer.NewDiffSetUpdater(relayer.DiffSetUpdaterConfig{
+	updater := valiatorupdater.NewDiffSetUpdater(valiatorupdater.DiffSetUpdaterConfig{
 		Logger:              logger,
 		PChainClient:        pChainClient,
 		SignatureAggregator: signatureAggregator,
