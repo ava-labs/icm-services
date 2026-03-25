@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
@@ -135,9 +137,12 @@ func ValidatorsOnlyNetwork(
 
 	l1BNodes := set.NewSet[ids.NodeID](1)
 
+	var subnetBChainConfigSnapshot map[string]any
+
 	// Make l1BInfo a validator only network
 	for _, subnet := range network.Subnets {
 		if subnet.SubnetID == l1BInfo.SubnetID {
+			subnetBChainConfigSnapshot = maps.Clone(subnet.Config)
 			subnet.Config = make(map[string]interface{})
 			subnet.Config["validatorOnly"] = true
 			subnet.Config["allowedNodes"] = relayerNodeIDSet
@@ -252,6 +257,38 @@ func ValidatorsOnlyNetwork(
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	sendRequestToAPI(true)
+
+	// Subnet B was switched to validator-only mode, which rejects RPC/WebSocket from
+	// clients whose node ID is not in allowedNodes. Restore the exact chain config
+	// from before this test (not utils.DefaultChainConfig) so tmpnet/reuse-network
+	// stays consistent and /ext/bc/.../ws does not 404.
+	log.Info("Restoring subnet B chain config after validator-only test")
+	for _, subnet := range network.Subnets {
+		if subnet.SubnetID == l1BInfo.SubnetID {
+			subnet.Config = subnetBChainConfigSnapshot
+			err := subnet.Write(network.GetSubnetDir())
+			Expect(err).Should(BeNil())
+			break
+		}
+	}
+	var restartedBNodes []*tmpnet.Node
+	for _, tmpnetNode := range network.Nodes {
+		if l1BNodes.Contains(tmpnetNode.NodeID) {
+			Expect(network.DefaultRuntimeConfig).ShouldNot(BeNil())
+			Expect(network.DefaultRuntimeConfig.Process.ReuseDynamicPorts).Should(BeTrue())
+			tmpnetNode.RuntimeConfig = &network.DefaultRuntimeConfig
+			cctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+			err := tmpnetNode.Restart(cctx)
+			cancel()
+			Expect(err).Should(BeNil())
+			restartedBNodes = append(restartedBNodes, tmpnetNode)
+		}
+	}
+	if len(restartedBNodes) > 0 {
+		healthCtx, healthCancel := context.WithTimeout(ctx, 120*time.Second)
+		defer healthCancel()
+		Expect(tmpnet.WaitForHealthyNodes(healthCtx, log, restartedBNodes)).Should(BeNil())
+	}
 }
 
 func getUnderfundedNodeIndexes(
