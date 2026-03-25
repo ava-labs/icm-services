@@ -94,7 +94,7 @@ func SubsetUpdater(
 			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
 	})
 
-	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidators(pChainValidators, testShardSize)
+	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidators(pChainValidators, int(testShardSize))
 	Expect(err).Should(BeNil())
 
 	pChainShardHashesBytes := make([][32]byte, len(pChainShardHashes))
