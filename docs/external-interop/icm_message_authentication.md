@@ -11,7 +11,7 @@ As detailed in the description of the [new Teleporter architecture](teleporter_c
  * The same implementations of an `IAdapter` contract are deployed to the same address on each chain.
  * All `TeleporterV2` contracts implementing the same scheme are deployed to the same address on each chain.
 
-Two `TeleporterV2` contracts may talk to one another if they use the same `IAdapter` contract. When a TeleporterV2 contract receives a message, it checks if it originated from the same contract address as its own. If so, it knows that it is part of the same scheme and can verify the message using the hard-coded `IAdapater` implementation.
+Two `TeleporterV2` contracts may talk to one another if they are deployed at the same address. This means that they have been deployed using `Nick's Method` and use the same `IAdapter` contract. When a TeleporterV2 contract receives a message, it checks if it originated from the same contract address as its own. If so, it knows that it is part of the same scheme and can verify the message using the hard-coded `IAdapater` implementation.
 
 Note that an `IAdapater` implementation for a particular scheme may need to perform different logic depending on which chain it lives. So a switch statement should be included in its logic to dispatch to the right method depending on which chain it is being called. While many of the code paths will be dead on each chain, it means that the same code is deployed on-chain for a particular scheme.
 
