@@ -202,7 +202,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		return nil, nil, err
 	}
 
-	shardBytesList, shardHashes, err := ShardValidators(validators, s.shardSize)
+	shardBytesList, shardHashes, err := ShardValidators(validators, int(s.shardSize))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -338,11 +338,10 @@ func (s *SubsetSetUpdater) fetchSortedValidators(
 // each shard and computing its sha256 hash.
 func ShardValidators(
 	validators []*message.Validator,
-	shardSize uint32,
+	shardSize int,
 ) ([][]byte, []ids.ID, error) {
-	ss := int(shardSize)
 	numValidators := len(validators)
-	numShards := (numValidators + ss - 1) / ss
+	numShards := (numValidators + shardSize - 1) / shardSize
 	if numShards == 0 {
 		numShards = 1
 	}
@@ -350,8 +349,8 @@ func ShardValidators(
 	shardHashes := make([]ids.ID, numShards)
 	shardBytesList := make([][]byte, numShards)
 	for i := 0; i < numShards; i++ {
-		start := i * ss
-		end := start + ss
+		start := i * shardSize
+		end := start + shardSize
 		if end > numValidators {
 			end = numValidators
 		}
