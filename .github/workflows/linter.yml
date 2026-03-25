@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         submodules: recursive
 
     - name: Setup Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
       with:
           go-version-file: 'go.mod'
 
@@ -37,12 +37,12 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
           submodules: recursive
 
     - name: Setup Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
       with:
         go-version-file: 'go.mod'
 
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Install solhint
       run: |
@@ -72,7 +72,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           submodules: recursive
 
@@ -89,11 +89,11 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           submodules: recursive
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
 
@@ -107,12 +107,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           submodules: recursive
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
 
