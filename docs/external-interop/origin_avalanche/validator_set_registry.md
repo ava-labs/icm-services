@@ -1,6 +1,6 @@
 # Validator Set Registry
 
-Many applications on external EVM chains will want to authenticate messages originating from Avalanche or Avalanche L1s by checking it is signed by a quorum of the relevant validator set. In order for an external EVM chain to know what the relevant validator set is, a smart contract will be deployed that maintains a registry of such validator sets. This contract is called the `AvalancheValidatorSetRegisty` (actually, a child of this contract will be used to allow different data formats to be used).
+Many applications on external EVM chains will want to authenticate messages originating from Avalanche or Avalanche L1s by checking it is signed by a quorum of the relevant validator set. In order for an external EVM chain to know what the relevant validator set is, a smart contract will be deployed that maintains a registry of such validator sets. The contract that contains the logic for this is called the `AvalancheValidatorSetRegisty`. However, this contract is agnostic of the data format used to update validator sets; these details will be handled by child contracts which will be the actual contracts deployed.
 
 ## Validator sets
 

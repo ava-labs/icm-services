@@ -105,7 +105,7 @@ How a `TeleporterMessengerV2` contract decides which `IMessageVerifier` is detai
 
 The `Teleporter` protocol issues a unique ID to each message to help ensure at-most-once delivery. It is used to make sure a message is not received twice as well as to store receipts of received messages. Relayers can send these receipts back to the sending application to communicate successful delivery of a message. It also ties messages to a specific `Teleporter` version.
 
-Given two blockchains with a shared security model, as specified by a pair of `TeleporterMessengerV2` contracts each chain has access to, we can talk about  a _connection_ between two chains. Message IDs should be unique to each connection and contain nonces to distinguish messages along a given connection. They are a hash of several pieces of information pertaining to the message:
+Given two blockchains and a pair of `TeleporterMessengerV2` contracts each chain has access to, we can talk about a _connection_ between two chains (naturally there may be many such connections each defining their own security model). Message IDs should be unique to each connection and contain nonces to distinguish messages along a given connection. They are a hash of several pieces of information pertaining to the message:
 
 - The source blockchain ID
 - The destination blockchain ID
