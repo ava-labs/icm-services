@@ -14,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
@@ -165,7 +166,7 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		signingSubnet = s.subnetID
 	}
 
-	_, shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
+	validators, shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to build subset update: %w", err)
 	}
@@ -178,6 +179,20 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 	signedMsg, err := s.signMessage(ctx, subsetUpdateMsg, signingSubnet)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
+	}
+
+	if !isFirstRegistration {
+		// Aggregator bit indices follow P-chain canonical order at the new height (including new
+		// validators). The contract verifies against the previously registered on-chain list, whose
+		// indices differ whenever the new key does not sort last — remap signers before submit.
+		onChainVS, err := s.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, s.blockchainID)
+		if err != nil {
+			return fmt.Errorf("failed to get on-chain validator set for signer remap: %w", err)
+		}
+		signedMsg, err = remapSubsetUpdateSignersToOnChainOrder(signedMsg, validators, onChainVS)
+		if err != nil {
+			return fmt.Errorf("failed to remap warp signers to on-chain order: %w", err)
+		}
 	}
 
 	return s.sendSubsetUpdate(ctx, signedMsg, shardBytesList)
@@ -413,4 +428,72 @@ func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage
 		SourceBlockchainID: signedMsg.UnsignedMessage.SourceChainID,
 		Attestation:        attestation,
 	}, nil
+}
+
+// remapSubsetUpdateSignersToOnChainOrder rewrites the warp signer bitset from P-chain canonical indices
+// (used by the signature aggregator) to indices matching getValidatorSet order on the contract. Required
+// after updates because verifyICMMessage uses the previously registered list while aggregation indexes
+// into the full canonical set at the new height.
+func remapSubsetUpdateSignersToOnChainOrder(
+	signedMsg *avalancheWarp.Message,
+	canonical []*message.Validator,
+	onChain subsetupdater.ValidatorSet,
+) (*avalancheWarp.Message, error) {
+	bs, ok := signedMsg.Signature.(*avalancheWarp.BitSetSignature)
+	if !ok {
+		return nil, fmt.Errorf("expected BitSetSignature, got %T", signedMsg.Signature)
+	}
+
+	canonicalBits := set.BitsFromBytes(bs.Signers)
+
+	onChainKeyToIdx := make(map[string]int, len(onChain.Validators))
+	for j, v := range onChain.Validators {
+		if len(v.BlsPublicKey) != 128 {
+			return nil, fmt.Errorf("on-chain validator %d: expected 128-byte padded BLS pubkey, got %d", j, len(v.BlsPublicKey))
+		}
+		key := string(v.BlsPublicKey)
+		if _, dup := onChainKeyToIdx[key]; dup {
+			return nil, fmt.Errorf("duplicate BLS pubkey in on-chain validator set")
+		}
+		onChainKeyToIdx[key] = j
+	}
+
+	remapped := set.NewBits()
+	for i := 0; i < len(canonical); i++ {
+		if !canonicalBits.Contains(i) {
+			continue
+		}
+		padded, err := padUncompressedBLSPublicKey96(canonical[i].UncompressedPublicKeyBytes[:])
+		if err != nil {
+			return nil, err
+		}
+		j, found := onChainKeyToIdx[string(padded)]
+		if !found {
+			return nil, fmt.Errorf(
+				"canonical signer at index %d is not in the currently registered on-chain set",
+				i,
+			)
+		}
+		remapped.Add(j)
+	}
+
+	newBitSig := &avalancheWarp.BitSetSignature{
+		Signers:   remapped.Bytes(),
+		Signature: bs.Signature,
+	}
+	u := signedMsg.UnsignedMessage
+	return avalancheWarp.NewMessage(&u, newBitSig)
+}
+
+// padUncompressedBLSPublicKey96 matches BLST.padUncompressedBLSPublicKey (icm-contracts/ethereum/utils/BLST.sol).
+func padUncompressedBLSPublicKey96(pubKey []byte) ([]byte, error) {
+	if len(pubKey) != 96 {
+		return nil, fmt.Errorf("expected 96-byte uncompressed G1 pubkey, got %d", len(pubKey))
+	}
+	res := make([]byte, 128)
+	copy(res[16:32], pubKey[0:16])
+	copy(res[32:64], pubKey[16:48])
+	copy(res[80:96], pubKey[48:64])
+	copy(res[96:128], pubKey[64:96])
+	return res, nil
 }
