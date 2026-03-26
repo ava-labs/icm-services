@@ -1,7 +1,7 @@
 // Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package valiatorupdater
+package validatorupdater
 
 import (
 	"bytes"
@@ -17,8 +17,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
+	warppayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
@@ -44,42 +43,37 @@ type DiffSetUpdater struct {
 	pollInterval time.Duration
 }
 
-type DiffSetUpdaterConfig struct {
-	Logger              logging.Logger
-	PChainClient        clients.CanonicalValidatorState
-	SignatureAggregator *aggregator.SignatureAggregator
-	EthClient           *ethclient.Client
-	Contract            *diffupdater.DiffUpdater
-	ContractAddress     common.Address
-	TxOpts              *bind.TransactOpts
-
-	NetworkID    uint32
-	BlockchainID ids.ID
-	SubnetID     ids.ID
-	ShardSize    uint32
-	PollInterval time.Duration
-}
-
-func NewDiffSetUpdater(cfg DiffSetUpdaterConfig) *DiffSetUpdater {
-	shardSize := cfg.ShardSize
+func NewDiffSetUpdater(
+	logger logging.Logger,
+	pChainClient clients.CanonicalValidatorState,
+	signatureAggregator *aggregator.SignatureAggregator,
+	ethClient *ethclient.Client,
+	contract *diffupdater.DiffUpdater,
+	contractAddress common.Address,
+	txOpts *bind.TransactOpts,
+	networkID uint32,
+	blockchainID ids.ID,
+	subnetID ids.ID,
+	shardSize uint32,
+	pollInterval time.Duration,
+) *DiffSetUpdater {
 	if shardSize == 0 {
 		shardSize = defaultShardSize
 	}
-	pollInterval := cfg.PollInterval
 	if pollInterval == 0 {
 		pollInterval = defaultPollInterval
 	}
 	return &DiffSetUpdater{
-		logger:              cfg.Logger,
-		pChainClient:        cfg.PChainClient,
-		signatureAggregator: cfg.SignatureAggregator,
-		ethClient:           cfg.EthClient,
-		contract:            cfg.Contract,
-		contractAddress:     cfg.ContractAddress,
-		txOpts:              cfg.TxOpts,
-		networkID:           cfg.NetworkID,
-		blockchainID:        cfg.BlockchainID,
-		subnetID:            cfg.SubnetID,
+		logger:              logger,
+		pChainClient:        pChainClient,
+		signatureAggregator: signatureAggregator,
+		ethClient:           ethClient,
+		contract:            contract,
+		contractAddress:     contractAddress,
+		txOpts:              txOpts,
+		networkID:           networkID,
+		blockchainID:        blockchainID,
+		subnetID:            subnetID,
 		shardSize:           shardSize,
 		pollInterval:        pollInterval,
 	}
@@ -161,15 +155,18 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		return fmt.Errorf("failed to fetch validators: %w", err)
 	}
 
-	changes := make([]message.ValidatorChange, len(newValidators))
+	changes := make([]ValidatorChange, len(newValidators))
 	for i, v := range newValidators {
-		changes[i] = message.ValidatorChange{
+		changes[i] = ValidatorChange{
 			UncompressedPublicKeyBytes: v.UncompressedPublicKeyBytes,
 			Weight:                     v.Weight,
 		}
 	}
 
-	pChainTimestamp := uint64(time.Now().Unix())
+	pChainTimestamp, err := d.pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
+	}
 
 	shardBytesList, shardHashes, err := d.shardDiff(
 		d.blockchainID,
@@ -184,7 +181,7 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		return fmt.Errorf("failed to shard diff: %w", err)
 	}
 
-	metadataMsg, err := message.NewValidatorSetMetadata(
+	metadataMsg, err := NewValidatorSetMetadata(
 		d.blockchainID,
 		pChainHeight,
 		pChainTimestamp,
@@ -194,7 +191,7 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		return fmt.Errorf("failed to create ValidatorSetMetadata: %w", err)
 	}
 
-	addressedCall, err := payload.NewAddressedCall(nil, metadataMsg.Bytes())
+	addressedCall, err := warppayload.NewAddressedCall(nil, metadataMsg.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to create addressed call: %w", err)
 	}
@@ -260,7 +257,10 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		return nil
 	}
 
-	pChainTimestamp := uint64(time.Now().Unix())
+	pChainTimestamp, err := d.pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
+	}
 
 	shardBytesList, shardHashes, err := d.shardDiff(
 		d.blockchainID,
@@ -275,7 +275,7 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		return fmt.Errorf("failed to shard diff: %w", err)
 	}
 
-	metadataMsg, err := message.NewValidatorSetMetadata(
+	metadataMsg, err := NewValidatorSetMetadata(
 		d.blockchainID,
 		pChainHeight,
 		pChainTimestamp,
@@ -285,7 +285,7 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		return fmt.Errorf("failed to create ValidatorSetMetadata: %w", err)
 	}
 
-	addressedCall, err := payload.NewAddressedCall(nil, metadataMsg.Bytes())
+	addressedCall, err := warppayload.NewAddressedCall(nil, metadataMsg.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to create addressed call: %w", err)
 	}
@@ -333,9 +333,9 @@ func (d *DiffSetUpdater) performDiffUpdate(
 // computeValidatorDiff performs an O(n+m) merge-walk over two sorted validator
 // slices, producing a sorted list of changes and the count of additions.
 func computeValidatorDiff(
-	old, new_ []*message.Validator,
-) ([]message.ValidatorChange, uint32) {
-	var changes []message.ValidatorChange
+	old, new_ []*Validator,
+) ([]ValidatorChange, uint32) {
+	var changes []ValidatorChange
 	var numAdded uint32
 
 	oi, ni := 0, 0
@@ -353,14 +353,14 @@ func computeValidatorDiff(
 		switch {
 		case cmp < 0:
 			// Removal: exists in old but not in new
-			changes = append(changes, message.ValidatorChange{
+			changes = append(changes, ValidatorChange{
 				UncompressedPublicKeyBytes: old[oi].UncompressedPublicKeyBytes,
 				Weight:                     0,
 			})
 			oi++
 		case cmp > 0:
 			// Addition: exists in new but not in old
-			changes = append(changes, message.ValidatorChange{
+			changes = append(changes, ValidatorChange{
 				UncompressedPublicKeyBytes: new_[ni].UncompressedPublicKeyBytes,
 				Weight:                     new_[ni].Weight,
 			})
@@ -369,7 +369,7 @@ func computeValidatorDiff(
 		default:
 			// Same key: check if weight changed
 			if old[oi].Weight != new_[ni].Weight {
-				changes = append(changes, message.ValidatorChange{
+				changes = append(changes, ValidatorChange{
 					UncompressedPublicKeyBytes: new_[ni].UncompressedPublicKeyBytes,
 					Weight:                     new_[ni].Weight,
 				})
@@ -390,10 +390,10 @@ func computeValidatorDiff(
 // applyValidatorSetDiff function. Both currentSet and changes must be sorted
 // by UncompressedPublicKeyBytes. Returns the new validator set.
 func applyChangesToValidators(
-	currentSet []*message.Validator,
-	changes []message.ValidatorChange,
-) []*message.Validator {
-	var result []*message.Validator
+	currentSet []*Validator,
+	changes []ValidatorChange,
+) []*Validator {
+	var result []*Validator
 	vi, ci := 0, 0
 	for vi < len(currentSet) || ci < len(changes) {
 		var cmp int
@@ -414,14 +414,14 @@ func applyChangesToValidators(
 			result = append(result, currentSet[vi])
 			vi++
 		case cmp > 0:
-			result = append(result, &message.Validator{
+			result = append(result, &Validator{
 				UncompressedPublicKeyBytes: changes[ci].UncompressedPublicKeyBytes,
 				Weight:                     changes[ci].Weight,
 			})
 			ci++
 		default:
 			if changes[ci].Weight != 0 {
-				result = append(result, &message.Validator{
+				result = append(result, &Validator{
 					UncompressedPublicKeyBytes: changes[ci].UncompressedPublicKeyBytes,
 					Weight:                     changes[ci].Weight,
 				})
@@ -445,8 +445,8 @@ func (d *DiffSetUpdater) shardDiff(
 	blockchainID ids.ID,
 	prevHeight, prevTimestamp uint64,
 	currHeight, currTimestamp uint64,
-	oldValidators []*message.Validator,
-	changes []message.ValidatorChange,
+	oldValidators []*Validator,
+	changes []ValidatorChange,
 ) ([][]byte, []ids.ID, error) {
 	ss := int(d.shardSize)
 	numChanges := len(changes)
@@ -482,7 +482,7 @@ func (d *DiffSetUpdater) shardDiff(
 
 		runningSet = applyChangesToValidators(runningSet, shardChanges)
 
-		diff, err := message.NewValidatorSetDiff(
+		diff, err := NewValidatorSetDiff(
 			blockchainID,
 			prevHeight,
 			prevTimestamp,
@@ -576,7 +576,7 @@ func (d *DiffSetUpdater) sendDiffUpdate(
 func (d *DiffSetUpdater) fetchSortedValidators(
 	ctx context.Context,
 	pChainHeight uint64,
-) ([]*message.Validator, error) {
+) ([]*Validator, error) {
 	allValidatorSets, err := d.pChainClient.GetAllValidatorSets(ctx, pChainHeight)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validator sets: %w", err)
@@ -587,9 +587,9 @@ func (d *DiffSetUpdater) fetchSortedValidators(
 		return nil, fmt.Errorf("subnet %s not found in validator sets at height %d", d.subnetID, pChainHeight)
 	}
 
-	validators := make([]*message.Validator, len(vdrSet.Validators))
+	validators := make([]*Validator, len(vdrSet.Validators))
 	for i, vdr := range vdrSet.Validators {
-		validators[i] = &message.Validator{
+		validators[i] = &Validator{
 			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
 			Weight:                     vdr.Weight,
 		}
@@ -602,7 +602,7 @@ func (d *DiffSetUpdater) fetchSortedValidators(
 }
 
 func buildDiffICMMessage(signedMsg *avalancheWarp.Message) (diffupdater.ICMMessage, error) {
-	addressedCall, err := payload.ParseAddressedCall(signedMsg.UnsignedMessage.Payload)
+	addressedCall, err := warppayload.ParseAddressedCall(signedMsg.UnsignedMessage.Payload)
 	if err != nil {
 		return diffupdater.ICMMessage{}, fmt.Errorf("failed to parse addressed call from signed message: %w", err)
 	}
@@ -650,11 +650,11 @@ func unPadOnChainBlsPublicKey(padded []byte) [96]byte {
 }
 
 // onChainValidatorsToMessage converts on-chain Validator structs (with padded
-// 128-byte BLS keys) to message.Validator structs (with uncompressed 96-byte keys).
-func onChainValidatorsToMessage(validators []diffupdater.Validator) []*message.Validator {
-	result := make([]*message.Validator, len(validators))
+// 128-byte BLS keys) to Validator structs (with uncompressed 96-byte keys).
+func onChainValidatorsToMessage(validators []diffupdater.Validator) []*Validator {
+	result := make([]*Validator, len(validators))
 	for i, v := range validators {
-		result[i] = &message.Validator{
+		result[i] = &Validator{
 			UncompressedPublicKeyBytes: unPadOnChainBlsPublicKey(v.BlsPublicKey),
 			Weight:                     v.Weight,
 		}
@@ -666,7 +666,7 @@ func onChainValidatorsToMessage(validators []diffupdater.Validator) []*message.V
 // for bootstrapping a DiffUpdater contract from an empty validator set.
 // All validators are treated as additions; each shard carries a subset of changes.
 func ShardValidatorsAsDiff(
-	validators []*message.Validator,
+	validators []*Validator,
 	shardSize uint32,
 	blockchainID ids.ID,
 	prevHeight, prevTimestamp uint64,
@@ -690,16 +690,16 @@ func ShardValidatorsAsDiff(
 		}
 		shardValidators := validators[start:end]
 
-		changes := make([]message.ValidatorChange, len(shardValidators))
+		changes := make([]ValidatorChange, len(shardValidators))
 		for j, v := range shardValidators {
-			changes[j] = message.ValidatorChange{
+			changes[j] = ValidatorChange{
 				UncompressedPublicKeyBytes: v.UncompressedPublicKeyBytes,
 				Weight:                     v.Weight,
 			}
 		}
 		numAdded := uint32(len(changes))
 
-		diff, err := message.NewValidatorSetDiff(
+		diff, err := NewValidatorSetDiff(
 			blockchainID,
 			prevHeight,
 			prevTimestamp,

@@ -13,7 +13,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	poamanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/PoAManager"
 	"github.com/ava-labs/icm-services/config"
@@ -22,7 +21,7 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
-	"github.com/ava-labs/icm-services/relayer/valiatorupdater"
+	"github.com/ava-labs/icm-services/relayer/validatorupdater"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
@@ -81,9 +80,9 @@ func DiffUpdater(
 	pChainWarpSet, err := pChainClient.GetProposedValidators(ctx, ids.Empty)
 	Expect(err).Should(BeNil())
 
-	pChainValidators := make([]*message.Validator, len(pChainWarpSet.Validators))
+	pChainValidators := make([]*validatorupdater.Validator, len(pChainWarpSet.Validators))
 	for i, vdr := range pChainWarpSet.Validators {
-		pChainValidators[i] = &message.Validator{
+		pChainValidators[i] = &validatorupdater.Validator{
 			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
 			Weight:                     vdr.Weight,
 		}
@@ -99,7 +98,7 @@ func DiffUpdater(
 	bootstrapHeight := pChainHeight + 1
 	bootstrapTimestamp := pChainTimestamp + 1
 
-	pChainShardBytesList, pChainShardHashes, err := valiatorupdater.ShardValidatorsAsDiff(
+	pChainShardBytesList, pChainShardHashes, err := validatorupdater.ShardValidatorsAsDiff(
 		pChainValidators,
 		testShardSize,
 		ids.ID(pChainID),

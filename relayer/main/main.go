@@ -32,7 +32,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/api"
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
 	"github.com/ava-labs/icm-services/relayer/config"
-	"github.com/ava-labs/icm-services/relayer/valiatorupdater"
+	"github.com/ava-labs/icm-services/relayer/validatorupdater"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	sigAggMetrics "github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
@@ -729,20 +729,20 @@ func startSubsetSetUpdater(
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
 
-	updater := valiatorupdater.NewSubsetSetUpdater(valiatorupdater.SubsetSetUpdaterConfig{
-		Logger:              logger,
-		PChainClient:        pChainClient,
-		SignatureAggregator: signatureAggregator,
-		EthClient:           ethClient,
-		Contract:            contract,
-		ContractAddress:     contractAddr,
-		TxOpts:              txOpts,
-		NetworkID:           networkID,
-		BlockchainID:        blockchainID,
-		SubnetID:            subnetID,
-		ShardSize:           extDest.ShardSize,
-		PollInterval:        pollInterval,
-	})
+	updater := validatorupdater.NewSubsetSetUpdater(
+		logger,
+		pChainClient,
+		signatureAggregator,
+		ethClient,
+		contract,
+		contractAddr,
+		txOpts,
+		networkID,
+		blockchainID,
+		subnetID,
+		extDest.ShardSize,
+		pollInterval,
+	)
 
 	return updater.Start(ctx)
 }
@@ -796,20 +796,20 @@ func startDiffSetUpdater(
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
 
-	updater := valiatorupdater.NewDiffSetUpdater(valiatorupdater.DiffSetUpdaterConfig{
-		Logger:              logger,
-		PChainClient:        pChainClient,
-		SignatureAggregator: signatureAggregator,
-		EthClient:           ethClient,
-		Contract:            contract,
-		ContractAddress:     contractAddr,
-		TxOpts:              txOpts,
-		NetworkID:           networkID,
-		BlockchainID:        blockchainID,
-		SubnetID:            subnetID,
-		ShardSize:           extDest.ShardSize,
-		PollInterval:        pollInterval,
-	})
+	updater := validatorupdater.NewDiffSetUpdater(
+		logger,
+		pChainClient,
+		signatureAggregator,
+		ethClient,
+		contract,
+		contractAddr,
+		txOpts,
+		networkID,
+		blockchainID,
+		subnetID,
+		extDest.ShardSize,
+		pollInterval,
+	)
 
 	return updater.Start(ctx)
 }
