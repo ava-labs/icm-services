@@ -31,11 +31,11 @@ type ValidatorChange struct {
 type ValidatorSetDiff struct {
 	serialized []byte `serialize:"false"`
 
-	BlockchainID      ids.ID `serialize:"true" json:"blockchainID"`
-	PreviousHeight    uint64 `serialize:"true" json:"previousHeight"`
-	PreviousTimestamp uint64 `serialize:"true" json:"previousTimestamp"`
-	CurrentHeight     uint64 `serialize:"true" json:"currentHeight"`
-	CurrentTimestamp  uint64 `serialize:"true" json:"currentTimestamp"`
+	BlockchainID      ids.ID            `serialize:"true" json:"blockchainID"`
+	PreviousHeight    uint64            `serialize:"true" json:"previousHeight"`
+	PreviousTimestamp uint64            `serialize:"true" json:"previousTimestamp"`
+	CurrentHeight     uint64            `serialize:"true" json:"currentHeight"`
+	CurrentTimestamp  uint64            `serialize:"true" json:"currentTimestamp"`
 	Changes           []ValidatorChange `serialize:"true" json:"changes"`
 	NumAdded          uint32            `serialize:"true" json:"numAdded"`
 }
