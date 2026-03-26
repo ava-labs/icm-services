@@ -58,6 +58,21 @@ func (mr *MockCanonicalValidatorStateMockRecorder) GetAllValidatorSets(ctx, pcha
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllValidatorSets", reflect.TypeOf((*MockCanonicalValidatorState)(nil).GetAllValidatorSets), ctx, pchainHeight)
 }
 
+// GetBlockTimestampAtHeight mocks base method.
+func (m *MockCanonicalValidatorState) GetBlockTimestampAtHeight(ctx context.Context, height uint64) (uint64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBlockTimestampAtHeight", ctx, height)
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBlockTimestampAtHeight indicates an expected call of GetBlockTimestampAtHeight.
+func (mr *MockCanonicalValidatorStateMockRecorder) GetBlockTimestampAtHeight(ctx, height any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlockTimestampAtHeight", reflect.TypeOf((*MockCanonicalValidatorState)(nil).GetBlockTimestampAtHeight), ctx, height)
+}
+
 // GetCurrentValidators mocks base method.
 func (m *MockCanonicalValidatorState) GetCurrentValidators(ctx context.Context, subnetID ids.ID) ([]platformvm.ClientPermissionlessValidator, error) {
 	m.ctrl.T.Helper()
