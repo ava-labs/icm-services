@@ -13,7 +13,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	poamanager "github.com/ava-labs/icm-services/abi-bindings/go/validator-manager/PoAManager"
 	"github.com/ava-labs/icm-services/config"
@@ -21,8 +20,8 @@ import (
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
-	"github.com/ava-labs/icm-services/relayer"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/relayer/validatorupdater"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
@@ -82,9 +81,9 @@ func SubsetUpdater(
 	pChainWarpSet, err := pChainClient.GetProposedValidators(ctx, ids.Empty)
 	Expect(err).Should(BeNil())
 
-	pChainValidators := make([]*message.Validator, len(pChainWarpSet.Validators))
+	pChainValidators := make([]*validatorupdater.Validator, len(pChainWarpSet.Validators))
 	for i, vdr := range pChainWarpSet.Validators {
-		pChainValidators[i] = &message.Validator{
+		pChainValidators[i] = &validatorupdater.Validator{
 			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
 			Weight:                     vdr.Weight,
 		}
@@ -94,7 +93,7 @@ func SubsetUpdater(
 			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
 	})
 
-	pChainShardBytesList, pChainShardHashes, err := relayer.ShardValidators(pChainValidators, int(testShardSize))
+	pChainShardBytesList, pChainShardHashes, err := validatorupdater.ShardValidators(pChainValidators, int(testShardSize))
 	Expect(err).Should(BeNil())
 
 	pChainShardHashesBytes := make([][32]byte, len(pChainShardHashes))
@@ -428,14 +427,14 @@ func fetchSortedL1ValidatorsAtHeight(
 	pChainClient *clients.CanonicalValidatorClient,
 	subnetID ids.ID,
 	height uint64,
-) []*message.Validator {
+) []*validatorupdater.Validator {
 	allSets, err := pChainClient.GetAllValidatorSets(ctx, height)
 	Expect(err).Should(BeNil())
 	vdrSet, ok := allSets[subnetID]
 	Expect(ok).Should(BeTrue(), "subnet validators should exist at P-chain height %d", height)
-	validators := make([]*message.Validator, len(vdrSet.Validators))
+	validators := make([]*validatorupdater.Validator, len(vdrSet.Validators))
 	for i, vdr := range vdrSet.Validators {
-		validators[i] = &message.Validator{
+		validators[i] = &validatorupdater.Validator{
 			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
 			Weight:                     vdr.Weight,
 		}

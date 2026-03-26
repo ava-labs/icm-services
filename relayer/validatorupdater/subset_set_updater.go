@@ -1,7 +1,7 @@
 // Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package relayer
+package validatorupdater
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
+	warppayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
@@ -209,7 +209,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 
 	pChainTimestamp := uint64(time.Now().Unix())
 
-	subsetUpdatePayload, err := message.NewValidatorSetMetadata(
+	subsetUpdatePayload, err := NewValidatorSetMetadata(
 		s.blockchainID,
 		pChainHeight,
 		pChainTimestamp,
@@ -219,7 +219,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		return nil, nil, fmt.Errorf("failed to create SubsetUpdate: %w", err)
 	}
 
-	addressedCall, err := payload.NewAddressedCall(nil, subsetUpdatePayload.Bytes())
+	addressedCall, err := warppayload.NewAddressedCall(nil, subsetUpdatePayload.Bytes())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create addressed call: %w", err)
 	}
@@ -309,7 +309,7 @@ func (s *SubsetSetUpdater) sendSubsetUpdate(
 func (s *SubsetSetUpdater) fetchSortedValidators(
 	ctx context.Context,
 	pChainHeight uint64,
-) ([]*message.Validator, error) {
+) ([]*Validator, error) {
 	allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, pChainHeight)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validator sets: %w", err)
@@ -320,9 +320,9 @@ func (s *SubsetSetUpdater) fetchSortedValidators(
 		return nil, fmt.Errorf("subnet %s not found in validator sets at height %d", s.subnetID, pChainHeight)
 	}
 
-	validators := make([]*message.Validator, len(vdrSet.Validators))
+	validators := make([]*Validator, len(vdrSet.Validators))
 	for i, vdr := range vdrSet.Validators {
-		validators[i] = &message.Validator{
+		validators[i] = &Validator{
 			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
 			Weight:                     vdr.Weight,
 		}
@@ -337,7 +337,7 @@ func (s *SubsetSetUpdater) fetchSortedValidators(
 // ShardValidators splits a sorted validator slice into shards, marshaling
 // each shard and computing its sha256 hash.
 func ShardValidators(
-	validators []*message.Validator,
+	validators []*Validator,
 	shardSize int,
 ) ([][]byte, []ids.ID, error) {
 	numValidators := len(validators)
@@ -367,7 +367,7 @@ func ShardValidators(
 }
 
 func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage, error) {
-	addressedCall, err := payload.ParseAddressedCall(signedMsg.UnsignedMessage.Payload)
+	addressedCall, err := warppayload.ParseAddressedCall(signedMsg.UnsignedMessage.Payload)
 	if err != nil {
 		return subsetupdater.ICMMessage{}, fmt.Errorf("failed to parse addressed call from signed message: %w", err)
 	}

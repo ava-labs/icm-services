@@ -31,6 +31,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/api"
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/relayer/validatorupdater"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	sigAggMetrics "github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
@@ -722,7 +723,7 @@ func startSubsetSetUpdater(
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
 
-	updater := relayer.NewSubsetSetUpdater(relayer.SubsetSetUpdaterConfig{
+	updater := validatorupdater.NewSubsetSetUpdater(validatorupdater.SubsetSetUpdaterConfig{
 		Logger:              logger,
 		PChainClient:        pChainClient,
 		SignatureAggregator: signatureAggregator,
