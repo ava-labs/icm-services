@@ -24,6 +24,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/validatorupdater"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -77,6 +78,8 @@ func SubsetUpdater(
 	})
 	pChainHeight, err := pChainClient.GetLatestHeight(ctx)
 	Expect(err).Should(BeNil())
+	pChainTimestamp, err := pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
+	Expect(err).Should(BeNil())
 
 	pChainWarpSet, err := pChainClient.GetProposedValidators(ctx, ids.Empty)
 	Expect(err).Should(BeNil())
@@ -105,6 +108,7 @@ func SubsetUpdater(
 		zap.Int("numValidators", len(pChainValidators)),
 		zap.Int("numShards", len(pChainShardBytesList)),
 		zap.Uint64("pChainHeight", pChainHeight),
+		zap.Uint64("pChainTimestamp", pChainTimestamp),
 	)
 
 	// =========================================================================
@@ -117,7 +121,7 @@ func SubsetUpdater(
 	initialMetadata := subsetupdater.ValidatorSetMetadata{
 		AvalancheBlockchainID: pChainID,
 		PChainHeight:          pChainHeight,
-		PChainTimestamp:       uint64(time.Now().Unix()),
+		PChainTimestamp:       pChainTimestamp,
 		ShardHashes:           pChainShardHashesBytes,
 	}
 	contractAddr := utils.DeploySubsetUpdater(
@@ -146,7 +150,7 @@ func SubsetUpdater(
 		Expect(err).Should(BeNil())
 		receipt, err := bind.WaitMined(ctx, ethClient, tx)
 		Expect(err).Should(BeNil())
-		Expect(receipt.Status).Should(Equal(uint64(1)),
+		Expect(receipt.Status).Should(Equal(types.ReceiptStatusSuccessful),
 			"updateValidatorSet shard %d failed", i+1)
 		log.Info("Bootstrapped P-chain shard",
 			zap.Int("shardNumber", i+1),

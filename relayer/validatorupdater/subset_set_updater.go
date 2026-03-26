@@ -49,42 +49,37 @@ type SubsetSetUpdater struct {
 	pollInterval time.Duration
 }
 
-type SubsetSetUpdaterConfig struct {
-	Logger              logging.Logger
-	PChainClient        clients.CanonicalValidatorState
-	SignatureAggregator *aggregator.SignatureAggregator
-	EthClient           *ethclient.Client
-	Contract            *subsetupdater.SubsetUpdater
-	ContractAddress     common.Address
-	TxOpts              *bind.TransactOpts
-
-	NetworkID    uint32
-	BlockchainID ids.ID
-	SubnetID     ids.ID
-	ShardSize    uint32
-	PollInterval time.Duration
-}
-
-func NewSubsetSetUpdater(cfg SubsetSetUpdaterConfig) *SubsetSetUpdater {
-	shardSize := cfg.ShardSize
+func NewSubsetSetUpdater(
+	logger logging.Logger,
+	pChainClient clients.CanonicalValidatorState,
+	signatureAggregator *aggregator.SignatureAggregator,
+	ethClient *ethclient.Client,
+	contract *subsetupdater.SubsetUpdater,
+	contractAddress common.Address,
+	txOpts *bind.TransactOpts,
+	networkID uint32,
+	blockchainID ids.ID,
+	subnetID ids.ID,
+	shardSize uint32,
+	pollInterval time.Duration,
+) *SubsetSetUpdater {
 	if shardSize == 0 {
 		shardSize = defaultShardSize
 	}
-	pollInterval := cfg.PollInterval
 	if pollInterval == 0 {
 		pollInterval = defaultPollInterval
 	}
 	return &SubsetSetUpdater{
-		logger:              cfg.Logger,
-		pChainClient:        cfg.PChainClient,
-		signatureAggregator: cfg.SignatureAggregator,
-		ethClient:           cfg.EthClient,
-		contract:            cfg.Contract,
-		contractAddress:     cfg.ContractAddress,
-		txOpts:              cfg.TxOpts,
-		networkID:           cfg.NetworkID,
-		blockchainID:        cfg.BlockchainID,
-		subnetID:            cfg.SubnetID,
+		logger:              logger,
+		pChainClient:        pChainClient,
+		signatureAggregator: signatureAggregator,
+		ethClient:           ethClient,
+		contract:            contract,
+		contractAddress:     contractAddress,
+		txOpts:              txOpts,
+		networkID:           networkID,
+		blockchainID:        blockchainID,
+		subnetID:            subnetID,
 		shardSize:           shardSize,
 		pollInterval:        pollInterval,
 	}
@@ -207,7 +202,10 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 		return nil, nil, err
 	}
 
-	pChainTimestamp := uint64(time.Now().Unix())
+	pChainTimestamp, err := s.pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
+	}
 
 	subsetUpdatePayload, err := NewValidatorSetMetadata(
 		s.blockchainID,
@@ -235,6 +233,7 @@ func (s *SubsetSetUpdater) buildSubsetUpdate(
 
 	s.logger.Info("Built SubsetUpdate message",
 		zap.Uint64("pChainHeight", pChainHeight),
+		zap.Uint64("pChainTimestamp", pChainTimestamp),
 		zap.Int("numValidators", len(validators)),
 		zap.Int("numShards", len(shardBytesList)),
 	)

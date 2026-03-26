@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
+	"github.com/ava-labs/avalanchego/vms/platformvm/block"
 	"github.com/ava-labs/icm-services/config"
 )
 
@@ -26,6 +27,8 @@ type CanonicalValidatorState interface {
 	GetSubnet(ctx context.Context, blockchainID ids.ID) (platformvm.GetSubnetClientResponse, error)
 	GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error)
 	GetLatestHeight(ctx context.Context) (uint64, error)
+	// GetBlockTimestampAtHeight returns the P-chain block time at [height] as Unix seconds.
+	GetBlockTimestampAtHeight(ctx context.Context, height uint64) (uint64, error)
 	GetAllValidatorSets(ctx context.Context, pchainHeight uint64) (map[ids.ID]validators.WarpSet, error)
 	GetProposedValidators(ctx context.Context, subnetID ids.ID) (validators.WarpSet, error)
 	GetCurrentValidators(ctx context.Context, subnetID ids.ID) ([]platformvm.ClientPermissionlessValidator, error)
@@ -52,6 +55,25 @@ func (v *CanonicalValidatorClient) GetLatestHeight(ctx context.Context) (uint64,
 		return 0, fmt.Errorf("failed to get latest height: %w", err)
 	}
 	return height, nil
+}
+
+func (v *CanonicalValidatorClient) GetBlockTimestampAtHeight(
+	ctx context.Context,
+	height uint64,
+) (uint64, error) {
+	blockBytes, err := v.client.GetBlockByHeight(ctx, height, v.options...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get P-chain block at height %d: %w", height, err)
+	}
+	parsed, err := block.Parse(block.Codec, blockBytes)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse P-chain block at height %d: %w", height, err)
+	}
+	banffBlk, ok := parsed.(block.BanffBlock)
+	if !ok {
+		return 0, fmt.Errorf("P-chain block at height %d has type %T; expected Banff (timestamp unavailable)", height, parsed)
+	}
+	return uint64(banffBlk.Timestamp().Unix()), nil
 }
 
 func (v *CanonicalValidatorClient) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {

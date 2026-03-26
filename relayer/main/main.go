@@ -723,20 +723,20 @@ func startSubsetSetUpdater(
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
 
-	updater := validatorupdater.NewSubsetSetUpdater(validatorupdater.SubsetSetUpdaterConfig{
-		Logger:              logger,
-		PChainClient:        pChainClient,
-		SignatureAggregator: signatureAggregator,
-		EthClient:           ethClient,
-		Contract:            contract,
-		ContractAddress:     contractAddr,
-		TxOpts:              txOpts,
-		NetworkID:           networkID,
-		BlockchainID:        blockchainID,
-		SubnetID:            subnetID,
-		ShardSize:           extDest.ShardSize,
-		PollInterval:        pollInterval,
-	})
+	updater := validatorupdater.NewSubsetSetUpdater(
+		logger,
+		pChainClient,
+		signatureAggregator,
+		ethClient,
+		contract,
+		contractAddr,
+		txOpts,
+		networkID,
+		blockchainID,
+		subnetID,
+		extDest.ShardSize,
+		pollInterval,
+	)
 
 	return updater.Start(ctx)
 }
