@@ -630,33 +630,32 @@ func buildDiffICMMessage(signedMsg *avalancheWarp.Message) (diffupdater.ICMMessa
 	}, nil
 }
 
+// unPadOnChainBlsPublicKey converts a padded on-chain BLS public key to the 96-byte
+// uncompressed form used in warp messages. When padded is 128 bytes, the layout matches
+// Solidity BLST.unPadUncompressedBlsPublicKey (see BLST.sol assembly). Otherwise the
+// first 96 bytes are copied as a best-effort fallback for unexpected formats.
+func unPadOnChainBlsPublicKey(padded []byte) [96]byte {
+	var pk [96]byte
+	if len(padded) != 128 {
+		copy(pk[:], padded)
+		return pk
+	}
+	// X: mstore(res+0x20, mload(pk+0x30)); mstore(res+0x30, mload(pk+0x40))
+	copy(pk[0:32], padded[16:48])
+	copy(pk[16:48], padded[32:64])
+	// Y: mstore(res+0x50, mload(pk+0x70)); mstore(res+0x60, mload(pk+0x80))
+	copy(pk[48:80], padded[80:112])
+	copy(pk[64:96], padded[96:128])
+	return pk
+}
+
 // onChainValidatorsToMessage converts on-chain Validator structs (with padded
 // 128-byte BLS keys) to message.Validator structs (with uncompressed 96-byte keys).
-// The extraction must match Solidity's BLST.unPadUncompressedBlsPublicKey exactly:
-// - X coordinate (48 bytes): padded[16:64] via overlapping copies
-// - Y coordinate (48 bytes): padded[80:128] via overlapping copies
 func onChainValidatorsToMessage(validators []diffupdater.Validator) []*message.Validator {
 	result := make([]*message.Validator, len(validators))
 	for i, v := range validators {
-		if len(v.BlsPublicKey) != 128 {
-			// Fallback for unexpected format: use first 96 bytes (legacy/wrong)
-			var pk [96]byte
-			copy(pk[:], v.BlsPublicKey)
-			result[i] = &message.Validator{
-				UncompressedPublicKeyBytes: pk,
-				Weight:                     v.Weight,
-			}
-			continue
-		}
-		var pk [96]byte
-		// Match Solidity: mstore(res+0x20, mload(pk+0x30)); mstore(res+0x30, mload(pk+0x40))
-		copy(pk[0:32], v.BlsPublicKey[16:48])
-		copy(pk[16:48], v.BlsPublicKey[32:64])
-		// Match Solidity: mstore(res+0x50, mload(pk+0x70)); mstore(res+0x60, mload(pk+0x80))
-		copy(pk[48:80], v.BlsPublicKey[80:112])
-		copy(pk[64:96], v.BlsPublicKey[96:128])
 		result[i] = &message.Validator{
-			UncompressedPublicKeyBytes: pk,
+			UncompressedPublicKeyBytes: unPadOnChainBlsPublicKey(v.BlsPublicKey),
 			Weight:                     v.Weight,
 		}
 	}

@@ -59,35 +59,12 @@ func DeployDiffUpdater(
 	}
 
 	// Deploy the `DiffUpdater` contract
-	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(diffUpdaterByteCodeFile)
-	Expect(err).Should(BeNil())
-
-	diffUpdaterABI, err := diffupdater.DiffUpdaterMetaData.GetAbi()
-	Expect(err).Should(BeNil())
-	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
-		diffUpdaterABI,
-		byteCode,
-		avalancheNetworkID,
-		initialValidatorSetData,
-	)
-	Expect(err).Should(BeNil())
-	// Large init code / constructor; keep headroom above ~10M default caps
-	gasLimit := uint64(16_000_000)
-	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
-		byteCode,
-		nil,
-		deploymentUtils.GetDefaultContractCreationGasPrice(),
-		&gasLimit,
-	)
-	Expect(err).Should(BeNil())
-
-	DeployWithNicksMethod(
+	contractAddress := DeployDiffUpdaterWithMetadata(
 		ctx,
 		testInfo,
-		transactionBytes,
-		deployerAddress,
-		contractAddress,
 		fundedKey,
+		avalancheNetworkID,
+		initialValidatorSetData,
 	)
 
 	// Return the shard bytes needed to initialize the first validator set
