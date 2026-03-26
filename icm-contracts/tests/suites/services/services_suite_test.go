@@ -247,11 +247,6 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		func(ctx context.Context) {
 			servicesFlows.SignatureAggregatorEpochAPI(ctx, log, localNetworkInstance, teleporterInfo)
 		})
-	ginkgo.It("Validators Only Network",
-		ginkgo.Label(servicesLabel),
-		func(ctx context.Context) {
-			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
-		})
 	ginkgo.It("SubsetUpdater",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
@@ -261,5 +256,16 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
 			servicesFlows.DiffUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
+		})
+
+	// ValidatorsOnlyNetwork runs last: it puts a subnet in validator-only mode, so any following
+	// test that dials all L1s (e.g. GetL1Infos) would fail until nodes are restarted with the
+	// normal chain config again. Running this spec last avoids that extra restore/restart pass for
+	// the rest of the suite—less code to depend on and a shorter total run than cycling nodes
+	// back for more tests.
+	ginkgo.It("Validators Only Network",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.ValidatorsOnlyNetwork(ctx, log, localNetworkInstance, teleporterInfo)
 		})
 })
