@@ -17,6 +17,9 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// TODO: Add the fixture and testing flow for Boundless ZK proof verification
+// See Issue: https://github.com/ava-labs/icm-services/issues/1248
+
 // Fixtures
 type SepoliaFixture struct {
 	AnchorBeaconBlockRoot string                `json:"anchorBeaconBlockRoot"`
@@ -133,8 +136,10 @@ func ZKAdapterVerifier(
 	fixture := loadSepoliaFixture(sepoliaFixturePath)
 
 	// Create a starting consensus state
-	// The starting state is an empty placeholder. This test uses manualTransition to update the current consensus state, so an arbitrary starting state is acceptable.
-	startingState := zkstatemanager.ConsensusState{ // TODO: Replace with a real starting state once the Boundless ZK proof flow is implemented.
+	// The starting state is an empty placeholder. This test uses manualTransition to update the current consensus state,
+	// so an arbitrary starting state is acceptable.
+	startingState := zkstatemanager.ConsensusState{ // TODO: Replace with a real starting state
+		// once the Boundless ZK proof flow is implemented.
 		CurrentJustifiedCheckpoint: zkstatemanager.ConsensusCheckpoint{
 			Epoch: 0,
 			Root:  [32]byte{},
@@ -159,8 +164,10 @@ func ZKAdapterVerifier(
 		startingState,
 		fuluBeaconConfig,
 		big.NewInt(86400),
-		common.Address{}, // TODO: Replace with a real verifier address once the Boundless ZK proof flow is implemented.
-		[32]byte{},       // TODO: Replace with a real Image Id once the Boundless ZK proof flow is implemented.
+		common.Address{}, // TODO: Replace with a real verifier address
+		// once the Boundless ZK proof flow is implemented.
+		[32]byte{}, // TODO: Replace with a real Image Id
+		// once the Boundless ZK proof flow is implemented.
 		fundedAddress,
 		fundedAddress,
 	)
@@ -196,7 +203,8 @@ func ZKAdapterVerifier(
 	anchorBeaconBlockRoot := hexToBytes32(fixture.AnchorBeaconBlockRoot)
 
 	// Compute the journal
-	journalPostState := zkstatemanager.ConsensusState{ // TODO: Replace with a real journal state once the Boundless ZK proof flow is implemented.
+	journalPostState := zkstatemanager.ConsensusState{ // TODO: Replace with a real journal state once
+		// the Boundless ZK proof flow is implemented.
 		CurrentJustifiedCheckpoint: zkstatemanager.ConsensusCheckpoint{
 			Epoch: 0,
 			Root:  [32]byte{},
