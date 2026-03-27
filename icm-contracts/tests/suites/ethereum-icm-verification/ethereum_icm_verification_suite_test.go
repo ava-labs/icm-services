@@ -19,6 +19,7 @@ import (
 
 const (
 	ecdsaVerifierByteCodeFile    = "./out/ECDSAVerifier.sol/ECDSAVerifier.json"
+	adapterByteCodeFile          = "./out/Adapter.sol/Adapter.json"
 	warpGenesisTemplateFile      = "./tests/utils/warp-genesis-template.json"
 	ethereumICMVerificationLabel = "ethereum-icm-verification"
 	zkAdapterByteCodeFile        = "./out/ZKAdapter.sol/ZKAdapter.json"
@@ -106,6 +107,9 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				ctx,
 				localAvalancheNetworkInstance,
 				localEthereumNetworkInstance,
+				ecdsaVerifierByteCodeFile,
+				adapterByteCodeFile,
+				teleporterInfo,
 			)
 		})
 
