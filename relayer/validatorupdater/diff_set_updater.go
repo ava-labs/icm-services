@@ -23,6 +23,7 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
@@ -530,7 +531,7 @@ func (d *DiffSetUpdater) sendDiffUpdate(
 	if err != nil {
 		return fmt.Errorf("waiting for registerValidatorSet tx: %w", err)
 	}
-	if receipt.Status == 0 {
+	if receipt.Status == types.ReceiptStatusFailed {
 		return fmt.Errorf("registerValidatorSet tx reverted: %s", tx.Hash().Hex())
 	}
 	d.logger.Info("registerValidatorSet confirmed",
@@ -554,7 +555,7 @@ func (d *DiffSetUpdater) sendDiffUpdate(
 		if err != nil {
 			return fmt.Errorf("waiting for updateValidatorSet tx (shard %d): %w", i+1, err)
 		}
-		if receipt.Status == 0 {
+		if receipt.Status == types.ReceiptStatusFailed {
 			return fmt.Errorf("updateValidatorSet tx (shard %d) reverted: %s", i+1, tx.Hash().Hex())
 		}
 		d.logger.Info("updateValidatorSet confirmed",
