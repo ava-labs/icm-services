@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"math/big"
 
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	adapter "github.com/ava-labs/icm-services/abi-bindings/go/Adapter"
@@ -110,13 +111,16 @@ func AvalancheValidatorSetRegistry(
 	Expect(err).Should(BeNil())
 
 	// Generate the ECDSAVerifier deployer transaction via Nick's method
+	// N.B. Use a different gas price to generate a unique deployer address
+	// 		This only shows up as an issue because we re-use Avalanche networks across test
+	ecdsaGasPrice := big.NewInt(0).Add(deploymentUtils.GetDefaultContractCreationGasPrice(), big.NewInt(1))
 	ecdsaVerifierContractTransaction,
 		ecdsaVerifierDeployerAddress,
 		ecdsaVerifierContractAddress,
 		err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
-		deploymentUtils.GetDefaultContractCreationGasPrice(),
+		ecdsaGasPrice,
 		nil,
 	)
 	Expect(err).Should(BeNil())
@@ -172,6 +176,16 @@ func AvalancheValidatorSetRegistry(
 	Expect(err).Should(BeNil())
 
 	// Generate the Adapter deployer transaction via Nick's method
+	adapterABI, err := adapter.AdapterMetaData.GetAbi()
+	Expect(err).Should(BeNil())
+	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
+		adapterABI,
+		byteCode,
+		primaryNetworkInfo.BlockchainID,
+		ethereumNetworkInfo.ChainID(),
+		ecdsaVerifierContractAddress,
+		registryContractAddress,
+	)
 	adapterContractTransaction,
 		adapterDeployerAddress,
 		adapterContractAddress,
@@ -182,17 +196,6 @@ func AvalancheValidatorSetRegistry(
 		nil,
 	)
 	Expect(err).Should(BeNil())
-	adapterABI, err := adapter.AdapterMetaData.GetAbi()
-	Expect(err).Should(BeNil())
-	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
-		adapterABI,
-		byteCode,
-		1,
-		primaryNetworkInfo.BlockchainID,
-		ethereumNetworkInfo.ChainID(),
-		ecdsaVerifierContractAddress,
-		registryContractAddress,
-	)
 	// Deploy the Adapter contract on the C-Chain
 	utils.DeployWithNicksMethod(
 		ctx,
