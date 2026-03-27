@@ -9,7 +9,8 @@ pragma solidity ^0.8.30;
  * THIS IS AN EXAMPLE LIBRARY THAT USES UN-AUDITED CODE.
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
-import {RLPReader} from "@solidity-merkle-trees/trie/ethereum/RLPReader.sol";
+import {RLPReader} from
+    "../verifiers/ethereum/external/solidity-merkle-trees/trie/ethereum/RLPReader.sol";
 
 library RLPUtils {
     using RLPReader for bytes;

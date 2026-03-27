@@ -5,8 +5,8 @@
 pragma solidity ^0.8.30;
 
 import {SSZ} from "../../utilities/SimpleSerialize.sol";
-import {MerklePatricia, StorageValue} from "@solidity-merkle-trees/MerklePatricia.sol";
-import {RLPReader} from "@solidity-merkle-trees/trie/ethereum/RLPReader.sol";
+import {MerklePatricia, StorageValue} from "./external/solidity-merkle-trees/MerklePatricia.sol";
+import {RLPReader} from "./external/solidity-merkle-trees/trie/ethereum/RLPReader.sol";
 import {RLPUtils} from "../../utilities/RLPUtils.sol";
 
 /**
