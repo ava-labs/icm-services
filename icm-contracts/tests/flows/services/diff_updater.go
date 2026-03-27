@@ -24,6 +24,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/validatorupdater"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -93,7 +94,8 @@ func DiffUpdater(
 	})
 
 	var pChainID [32]byte // all zeros = PlatformChainID
-	pChainTimestamp := uint64(time.Now().Unix())
+	pChainTimestamp, err := pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
+	Expect(err).Should(BeNil())
 
 	bootstrapHeight := pChainHeight + 1
 	bootstrapTimestamp := pChainTimestamp + 1
@@ -159,7 +161,7 @@ func DiffUpdater(
 		Expect(err).Should(BeNil())
 		receipt, err := bind.WaitMined(ctx, ethClient, tx)
 		Expect(err).Should(BeNil())
-		Expect(receipt.Status).Should(Equal(uint64(1)),
+		Expect(receipt.Status).Should(Equal(types.ReceiptStatusSuccessful),
 			"updateValidatorSet shard %d failed", i+1)
 		log.Info("Bootstrapped P-chain shard",
 			zap.Int("shardNumber", i+1),
