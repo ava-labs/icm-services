@@ -633,20 +633,17 @@ func buildDiffICMMessage(signedMsg *avalancheWarp.Message) (diffupdater.ICMMessa
 
 // unPadOnChainBlsPublicKey converts a padded on-chain BLS public key to the 96-byte
 // uncompressed form used in warp messages. When padded is 128 bytes, the layout matches
-// Solidity BLST.unPadUncompressedBlsPublicKey (see BLST.sol assembly). Otherwise the
-// first 96 bytes are copied as a best-effort fallback for unexpected formats.
+// BLST.unPadUncompressedBlsPublicKey: X occupies padded[16:64], Y padded[80:128] (see
+// BLST.padUncompressedBLSPublicKey). Otherwise the first 96 bytes are copied as a
+// best-effort fallback for unexpected formats.
 func unPadOnChainBlsPublicKey(padded []byte) [96]byte {
 	var pk [96]byte
 	if len(padded) != 128 {
 		copy(pk[:], padded)
 		return pk
 	}
-	// X: mstore(res+0x20, mload(pk+0x30)); mstore(res+0x30, mload(pk+0x40))
-	copy(pk[0:32], padded[16:48])
-	copy(pk[16:48], padded[32:64])
-	// Y: mstore(res+0x50, mload(pk+0x70)); mstore(res+0x60, mload(pk+0x80))
-	copy(pk[48:80], padded[80:112])
-	copy(pk[64:96], padded[96:128])
+	copy(pk[0:48], padded[16:64])
+	copy(pk[48:96], padded[80:128])
 	return pk
 }
 
