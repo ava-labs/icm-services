@@ -78,7 +78,7 @@ library TeleporterMessageV2Parsing {
      */
     function parseTeleporterMessageV2(
         bytes calldata data
-    ) public pure returns (TeleporterMessageV2 memory teleporterMessage) {
+    ) internal pure returns (TeleporterMessageV2 memory teleporterMessage) {
         teleporterMessage.messageNonce = uint256(bytes32(data[0:32]));
         teleporterMessage.originSenderAddress = address(bytes20(data[32:52]));
         teleporterMessage.originTeleporterAddress = address(bytes20(data[52:72]));
@@ -130,7 +130,7 @@ library TeleporterMessageV2Parsing {
      */
     function serializeTeleporterMessageV2(
         TeleporterMessageV2 memory message
-    ) public pure returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         return abi.encodePacked(
             message.messageNonce,
             message.originSenderAddress,
