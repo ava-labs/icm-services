@@ -14,6 +14,12 @@ import {
     ValidatorSetSignature,
     ValidatorSets
 } from "./utils/ValidatorSets.sol";
+import {
+    TeleporterMessageV2Parsing,
+    TeleporterICMMessage,
+    TeleporterMessageV2
+} from "../common/TeleporterMessageV2.sol";
+import {IAdapter} from "../common/ITeleporterMessengerV2.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -27,7 +33,7 @@ import {
 // which may need to occur across multiple transactions. This contract is agnostic on
 // how the data is sharded across these transactions. Two virtual functions should
 // be overridden in a child contract to specify this.
-contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
+contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapter {
     uint32 public immutable avalancheNetworkID;
     // The Avalanche blockchain ID of the P-chain
     bytes32 public immutable pChainID;
@@ -58,6 +64,31 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry {
         valSet.avalancheBlockchainID = initialValidatorSetData.avalancheBlockchainID;
         valSet.pChainHeight = initialValidatorSetData.pChainHeight;
         valSet.pChainTimestamp = initialValidatorSetData.pChainTimestamp;
+    }
+
+    function sendMessage(
+        /* solhint-disable-next-line no-unused-vars */
+        TeleporterMessageV2 calldata message
+    ) external {
+        return;
+    }
+
+    function verifyMessage(
+        TeleporterICMMessage calldata message
+    ) external returns (bool) {
+        require(pChainInitialized(), "No P-chain validator set registered.");
+        require(isRegistered(message.sourceBlockchainID), "No validator set registered to given ID");
+        require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
+        ValidatorSetSignature memory sig =
+            ValidatorSets.parseValidatorSetSignature(message.attestation);
+        bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
+            message.sourceNetworkID,
+            message.sourceBlockchainID,
+            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message.message)
+        );
+        return ValidatorSets.verifyValidatorSetSignature(
+            sig, signedData, _validatorSets[message.sourceBlockchainID]
+        );
     }
 
     /**
