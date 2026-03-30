@@ -45,9 +45,9 @@ contract Adapter is IAdapter {
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
-        if (message.destinationBlockchainID == chain2) {
+        if (message.destinationBlockchainID == chain1) {
             return adapter1.sendMessage(message);
-        } else if (message.destinationBlockchainID == chain1) {
+        } else if (message.destinationBlockchainID == chain2) {
             return adapter2.sendMessage(message);
         } else {
             revert("Unexpected blockchain ID");
