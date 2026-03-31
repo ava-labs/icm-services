@@ -22,6 +22,7 @@ var _ SubscriberWSClient = (*subscriberClientStub)(nil)
 type subscriberClientStub struct {
 	blockNumber       uint64
 	numFilterLogCalls int
+	numSubscribeFilterLogsCalls int
 }
 
 func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) {
@@ -31,6 +32,12 @@ func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) 
 func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
 	c.numFilterLogCalls++
 	return []types.Log{}, nil
+}
+
+
+func (c *subscriberClientStub) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
+	c.numSubscribeFilterLogsCalls++
+	return nil, nil
 }
 
 func (c *subscriberClientStub) SubscribeNewHead(
