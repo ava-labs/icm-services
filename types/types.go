@@ -20,16 +20,17 @@ import (
 )
 
 var (
-	WarpPrecompileLogFilter = warp.WarpABI.Events["SendWarpMessage"].ID
-	ErrInvalidLog           = errors.New("invalid warp message log")
-	ErrFailedToProcessLogs  = errors.New("failed to process logs")
+	TeleporterPrecompileLogFilter = common.FromHex("0x2a211ad4a59ab9d003852404f9c57c690704ee755f3c79d2c2812ad32da99df8")
+	WarpPrecompileLogFilter       = warp.WarpABI.Events["SendWarpMessage"].ID
+	ErrInvalidLog                 = errors.New("invalid warp message log")
+	ErrFailedToProcessLogs        = errors.New("failed to process logs")
 )
 
-// WarpBlockInfo describes the block height and logs needed to process Warp messages.
-// WarpBlockInfo instances are populated by the subscriber, and forwarded to the Listener to process.
-type WarpBlockInfo struct {
+// ICMBlockInfo describes the block height and logs needed to process Warp messages.
+// ICMBlockInfo instances are populated by the subscriber, and forwarded to the Listener to process.
+type ICMBlockInfo struct {
 	BlockNumber uint64
-	Messages    []*WarpMessageInfo
+	Logs        []types.Log
 	IsCatchup   bool
 }
 
@@ -43,20 +44,24 @@ type WarpMessageInfo struct {
 	UnsignedMessage *avalancheWarp.UnsignedMessage
 }
 
-// Extract Warp logs from the block, if they exist
-func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethereum.LogFilterer) (*WarpBlockInfo, error) {
+// Extract Warp logs from the block, if they exist.
+func NewICMBlockInfo(
+	logger logging.Logger,
+	header *types.Header,
+	ethClient ethereum.LogFilterer,
+	topics [][]common.Hash,
+) (*ICMBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
 	)
 	// Check if the block contains warp logs, and fetch them from the client if it does
-	if header.Bloom.Test(WarpPrecompileLogFilter[:]) {
+	if header.Bloom.Test(TeleporterPrecompileLogFilter[:]) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
 		operation := func() (err error) {
 			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
-				Topics:    [][]common.Hash{{WarpPrecompileLogFilter}},
-				Addresses: []common.Address{warp.ContractAddress},
+				Topics:    topics,
 				FromBlock: header.Number,
 				ToBlock:   header.Number,
 			})
@@ -64,7 +69,7 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 		}
 		notify := func(err error, duration time.Duration) {
 			logger.Info(
-				"getting warp block from logs failed, retrying...",
+				"getting ICM block from logs failed, retrying...",
 				zap.Duration("retryIn", duration),
 				zap.Error(err),
 			)
@@ -80,18 +85,10 @@ func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient eth
 			return nil, fmt.Errorf("failed to get logs for block: %w", err)
 		}
 	}
-	messages := make([]*WarpMessageInfo, len(logs))
-	for i, log := range logs {
-		warpLog, err := NewWarpMessageInfo(log)
-		if err != nil {
-			return nil, err
-		}
-		messages[i] = warpLog
-	}
 
-	return &WarpBlockInfo{
+	return &ICMBlockInfo{
 		BlockNumber: header.Number.Uint64(),
-		Messages:    messages,
+		Logs:        logs,
 		IsCatchup:   false,
 	}, nil
 }
@@ -128,24 +125,4 @@ func UnpackWarpMessage(unsignedMsgBytes []byte) (*avalancheWarp.UnsignedMessage,
 		}
 	}
 	return unsignedMsg, nil
-}
-
-func LogsToBlocks(logs []types.Log) (map[uint64]*WarpBlockInfo, error) {
-	blocks := make(map[uint64]*WarpBlockInfo)
-	for _, log := range logs {
-		warpMessageInfo, err := NewWarpMessageInfo(log)
-		if err != nil {
-			return nil, err
-		}
-		if block, ok := blocks[log.BlockNumber]; ok {
-			block.Messages = append(block.Messages, warpMessageInfo)
-		} else {
-			blocks[log.BlockNumber] = &WarpBlockInfo{
-				BlockNumber: log.BlockNumber,
-				Messages:    []*WarpMessageInfo{warpMessageInfo},
-				IsCatchup:   true,
-			}
-		}
-	}
-	return blocks, nil
 }

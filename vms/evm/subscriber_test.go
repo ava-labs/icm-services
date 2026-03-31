@@ -11,7 +11,9 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/relayer/config"
+	stypes "github.com/ava-labs/icm-services/types"
 	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +22,8 @@ var _ SubscriberRPCClient = (*subscriberClientStub)(nil)
 var _ SubscriberWSClient = (*subscriberClientStub)(nil)
 
 type subscriberClientStub struct {
-	blockNumber       uint64
-	numFilterLogCalls int
+	blockNumber                 uint64
+	numFilterLogCalls           int
 	numSubscribeFilterLogsCalls int
 }
 
@@ -33,7 +35,6 @@ func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.Filter
 	c.numFilterLogCalls++
 	return []types.Log{}, nil
 }
-
 
 func (c *subscriberClientStub) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	c.numSubscribeFilterLogsCalls++
@@ -59,7 +60,7 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 	stubRPCClient := &subscriberClientStub{}
 	blockchainID, err := ids.FromString(sourceSubnet.BlockchainID)
 	require.NoError(t, err)
-	subscriber := NewSubscriber(logging.NoLog{}, blockchainID, stubRPCClient, stubRPCClient, errChan)
+	subscriber := NewSubscriber(logging.NoLog{}, blockchainID, stubRPCClient, stubRPCClient, errChan, [][]common.Hash{{stypes.WarpPrecompileLogFilter}})
 
 	return subscriber, stubRPCClient
 }
@@ -119,7 +120,7 @@ func TestProcessFromHeight(t *testing.T) {
 				for i := tc.input; i <= tc.latest; i++ {
 					block := <-subscriberUnderTest.ICMBlocks()
 					require.Equal(t, i, block.BlockNumber)
-					require.Empty(t, block.Messages)
+					require.Empty(t, block.Logs)
 				}
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))

@@ -14,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
+	"github.com/ava-labs/icm-services/types"
 	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
@@ -225,7 +226,7 @@ func (mc *MessageCoordinator) ProcessMessageID(
 
 // Meant to be ran asynchronously. Errors should be sent to errChan.
 func (mc *MessageCoordinator) ProcessBlock(
-	icmBlockInfo *relayerTypes.WarpBlockInfo,
+	icmBlockInfo *relayerTypes.ICMBlockInfo,
 	blockchainID ids.ID,
 	errChan chan error,
 ) {
@@ -237,13 +238,18 @@ func (mc *MessageCoordinator) ProcessBlock(
 
 	// Register each message in the block with the appropriate application relayer
 	messageHandlers := make(map[common.Hash][]messages.MessageHandler)
-	for _, warpLogInfo := range icmBlockInfo.Messages {
-		appRelayer, handler, err := mc.getAppRelayerMessageHandler(warpLogInfo)
+	for _, warpLogInfo := range icmBlockInfo.Logs {
+		warpMessage, err := types.NewWarpMessageInfo(warpLogInfo)
+		if err != nil {
+			mc.logger.Error("Failed to parse log", zap.Error(err))
+			continue
+		}
+		appRelayer, handler, err := mc.getAppRelayerMessageHandler(warpMessage)
 		if err != nil {
 			mc.logger.Error(
 				"Failed to parse message",
-				zap.Stringer("blockchainID", warpLogInfo.UnsignedMessage.SourceChainID),
-				zap.Stringer("protocolAddress", warpLogInfo.SourceAddress),
+				zap.Stringer("blockchainID", warpMessage.UnsignedMessage.SourceChainID),
+				zap.Stringer("protocolAddress", warpMessage.SourceAddress),
 				zap.Error(err),
 			)
 			continue
@@ -251,20 +257,20 @@ func (mc *MessageCoordinator) ProcessBlock(
 		if appRelayer == nil {
 			mc.logger.Debug(
 				"Application relayer not found. Skipping message relay",
-				zap.Stringer("warpMessageID", warpLogInfo.UnsignedMessage.ID()),
-				zap.Stringer("sourceBlockchainID", warpLogInfo.UnsignedMessage.SourceChainID),
-				zap.Stringer("originSenderAddress", warpLogInfo.SourceAddress),
-				zap.Stringer("originTxID", warpLogInfo.SourceTxID),
+				zap.Stringer("warpMessageID", warpMessage.UnsignedMessage.ID()),
+				zap.Stringer("sourceBlockchainID", warpMessage.UnsignedMessage.SourceChainID),
+				zap.Stringer("originSenderAddress", warpMessage.SourceAddress),
+				zap.Stringer("originTxID", warpMessage.SourceTxID),
 			)
 			continue
 		}
 		mc.logger.Info(
 			"Registering message handler",
 			zap.Stringer("relayerID", appRelayer.relayerID.ID),
-			zap.Stringer("warpMessageID", warpLogInfo.UnsignedMessage.ID()),
-			zap.Stringer("sourceBlockchainID", warpLogInfo.UnsignedMessage.SourceChainID),
-			zap.Stringer("originSenderAddress", warpLogInfo.SourceAddress),
-			zap.Stringer("originTxID", warpLogInfo.SourceTxID),
+			zap.Stringer("warpMessageID", warpMessage.UnsignedMessage.ID()),
+			zap.Stringer("sourceBlockchainID", warpMessage.UnsignedMessage.SourceChainID),
+			zap.Stringer("originSenderAddress", warpMessage.SourceAddress),
+			zap.Stringer("originTxID", warpMessage.SourceTxID),
 		)
 		messageHandlers[appRelayer.relayerID.ID] = append(messageHandlers[appRelayer.relayerID.ID], handler)
 	}
