@@ -25,12 +25,6 @@ var (
 	ErrFailedToProcessLogs  = errors.New("failed to process logs")
 )
 
-// FilterLogsClient defines the minimal interface for clients that can filter logs.
-// This interface is used by NewWarpBlockInfo to fetch logs for a specific block.
-type FilterLogsClient interface {
-	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
-}
-
 // WarpBlockInfo describes the block height and logs needed to process Warp messages.
 // WarpBlockInfo instances are populated by the subscriber, and forwarded to the Listener to process.
 type WarpBlockInfo struct {
@@ -50,7 +44,7 @@ type WarpMessageInfo struct {
 }
 
 // Extract Warp logs from the block, if they exist
-func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient FilterLogsClient) (*WarpBlockInfo, error) {
+func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethereum.LogFilterer) (*WarpBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
