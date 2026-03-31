@@ -106,7 +106,7 @@ func newListener(
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to node via WS: %w", err)
 	}
-	
+
 	errChan := make(chan error, maxConcurrentMsg)
 	sub := evm.NewSubscriber(
 		logger,

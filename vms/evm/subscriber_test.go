@@ -36,7 +36,11 @@ func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.Filter
 	return []types.Log{}, nil
 }
 
-func (c *subscriberClientStub) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
+func (c *subscriberClientStub) SubscribeFilterLogs(
+	ctx context.Context,
+	q ethereum.FilterQuery,
+	ch chan<- types.Log,
+) (ethereum.Subscription, error) {
 	c.numSubscribeFilterLogsCalls++
 	return nil, nil
 }
@@ -60,7 +64,14 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 	stubRPCClient := &subscriberClientStub{}
 	blockchainID, err := ids.FromString(sourceSubnet.BlockchainID)
 	require.NoError(t, err)
-	subscriber := NewSubscriber(logging.NoLog{}, blockchainID, stubRPCClient, stubRPCClient, errChan, [][]common.Hash{{stypes.WarpPrecompileLogFilter}})
+	subscriber := NewSubscriber(
+		logging.NoLog{},
+		blockchainID,
+		stubRPCClient,
+		stubRPCClient,
+		errChan,
+		[][]common.Hash{{stypes.WarpPrecompileLogFilter}},
+	)
 
 	return subscriber, stubRPCClient
 }

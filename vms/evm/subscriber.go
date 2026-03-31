@@ -48,7 +48,7 @@ type Subscriber struct {
 	logger logging.Logger
 }
 
-// NewSubscriber returns a Subscriber 
+// NewSubscriber returns a Subscriber
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
