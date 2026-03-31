@@ -24,6 +24,7 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/messages/teleporter"
+	teleporterv2 "github.com/ava-labs/icm-services/messages/teleporter-v2"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/peers/clients"
@@ -448,12 +449,11 @@ func createMessageHandlerFactories(
 			case config.OFF_CHAIN_REGISTRY:
 				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
 			case config.TELEPORTER_V2:
-				// m, err = teleporterv2.NewMessageHandlerFactory(
-				// 	address,
-				// 	cfg,
-				// 	deciderConnection,
-				// )
-				err = fmt.Errorf("teleporter v2 is not yet supported")
+				m, err = teleporterv2.NewMessageHandlerFactory(
+					address,
+					cfg,
+					deciderConnection,
+				)
 			default:
 				m, err = nil, fmt.Errorf("invalid message format %s", format)
 			}
