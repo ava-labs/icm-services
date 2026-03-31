@@ -44,7 +44,11 @@ type WarpMessageInfo struct {
 }
 
 // Extract Warp logs from the block, if they exist
-func NewWarpBlockInfo(logger logging.Logger, header *types.Header, ethClient ethereum.LogFilterer) (*WarpBlockInfo, error) {
+func NewWarpBlockInfo(
+	logger logging.Logger,
+	header *types.Header,
+	ethClient ethereum.LogFilterer,
+) (*WarpBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
