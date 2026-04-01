@@ -59,6 +59,27 @@ func DeployDiffUpdater(
 	}
 
 	// Deploy the `DiffUpdater` contract
+	contractAddress := DeployDiffUpdaterWithMetadata(
+		ctx,
+		testInfo,
+		fundedKey,
+		avalancheNetworkID,
+		initialValidatorSetData,
+	)
+
+	// Return the shard bytes needed to initialize the first validator set
+	return contractAddress, shardBytes
+}
+
+// DeployDiffUpdaterWithMetadata deploys DiffUpdater using Nick's method, matching
+// DeploySubsetUpdater. Use the compiled artifact under out/ (libraries linked at build time).
+func DeployDiffUpdaterWithMetadata(
+	ctx context.Context,
+	testInfo testinfo.NetworkTestInfo,
+	fundedKey *ecdsa.PrivateKey,
+	avalancheNetworkID uint32,
+	initialValidatorSetData diffupdater.ValidatorSetMetadata,
+) common.Address {
 	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(diffUpdaterByteCodeFile)
 	Expect(err).Should(BeNil())
 
@@ -71,8 +92,8 @@ func DeployDiffUpdater(
 		initialValidatorSetData,
 	)
 	Expect(err).Should(BeNil())
-	// Use a higher gas limit for DiffUpdater due to large init code and constructor storage operations
-	gasLimit := uint64(10000000)
+
+	gasLimit := uint64(16_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
@@ -90,8 +111,7 @@ func DeployDiffUpdater(
 		fundedKey,
 	)
 
-	// Return the shard bytes needed to initialize the first validator set
-	return contractAddress, shardBytes
+	return contractAddress
 }
 
 // DeploySubsetUpdater deploys SubsetUpdater using Nick's method (same pattern as DeployDiffUpdater).
@@ -223,8 +243,6 @@ func SerializeValidatorSetDiff(
 
 	numChanges := make([]byte, 4)
 	binary.BigEndian.PutUint32(numChanges, uint32(len(diff.Changes)))
-	numAdded := make([]byte, 4)
-	binary.BigEndian.PutUint32(numAdded, diff.NumAdded)
 
 	data := bytes.Join([][]byte{
 		codec,
@@ -235,19 +253,17 @@ func SerializeValidatorSetDiff(
 		currentHeight,
 		currentTimestamp,
 		numChanges,
-		numAdded,
 	}, nil)
 
-	// Serialize each validator change
 	for _, change := range diff.Changes {
-		// Append the 96-byte uncompressed BLS public key
 		data = append(data, change.BlsPublicKey...)
-
-		// Append the 8-byte weight
 		weightBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(weightBytes, change.Weight)
 		data = append(data, weightBytes...)
 	}
+	numAdded := make([]byte, 4)
+	binary.BigEndian.PutUint32(numAdded, diff.NumAdded)
+	data = append(data, numAdded...)
 
 	return data
 }

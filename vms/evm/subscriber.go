@@ -28,7 +28,7 @@ const (
 
 type SubscriberRPCClient interface {
 	BlockNumber(ctx context.Context) (uint64, error)
-	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+	ethereum.LogFilterer
 }
 
 type SubscriberWSClient interface {

@@ -71,7 +71,10 @@ if ! command -v geth &> /dev/null; then
     exit 1
 fi
 
+# Default dev gas limit (11.5M) is too low for DiffUpdater Nick's-method deploy and
+# large updateValidatorSet calldata; raise the block ceiling for integration tests.
 geth --dev \
+    --dev.gaslimit 30000000 \
     --verbosity 1 \
     --http \
     --http.addr "0.0.0.0" \

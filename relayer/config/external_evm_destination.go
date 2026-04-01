@@ -3,13 +3,13 @@
 
 package config
 
-// ExternalEVMDestination configures a SubsetSetUpdater for an external EVM chain.
+// ExternalEVMDestination configures a validator set updater for an external EVM chain.
 type ExternalEVMDestination struct {
 	// RPC endpoint of the external EVM chain (e.g. local geth node)
 	RPCEndpoint string `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
 	// Hex-encoded private key for signing transactions
 	PrivateKey string `mapstructure:"private-key" json:"private-key" sensitive:"true"`
-	// Address of the deployed SubsetUpdater contract
+	// Address of the deployed updater contract
 	ContractAddress string `mapstructure:"contract-address" json:"contract-address"`
 	// The blockchain ID (on the Avalanche side) whose validator set to track
 	BlockchainID string `mapstructure:"blockchain-id" json:"blockchain-id"`
@@ -19,4 +19,6 @@ type ExternalEVMDestination struct {
 	ShardSize uint32 `mapstructure:"shard-size" json:"shard-size"`
 	// Poll interval in seconds (default 10)
 	PollIntervalSeconds uint64 `mapstructure:"poll-interval-seconds" json:"poll-interval-seconds"`
+	// Contract type: "subset" (default) or "diff"
+	ContractType string `mapstructure:"contract-type" json:"contract-type,omitempty"`
 }

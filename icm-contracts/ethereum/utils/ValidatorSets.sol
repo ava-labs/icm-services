@@ -402,8 +402,6 @@ library ValidatorSets {
         {
             uint32 numChanges = uint32(bytes4(data[offset:offset + 4]));
             offset += 4;
-            diff.numAdded = uint32(bytes4(data[offset:offset + 4]));
-            offset += 4;
             diff.changes = new ValidatorChange[](numChanges);
             uint256 numRemoved = 0;
             for (uint32 i = 0; i < numChanges;) {
@@ -417,6 +415,8 @@ library ValidatorSets {
                     ++i;
                 }
             }
+            diff.numAdded = uint32(bytes4(data[offset:offset + 4]));
+            offset += 4;
             diff.newSize = currentValidatorCount + diff.numAdded - numRemoved;
         }
         return diff;
@@ -560,12 +560,12 @@ library ValidatorSets {
             diff.previousTimestamp,
             diff.currentHeight,
             diff.currentTimestamp,
-            uint32(diff.changes.length),
-            uint32(diff.numAdded)
+            uint32(diff.changes.length)
         );
         for (uint256 i = 0; i < diff.changes.length; i++) {
             data = abi.encodePacked(data, serializeValidatorChange(diff.changes[i]));
         }
+        data = abi.encodePacked(data, uint32(diff.numAdded));
         return data;
     }
 
