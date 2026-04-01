@@ -42,9 +42,11 @@ const (
 //     build a SubsetUpdate warp message, aggregate signatures, and submit the
 //     registerValidatorSet / updateValidatorSet transactions.
 //  4. Verifies the on-chain validator set matches expectations.
-//  5. Adds a new validator to the L1 to trigger a re-registration (non-first-time).
-//  6. Waits for the relayer to detect the validator set change and re-register.
-//  7. Verifies the updated on-chain validator set includes the new validator.
+//  5. Waits for the P-chain height to advance beyond the first-registration height,
+//     then verifies the relayer does NOT re-submit when validators are unchanged.
+//  6. Adds a new validator to the L1 to trigger a re-registration (non-first-time).
+//  7. Waits for the relayer to detect the validator set change and re-register.
+//  8. Verifies the updated on-chain validator set includes the new validator.
 func SubsetUpdater(
 	ctx context.Context,
 	log logging.Logger,
@@ -286,7 +288,39 @@ func SubsetUpdater(
 	}
 
 	// =========================================================================
-	// Step 7: Add a new validator to trigger re-registration
+	// Step 7: Verify that a P-chain height advance with no validator changes
+	//         does NOT trigger an on-chain update (no-op skip check)
+	// =========================================================================
+	log.Info("Issuing transactions to advance P-chain height without changing validators",
+		zap.Uint64("firstPChainHeight", firstPChainHeight),
+	)
+	pChainWallet := avalancheNetwork.GetPChainWallet()
+	_, err = pChainWallet.IssueBaseTx(nil)
+	Expect(err).Should(BeNil())
+
+	// Allow the P-chain block to be confirmed and then let two full relayer poll
+	// cycles run so the relayer has had the opportunity to observe the new height.
+	time.Sleep(time.Duration(testPollIntervalSeconds*2+5) * time.Second)
+
+	advancedHeight, err := pChainClient.GetLatestHeight(ctx)
+	Expect(err).Should(BeNil())
+	Expect(advancedHeight).Should(BeNumerically(">", firstPChainHeight),
+		"P-chain height should have advanced after issuing BaseTx")
+
+	vs, err := contract.GetValidatorSet(callOpts, blockchainID)
+	Expect(err).Should(BeNil())
+	Expect(vs.PChainHeight).Should(Equal(firstPChainHeight),
+		"relayer must NOT update the on-chain validator set when validators have not changed, "+
+			"even though P-chain height advanced from %d to %d", firstPChainHeight, advancedHeight)
+	Expect(len(vs.Validators)).Should(Equal(firstValidatorCount),
+		"validator count must not change when relayer skips a no-op update")
+	log.Info("No-op skip verified: on-chain state unchanged despite P-chain height advance",
+		zap.Uint64("onChainHeight", vs.PChainHeight),
+		zap.Uint64("livePChainHeight", advancedHeight),
+	)
+
+	// =========================================================================
+	// Step 8: Add a new validator to trigger re-registration
 	// =========================================================================
 	log.Info("Adding a new validator to trigger re-registration...")
 
@@ -345,7 +379,7 @@ func SubsetUpdater(
 	Expect(err).Should(BeNil())
 
 	// =========================================================================
-	// Step 8: Wait for re-registration with updated validator set
+	// Step 9: Wait for re-registration with updated validator set
 	// =========================================================================
 	updateCtx, updateCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer updateCancel()

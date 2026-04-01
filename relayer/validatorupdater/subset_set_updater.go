@@ -4,6 +4,7 @@
 package validatorupdater
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -134,13 +135,36 @@ func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 
 	isFirstRegistration := onChainVS.TotalWeight == 0
 
+	newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch validators: %w", err)
+	}
+
+	if !isFirstRegistration {
+		oldValidators := subsetOnChainValidatorsToMessage(onChainVS.Validators)
+		sort.Slice(oldValidators, func(i, j int) bool {
+			return bytes.Compare(
+				oldValidators[i].UncompressedPublicKeyBytes[:],
+				oldValidators[j].UncompressedPublicKeyBytes[:],
+			) < 0
+		})
+		changes, _ := computeValidatorDiff(oldValidators, newValidators)
+		if len(changes) == 0 {
+			s.logger.Info("No validator changes detected, skipping update",
+				zap.Uint64("onChainHeight", onChainVS.PChainHeight),
+				zap.Uint64("pChainHeight", pChainHeight),
+			)
+			return nil
+		}
+	}
+
 	s.logger.Info("Validator set update needed",
 		zap.Uint64("onChainHeight", onChainVS.PChainHeight),
 		zap.Uint64("pChainHeight", pChainHeight),
 		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 
-	return s.performFullSetUpdate(ctx, pChainHeight, onChainVS.PChainHeight, isFirstRegistration)
+	return s.performFullSetUpdate(ctx, pChainHeight, onChainVS.PChainHeight, isFirstRegistration, newValidators)
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +176,7 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 	pChainHeight uint64,
 	onChainPChainHeight uint64,
 	isFirstRegistration bool,
+	validators []*Validator,
 ) error {
 	var signingSubnet ids.ID
 	if isFirstRegistration {
@@ -162,7 +187,7 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		signingSubnet = s.subnetID
 	}
 
-	shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight)
+	shardBytesList, subsetUpdateMsg, err := s.buildSubsetUpdate(ctx, pChainHeight, validators)
 	if err != nil {
 		return fmt.Errorf("failed to build subset update: %w", err)
 	}
@@ -192,12 +217,8 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 func (s *SubsetSetUpdater) buildSubsetUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
+	validators []*Validator,
 ) ([][]byte, *avalancheWarp.UnsignedMessage, error) {
-	validators, err := s.fetchSortedValidators(ctx, pChainHeight)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	shardBytesList, shardHashes, err := ShardValidators(validators, int(s.shardSize))
 	if err != nil {
 		return nil, nil, err
@@ -364,6 +385,19 @@ func ShardValidators(
 		shardBytesList[i] = shardBytes
 	}
 	return shardBytesList, shardHashes, nil
+}
+
+// subsetOnChainValidatorsToMessage converts on-chain SubsetUpdater Validator structs
+// (with padded 128-byte BLS keys) to Validator structs (with uncompressed 96-byte keys).
+func subsetOnChainValidatorsToMessage(validators []subsetupdater.Validator) []*Validator {
+	result := make([]*Validator, len(validators))
+	for i, v := range validators {
+		result[i] = &Validator{
+			UncompressedPublicKeyBytes: unPadOnChainBlsPublicKey(v.BlsPublicKey),
+			Weight:                     v.Weight,
+		}
+	}
+	return result
 }
 
 func buildICMMessage(signedMsg *avalancheWarp.Message) (subsetupdater.ICMMessage, error) {
