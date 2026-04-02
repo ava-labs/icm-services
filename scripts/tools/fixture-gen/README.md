@@ -3,6 +3,8 @@
 Generates a JSON test fixture for ZKAdapter e2e tests by fetching real SSZ Merkle proofs
 from a beacon node and MPT receipt proofs from an execution layer client.
 
+Note that to mitigate supply-chain attack risk, it is recommended to run these scripts and npm dependencies in an isolated AWS environment.
+
 ## Prerequisites
 - Node.js v24+ (e.g., https://nodejs.org/en/download)
 - A Sepolia execution layer RPC endpoint (e.g., Infura) 
