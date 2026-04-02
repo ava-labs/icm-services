@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"strings"
 
-	subnetevmRPC "github.com/ava-labs/avalanchego/graft/subnet-evm/rpc"
 	"github.com/ava-labs/avalanchego/ids"
 	rpcclient "github.com/ava-labs/icm-services/icm-contracts/tests/rpc-client"
 	"github.com/ava-labs/libevm/ethclient"
@@ -45,7 +44,7 @@ func (l1 *L1TestInfo) ChainID() ids.ID {
 }
 
 func (l1 *L1TestInfo) RPCClient(ctx context.Context) rpcclient.RpcClient {
-	rpcClient, err := subnetevmRPC.DialContext(
+	rpcClient, err := libevmRPC.DialContext(
 		ctx,
 		fmt.Sprintf(
 			"http://%s/ext/bc/%s/rpc",

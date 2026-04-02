@@ -3,7 +3,6 @@ package rpcclient
 import (
 	"context"
 
-	subnetevmRPC "github.com/ava-labs/avalanchego/graft/subnet-evm/rpc"
 	libevmRPC "github.com/ava-labs/libevm/rpc"
 )
 
@@ -17,7 +16,7 @@ type RpcClient interface {
 }
 
 type SubnetEvmRpcClient struct {
-	*subnetevmRPC.Client
+	*libevmRPC.Client
 }
 
 type LibevmRPC struct {
