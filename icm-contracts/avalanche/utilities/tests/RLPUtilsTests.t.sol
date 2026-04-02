@@ -6,8 +6,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {RLPReader} from
-    "../../verifiers/ethereum/external/solidity-merkle-trees/trie/ethereum/RLPReader.sol";
+import {RLPReader} from "@solidity-merkle-trees-local/trie/ethereum/RLPReader.sol";
 import {RLPUtils} from "../RLPUtils.sol";
 
 /// @dev Minimal RLP encoder for constructing test fixtures.

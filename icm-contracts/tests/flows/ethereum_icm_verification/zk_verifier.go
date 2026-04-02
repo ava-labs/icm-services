@@ -62,9 +62,11 @@ func loadSepoliaFixture(path string) SepoliaFixture {
 }
 
 func hexToBytes32(hex string) [32]byte {
-	var b [32]byte
-	copy(b[:], common.FromHex(hex))
-	return b
+    decoded := common.FromHex(hex)
+    Expect(len(decoded)).Should(Equal(32), "expected 32 bytes, got %d for input %s", len(decoded), hex)
+    var b [32]byte
+    copy(b[:], decoded)
+    return b
 }
 
 func hexStringsToBytes32Array(hexStrings []string) [][32]byte {

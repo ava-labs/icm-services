@@ -9,14 +9,6 @@
     "fork": "fulu",
     "network": "sepolia"
   },
-  "beaconConfig": {
-    "gIndexBlockStateRoot": 11,
-    "gIndexExecRoot": 88,
-    "gIndexBaseStateRoots": 70,
-    "stateRootsDepth": 13,
-    "gIndexReceiptsRoot": 35,
-    "stateRootsVectorSize": 8192
-  },
   "executionProof": {
     "anchorSlot": 9903670,
     "targetSlot": 9903606,

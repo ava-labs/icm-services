@@ -305,14 +305,6 @@ async function main() {
       fork: "fulu",
       network: "sepolia",
     },
-    beaconConfig: {
-      gIndexBlockStateRoot: Number(G_INDEX_BLOCK_STATE_ROOT),
-      gIndexExecRoot: Number(G_INDEX_EXEC_ROOT),
-      gIndexBaseStateRoots: Number(G_INDEX_BASE_STATE_ROOTS),
-      stateRootsDepth: Number(STATE_ROOTS_DEPTH),
-      gIndexReceiptsRoot: Number(G_INDEX_RECEIPTS_ROOT),
-      stateRootsVectorSize: Number(STATE_ROOTS_VECTOR_SIZE),
-    },
     executionProof: {
       anchorSlot,
       targetSlot,
