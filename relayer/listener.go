@@ -12,8 +12,10 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -104,8 +106,16 @@ func newListener(
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to node via WS: %w", err)
 	}
+
 	errChan := make(chan error, maxConcurrentMsg)
-	sub := evm.NewSubscriber(logger, blockchainID, ethWSClient, ethRPCClient, errChan)
+	sub := evm.NewSubscriber(
+		logger,
+		blockchainID,
+		ethWSClient,
+		ethRPCClient,
+		errChan,
+		[][]common.Hash{{types.WarpPrecompileLogFilter}, { /* TODO Teleporter Addr */ }},
+	)
 
 	logger.Info("Creating relayer")
 	lstnr := Listener{
