@@ -61,18 +61,10 @@ func loadSepoliaFixture(path string) SepoliaFixture {
 	return fixture
 }
 
-func hexToBytes32(hex string) [32]byte {
-	decoded := common.FromHex(hex)
-	Expect(len(decoded)).Should(Equal(32), "expected 32 bytes, got %d for input %s", len(decoded), hex)
-	var b [32]byte
-	copy(b[:], decoded)
-	return b
-}
-
 func hexStringsToBytes32Array(hexStrings []string) [][32]byte {
 	result := make([][32]byte, len(hexStrings))
 	for i, s := range hexStrings {
-		result[i] = hexToBytes32(s)
+		result[i] = common.HexToHash(s)
 	}
 	return result
 }
@@ -100,7 +92,7 @@ func encodeJournal(
 			{Name: "root", Type: "bytes32"},
 		}},
 	})
-	uint64Type, _ := abi.NewType("uint64", "", nil)
+	uint64Type, _ := abi.NewType("uint64", "uint64", nil)
 
 	journalData, err := abi.Arguments{
 		{Type: stateType},
@@ -202,7 +194,7 @@ func ZKAdapterVerifier(
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, primaryNetworkInfo.EVMChainID)
 	Expect(err).Should(BeNil())
 
-	anchorBeaconBlockRoot := hexToBytes32(fixture.AnchorBeaconBlockRoot)
+	anchorBeaconBlockRoot := common.HexToHash(fixture.AnchorBeaconBlockRoot)
 
 	// Compute the journal
 	journalPostState := zkstatemanager.ConsensusState{ // TODO: Replace with a real journal state once
@@ -233,13 +225,13 @@ func ZKAdapterVerifier(
 	execProof := zkadapter.ExecutionProof{
 		AnchorSlot:                 fixture.ExecutionProof.AnchorSlot,
 		TargetSlot:                 fixture.ExecutionProof.TargetSlot,
-		AnchorBeaconStateRoot:      hexToBytes32(fixture.ExecutionProof.AnchorBeaconStateRoot),
+		AnchorBeaconStateRoot:      common.HexToHash(fixture.ExecutionProof.AnchorBeaconStateRoot),
 		AnchorBeaconStateProof:     hexStringsToBytes32Array(fixture.ExecutionProof.AnchorBeaconStateProof),
-		TargetBeaconStateRoot:      hexToBytes32(fixture.ExecutionProof.TargetBeaconStateRoot),
+		TargetBeaconStateRoot:      common.HexToHash(fixture.ExecutionProof.TargetBeaconStateRoot),
 		TargetBeaconStateProof:     hexStringsToBytes32Array(fixture.ExecutionProof.TargetBeaconStateProof),
-		TargetExecutionHeaderRoot:  hexToBytes32(fixture.ExecutionProof.TargetExecutionHeaderRoot),
+		TargetExecutionHeaderRoot:  common.HexToHash(fixture.ExecutionProof.TargetExecutionHeaderRoot),
 		TargetExecutionHeaderProof: hexStringsToBytes32Array(fixture.ExecutionProof.TargetExecutionHeaderProof),
-		TargetReceiptsRoot:         hexToBytes32(fixture.ExecutionProof.TargetReceiptsRoot),
+		TargetReceiptsRoot:         common.HexToHash(fixture.ExecutionProof.TargetReceiptsRoot),
 		TargetReceiptsProof:        hexStringsToBytes32Array(fixture.ExecutionProof.TargetReceiptsProof),
 	}
 
@@ -249,7 +241,7 @@ func ZKAdapterVerifier(
 		Value:           common.FromHex(fixture.ReceiptProof.Value),
 		LogIndex:        big.NewInt(int64(fixture.ReceiptProof.LogIndex)),
 		ExpectedEmitter: common.HexToAddress(fixture.ReceiptProof.ExpectedEmitter),
-		ExpectedTopic0:  hexToBytes32(fixture.ReceiptProof.ExpectedTopic0),
+		ExpectedTopic0:  common.HexToHash(fixture.ReceiptProof.ExpectedTopic0),
 	}
 
 	// Submit the proofs to the contract
