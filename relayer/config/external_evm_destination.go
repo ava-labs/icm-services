@@ -21,4 +21,8 @@ type ExternalEVMDestination struct {
 	PollIntervalSeconds uint64 `mapstructure:"poll-interval-seconds" json:"poll-interval-seconds"`
 	// Contract type: "subset" (default) or "diff"
 	ContractType string `mapstructure:"contract-type" json:"contract-type,omitempty"`
+	// Minimum total-weight change (in basis points, 10_000 = 100%) required to
+	// trigger a contract update. 0 (default) means any validator-set difference
+	// (membership or weight) triggers an update.
+	WeightChangeThresholdBps uint64 `mapstructure:"weight-change-threshold-bps" json:"weight-change-threshold-bps,omitempty"`
 }

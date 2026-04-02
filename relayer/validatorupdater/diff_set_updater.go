@@ -42,6 +42,19 @@ type DiffSetUpdater struct {
 	subnetID     ids.ID
 	shardSize    uint32
 	pollInterval time.Duration
+
+	// In-memory cache of the last successfully submitted validator state.
+	// Populated once on startup from the contract, then kept in sync after
+	// each successful update — eliminating per-poll EVM reads.
+	cachedValidators         []*Validator
+	cachedPChainHeight       uint64
+	cachedPChainTimestamp    uint64
+	cacheInitialized         bool
+
+	// weightChangeThresholdBps is the minimum total-weight change (in basis
+	// points, 10_000 = 100 %) required to trigger a contract update.
+	// 0 means any validator-set difference triggers an update.
+	weightChangeThresholdBps uint64
 }
 
 func NewDiffSetUpdater(
@@ -57,6 +70,7 @@ func NewDiffSetUpdater(
 	subnetID ids.ID,
 	shardSize uint32,
 	pollInterval time.Duration,
+	weightChangeThresholdBps uint64,
 ) *DiffSetUpdater {
 	if shardSize == 0 {
 		shardSize = defaultShardSize
@@ -65,18 +79,19 @@ func NewDiffSetUpdater(
 		pollInterval = defaultPollInterval
 	}
 	return &DiffSetUpdater{
-		logger:              logger,
-		pChainClient:        pChainClient,
-		signatureAggregator: signatureAggregator,
-		ethClient:           ethClient,
-		contract:            contract,
-		contractAddress:     contractAddress,
-		txOpts:              txOpts,
-		networkID:           networkID,
-		blockchainID:        blockchainID,
-		subnetID:            subnetID,
-		shardSize:           shardSize,
-		pollInterval:        pollInterval,
+		logger:                   logger,
+		pChainClient:             pChainClient,
+		signatureAggregator:      signatureAggregator,
+		ethClient:                ethClient,
+		contract:                 contract,
+		contractAddress:          contractAddress,
+		txOpts:                   txOpts,
+		networkID:                networkID,
+		blockchainID:             blockchainID,
+		subnetID:                 subnetID,
+		shardSize:                shardSize,
+		pollInterval:             pollInterval,
+		weightChangeThresholdBps: weightChangeThresholdBps,
 	}
 }
 
@@ -107,55 +122,97 @@ func (d *DiffSetUpdater) Start(ctx context.Context) error {
 	}
 }
 
+// initializeCache fetches the current on-chain validator state once so that
+// all subsequent polls can compare against the in-memory cache rather than
+// issuing a per-poll EVM read.
+func (d *DiffSetUpdater) initializeCache(ctx context.Context) error {
+	onChainVS, err := d.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, d.blockchainID)
+	if err != nil {
+		return fmt.Errorf("failed to initialize validator set cache: %w", err)
+	}
+	d.cacheInitialized = true
+	if onChainVS.TotalWeight > 0 {
+		d.cachedValidators = onChainValidatorsToMessage(onChainVS.Validators)
+		sort.Slice(d.cachedValidators, func(i, j int) bool {
+			return bytes.Compare(
+				d.cachedValidators[i].UncompressedPublicKeyBytes[:],
+				d.cachedValidators[j].UncompressedPublicKeyBytes[:],
+			) < 0
+		})
+		d.cachedPChainHeight = onChainVS.PChainHeight
+		d.cachedPChainTimestamp = onChainVS.PChainTimestamp
+	}
+	d.logger.Info("Validator set cache initialized from contract",
+		zap.Uint64("cachedPChainHeight", d.cachedPChainHeight),
+		zap.Int("cachedValidatorCount", len(d.cachedValidators)),
+	)
+	return nil
+}
+
 func (d *DiffSetUpdater) checkAndUpdate(ctx context.Context) error {
 	pChainHeight, err := d.pChainClient.GetLatestHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get P-chain height: %w", err)
 	}
 
-	onChainVS, err := d.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, d.blockchainID)
-	if err != nil {
-		return fmt.Errorf("failed to get on-chain validator set: %w", err)
+	// Populate the in-memory cache from the contract on first call only.
+	if !d.cacheInitialized {
+		if err := d.initializeCache(ctx); err != nil {
+			return err
+		}
 	}
 
-	if onChainVS.PChainHeight >= pChainHeight {
-		d.logger.Debug("On-chain validator set is up to date",
+	if d.cachedPChainHeight >= pChainHeight {
+		d.logger.Debug("P-chain height has not advanced, skipping",
 			zap.Uint64("pChainHeight", pChainHeight),
-			zap.Uint64("onChainHeight", onChainVS.PChainHeight),
+			zap.Uint64("cachedHeight", d.cachedPChainHeight),
 		)
 		return nil
 	}
 
-	isFirstRegistration := onChainVS.TotalWeight == 0
+	isFirstRegistration := d.cachedValidators == nil
+
+	newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch validators: %w", err)
+	}
+
+	if !isFirstRegistration {
+		if !weightDiffExceedsThreshold(d.cachedValidators, newValidators, d.weightChangeThresholdBps) {
+			d.logger.Info("Validator set change below threshold, skipping update",
+				zap.Uint64("cachedHeight", d.cachedPChainHeight),
+				zap.Uint64("pChainHeight", pChainHeight),
+				zap.Uint64("weightChangeThresholdBps", d.weightChangeThresholdBps),
+			)
+			return nil
+		}
+	}
 
 	d.logger.Info("Validator set update needed",
-		zap.Uint64("onChainHeight", onChainVS.PChainHeight),
+		zap.Uint64("cachedHeight", d.cachedPChainHeight),
 		zap.Uint64("pChainHeight", pChainHeight),
 		zap.Bool("isFirstRegistration", isFirstRegistration),
-		zap.Int("onChainValidatorCount", len(onChainVS.Validators)),
-		zap.Uint64("onChainTotalWeight", onChainVS.TotalWeight),
+		zap.Int("cachedValidatorCount", len(d.cachedValidators)),
 	)
 
 	if isFirstRegistration {
-		return d.performFullSetUpdate(ctx, pChainHeight, onChainVS)
+		return d.performFullSetUpdate(ctx, pChainHeight, newValidators)
 	}
-	return d.performDiffUpdate(ctx, pChainHeight, onChainVS)
+	return d.performDiffUpdate(ctx, pChainHeight, newValidators)
 }
 
 // ---------------------------------------------------------------------------
 // First registration: treat all validators as additions in a diff
 // ---------------------------------------------------------------------------
 
+// performFullSetUpdate treats all newValidators as additions (first registration).
+// Uses d.cachedPChainHeight / d.cachedPChainTimestamp as the "previous" heights
+// (both zero when the contract has never been written to).
 func (d *DiffSetUpdater) performFullSetUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
-	onChainVS diffupdater.ValidatorSet,
+	newValidators []*Validator,
 ) error {
-	newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
-	if err != nil {
-		return fmt.Errorf("failed to fetch validators: %w", err)
-	}
-
 	changes := make([]ValidatorChange, len(newValidators))
 	for i, v := range newValidators {
 		changes[i] = ValidatorChange{
@@ -171,8 +228,8 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 
 	shardBytesList, shardHashes, err := d.shardDiff(
 		d.blockchainID,
-		onChainVS.PChainHeight,
-		onChainVS.PChainTimestamp,
+		d.cachedPChainHeight,    // prevHeight  (0 for first registration)
+		d.cachedPChainTimestamp, // prevTimestamp (0 for first registration)
 		pChainHeight,
 		pChainTimestamp,
 		nil, // empty starting set for first registration
@@ -220,38 +277,36 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
-		onChainVS.PChainHeight,
+		d.cachedPChainHeight,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return d.sendDiffUpdate(ctx, signedMsg, shardBytesList)
+	if err := d.sendDiffUpdate(ctx, signedMsg, shardBytesList); err != nil {
+		return err
+	}
+
+	// Update cache after successful submission.
+	d.cachedValidators = newValidators
+	d.cachedPChainHeight = pChainHeight
+	d.cachedPChainTimestamp = pChainTimestamp
+	return nil
 }
 
 // ---------------------------------------------------------------------------
 // Diff update: compute changes between on-chain and P-chain validator sets
 // ---------------------------------------------------------------------------
 
+// performDiffUpdate computes and submits the diff between d.cachedValidators
+// and newValidators. Uses d.cachedPChainHeight / d.cachedPChainTimestamp as the
+// "previous" heights for the diff message.
 func (d *DiffSetUpdater) performDiffUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
-	onChainVS diffupdater.ValidatorSet,
+	newValidators []*Validator,
 ) error {
-	newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
-	if err != nil {
-		return fmt.Errorf("failed to fetch validators: %w", err)
-	}
-
-	oldValidators := onChainValidatorsToMessage(onChainVS.Validators)
-	sort.Slice(oldValidators, func(i, j int) bool {
-		return bytes.Compare(
-			oldValidators[i].UncompressedPublicKeyBytes[:],
-			oldValidators[j].UncompressedPublicKeyBytes[:],
-		) < 0
-	})
-
-	changes, _ := computeValidatorDiff(oldValidators, newValidators)
+	changes, _ := computeValidatorDiff(d.cachedValidators, newValidators)
 
 	if len(changes) == 0 {
 		d.logger.Info("No validator changes detected, skipping update")
@@ -265,11 +320,11 @@ func (d *DiffSetUpdater) performDiffUpdate(
 
 	shardBytesList, shardHashes, err := d.shardDiff(
 		d.blockchainID,
-		onChainVS.PChainHeight,
-		onChainVS.PChainTimestamp,
+		d.cachedPChainHeight,    // prevHeight
+		d.cachedPChainTimestamp, // prevTimestamp
 		pChainHeight,
 		pChainTimestamp,
-		oldValidators,
+		d.cachedValidators,
 		changes,
 	)
 	if err != nil {
@@ -313,7 +368,7 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
-		onChainVS.PChainHeight,
+		d.cachedPChainHeight,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
@@ -324,7 +379,15 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		zap.Int("numShards", len(shardBytesList)),
 	)
 
-	return d.sendDiffUpdate(ctx, signedMsg, shardBytesList)
+	if err := d.sendDiffUpdate(ctx, signedMsg, shardBytesList); err != nil {
+		return err
+	}
+
+	// Update cache after successful submission.
+	d.cachedValidators = newValidators
+	d.cachedPChainHeight = pChainHeight
+	d.cachedPChainTimestamp = pChainTimestamp
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -720,21 +783,69 @@ func ShardValidatorsAsDiff(
 }
 
 // ---------------------------------------------------------------------------
+// Threshold helpers
+// ---------------------------------------------------------------------------
+
+// weightDiffExceedsThreshold reports whether the validator set should be
+// updated given the change from old to new.
+//
+//   - thresholdBps == 0: any validator-set difference (membership or weight
+//     change) triggers an update, equivalent to the pre-threshold behavior.
+//   - thresholdBps > 0: only a change in TOTAL weight that exceeds
+//     thresholdBps / 10_000 of the previous total triggers an update.
+//     Pure validator swaps at identical total weight are suppressed.
+func weightDiffExceedsThreshold(old, new []*Validator, thresholdBps uint64) bool {
+	if thresholdBps == 0 {
+		changes, _ := computeValidatorDiff(old, new)
+		return len(changes) > 0
+	}
+
+	var oldTotal, newTotal uint64
+	for _, v := range old {
+		oldTotal += v.Weight
+	}
+	for _, v := range new {
+		newTotal += v.Weight
+	}
+	if oldTotal == newTotal {
+		return false
+	}
+	if oldTotal == 0 {
+		return true
+	}
+	var diff uint64
+	if newTotal > oldTotal {
+		diff = newTotal - oldTotal
+	} else {
+		diff = oldTotal - newTotal
+	}
+	// diff / oldTotal > thresholdBps / 10_000
+	// Rearranged to avoid floating-point: diff * 10_000 > oldTotal * thresholdBps
+	return diff*10_000 > oldTotal*thresholdBps
+}
+
+// ---------------------------------------------------------------------------
 // Test / convenience helpers
 // ---------------------------------------------------------------------------
 
 // PerformSingleUpdate is a convenience method for tests: builds, signs, and sends
-// a single diff update at the given P-chain height.
+// a single diff update at the given P-chain height, bypassing the weight threshold.
 func (d *DiffSetUpdater) PerformSingleUpdate(ctx context.Context, pChainHeight uint64) error {
-	onChainVS, err := d.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, d.blockchainID)
-	if err != nil {
-		return fmt.Errorf("failed to get on-chain validator set: %w", err)
+	if !d.cacheInitialized {
+		if err := d.initializeCache(ctx); err != nil {
+			return err
+		}
 	}
 
-	if onChainVS.TotalWeight == 0 {
-		return d.performFullSetUpdate(ctx, pChainHeight, onChainVS)
+	newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch validators: %w", err)
 	}
-	return d.performDiffUpdate(ctx, pChainHeight, onChainVS)
+
+	if d.cachedValidators == nil {
+		return d.performFullSetUpdate(ctx, pChainHeight, newValidators)
+	}
+	return d.performDiffUpdate(ctx, pChainHeight, newValidators)
 }
 
 // GetOnChainValidatorSet returns the validator set stored on-chain for the updater's blockchain ID.

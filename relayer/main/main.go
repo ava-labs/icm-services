@@ -742,6 +742,7 @@ func startSubsetSetUpdater(
 		subnetID,
 		extDest.ShardSize,
 		pollInterval,
+		extDest.WeightChangeThresholdBps,
 	)
 
 	return updater.Start(ctx)
@@ -809,6 +810,7 @@ func startDiffSetUpdater(
 		subnetID,
 		extDest.ShardSize,
 		pollInterval,
+		extDest.WeightChangeThresholdBps,
 	)
 
 	return updater.Start(ctx)

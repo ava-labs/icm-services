@@ -49,6 +49,18 @@ type SubsetSetUpdater struct {
 	subnetID     ids.ID
 	shardSize    uint32
 	pollInterval time.Duration
+
+	// In-memory cache of the last successfully submitted validator state.
+	// Populated once on startup from the contract, then kept in sync after
+	// each successful update — eliminating per-poll EVM reads.
+	cachedValidators    []*Validator
+	cachedPChainHeight  uint64
+	cacheInitialized    bool
+
+	// weightChangeThresholdBps is the minimum total-weight change (in basis
+	// points, 10_000 = 100 %) required to trigger a contract update.
+	// 0 means any validator-set difference triggers an update.
+	weightChangeThresholdBps uint64
 }
 
 func NewSubsetSetUpdater(
@@ -64,6 +76,7 @@ func NewSubsetSetUpdater(
 	subnetID ids.ID,
 	shardSize uint32,
 	pollInterval time.Duration,
+	weightChangeThresholdBps uint64,
 ) *SubsetSetUpdater {
 	if shardSize == 0 {
 		shardSize = defaultShardSize
@@ -72,18 +85,19 @@ func NewSubsetSetUpdater(
 		pollInterval = defaultPollInterval
 	}
 	return &SubsetSetUpdater{
-		logger:              logger,
-		pChainClient:        pChainClient,
-		signatureAggregator: signatureAggregator,
-		ethClient:           ethClient,
-		contract:            contract,
-		contractAddress:     contractAddress,
-		txOpts:              txOpts,
-		networkID:           networkID,
-		blockchainID:        blockchainID,
-		subnetID:            subnetID,
-		shardSize:           shardSize,
-		pollInterval:        pollInterval,
+		logger:                   logger,
+		pChainClient:             pChainClient,
+		signatureAggregator:      signatureAggregator,
+		ethClient:                ethClient,
+		contract:                 contract,
+		contractAddress:          contractAddress,
+		txOpts:                   txOpts,
+		networkID:                networkID,
+		blockchainID:             blockchainID,
+		subnetID:                 subnetID,
+		shardSize:                shardSize,
+		pollInterval:             pollInterval,
+		weightChangeThresholdBps: weightChangeThresholdBps,
 	}
 }
 
@@ -114,26 +128,54 @@ func (s *SubsetSetUpdater) Start(ctx context.Context) error {
 	}
 }
 
+// initializeCache fetches the current on-chain validator state once so that
+// all subsequent polls can compare against the in-memory cache rather than
+// issuing a per-poll EVM read.
+func (s *SubsetSetUpdater) initializeCache(ctx context.Context) error {
+	onChainVS, err := s.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, s.blockchainID)
+	if err != nil {
+		return fmt.Errorf("failed to initialize validator set cache: %w", err)
+	}
+	s.cacheInitialized = true
+	if onChainVS.TotalWeight > 0 {
+		s.cachedValidators = subsetOnChainValidatorsToMessage(onChainVS.Validators)
+		sort.Slice(s.cachedValidators, func(i, j int) bool {
+			return bytes.Compare(
+				s.cachedValidators[i].UncompressedPublicKeyBytes[:],
+				s.cachedValidators[j].UncompressedPublicKeyBytes[:],
+			) < 0
+		})
+		s.cachedPChainHeight = onChainVS.PChainHeight
+	}
+	s.logger.Info("Validator set cache initialized from contract",
+		zap.Uint64("cachedPChainHeight", s.cachedPChainHeight),
+		zap.Int("cachedValidatorCount", len(s.cachedValidators)),
+	)
+	return nil
+}
+
 func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 	pChainHeight, err := s.pChainClient.GetLatestHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get P-chain height: %w", err)
 	}
 
-	onChainVS, err := s.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, s.blockchainID)
-	if err != nil {
-		return fmt.Errorf("failed to get on-chain validator set: %w", err)
+	// Populate the in-memory cache from the contract on first call only.
+	if !s.cacheInitialized {
+		if err := s.initializeCache(ctx); err != nil {
+			return err
+		}
 	}
 
-	if onChainVS.PChainHeight >= pChainHeight {
-		s.logger.Debug("On-chain validator set is up to date",
+	if s.cachedPChainHeight >= pChainHeight {
+		s.logger.Debug("P-chain height has not advanced, skipping",
 			zap.Uint64("pChainHeight", pChainHeight),
-			zap.Uint64("onChainHeight", onChainVS.PChainHeight),
+			zap.Uint64("cachedHeight", s.cachedPChainHeight),
 		)
 		return nil
 	}
 
-	isFirstRegistration := onChainVS.TotalWeight == 0
+	isFirstRegistration := s.cachedValidators == nil
 
 	newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
 	if err != nil {
@@ -141,30 +183,30 @@ func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
 	}
 
 	if !isFirstRegistration {
-		oldValidators := subsetOnChainValidatorsToMessage(onChainVS.Validators)
-		sort.Slice(oldValidators, func(i, j int) bool {
-			return bytes.Compare(
-				oldValidators[i].UncompressedPublicKeyBytes[:],
-				oldValidators[j].UncompressedPublicKeyBytes[:],
-			) < 0
-		})
-		changes, _ := computeValidatorDiff(oldValidators, newValidators)
-		if len(changes) == 0 {
-			s.logger.Info("No validator changes detected, skipping update",
-				zap.Uint64("onChainHeight", onChainVS.PChainHeight),
+		if !weightDiffExceedsThreshold(s.cachedValidators, newValidators, s.weightChangeThresholdBps) {
+			s.logger.Info("Validator set change below threshold, skipping update",
+				zap.Uint64("cachedHeight", s.cachedPChainHeight),
 				zap.Uint64("pChainHeight", pChainHeight),
+				zap.Uint64("weightChangeThresholdBps", s.weightChangeThresholdBps),
 			)
 			return nil
 		}
 	}
 
 	s.logger.Info("Validator set update needed",
-		zap.Uint64("onChainHeight", onChainVS.PChainHeight),
+		zap.Uint64("cachedHeight", s.cachedPChainHeight),
 		zap.Uint64("pChainHeight", pChainHeight),
 		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 
-	return s.performFullSetUpdate(ctx, pChainHeight, onChainVS.PChainHeight, isFirstRegistration, newValidators)
+	if err := s.performFullSetUpdate(ctx, pChainHeight, s.cachedPChainHeight, isFirstRegistration, newValidators); err != nil {
+		return err
+	}
+
+	// Update cache after successful submission.
+	s.cachedValidators = newValidators
+	s.cachedPChainHeight = pChainHeight
+	return nil
 }
 
 // ---------------------------------------------------------------------------
