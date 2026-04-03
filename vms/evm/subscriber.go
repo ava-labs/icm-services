@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	relayerTypes "github.com/ava-labs/icm-services/types"
@@ -39,8 +38,9 @@ type Subscriber struct {
 	wsClient     SubscriberWSClient
 	rpcClient    SubscriberRPCClient
 	blockchainID ids.ID
+	topics       [][]common.Hash
 	headers      chan *types.Header
-	icmBlocks    chan *relayerTypes.WarpBlockInfo
+	icmBlocks    chan *relayerTypes.ICMBlockInfo
 	sub          ethereum.Subscription
 
 	errChan chan error
@@ -55,13 +55,15 @@ func NewSubscriber(
 	wsClient SubscriberWSClient,
 	rpcClient SubscriberRPCClient,
 	errChan chan error,
+	topics [][]common.Hash,
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID: blockchainID,
+		topics:       topics,
 		wsClient:     wsClient,
 		rpcClient:    rpcClient,
 		logger:       logger,
-		icmBlocks:    make(chan *relayerTypes.WarpBlockInfo, maxClientSubscriptionBuffer),
+		icmBlocks:    make(chan *relayerTypes.ICMBlockInfo, maxClientSubscriptionBuffer),
 		headers:      make(chan *types.Header, maxClientSubscriptionBuffer),
 		errChan:      errChan,
 	}
@@ -107,21 +109,18 @@ func (s *Subscriber) processBlockRange(
 		return fmt.Errorf("failed to get header by number after max attempts: %w", err)
 	}
 
-	blocksWithICMMessages, err := relayerTypes.LogsToBlocks(logs)
-	if err != nil {
-		s.logger.Error("Failed to convert logs to blocks", zap.Error(err))
-		return err
-	}
+	logIndex := 0
 	for i := fromBlock; i <= toBlock; i++ {
-		if block, ok := blocksWithICMMessages[i]; ok {
-			s.icmBlocks <- block
-		} else {
-			// Blocks with no ICM messages also need to be explicitly processed.
-			s.icmBlocks <- &relayerTypes.WarpBlockInfo{
-				BlockNumber: i,
-				Messages:    []*relayerTypes.WarpMessageInfo{},
-				IsCatchup:   true,
-			}
+		blockLogs := []types.Log{}
+		for logIndex < len(logs) && logs[logIndex].BlockNumber == i {
+			blockLogs = append(blockLogs, logs[logIndex])
+			logIndex++
+		}
+		// Blocks with no ICM messages also need to be explicitly processed.
+		s.icmBlocks <- &relayerTypes.ICMBlockInfo{
+			BlockNumber: i,
+			Logs:        blockLogs,
+			IsCatchup:   true,
 		}
 	}
 	return nil
@@ -133,8 +132,7 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock uint6
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
 		logs, err = s.rpcClient.FilterLogs(cctx, ethereum.FilterQuery{
-			Topics:    [][]common.Hash{{relayerTypes.WarpPrecompileLogFilter}},
-			Addresses: []common.Address{warp.ContractAddress},
+			Topics:    s.topics,
 			FromBlock: new(big.Int).SetUint64(fromBlock),
 			ToBlock:   new(big.Int).SetUint64(toBlock),
 		})
@@ -196,11 +194,11 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	return nil
 }
 
-// blocksInfoFromHeaders listens to the header channel and converts the headers to [relayerTypes.WarpBlockInfo]
+// blocksInfoFromHeaders listens to the header channel and converts the headers to [relayerTypes.ICMBlockInfo]
 // and writes them to the blocks channel consumed by the listener
 func (s *Subscriber) blocksInfoFromHeaders() {
 	for header := range s.headers {
-		block, err := relayerTypes.NewWarpBlockInfo(s.logger, header, s.rpcClient)
+		block, err := relayerTypes.NewICMBlockInfo(s.logger, header, s.rpcClient, s.topics)
 		if err != nil {
 			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return
@@ -209,7 +207,7 @@ func (s *Subscriber) blocksInfoFromHeaders() {
 	}
 }
 
-func (s *Subscriber) ICMBlocks() <-chan *relayerTypes.WarpBlockInfo {
+func (s *Subscriber) ICMBlocks() <-chan *relayerTypes.ICMBlockInfo {
 	return s.icmBlocks
 }
 
