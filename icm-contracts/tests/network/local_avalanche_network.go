@@ -630,10 +630,13 @@ func (n *LocalAvalancheNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.P
 }
 
 func (n *LocalAvalancheNetwork) TearDownNetwork() {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
 	log.Info("Tearing down network")
 	Expect(n).ShouldNot(BeNil())
 	Expect(n.Network).ShouldNot(BeNil())
-	Expect(n.Network.Stop(context.Background())).Should(BeNil())
+	Expect(n.Network.Stop(ctx)).Should(BeNil())
 }
 
 func (n *LocalAvalancheNetwork) SetChainConfigs(chainConfigs map[string]string) {
