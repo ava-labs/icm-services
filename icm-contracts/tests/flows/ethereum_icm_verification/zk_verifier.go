@@ -219,7 +219,7 @@ func ZKAdapterVerifier(
 	result, err := avalancheZkadapter.GetBeaconBlockRoot(&bind.CallOpts{}, fixture.ExecutionProof.AnchorSlot)
 	Expect(err).Should(BeNil())
 	Expect(result.Valid).Should(BeTrue())
-	Expect(result.Root).Should(Equal(anchorBeaconBlockRoot))
+	Expect(result.Root).Should(Equal([32]byte(anchorBeaconBlockRoot)))
 
 	// Construct execution and receipt proofs from the fixtures
 	execProof := zkadapter.ExecutionProof{
