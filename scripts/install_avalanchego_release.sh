@@ -132,8 +132,14 @@ else
     if [[ ! -d ${BUILD_DIR} ]]; then
       echo "building avalanchego ${COMMIT} to ${BUILD_DIR}"
       ./scripts/build.sh
-      mkdir -p ${BUILD_DIR}
 
+      # subnet-evm is part of avalanchego as of v1.14.1
+      if [[ -f graft/subnet-evm/scripts/build.sh ]]; then
+        echo "building subnet-evm from avalanchego graft..."
+        ./graft/subnet-evm/scripts/build.sh "${GIT_CLONE_PATH}/build/subnet-evm"
+      fi
+
+      mkdir -p ${BUILD_DIR}
       mv ${GIT_CLONE_PATH}/build/* ${BUILD_DIR}/
     fi
 
@@ -149,6 +155,12 @@ mkdir -p ${AVALANCHEGO_PLUGIN_DIR}
 
 cp ${BUILD_DIR}/avalanchego ${AVALANCHEGO_PATH}
 
+# Copy subnet-evm plugin if it was built from the avalanchego graft
+if [[ -f ${BUILD_DIR}/subnet-evm ]]; then
+  SUBNET_EVM_PLUGIN_PATH=${AVALANCHEGO_PLUGIN_DIR}/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
+  cp ${BUILD_DIR}/subnet-evm ${SUBNET_EVM_PLUGIN_PATH}
+  echo "Installed Subnet-EVM plugin: ${SUBNET_EVM_PLUGIN_PATH}"
+fi
 
 echo "Installed AvalancheGo release ${AVALANCHEGO_VERSION}"
 echo "AvalancheGo Path: ${AVALANCHEGO_PATH}"
