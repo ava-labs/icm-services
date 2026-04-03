@@ -157,6 +157,8 @@ cp ${BUILD_DIR}/avalanchego ${AVALANCHEGO_PATH}
 
 # Copy subnet-evm plugin if it was built from the avalanchego graft
 if [[ -f ${BUILD_DIR}/subnet-evm ]]; then
+  # The VM ID is the CB58-encoded hash of the string "subnetevm", defined in
+  # graft/subnet-evm/scripts/constants.sh as DEFAULT_VM_ID.
   SUBNET_EVM_PLUGIN_PATH=${AVALANCHEGO_PLUGIN_DIR}/srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy
   cp ${BUILD_DIR}/subnet-evm ${SUBNET_EVM_PLUGIN_PATH}
   echo "Installed Subnet-EVM plugin: ${SUBNET_EVM_PLUGIN_PATH}"
