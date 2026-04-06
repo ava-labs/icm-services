@@ -92,7 +92,7 @@ func newTmpnetNetwork(
 ) *tmpnet.Network {
 	var l1s []*tmpnet.Subnet
 
-	bootstrapNodes := subnetEvmTestUtils.NewTmpnetNodes(numPrimaryNetworkValidators)
+	bootstrapNodes := tmpnet.NewNodesOrPanic(numPrimaryNetworkValidators)
 	for i, l1Spec := range l1Specs {
 		// Create a single bootstrap node. This will be removed from the L1 validator set after it is converted,
 		// but will remain a primary network validator
@@ -100,14 +100,14 @@ func newTmpnetNetwork(
 
 		l1 := subnetEvmTestUtils.NewTmpnetSubnet(
 			l1Spec.Name,
-			utils.InstantiateGenesisTemplate(
+			[]byte(utils.InstantiateGenesisTemplate(
 				warpGenesisTemplateFile,
 				l1Spec.EVMChainID,
 				l1Spec.TeleporterContractAddress,
 				l1Spec.TeleporterDeployedBytecode,
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
-			),
+			)),
 			maps.Clone(utils.DefaultChainConfig()),
 			initialL1Bootstrapper,
 		)
@@ -165,10 +165,10 @@ func NewLocalAvalancheNetwork(
 	Expect(numPrimaryNetworkValidators).Should(BeNumerically(">=", len(l1Specs)))
 
 	// Create extra nodes to be used to add more validators later
-	extraNodes := subnetEvmTestUtils.NewTmpnetNodes(extraNodeCount)
+	extraNodes := tmpnet.NewNodesOrPanic(extraNodeCount)
 
 	for _, l1Spec := range l1Specs {
-		initialVdrNodes := subnetEvmTestUtils.NewTmpnetNodes(l1Spec.NodeCount)
+		initialVdrNodes := tmpnet.NewNodesOrPanic(l1Spec.NodeCount)
 		extraNodes = append(extraNodes, initialVdrNodes...)
 	}
 
@@ -630,10 +630,13 @@ func (n *LocalAvalancheNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.P
 }
 
 func (n *LocalAvalancheNetwork) TearDownNetwork() {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
 	log.Info("Tearing down network")
 	Expect(n).ShouldNot(BeNil())
 	Expect(n.Network).ShouldNot(BeNil())
-	Expect(n.Network.Stop(context.Background())).Should(BeNil())
+	Expect(n.Network.Stop(ctx)).Should(BeNil())
 }
 
 func (n *LocalAvalancheNetwork) SetChainConfigs(chainConfigs map[string]string) {

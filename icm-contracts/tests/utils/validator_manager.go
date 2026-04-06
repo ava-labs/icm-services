@@ -1210,6 +1210,9 @@ func InitiateAndCompleteEndPoSValidation(
 
 	var receipt *types.Receipt
 	if includeUptime {
+		// Without this sleep we're signing an uptime proof is ~2 seconds of uptime.
+		// This shouldn't cause an issue, but it is for unclear reasons.
+		time.Sleep(10 * time.Second)
 		uptime := uint64(time.Since(validatorStartTime).Seconds())
 		receipt = ForceInitiateEndPoSValidationWithUptime(
 			ctx,

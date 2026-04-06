@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
-	"github.com/ava-labs/avalanchego/graft/subnet-evm/rpc"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
@@ -29,6 +28,7 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
+	"github.com/ava-labs/libevm/rpc"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 )

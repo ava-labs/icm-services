@@ -516,9 +516,8 @@ func GetChainConfigWithOffChainMessages(offChainMessages []avalancheWarp.Unsigne
 	return string(offChainMessageJson)
 }
 
-// read in the template file, make the substitutions declared at the beginning
-// of the function, write out the instantiation to a temp file, and then return
-// the path to that temp file.
+// InstantiateGenesisTemplate reads the template file, performs variable
+// substitutions, and returns the resulting genesis JSON content.
 func InstantiateGenesisTemplate(
 	templateFileName string,
 	chainID uint64,
@@ -566,19 +565,12 @@ func InstantiateGenesisTemplate(
 	templateFileBytes, err := os.ReadFile(templateFileName)
 	Expect(err).Should(BeNil())
 
-	l1GenesisFile, err := os.CreateTemp(os.TempDir(), "")
-	Expect(err).Should(BeNil())
-
-	defer l1GenesisFile.Close()
-
-	var replaced string = string(templateFileBytes[:])
+	replaced := string(templateFileBytes)
 	for _, s := range substitutions {
 		replaced = strings.ReplaceAll(replaced, s.Target, s.Value)
 	}
 
-	l1GenesisFile.WriteString(replaced)
-
-	return l1GenesisFile.Name()
+	return replaced
 }
 
 // Native minter utils
