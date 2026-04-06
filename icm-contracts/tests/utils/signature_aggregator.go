@@ -127,7 +127,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 ) (*avalancheWarp.Message, error) {
 	var err error
 	var signedMessage *avalancheWarp.Message
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 6; i++ {
 		signedMessage, err = s.createSignedMessage(
 			unsignedMessage,
 			justification,
@@ -138,7 +138,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		if err == nil {
 			return signedMessage, nil
 		}
-		time.Sleep(time.Second * 1)
+		time.Sleep(10 * time.Second)
 	}
 	return nil, err
 }
@@ -165,7 +165,7 @@ func (s *SignatureAggregator) createSignedMessage(
 	}
 
 	client := &http.Client{
-		Timeout: 20 * time.Second,
+		Timeout: 40 * time.Second,
 	}
 	requestURL := fmt.Sprintf("http://localhost:%d%s", DEFAULT_API_PORT, SIG_AGG_API_PATH)
 	reqBody := AggregateSignaturesRequest{
