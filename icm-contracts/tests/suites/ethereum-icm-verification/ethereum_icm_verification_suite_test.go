@@ -21,6 +21,8 @@ const (
 	ecdsaVerifierByteCodeFile    = "./out/ECDSAVerifier.sol/ECDSAVerifier.json"
 	warpGenesisTemplateFile      = "./tests/utils/warp-genesis-template.json"
 	ethereumICMVerificationLabel = "ethereum-icm-verification"
+	zkAdapterByteCodeFile        = "./out/ZKAdapter.sol/ZKAdapter.json"
+	sepoliaFixturePath           = "./tests/testdata/sepolia_fixture.json"
 )
 
 var (
@@ -104,6 +106,17 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				ctx,
 				localAvalancheNetworkInstance,
 				localEthereumNetworkInstance,
+			)
+		})
+
+	ginkgo.It("Test ZKAdapterVerifier",
+		ginkgo.Label(ethereumICMVerificationLabel),
+		func(ctx context.Context) {
+			ethereumIcmVerification.ZKAdapterVerifier(
+				ctx,
+				localAvalancheNetworkInstance,
+				zkAdapterByteCodeFile,
+				sepoliaFixturePath,
 			)
 		})
 })
