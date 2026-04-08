@@ -761,35 +761,6 @@ func buildDiffICMMessage(signedMsg *avalancheWarp.Message) (diffupdater.ICMMessa
 	}, nil
 }
 
-// unPadOnChainBlsPublicKey converts a padded on-chain BLS public key to the 96-byte
-// uncompressed form used in warp messages. When padded is 128 bytes, the layout matches
-// BLST.unPadUncompressedBlsPublicKey: X occupies padded[16:64], Y padded[80:128] (see
-// BLST.padUncompressedBLSPublicKey). Otherwise the first 96 bytes are copied as a
-// best-effort fallback for unexpected formats.
-func unPadOnChainBlsPublicKey(padded []byte) [96]byte {
-	var pk [96]byte
-	if len(padded) != 128 {
-		copy(pk[:], padded)
-		return pk
-	}
-	copy(pk[0:48], padded[16:64])
-	copy(pk[48:96], padded[80:128])
-	return pk
-}
-
-// onChainValidatorsToMessage converts on-chain Validator structs (with padded
-// 128-byte BLS keys) to Validator structs (with uncompressed 96-byte keys).
-func onChainValidatorsToMessage(validators []diffupdater.Validator) []*Validator {
-	result := make([]*Validator, len(validators))
-	for i, v := range validators {
-		result[i] = &Validator{
-			UncompressedPublicKeyBytes: unPadOnChainBlsPublicKey(v.BlsPublicKey),
-			Weight:                     v.Weight,
-		}
-	}
-	return result
-}
-
 // ShardValidatorsAsDiff creates ValidatorSetDiff (type ID 5) shards suitable
 // for bootstrapping a DiffUpdater contract from an empty validator set.
 // All validators are treated as additions; each shard carries a subset of changes.

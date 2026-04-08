@@ -138,7 +138,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             uint64 validatorWeight
         ) = parseValidatorSetMetadata(message, shardBytes);
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
-        uint256 numValidators = validators.length;
 
         // This validator set is sharded
         if (validatorSetMetadata.shardHashes.length > 1) {
@@ -167,7 +166,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
                     validatorSetMetadata.pChainTimestamp;
             }
         } else {
-            // Store the validator set.
+            // This branch is reached both on first registration and on
+            // subsequent single-shard updates (e.g. DiffUpdater diff updates).
+            // On subsequent calls valSet.validators already contains the
+            // previous set, so we must use replaceValidators to overwrite
+            // it rather than push, which would append duplicates.
             ValidatorSet storage valSet = _validatorSets[validatorSetMetadata.avalancheBlockchainID];
             valSet.avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
             valSet.totalWeight = validatorWeight;
