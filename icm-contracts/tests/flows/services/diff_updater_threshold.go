@@ -36,8 +36,9 @@ const (
 	// the churn limit.
 	thresholdTestWeightChangeThresholdPct float64 = 0.05
 	// Must be larger than the time InitiateAndCompletePoAValidatorRegistration
-	// takes (~60-70s) so that staleness does not fire during Phase 2.
-	thresholdTestMaxUpdateIntervalSeconds uint64 = 120
+	// takes (~60-70s locally, up to ~90s on CI) so that staleness does not
+	// fire during Phase 2.
+	thresholdTestMaxUpdateIntervalSeconds uint64 = 150
 )
 
 // DiffUpdaterThreshold tests the threshold-based gas optimization for DiffSetUpdater:
@@ -307,7 +308,7 @@ func DiffUpdaterThreshold(
 
 	l1Info = avalancheNetwork.AddSubnetValidators(newNodes[:1], l1Info, true)
 
-	addSmallCtx, addSmallCancel := context.WithTimeout(ctx, 120*time.Second)
+	addSmallCtx, addSmallCancel := context.WithTimeout(ctx, 150*time.Second)
 	defer addSmallCancel()
 
 	expiry := uint64(time.Now().Add(24 * time.Hour).Unix())
@@ -387,7 +388,7 @@ func DiffUpdaterThreshold(
 	log.Info("Phase 3: Waiting for staleness-forced update...")
 
 	elapsed := time.Since(firstRegistrationTime)
-	stalenessTimeout := time.Duration(thresholdTestMaxUpdateIntervalSeconds)*time.Second + 60*time.Second
+	stalenessTimeout := time.Duration(thresholdTestMaxUpdateIntervalSeconds)*time.Second + 90*time.Second
 	remainingWait := stalenessTimeout - elapsed
 	if remainingWait < 30*time.Second {
 		remainingWait = 30 * time.Second
@@ -471,7 +472,7 @@ func DiffUpdaterThreshold(
 
 	l1Info = avalancheNetwork.AddSubnetValidators(newNodes[1:2], l1Info, true)
 
-	addLargeCtx, addLargeCancel := context.WithTimeout(ctx, 120*time.Second)
+	addLargeCtx, addLargeCancel := context.WithTimeout(ctx, 150*time.Second)
 	defer addLargeCancel()
 
 	expiry = uint64(time.Now().Add(24 * time.Hour).Unix())
@@ -504,9 +505,9 @@ func DiffUpdaterThreshold(
 
 	log.Info("Phase 4: Large validator added, waiting for threshold-triggered update...")
 
-	// Use a 60s timeout — well under the 120s staleness cap. If the update arrives
+	// Use a 90s timeout — well under the 150s staleness cap. If the update arrives
 	// in this window it was threshold-triggered, not staleness-triggered.
-	thresholdCtx, thresholdCancel := context.WithTimeout(ctx, 60*time.Second)
+	thresholdCtx, thresholdCancel := context.WithTimeout(ctx, 90*time.Second)
 	defer thresholdCancel()
 
 	thresholdTicker := time.NewTicker(2 * time.Second)
