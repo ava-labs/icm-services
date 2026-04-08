@@ -52,6 +52,7 @@ struct Seal {
 error SelectorMismatch(bytes4 received, bytes4 expected);
 
 /// @notice Groth16 verifier contract for RISC Zero receipts of execution.
+// slither-disable-start all
 contract RiscZeroGroth16Verifier is IRiscZeroVerifier, IRiscZeroSelectable, Groth16Verifier {
     using ReceiptClaimLib for ReceiptClaim;
     using OutputLib for Output;
@@ -189,3 +190,4 @@ contract RiscZeroGroth16Verifier is IRiscZeroVerifier, IRiscZeroSelectable, Grot
         }
     }
 }
+// slither-disable-end all

@@ -23,6 +23,7 @@
 /* solhint-disable */
 pragma solidity ^0.8.30;
 
+// slither-disable-start all
 contract Groth16Verifier {
     // Scalar field size
     uint256 constant r =
@@ -224,3 +225,4 @@ contract Groth16Verifier {
         }
     }
 }
+// slither-disable-end all
