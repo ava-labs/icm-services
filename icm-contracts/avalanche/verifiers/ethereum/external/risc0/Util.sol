@@ -16,9 +16,8 @@
 
 // Source: https://github.com/risc0/risc0-ethereum/blob/a78ac4a52fe9cfa14120c3b496430f0d42e1d8d3/contracts/src/Util.sol
 // Modified: Updated Solidity pragma from ^0.8.9 to ^0.8.30
-
-pragma solidity ^0.8.30;
 /* solhint-disable */
+pragma solidity ^0.8.30;
 
 /// @notice reverse the byte order of the uint256 value.
 /// @dev Solidity uses a big-endian ABI encoding. Reversing the byte order before encoding

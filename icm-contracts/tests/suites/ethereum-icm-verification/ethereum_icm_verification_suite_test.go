@@ -22,7 +22,8 @@ const (
 	warpGenesisTemplateFile      = "./tests/utils/warp-genesis-template.json"
 	ethereumICMVerificationLabel = "ethereum-icm-verification"
 	zkAdapterByteCodeFile        = "./out/ZKAdapter.sol/ZKAdapter.json"
-	sepoliaFixturePath           = "./tests/testdata/sepolia_fixture.json"
+	ethereumFixturePath          = "./tests/testdata/ethereum_fixture.json"
+	boundlessFixturePath         = "./tests/testdata/boundless_fixture.json"
 )
 
 var (
@@ -116,7 +117,8 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				ctx,
 				localAvalancheNetworkInstance,
 				zkAdapterByteCodeFile,
-				sepoliaFixturePath,
+				ethereumFixturePath,
+				boundlessFixturePath,
 			)
 		})
 })
