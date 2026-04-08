@@ -100,7 +100,7 @@ func DiffUpdaterThreshold(
 			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
 	})
 
-	var pChainID [32]byte
+	var pChainID [32]byte // all zeros = PlatformChainID
 	pChainTimestamp, err := pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
 	Expect(err).Should(BeNil())
 
@@ -122,6 +122,12 @@ func DiffUpdaterThreshold(
 	for i, h := range pChainShardHashes {
 		pChainShardHashesBytes[i] = h
 	}
+
+	log.Info("Fetched primary network validators",
+		zap.Int("numValidators", len(pChainValidators)),
+		zap.Int("numShards", len(pChainShardBytesList)),
+		zap.Uint64("pChainHeight", pChainHeight),
+	)
 
 	// =========================================================================
 	// Setup: Deploy DiffUpdater contract
@@ -146,7 +152,9 @@ func DiffUpdaterThreshold(
 	contract, err := diffupdater.NewDiffUpdater(contractAddr, ethClient)
 	Expect(err).Should(BeNil())
 
-	log.Info("Deployed DiffUpdater contract", zap.String("address", contractAddr.Hex()))
+	log.Info("Deployed DiffUpdater contract",
+		zap.String("address", contractAddr.Hex()),
+	)
 
 	// =========================================================================
 	// Setup: Bootstrap P-chain validators
@@ -162,16 +170,24 @@ func DiffUpdaterThreshold(
 		Expect(err).Should(BeNil())
 		Expect(receipt.Status).Should(Equal(types.ReceiptStatusSuccessful),
 			"updateValidatorSet shard %d failed", i+1)
+		log.Info("Bootstrapped P-chain shard",
+			zap.Int("shardNumber", i+1),
+			zap.Int("totalShards", len(pChainShardBytesList)),
+		)
 	}
 
 	callOpts := &bind.CallOpts{Context: ctx}
 	pChainInitialized, err := contract.PChainInitialized(callOpts)
 	Expect(err).Should(BeNil())
-	Expect(pChainInitialized).Should(BeTrue())
+	Expect(pChainInitialized).Should(BeTrue(), "P-chain validator set should be initialized")
+
+	log.Info("P-chain validators bootstrapped successfully")
 
 	// =========================================================================
 	// Setup: Configure and start the relayer with threshold config
 	// =========================================================================
+	log.Info("Configuring relayer with ExternalEVMDestination (diff + threshold)")
+
 	err = utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
 
@@ -192,7 +208,7 @@ func DiffUpdaterThreshold(
 	)
 	relayerConfigPath := utils.WriteRelayerConfig(log, relayerConfig, utils.DefaultRelayerCfgFname)
 
-	log.Info("Starting relayer with threshold config")
+	log.Info("Starting relayer")
 	relayerCleanup, readyChan := utils.RunRelayerExecutable(
 		ctx,
 		log,
@@ -204,6 +220,8 @@ func DiffUpdaterThreshold(
 	startupCtx, startupCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer startupCancel()
 	utils.WaitForChannelClose(startupCtx, readyChan)
+
+	log.Info("Relayer started, waiting for validator set registration...")
 
 	// =========================================================================
 	// Phase 1: Wait for the relayer to register the initial validator set
@@ -228,9 +246,11 @@ func DiffUpdaterThreshold(
 		case <-ticker.C:
 			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
 			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
 				continue
 			}
 			if vs.TotalWeight == 0 {
+				log.Debug("Validator set not yet registered, waiting...")
 				continue
 			}
 
@@ -349,6 +369,7 @@ func DiffUpdaterThreshold(
 		case <-noUpdateTicker.C:
 			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
 			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
 				continue
 			}
 			Expect(len(vs.Validators)).Should(Equal(baselineValidatorCount),
@@ -396,6 +417,7 @@ func DiffUpdaterThreshold(
 		case <-stalenessTicker.C:
 			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
 			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
 				continue
 			}
 
@@ -498,6 +520,7 @@ func DiffUpdaterThreshold(
 		case <-thresholdTicker.C:
 			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
 			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
 				continue
 			}
 
