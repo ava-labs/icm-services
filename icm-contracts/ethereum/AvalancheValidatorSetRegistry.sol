@@ -173,12 +173,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             valSet.totalWeight = validatorWeight;
             valSet.pChainHeight = validatorSetMetadata.pChainHeight;
             valSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
-            for (uint256 i = 0; i < numValidators;) {
-                valSet.validators.push(validators[i]);
-                unchecked {
-                    ++i;
-                }
-            }
+            ValidatorSets.replaceValidators(valSet.validators, validators);
         }
         emit ValidatorSetRegistered(avalancheBlockchainID);
     }

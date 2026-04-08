@@ -117,7 +117,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			},
 		},
 		6,
-		6,
+		8,
 		e2eFlags,
 	)
 
@@ -256,6 +256,11 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
 			servicesFlows.DiffUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("DiffUpdaterThreshold",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.DiffUpdaterThreshold(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
 
 	// ValidatorsOnlyNetwork runs last: it puts a subnet in validator-only mode, so any following

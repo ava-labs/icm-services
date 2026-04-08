@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"math/big"
 	"sort"
 	"time"
 
@@ -42,6 +41,15 @@ type DiffSetUpdater struct {
 	subnetID     ids.ID
 	shardSize    uint32
 	pollInterval time.Duration
+
+	weightChangeThresholdPct float64
+	maxUpdateInterval        time.Duration
+
+	localValidatorSet []*Validator
+	localPChainHeight uint64
+	localTotalWeight  uint64
+	lastUpdateTime    time.Time
+	initialized       bool
 }
 
 func NewDiffSetUpdater(
@@ -57,6 +65,8 @@ func NewDiffSetUpdater(
 	subnetID ids.ID,
 	shardSize uint32,
 	pollInterval time.Duration,
+	weightChangeThresholdPct float64,
+	maxUpdateInterval time.Duration,
 ) *DiffSetUpdater {
 	if shardSize == 0 {
 		shardSize = defaultShardSize
@@ -65,18 +75,20 @@ func NewDiffSetUpdater(
 		pollInterval = defaultPollInterval
 	}
 	return &DiffSetUpdater{
-		logger:              logger,
-		pChainClient:        pChainClient,
-		signatureAggregator: signatureAggregator,
-		ethClient:           ethClient,
-		contract:            contract,
-		contractAddress:     contractAddress,
-		txOpts:              txOpts,
-		networkID:           networkID,
-		blockchainID:        blockchainID,
-		subnetID:            subnetID,
-		shardSize:           shardSize,
-		pollInterval:        pollInterval,
+		logger:                   logger,
+		pChainClient:             pChainClient,
+		signatureAggregator:      signatureAggregator,
+		ethClient:                ethClient,
+		contract:                 contract,
+		contractAddress:          contractAddress,
+		txOpts:                   txOpts,
+		networkID:                networkID,
+		blockchainID:             blockchainID,
+		subnetID:                 subnetID,
+		shardSize:                shardSize,
+		pollInterval:             pollInterval,
+		weightChangeThresholdPct: weightChangeThresholdPct,
+		maxUpdateInterval:        maxUpdateInterval,
 	}
 }
 
@@ -85,6 +97,8 @@ func (d *DiffSetUpdater) Start(ctx context.Context) error {
 	d.logger.Info("Starting DiffSetUpdater",
 		zap.Stringer("blockchainID", d.blockchainID),
 		zap.Uint32("shardSize", d.shardSize),
+		zap.Float64("weightChangeThresholdPct", d.weightChangeThresholdPct),
+		zap.Duration("maxUpdateInterval", d.maxUpdateInterval),
 	)
 
 	if err := d.checkAndUpdate(ctx); err != nil {
@@ -108,38 +122,158 @@ func (d *DiffSetUpdater) Start(ctx context.Context) error {
 }
 
 func (d *DiffSetUpdater) checkAndUpdate(ctx context.Context) error {
+	if !d.initialized {
+		return d.initializeLocalState(ctx)
+	}
+
 	pChainHeight, err := d.pChainClient.GetLatestHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get P-chain height: %w", err)
 	}
 
+	if pChainHeight <= d.localPChainHeight {
+		d.logger.Debug("No new P-chain blocks",
+			zap.Uint64("pChainHeight", pChainHeight),
+			zap.Uint64("localPChainHeight", d.localPChainHeight),
+		)
+		return nil
+	}
+
+	newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch validators at height %d: %w", pChainHeight, err)
+	}
+
+	changes, _ := computeValidatorDiff(d.localValidatorSet, newValidators)
+
+	stale := d.isStale()
+	if len(changes) == 0 && !stale {
+		d.logger.Debug("No validator changes and not stale, skipping")
+		return nil
+	}
+
+	weightDelta := computeWeightDelta(d.localValidatorSet, changes)
+	thresholdCrossed := d.localTotalWeight > 0 &&
+		float64(weightDelta)/float64(d.localTotalWeight) >= d.weightChangeThresholdPct
+
+	if !thresholdCrossed && !stale {
+		d.logger.Debug("Below threshold, skipping update",
+			zap.Uint64("weightDelta", weightDelta),
+			zap.Uint64("localTotalWeight", d.localTotalWeight),
+			zap.Float64("thresholdPct", d.weightChangeThresholdPct),
+		)
+		return nil
+	}
+
+	d.logger.Info("Validator set update triggered",
+		zap.Uint64("localPChainHeight", d.localPChainHeight),
+		zap.Uint64("pChainHeight", pChainHeight),
+		zap.Int("numChanges", len(changes)),
+		zap.Uint64("weightDelta", weightDelta),
+		zap.Bool("thresholdCrossed", thresholdCrossed),
+		zap.Bool("stale", stale),
+	)
+
+	if err := d.performDiffUpdate(ctx, pChainHeight, newValidators, changes); err != nil {
+		d.logger.Warn("Diff update failed, re-syncing from contract on next tick", zap.Error(err))
+		d.initialized = false
+		return err
+	}
+
+	d.localValidatorSet = newValidators
+	d.localPChainHeight = pChainHeight
+	d.localTotalWeight = sumWeights(newValidators)
+	d.lastUpdateTime = time.Now()
+
+	return nil
+}
+
+func (d *DiffSetUpdater) initializeLocalState(ctx context.Context) error {
 	onChainVS, err := d.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, d.blockchainID)
 	if err != nil {
 		return fmt.Errorf("failed to get on-chain validator set: %w", err)
 	}
 
-	if onChainVS.PChainHeight >= pChainHeight {
-		d.logger.Debug("On-chain validator set is up to date",
+	isFirstRegistration := onChainVS.TotalWeight == 0
+	if isFirstRegistration {
+		pChainHeight, err := d.pChainClient.GetLatestHeight(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get P-chain height: %w", err)
+		}
+		d.logger.Info("First registration detected, performing full set update",
 			zap.Uint64("pChainHeight", pChainHeight),
-			zap.Uint64("onChainHeight", onChainVS.PChainHeight),
 		)
+		if err := d.performFullSetUpdate(ctx, pChainHeight, onChainVS); err != nil {
+			return err
+		}
+		newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
+		if err != nil {
+			return fmt.Errorf("failed to fetch validators after first registration: %w", err)
+		}
+		d.localValidatorSet = newValidators
+		d.localPChainHeight = pChainHeight
+		d.localTotalWeight = sumWeights(newValidators)
+		d.lastUpdateTime = time.Now()
+		d.initialized = true
 		return nil
 	}
 
-	isFirstRegistration := onChainVS.TotalWeight == 0
+	validators, err := d.fetchSortedValidators(ctx, onChainVS.PChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch P-chain validators at on-chain height %d: %w",
+			onChainVS.PChainHeight, err)
+	}
 
-	d.logger.Info("Validator set update needed",
-		zap.Uint64("onChainHeight", onChainVS.PChainHeight),
-		zap.Uint64("pChainHeight", pChainHeight),
-		zap.Bool("isFirstRegistration", isFirstRegistration),
-		zap.Int("onChainValidatorCount", len(onChainVS.Validators)),
-		zap.Uint64("onChainTotalWeight", onChainVS.TotalWeight),
+	d.localValidatorSet = validators
+	d.localPChainHeight = onChainVS.PChainHeight
+	d.localTotalWeight = sumWeights(validators)
+	d.lastUpdateTime = time.Now()
+	d.initialized = true
+
+	d.logger.Info("Initialized local validator set from contract",
+		zap.Uint64("pChainHeight", onChainVS.PChainHeight),
+		zap.Int("numValidators", len(validators)),
+		zap.Uint64("totalWeight", d.localTotalWeight),
 	)
 
-	if isFirstRegistration {
-		return d.performFullSetUpdate(ctx, pChainHeight, onChainVS)
+	return nil
+}
+
+func (d *DiffSetUpdater) isStale() bool {
+	if d.maxUpdateInterval == 0 {
+		return false
 	}
-	return d.performDiffUpdate(ctx, pChainHeight, onChainVS)
+	return time.Since(d.lastUpdateTime) >= d.maxUpdateInterval
+}
+
+func sumWeights(validators []*Validator) uint64 {
+	var total uint64
+	for _, v := range validators {
+		total += v.Weight
+	}
+	return total
+}
+
+// computeWeightDelta computes the sum of absolute weight deltas across all
+// changes. For additions the delta is the new weight; for removals it is the
+// old weight; for modifications it is |new - old|.
+func computeWeightDelta(oldSet []*Validator, changes []ValidatorChange) uint64 {
+	oldWeights := make(map[[96]byte]uint64, len(oldSet))
+	for _, v := range oldSet {
+		oldWeights[v.UncompressedPublicKeyBytes] = v.Weight
+	}
+
+	var delta uint64
+	for _, c := range changes {
+		oldW := oldWeights[c.UncompressedPublicKeyBytes]
+		newW := c.Weight
+		if newW >= oldW {
+			delta += newW - oldW
+		} else {
+			delta += oldW - newW
+		}
+	}
+	return delta
 }
 
 // ---------------------------------------------------------------------------
@@ -230,32 +364,18 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 }
 
 // ---------------------------------------------------------------------------
-// Diff update: compute changes between on-chain and P-chain validator sets
+// Diff update using local validator set tracking
 // ---------------------------------------------------------------------------
 
 func (d *DiffSetUpdater) performDiffUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
-	onChainVS diffupdater.ValidatorSet,
+	newValidators []*Validator,
+	changes []ValidatorChange,
 ) error {
-	newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
+	localPChainTimestamp, err := d.pChainClient.GetBlockTimestampAtHeight(ctx, d.localPChainHeight)
 	if err != nil {
-		return fmt.Errorf("failed to fetch validators: %w", err)
-	}
-
-	oldValidators := onChainValidatorsToMessage(onChainVS.Validators)
-	sort.Slice(oldValidators, func(i, j int) bool {
-		return bytes.Compare(
-			oldValidators[i].UncompressedPublicKeyBytes[:],
-			oldValidators[j].UncompressedPublicKeyBytes[:],
-		) < 0
-	})
-
-	changes, _ := computeValidatorDiff(oldValidators, newValidators)
-
-	if len(changes) == 0 {
-		d.logger.Info("No validator changes detected, skipping update")
-		return nil
+		return fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", d.localPChainHeight, err)
 	}
 
 	pChainTimestamp, err := d.pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
@@ -263,13 +383,25 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		return fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
 	}
 
+	// If stale but no actual changes, send the diff with the full current set
+	// as "no-op" changes to advance the on-chain height.
+	if len(changes) == 0 {
+		changes = make([]ValidatorChange, len(newValidators))
+		for i, v := range newValidators {
+			changes[i] = ValidatorChange{
+				UncompressedPublicKeyBytes: v.UncompressedPublicKeyBytes,
+				Weight:                     v.Weight,
+			}
+		}
+	}
+
 	shardBytesList, shardHashes, err := d.shardDiff(
 		d.blockchainID,
-		onChainVS.PChainHeight,
-		onChainVS.PChainTimestamp,
+		d.localPChainHeight,
+		localPChainTimestamp,
 		pChainHeight,
 		pChainTimestamp,
-		oldValidators,
+		d.localValidatorSet,
 		changes,
 	)
 	if err != nil {
@@ -300,8 +432,6 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		return fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
 
-	// L1 already registered: contract verifyICMMessage uses that chain's registered
-	// BLS keys (same as SubsetSetUpdater after first registration).
 	signingSubnet := d.subnetID
 	d.logger.Info("Signing diff update", zap.Stringer("signingSubnet", signingSubnet))
 
@@ -313,7 +443,7 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
-		onChainVS.PChainHeight,
+		d.localPChainHeight,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
@@ -717,37 +847,4 @@ func ShardValidatorsAsDiff(
 	}
 
 	return shardBytesList, shardHashes, nil
-}
-
-// ---------------------------------------------------------------------------
-// Test / convenience helpers
-// ---------------------------------------------------------------------------
-
-// PerformSingleUpdate is a convenience method for tests: builds, signs, and sends
-// a single diff update at the given P-chain height.
-func (d *DiffSetUpdater) PerformSingleUpdate(ctx context.Context, pChainHeight uint64) error {
-	onChainVS, err := d.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, d.blockchainID)
-	if err != nil {
-		return fmt.Errorf("failed to get on-chain validator set: %w", err)
-	}
-
-	if onChainVS.TotalWeight == 0 {
-		return d.performFullSetUpdate(ctx, pChainHeight, onChainVS)
-	}
-	return d.performDiffUpdate(ctx, pChainHeight, onChainVS)
-}
-
-// GetOnChainValidatorSet returns the validator set stored on-chain for the updater's blockchain ID.
-func (d *DiffSetUpdater) GetOnChainValidatorSet(
-	ctx context.Context,
-) (diffupdater.ValidatorSet, error) {
-	return d.contract.GetValidatorSet(
-		&bind.CallOpts{Context: ctx},
-		d.blockchainID,
-	)
-}
-
-// SetTxValue sets the value on the tx opts (useful for initial deployment gas).
-func (d *DiffSetUpdater) SetTxValue(val *big.Int) {
-	d.txOpts.Value = val
 }

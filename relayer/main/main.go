@@ -795,6 +795,7 @@ func startDiffSetUpdater(
 	}
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
+	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
 
 	updater := validatorupdater.NewDiffSetUpdater(
 		logger,
@@ -809,6 +810,8 @@ func startDiffSetUpdater(
 		subnetID,
 		extDest.ShardSize,
 		pollInterval,
+		extDest.WeightChangeThresholdPct,
+		maxUpdateInterval,
 	)
 
 	return updater.Start(ctx)
