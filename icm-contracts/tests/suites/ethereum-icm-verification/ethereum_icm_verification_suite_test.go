@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	adapter "github.com/ava-labs/icm-services/abi-bindings/go/Adapter"
@@ -39,7 +40,6 @@ const (
 var (
 	localAvalancheNetworkInstance *localnetwork.LocalAvalancheNetwork
 	localEthereumNetworkInstance  *localnetwork.LocalEthereumNetwork
-	teleporterInfo                utils.TeleporterTestInfo
 	e2eFlags                      *e2e.FlagVars
 	ecdsaVerifierContractAddress  common.Address
 	ecdsaSigner                   *ecdsa.PrivateKey
@@ -91,11 +91,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	localEthereumNetworkInstance = localnetwork.StartLocalEthereumNetwork(ctx)
 	log.Info("Started local Ethereum network", zap.Any("chainID", localEthereumNetworkInstance.ChainID))
-
-	teleporterInfo = localnetwork.NewTeleporterTestInfo(
-		localAvalancheNetworkInstance,
-		localEthereumNetworkInstance,
-	)
 
 	// set top-level variables
 	_, fundedEthereumKey := localEthereumNetworkInstance.GetFundedAccountInfo()
@@ -170,7 +165,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		if i+1 == len(serializedShards) {
 			event, err := utils.GetEventFromLogs(receipt.Logs, avalancheValidatorSetRegistry.ParseValidatorSetUpdated)
 			Expect(err).Should(BeNil())
-			Expect(event.AvalancheBlockchainID).Should(Equal([32]byte(primaryNetworkInfo.BlockchainID)))
+			Expect(ids.ID(event.AvalancheBlockchainID)).Should(Equal(primaryNetworkInfo.BlockchainID))
 		}
 	}
 	registered, err := avalancheValidatorSetRegistry.IsRegistered(&bind.CallOpts{}, primaryNetworkInfo.BlockchainID)
@@ -316,7 +311,6 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				ecdsaSigner,
 				ecdsaVerifierContractAddress,
 				adapterContractAddress,
-				teleporterInfo,
 				mockSignatureAggregator,
 			)
 		})
