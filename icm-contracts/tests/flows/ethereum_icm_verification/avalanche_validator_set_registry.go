@@ -25,8 +25,11 @@ import (
 // populate it with the validator set from the Avalanche network.
 //  1. Deploy the TeleporterMessengerV2 contracts with the ECDSAVerifier/DiffUpdater adapter
 //  2. Send a cross-chain message from Ethereum to Avalanche
-//  3. Manually relay the message: Recover the emitted event and sign it  and submit the signed
+//  3. Manually relay the message: Recover the emitted event and sign it and submit the signed
 //     message to the contract on Avalanche
+//  4. Send a cross-chain message from Avalanche to Ethereum
+//  5. Manually relay the message: Uses a mock signature aggregator to sign the message and
+//     submit the signed message to the contract on Ethereum
 func AvalancheValidatorSetRegistry(
 	ctx context.Context,
 	localAvalancheNetwork *localnetwork.LocalAvalancheNetwork,
@@ -34,7 +37,6 @@ func AvalancheValidatorSetRegistry(
 	ecdsaSigner *ecdsa.PrivateKey,
 	ecdsaVerifierContractAddress common.Address,
 	adapterContractAddress common.Address,
-	teleporterInfo utils.TeleporterTestInfo,
 	mockSigner *utils.MockSignatureAggregator,
 ) {
 	// set top-level variables
@@ -43,6 +45,10 @@ func AvalancheValidatorSetRegistry(
 	_, fundedAvalancheKey := localAvalancheNetwork.GetFundedAccountInfo()
 	ethereumNetworkInfo := localEthereumNetwork.EthereumTestInfo()
 	ethereumBlockchainID := localEthereumNetwork.EthereumTestInfo().ChainID()
+	teleporterInfo := localnetwork.NewTeleporterTestInfo(
+		localAvalancheNetwork,
+		localEthereumNetwork,
+	)
 
 	// =========================================================================
 	// Step 1: Deploy the TeleporterMessengerV2 contract on both chains
