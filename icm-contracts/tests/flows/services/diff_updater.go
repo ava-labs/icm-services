@@ -34,16 +34,26 @@ import (
 // transactor gas cap (~10M); observed estimate ~11.5M on local Ethereum.
 const diffUpdaterBootstrapGasLimit uint64 = 16_000_000
 
-// DiffUpdater tests the relayer's DiffSetUpdater end-to-end:
+const (
+	// Must be below the ValidatorManager's MaximumChurnPercentage (20%) so
+	// that a weight large enough to trigger the threshold doesn't violate
+	// the churn limit.
+	thresholdWeightChangeThresholdPct float64 = 0.05
+	// Must be larger than Phase 1 wall-clock time (registration ~90s on CI +
+	// 20s observation). 120s gives headroom so staleness never fires during
+	// the below-threshold observation window.
+	thresholdMaxUpdateIntervalSeconds uint64 = 120
+)
+
+// DiffUpdater tests the relayer's DiffSetUpdater end-to-end with threshold-based
+// gas optimization enabled:
+//
 //  1. Deploys a DiffUpdater contract on the external Ethereum network.
-//  2. Configures the relayer with an ExternalEVMDestination (ContractType "diff").
-//  3. Starts the relayer and waits for it to automatically detect validators,
-//     build a ValidatorSetDiff warp message, aggregate signatures, and submit the
-//     registerValidatorSet / updateValidatorSet transactions.
-//  4. Verifies the on-chain validator set matches expectations.
-//  5. Adds a new validator to the L1 to trigger a diff-based update.
-//  6. Waits for the relayer to detect the change and send a diff update.
-//  7. Verifies the updated on-chain validator set includes the new validator.
+//  2. Starts the relayer with threshold config, waits for initial validator set
+//     registration (totalWeight=0 always triggers an immediate update).
+//  3. Adds a small-weight validator below the threshold — verifies NO update.
+//  4. Waits for the staleness interval to force the update.
+//  5. Adds a large-weight validator above the threshold — verifies fast update.
 func DiffUpdater(
 	ctx context.Context,
 	log logging.Logger,
@@ -61,6 +71,8 @@ func DiffUpdater(
 		zap.Stringer("blockchainID", blockchainID),
 		zap.Stringer("subnetID", l1Info.SubnetID),
 		zap.Uint32("networkID", networkID),
+		zap.Float64("weightChangeThresholdPct", thresholdWeightChangeThresholdPct),
+		zap.Uint64("maxUpdateIntervalSeconds", thresholdMaxUpdateIntervalSeconds),
 	)
 
 	ethClient := ethereumNetwork.EthClient
@@ -69,7 +81,7 @@ func DiffUpdater(
 	fundedAddress, fundedKey := avalancheNetwork.GetFundedAccountInfo()
 
 	// =========================================================================
-	// Step 1: Fetch primary network validators for P-chain bootstrap
+	// Setup: Fetch primary network validators for P-chain bootstrap
 	// =========================================================================
 	primaryNetworkInfo := avalancheNetwork.GetPrimaryNetworkInfo()
 	pChainClient := clients.NewCanonicalValidatorClient(&config.APIConfig{
@@ -123,7 +135,7 @@ func DiffUpdater(
 	)
 
 	// =========================================================================
-	// Step 2: Deploy DiffUpdater contract (Nick's method, same as SubsetUpdater e2e)
+	// Setup: Deploy DiffUpdater contract
 	// =========================================================================
 	txOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, chainID)
 	Expect(err).Should(BeNil())
@@ -150,7 +162,7 @@ func DiffUpdater(
 	)
 
 	// =========================================================================
-	// Step 3: Bootstrap P-chain validators via updateValidatorSet
+	// Setup: Bootstrap P-chain validators via updateValidatorSet
 	// =========================================================================
 	for i, shardBytes := range pChainShardBytesList {
 		shard := diffupdater.ValidatorSetShard{
@@ -182,9 +194,9 @@ func DiffUpdater(
 		"L1 validator set should start empty")
 
 	// =========================================================================
-	// Step 4: Configure and start the relayer
+	// Setup: Configure and start the relayer with threshold config
 	// =========================================================================
-	log.Info("Configuring relayer with ExternalEVMDestination (diff)")
+	log.Info("Configuring relayer with ExternalEVMDestination (diff + threshold)")
 
 	err = utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
@@ -222,7 +234,8 @@ func DiffUpdater(
 	log.Info("Relayer started, waiting for validator set registration...")
 
 	// =========================================================================
-	// Step 5: Wait for the relayer to register the validator set
+	// Wait for the relayer to register the initial validator set.
+	// Even with threshold config, totalWeight=0 triggers an immediate update.
 	// =========================================================================
 	pollCtx, pollCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer pollCancel()
@@ -230,8 +243,7 @@ func DiffUpdater(
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	var firstPChainHeight uint64
-	var firstValidatorCount int
+	var firstTotalWeight uint64
 
 	for done := false; !done; {
 		select {
@@ -244,20 +256,15 @@ func DiffUpdater(
 				log.Warn("Failed to query on-chain validator set", zap.Error(err))
 				continue
 			}
-
 			if vs.TotalWeight == 0 {
 				log.Debug("Validator set not yet registered, waiting...")
 				continue
 			}
 
-			// =========================================================================
-			// Step 6: Verify the registered validator set
-			// =========================================================================
-			log.Info("Validator set registered by relayer!",
+			log.Info("Initial validator set registered",
 				zap.Int("validatorCount", len(vs.Validators)),
 				zap.Uint64("totalWeight", vs.TotalWeight),
 				zap.Uint64("pChainHeight", vs.PChainHeight),
-				zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
 			)
 
 			Expect(vs.PChainHeight).Should(BeNumerically(">", 0),
@@ -284,23 +291,20 @@ func DiffUpdater(
 			Expect(vs.TotalWeight).Should(Equal(calculatedWeight),
 				"Total weight should match sum of individual validator weights")
 
-			firstPChainHeight = vs.PChainHeight
-			firstValidatorCount = len(vs.Validators)
-
-			log.Info("First registration verified",
-				zap.String("contractAddress", contractAddr.Hex()),
-				zap.Int("validatorCount", firstValidatorCount),
-				zap.Uint64("totalWeight", vs.TotalWeight),
-				zap.Uint64("pChainHeight", firstPChainHeight),
-			)
+			firstTotalWeight = vs.TotalWeight
 			done = true
 		}
 	}
 
+	firstRegistrationTime := time.Now()
+	log.Info("Initial registration complete",
+		zap.Uint64("firstTotalWeight", firstTotalWeight),
+	)
+
 	// =========================================================================
-	// Step 7: Add a new validator to trigger diff update
+	// Phase 1: Add a small validator (below threshold) — verify NO update
 	// =========================================================================
-	log.Info("Adding a new validator to trigger diff update...")
+	log.Info("Phase 1: Adding small validator (below threshold)...")
 
 	validatorManagerProxy, poaManagerProxy := avalancheNetwork.GetValidatorManager(l1Info.SubnetID)
 	poaManager, err := poamanager.NewPoAManager(poaManagerProxy.Address, l1Info.EthClient)
@@ -310,34 +314,37 @@ func DiffUpdater(
 	aggregator := avalancheNetwork.GetSignatureAggregator()
 	defer aggregator.Shutdown()
 
-	newNodes := avalancheNetwork.GetExtraNodes(1)
-	Expect(len(newNodes)).Should(Equal(1), "Should have at least 1 extra node available")
+	newNodes := avalancheNetwork.GetExtraNodes(2)
+	Expect(len(newNodes)).Should(Equal(2))
 
-	log.Info("Adding extra node as subnet validator",
-		zap.Stringer("nodeID", newNodes[0].NodeID),
+	smallWeight := units.Schmeckle / 10
+	expectedDeltaPct := float64(smallWeight) / float64(firstTotalWeight)
+	log.Info("Phase 1: Small validator weight details",
+		zap.Uint64("smallWeight", smallWeight),
+		zap.Uint64("firstTotalWeight", firstTotalWeight),
+		zap.Float64("expectedDeltaPct", expectedDeltaPct),
+		zap.Float64("threshold", thresholdWeightChangeThresholdPct),
 	)
-	l1Info = avalancheNetwork.AddSubnetValidators(newNodes, l1Info, true)
+	Expect(expectedDeltaPct).Should(BeNumerically("<", thresholdWeightChangeThresholdPct),
+		"Small validator weight should be below the threshold")
 
-	addValidatorCtx, addValidatorCancel := context.WithTimeout(ctx, 120*time.Second)
-	defer addValidatorCancel()
+	l1Info = avalancheNetwork.AddSubnetValidators(newNodes[:1], l1Info, true)
+
+	addSmallCtx, addSmallCancel := context.WithTimeout(ctx, 150*time.Second)
+	defer addSmallCancel()
 
 	expiry := uint64(time.Now().Add(24 * time.Hour).Unix())
 	pop, err := newNodes[0].GetProofOfPossession()
 	Expect(err).Should(BeNil())
 
-	node := utils.Node{
+	smallNode := utils.Node{
 		NodeID:  newNodes[0].NodeID,
 		NodePoP: pop,
-		Weight:  units.Schmeckle / 5,
+		Weight:  smallWeight,
 	}
 
-	log.Info("Initiating PoA validator registration",
-		zap.Stringer("nodeID", node.NodeID),
-		zap.Uint64("weight", node.Weight),
-	)
-
 	utils.InitiateAndCompletePoAValidatorRegistration(
-		addValidatorCtx,
+		addSmallCtx,
 		aggregator,
 		fundedKey,
 		l1Info,
@@ -346,70 +353,227 @@ func DiffUpdater(
 		poaManagerProxy.Address,
 		validatorManagerProxy.Address,
 		expiry,
-		node,
+		smallNode,
 		avalancheNetwork.GetPChainWallet(),
 		avalancheNetwork.GetNetworkID(),
 	)
 
-	log.Info("New validator added, waiting for relayer to detect and send diff update...")
-
 	err = utils.IssueTxsToAdvanceChain(ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5)
 	Expect(err).Should(BeNil())
 
-	// =========================================================================
-	// Step 8: Wait for diff update with updated validator set
-	// =========================================================================
-	updateCtx, updateCancel := context.WithTimeout(ctx, 120*time.Second)
-	defer updateCancel()
+	// Snapshot on-chain state after the P-chain registration completes.
+	baselineVS, err := contract.GetValidatorSet(callOpts, blockchainID)
+	Expect(err).Should(BeNil())
+	baselineValidatorCount := len(baselineVS.Validators)
+	baselinePChainHeight := baselineVS.PChainHeight
 
-	updateTicker := time.NewTicker(2 * time.Second)
-	defer updateTicker.Stop()
+	log.Info("Phase 1: Baseline snapshot after registration",
+		zap.Int("baselineValidatorCount", baselineValidatorCount),
+		zap.Uint64("baselinePChainHeight", baselinePChainHeight),
+		zap.Uint64("baselineTotalWeight", baselineVS.TotalWeight),
+	)
+
+	log.Info("Phase 1: Verifying NO on-chain update for 20s...")
+
+	noUpdateCtx, noUpdateCancel := context.WithTimeout(ctx, 20*time.Second)
+	defer noUpdateCancel()
+
+	noUpdateTicker := time.NewTicker(2 * time.Second)
+	defer noUpdateTicker.Stop()
 
 	for {
 		select {
-		case <-updateCtx.Done():
+		case <-noUpdateCtx.Done():
+			log.Info("Phase 1 PASSED: No update within 20s (below threshold)")
+		case <-noUpdateTicker.C:
+			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
+			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
+				continue
+			}
+			Expect(len(vs.Validators)).Should(Equal(baselineValidatorCount),
+				"Phase 1: Validator count should NOT change while below threshold")
+			Expect(vs.PChainHeight).Should(Equal(baselinePChainHeight),
+				"Phase 1: P-chain height should NOT change while below threshold")
+			continue
+		}
+		break
+	}
+
+	// =========================================================================
+	// Phase 2: Wait for staleness to force the update
+	// =========================================================================
+	log.Info("Phase 2: Waiting for staleness-forced update...")
+
+	elapsed := time.Since(firstRegistrationTime)
+	stalenessTimeout := time.Duration(thresholdMaxUpdateIntervalSeconds)*time.Second + 90*time.Second
+	remainingWait := stalenessTimeout - elapsed
+	if remainingWait < 30*time.Second {
+		remainingWait = 30 * time.Second
+	}
+
+	log.Info("Phase 2: Timing",
+		zap.Duration("elapsed", elapsed),
+		zap.Duration("stalenessTimeout", stalenessTimeout),
+		zap.Duration("remainingWait", remainingWait),
+	)
+
+	stalenessCtx, stalenessCancel := context.WithTimeout(ctx, remainingWait)
+	defer stalenessCancel()
+
+	stalenessTicker := time.NewTicker(2 * time.Second)
+	defer stalenessTicker.Stop()
+
+	var secondPChainHeight uint64
+	var secondValidatorCount int
+	var secondTotalWeight uint64
+
+	for {
+		select {
+		case <-stalenessCtx.Done():
 			Expect(false).Should(BeTrue(),
-				"Timed out waiting for relayer to send diff update after validator change")
-		case <-updateTicker.C:
+				"Phase 2: Timed out waiting for staleness-forced update")
+		case <-stalenessTicker.C:
 			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
 			if err != nil {
 				log.Warn("Failed to query on-chain validator set", zap.Error(err))
 				continue
 			}
 
-			if len(vs.Validators) <= firstValidatorCount || vs.PChainHeight <= firstPChainHeight {
-				log.Debug("Waiting for validator set re-registration...",
-					zap.Int("currentValidatorCount", len(vs.Validators)),
-					zap.Int("expectedMinValidatorCount", firstValidatorCount+1),
+			if vs.PChainHeight <= baselinePChainHeight {
+				log.Debug("Phase 2: Still waiting for staleness update...",
+					zap.Duration("elapsed", time.Since(firstRegistrationTime)),
+				)
+				continue
+			}
+
+			log.Info("Phase 2: Staleness-forced update detected!",
+				zap.Int("validatorCount", len(vs.Validators)),
+				zap.Uint64("totalWeight", vs.TotalWeight),
+				zap.Uint64("pChainHeight", vs.PChainHeight),
+			)
+
+			Expect(len(vs.Validators)).Should(BeNumerically(">", baselineValidatorCount),
+				"Phase 2: Staleness update should include the small validator")
+			Expect(vs.PChainHeight).Should(BeNumerically(">", baselinePChainHeight))
+
+			secondPChainHeight = vs.PChainHeight
+			secondValidatorCount = len(vs.Validators)
+			secondTotalWeight = vs.TotalWeight
+		}
+		break
+	}
+
+	stalenessUpdateTime := time.Now()
+	log.Info("Phase 2 PASSED: Staleness-forced update confirmed",
+		zap.Int("secondValidatorCount", secondValidatorCount),
+		zap.Uint64("secondTotalWeight", secondTotalWeight),
+		zap.Uint64("secondPChainHeight", secondPChainHeight),
+	)
+
+	// =========================================================================
+	// Phase 3: Add a large validator (above threshold) — verify fast update
+	// =========================================================================
+	log.Info("Phase 3: Adding large validator (above threshold)...")
+
+	largeWeight := units.Schmeckle / 3
+	expectedLargeDeltaPct := float64(largeWeight) / float64(secondTotalWeight)
+	log.Info("Phase 3: Large validator weight details",
+		zap.Uint64("largeWeight", largeWeight),
+		zap.Uint64("secondTotalWeight", secondTotalWeight),
+		zap.Float64("expectedDeltaPct", expectedLargeDeltaPct),
+		zap.Float64("threshold", thresholdWeightChangeThresholdPct),
+	)
+	Expect(expectedLargeDeltaPct).Should(BeNumerically(">=", thresholdWeightChangeThresholdPct),
+		"Large validator weight should exceed the threshold")
+
+	l1Info = avalancheNetwork.AddSubnetValidators(newNodes[1:2], l1Info, true)
+
+	addLargeCtx, addLargeCancel := context.WithTimeout(ctx, 150*time.Second)
+	defer addLargeCancel()
+
+	expiry = uint64(time.Now().Add(24 * time.Hour).Unix())
+	pop, err = newNodes[1].GetProofOfPossession()
+	Expect(err).Should(BeNil())
+
+	largeNode := utils.Node{
+		NodeID:  newNodes[1].NodeID,
+		NodePoP: pop,
+		Weight:  largeWeight,
+	}
+
+	utils.InitiateAndCompletePoAValidatorRegistration(
+		addLargeCtx,
+		aggregator,
+		fundedKey,
+		l1Info,
+		pChainInfo,
+		poaManager,
+		poaManagerProxy.Address,
+		validatorManagerProxy.Address,
+		expiry,
+		largeNode,
+		avalancheNetwork.GetPChainWallet(),
+		avalancheNetwork.GetNetworkID(),
+	)
+
+	err = utils.IssueTxsToAdvanceChain(ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5)
+	Expect(err).Should(BeNil())
+
+	log.Info("Phase 3: Large validator added, waiting for threshold-triggered update...")
+
+	// 90s timeout — under the 120s staleness cap. If the update arrives
+	// in this window it was threshold-triggered, not staleness-triggered.
+	thresholdCtx, thresholdCancel := context.WithTimeout(ctx, 90*time.Second)
+	defer thresholdCancel()
+
+	thresholdTicker := time.NewTicker(2 * time.Second)
+	defer thresholdTicker.Stop()
+
+	for {
+		select {
+		case <-thresholdCtx.Done():
+			Expect(false).Should(BeTrue(),
+				"Phase 3: Timed out waiting for threshold-triggered update")
+		case <-thresholdTicker.C:
+			vs, err := contract.GetValidatorSet(callOpts, blockchainID)
+			if err != nil {
+				log.Warn("Failed to query on-chain validator set", zap.Error(err))
+				continue
+			}
+
+			if vs.PChainHeight <= secondPChainHeight {
+				log.Debug("Phase 3: Waiting for threshold-triggered update...",
+					zap.Int("currentCount", len(vs.Validators)),
 					zap.Uint64("currentPChainHeight", vs.PChainHeight),
 				)
 				continue
 			}
 
-			log.Info("Validator set updated via diff by relayer!",
+			updateLatency := time.Since(stalenessUpdateTime)
+			log.Info("Phase 3: Threshold-triggered update detected!",
 				zap.Int("validatorCount", len(vs.Validators)),
 				zap.Uint64("totalWeight", vs.TotalWeight),
 				zap.Uint64("pChainHeight", vs.PChainHeight),
-				zap.Uint64("pChainTimestamp", vs.PChainTimestamp),
+				zap.Duration("updateLatency", updateLatency),
 			)
 
-			Expect(len(vs.Validators)).Should(BeNumerically(">", firstValidatorCount),
-				"Updated validator set should have more validators after adding one")
-			Expect(vs.PChainHeight).Should(BeNumerically(">", firstPChainHeight),
-				"Updated validator set should have higher P-chain height")
-			Expect(vs.PChainTimestamp).Should(BeNumerically(">", 0),
-				"Updated validator set should have positive timestamp")
+			Expect(len(vs.Validators)).Should(BeNumerically(">", secondValidatorCount))
+			Expect(vs.PChainHeight).Should(BeNumerically(">", secondPChainHeight))
+			Expect(vs.TotalWeight).Should(BeNumerically(">", secondTotalWeight))
 
-			log.Info("DiffUpdater e2e test PASSED",
-				zap.String("contractAddress", contractAddr.Hex()),
-				zap.Int("firstValidatorCount", firstValidatorCount),
-				zap.Int("updatedValidatorCount", len(vs.Validators)),
-				zap.Uint64("firstPChainHeight", firstPChainHeight),
-				zap.Uint64("updatedPChainHeight", vs.PChainHeight),
+			Expect(updateLatency).Should(BeNumerically("<",
+				time.Duration(thresholdMaxUpdateIntervalSeconds)*time.Second),
+				"Phase 3: Update should arrive before staleness interval")
+
+			log.Info("Phase 3 PASSED: Threshold-triggered update confirmed",
+				zap.Duration("latency", updateLatency),
 			)
-			return
 		}
+		break
 	}
+
+	log.Info("DiffUpdater e2e test PASSED")
 }
 
 func createDiffUpdaterRelayerConfig(
@@ -438,14 +602,16 @@ func createDiffUpdaterRelayerConfig(
 
 	baseConfig.ExternalEVMDestinations = []*relayercfg.ExternalEVMDestination{
 		{
-			RPCEndpoint:         ethereumNetwork.BaseURL,
-			PrivateKey:          hex.EncodeToString(crypto.FromECDSA(ethFundedKey)),
-			ContractAddress:     contractAddress,
-			BlockchainID:        blockchainID,
-			SubnetID:            subnetID,
-			ShardSize:           testShardSize,
-			PollIntervalSeconds: testPollIntervalSeconds,
-			ContractType:        "diff",
+			RPCEndpoint:              ethereumNetwork.BaseURL,
+			PrivateKey:               hex.EncodeToString(crypto.FromECDSA(ethFundedKey)),
+			ContractAddress:          contractAddress,
+			BlockchainID:             blockchainID,
+			SubnetID:                 subnetID,
+			ShardSize:                testShardSize,
+			PollIntervalSeconds:      testPollIntervalSeconds,
+			ContractType:             "diff",
+			WeightChangeThresholdPct: thresholdWeightChangeThresholdPct,
+			MaxUpdateIntervalSeconds: thresholdMaxUpdateIntervalSeconds,
 		},
 	}
 
