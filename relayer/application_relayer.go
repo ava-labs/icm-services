@@ -54,7 +54,6 @@ type ApplicationRelayer struct {
 	logger                    logging.Logger
 	metrics                   *ApplicationRelayerMetrics
 	network                   *peers.AppRequestNetwork
-	sourceBlockchain          config.SourceBlockchain
 	signingSubnetID           ids.ID
 	destinationClient         vms.DestinationClient
 	relayerID                 database.RelayerID
@@ -121,7 +120,6 @@ func NewApplicationRelayer(
 		logger:                    logger,
 		metrics:                   metrics,
 		network:                   network,
-		sourceBlockchain:          sourceBlockchain,
 		destinationClient:         destinationClient,
 		relayerID:                 relayerID,
 		signingSubnetID:           signingSubnet,
@@ -329,8 +327,7 @@ func (r *ApplicationRelayer) incSuccessfulRelayMessageCount() {
 	r.metrics.successfulRelayMessageCount.
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
-			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String(),
+			r.relayerID.SourceBlockchainID.String(),
 		).Inc()
 }
 
@@ -338,8 +335,7 @@ func (r *ApplicationRelayer) incFailedRelayMessageCount(failureReason string) {
 	r.metrics.failedRelayMessageCount.
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
-			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String(),
+			r.relayerID.SourceBlockchainID.String(),
 			failureReason,
 		).Inc()
 }
@@ -348,8 +344,7 @@ func (r *ApplicationRelayer) setCreateSignedMessageLatencyMS(latency float64) {
 	r.metrics.createSignedMessageLatencyMS.
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
-			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String(),
+			r.relayerID.SourceBlockchainID.String(),
 		).Set(latency)
 }
 
@@ -357,8 +352,7 @@ func (r *ApplicationRelayer) incFetchSignatureRPCCount() {
 	r.metrics.fetchSignatureRPCCount.
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
-			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String(),
+			r.relayerID.SourceBlockchainID.String(),
 		).Inc()
 }
 
@@ -366,7 +360,6 @@ func (r *ApplicationRelayer) incFetchSignatureAppRequestCount() {
 	r.metrics.fetchSignatureAppRequestCount.
 		WithLabelValues(
 			r.relayerID.DestinationBlockchainID.String(),
-			r.sourceBlockchain.GetBlockchainID().String(),
-			r.sourceBlockchain.GetSubnetID().String(),
+			r.relayerID.SourceBlockchainID.String(),
 		).Inc()
 }
