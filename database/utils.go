@@ -71,7 +71,19 @@ func CalculateStartingBlockHeight(
 // Helper function to get the latest processed block height from the database.
 func GetLatestProcessedBlockHeight(db RelayerDatabase, relayerID RelayerID) (uint64, error) {
 	latestProcessedBlockData, err := db.Get(relayerID.ID, LatestProcessedBlockKey)
-	if err != nil {
+	// If we don't find the key, fallback to see if there is an entry for the historical relayer ID
+	// (for backwards compatibility with old config formats)
+	if IsKeyNotFoundError(err) {
+		latestProcessedBlockData, err = db.Get(CalculateRelayerIDHistorical(
+			relayerID.SourceBlockchainID,
+			relayerID.DestinationBlockchainID,
+			relayerID.OriginSenderAddress,
+			relayerID.DestinationAddress,
+		), LatestProcessedBlockKey)
+		if err != nil {
+			return 0, err
+		}
+	} else if err != nil {
 		return 0, err
 	}
 	latestProcessedBlock, err := strconv.ParseUint(string(latestProcessedBlockData), 10, 64)

@@ -20,7 +20,7 @@ func BasicSendReceive(
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
+	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	// Send a transaction to L1 A to issue an ICM Message from the Teleporter contract to L1 B
@@ -41,7 +41,7 @@ func BasicSendReceive(
 	utils.ERC20Approve(
 		ctx,
 		feeToken,
-		teleporterContractAddress,
+		teleporterAddress,
 		big.NewInt(0).Mul(big.NewInt(1e18),
 			big.NewInt(10)),
 		l1AInfo,

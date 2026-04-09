@@ -28,6 +28,7 @@ type SourceBlockchain struct {
 	WarpAPIEndpoint basecfg.APIConfig `mapstructure:"warp-api-endpoint" json:"warp-api-endpoint"` //nolint:lll
 
 	// convenience fields to access parsed data after initialization
+	protocolAddresses            []common.Address
 	subnetID                     ids.ID
 	blockchainID                 ids.ID
 	allowedOriginSenderAddresses []common.Address
@@ -58,6 +59,7 @@ func (s *SourceBlockchain) Validate(destinationBlockchainIDs *set.Set[string]) e
 		if !common.IsHexAddress(messageContractAddress) {
 			return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
 		}
+		s.protocolAddresses = append(s.protocolAddresses, common.HexToAddress(messageContractAddress))
 	}
 
 	// Validate message settings correspond to a supported message protocol
@@ -156,6 +158,10 @@ func (s *SourceBlockchain) GetAllowedOriginSenderAddresses() []common.Address {
 
 func (s *SourceBlockchain) UseAppRequestNetwork() bool {
 	return s.useAppRequestNetwork
+}
+
+func (s *SourceBlockchain) ProtocolAddresses() []common.Address {
+	return s.protocolAddresses
 }
 
 // Specifies a supported destination blockchain and addresses for a source blockchain.

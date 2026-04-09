@@ -44,6 +44,7 @@ func AllowedAddresses(
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
+	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
@@ -364,24 +365,28 @@ func AllowedAddresses(
 
 	// Create relayer keys that allow all source and destination addresses
 	relayerID1 := database.NewRelayerID(
+		teleporterAddress,
 		l1AInfo.BlockchainID,
 		l1BInfo.BlockchainID,
 		database.AllAllowedAddress,
 		database.AllAllowedAddress,
 	)
 	relayerID2 := database.NewRelayerID(
+		teleporterAddress,
 		l1AInfo.BlockchainID,
 		l1BInfo.BlockchainID,
 		allowedAddresses[relayer2AllowedSrcAddressIdx],
 		database.AllAllowedAddress,
 	)
 	relayerID3 := database.NewRelayerID(
+		teleporterAddress,
 		l1AInfo.BlockchainID,
 		l1BInfo.BlockchainID,
 		database.AllAllowedAddress,
 		allowedAddresses[relayer3AllowedDstAddressIdx],
 	)
 	relayerID4 := database.NewRelayerID(
+		teleporterAddress,
 		l1AInfo.BlockchainID,
 		l1BInfo.BlockchainID,
 		allowedAddresses[relayer4AllowedSrcAddressIdx],

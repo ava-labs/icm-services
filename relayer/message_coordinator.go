@@ -59,14 +59,15 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	error,
 ) {
 	// Check that the warp message is from a supported message protocol contract address.
+	protocolAddress := warpMessageInfo.SourceAddress
 	//nolint:lll
-	messageHandlerFactory, supportedMessageProtocol := mc.messageHandlerFactories[warpMessageInfo.UnsignedMessage.SourceChainID][warpMessageInfo.SourceAddress]
+	messageHandlerFactory, supportedMessageProtocol := mc.messageHandlerFactories[warpMessageInfo.UnsignedMessage.SourceChainID][protocolAddress]
 	if !supportedMessageProtocol {
 		// Do not return an error here because it is expected for there to be messages from other contracts
 		// than just the ones supported by a single listener instance.
 		mc.logger.Debug(
 			"Warp message from unsupported message protocol address. Not relaying.",
-			zap.Stringer("protocolAddress", warpMessageInfo.SourceAddress),
+			zap.Stringer("protocolAddress", protocolAddress),
 		)
 		return nil, nil, nil
 	}
@@ -77,6 +78,7 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	}
 
 	appRelayer := mc.getApplicationRelayer(
+		protocolAddress,
 		routeInfo.SourceChainID,
 		routeInfo.SenderAddress,
 		routeInfo.DestinationChainID,
@@ -117,6 +119,7 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 // 4. A match on sourceBlockchainID and destinationBlockchainID, with any originSenderAddress and any
 // destinationAddress
 func (mc *MessageCoordinator) getApplicationRelayer(
+	protocolAddress common.Address,
 	sourceBlockchainID ids.ID,
 	originSenderAddress common.Address,
 	destinationBlockchainID ids.ID,
@@ -124,6 +127,7 @@ func (mc *MessageCoordinator) getApplicationRelayer(
 ) *ApplicationRelayer {
 	// Check for an exact match
 	applicationRelayerID := database.CalculateRelayerID(
+		protocolAddress,
 		sourceBlockchainID,
 		destinationBlockchainID,
 		originSenderAddress,
@@ -136,6 +140,7 @@ func (mc *MessageCoordinator) getApplicationRelayer(
 	// Check for a match on sourceBlockchainID and destinationBlockchainID, with a specific
 	// originSenderAddress and any destinationAddress.
 	applicationRelayerID = database.CalculateRelayerID(
+		protocolAddress,
 		sourceBlockchainID,
 		destinationBlockchainID,
 		originSenderAddress,
@@ -148,6 +153,7 @@ func (mc *MessageCoordinator) getApplicationRelayer(
 	// Check for a match on sourceBlockchainID and destinationBlockchainID, with any originSenderAddress
 	// and a specific destinationAddress.
 	applicationRelayerID = database.CalculateRelayerID(
+		protocolAddress,
 		sourceBlockchainID,
 		destinationBlockchainID,
 		database.AllAllowedAddress,
@@ -160,6 +166,7 @@ func (mc *MessageCoordinator) getApplicationRelayer(
 	// Check for a match on sourceBlockchainID and destinationBlockchainID, with any originSenderAddress
 	// and any destinationAddress.
 	applicationRelayerID = database.CalculateRelayerID(
+		protocolAddress,
 		sourceBlockchainID,
 		destinationBlockchainID,
 		database.AllAllowedAddress,

@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var testingProtocolAddress = common.HexToAddress("0xd81545385803bCD83bd59f58Ba2d2c0562387F83")
+
 func TestIsKeyNotFoundError(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -57,7 +59,7 @@ func TestCalculateRelayerID(t *testing.T) {
 			destinationBlockchainID: id2,
 			originSenderAddress:     AllAllowedAddress,
 			destinationAddress:      AllAllowedAddress,
-			expected:                common.HexToHash("0xf8a8467088fd6f8ad4577408ddda1607e2702ca9827d7fd556c46adae624b7a2"),
+			expected:                common.HexToHash("0xbeea4a95895a40befa2295a8cd56586cce9ea6d28d8616569c542cc1a632edb3"),
 		},
 		{
 			name:                    "zero source address",
@@ -65,7 +67,7 @@ func TestCalculateRelayerID(t *testing.T) {
 			destinationBlockchainID: id2,
 			originSenderAddress:     AllAllowedAddress,
 			destinationAddress:      common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
-			expected:                common.HexToHash("0xa20ede2231d43d072800ad436a4ca8844f9ddd9cb4174f4cc3046e0958e48320"),
+			expected:                common.HexToHash("0x256b953633895cebec219cca02360c095afc40879958ff76cf7b71ece6f64f10"),
 		},
 		{
 			name:                    "zero destination address",
@@ -73,7 +75,7 @@ func TestCalculateRelayerID(t *testing.T) {
 			destinationBlockchainID: id2,
 			originSenderAddress:     common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
 			destinationAddress:      AllAllowedAddress,
-			expected:                common.HexToHash("0xb205a049831478f55b768a4c875b2085339b6053831ecde8a3d406f9d13454a5"),
+			expected:                common.HexToHash("0x90acac45798533ca7263420a73f924b22860184920cd6650aab99a19695f9abb"),
 		},
 		{
 			name:                    "all non-zero",
@@ -81,11 +83,12 @@ func TestCalculateRelayerID(t *testing.T) {
 			destinationBlockchainID: id2,
 			originSenderAddress:     common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
 			destinationAddress:      common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
-			expected:                common.HexToHash("0x6661512bc3b5689b28a4c2519425f725b5681b90fea937433103c846f742f918"),
+			expected:                common.HexToHash("0xefe8c09dd4232671543a04507abba2a6a3d60ed0b65a2296dc3707202738a7b4"),
 		},
 	}
 	for _, testCase := range testCases {
 		result := CalculateRelayerID(
+			testingProtocolAddress,
 			testCase.sourceBlockchainID,
 			testCase.destinationBlockchainID,
 			testCase.originSenderAddress,
@@ -174,36 +177,42 @@ func TestGetConfigRelayerKeys(t *testing.T) {
 
 	targetIDs := []RelayerID{
 		NewRelayerID(
+			testingProtocolAddress,
 			srcCfg1.GetBlockchainID(),
 			dstCfg1.GetBlockchainID(),
 			AllAllowedAddress,
 			AllAllowedAddress,
 		),
 		NewRelayerID(
+			testingProtocolAddress,
 			srcCfg2.GetBlockchainID(),
 			dstCfg1.GetBlockchainID(),
 			allowedAddress,
 			AllAllowedAddress,
 		),
 		NewRelayerID(
+			testingProtocolAddress,
 			srcCfg3.GetBlockchainID(),
 			dstCfg1.GetBlockchainID(),
 			AllAllowedAddress,
 			AllAllowedAddress,
 		),
 		NewRelayerID(
+			testingProtocolAddress,
 			srcCfg4.GetBlockchainID(),
 			dstCfg1.GetBlockchainID(),
 			allowedAddress,
 			AllAllowedAddress,
 		),
 		NewRelayerID(
+			testingProtocolAddress,
 			srcCfg5.GetBlockchainID(),
 			dstCfg1.GetBlockchainID(),
 			AllAllowedAddress,
 			allowedAddress,
 		),
 		NewRelayerID(
+			testingProtocolAddress,
 			srcCfg6.GetBlockchainID(),
 			dstCfg1.GetBlockchainID(),
 			allowedAddress,

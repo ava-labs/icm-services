@@ -17,11 +17,11 @@ func PauseTeleporter(
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
+	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 
 	//
 	// Deploy TestMessenger to L1s A and B
 	//
-	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	_, testMessengerA := utils.DeployTestMessenger(
 		ctx,
 		fundedKey,

@@ -25,6 +25,7 @@ func createRelayerIDs(blockchainIDs []ids.ID) []RelayerID {
 		for allowedDestination := range destinationsBlockchainIDs {
 			id, _ := ids.FromString(allowedDestination)
 			relayerIDs = append(relayerIDs, NewRelayerID(
+				testingProtocolAddress,
 				blockchainID,
 				id,
 				AllAllowedAddress,
