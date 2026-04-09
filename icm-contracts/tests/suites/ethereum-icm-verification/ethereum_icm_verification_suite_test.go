@@ -45,6 +45,7 @@ var (
 	ecdsaVerifierContractAddress  common.Address
 	ecdsaSigner                   *ecdsa.PrivateKey
 	adapterContractAddress        common.Address
+	mockSignatureAggregator       *utils.MockSignatureAggregator
 )
 
 func TestMain(m *testing.M) {
@@ -106,6 +107,9 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	var err error
 	ecdsaSigner, err = ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	Expect(err).Should(BeNil())
+	// Create a mock signature aggregator
+	// TODO: Replace this with a real signature aggregator
+	mockSignatureAggregator = utils.NewMockSignatureAggregator(primaryNetworkInfo.BlockchainID, 4)
 
 	// =========================================================================
 	// Step 1: Deploy the DiffUpdater contract on both chains
@@ -121,6 +125,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		primaryNetworkInfo.SubnetID,
 		platformvm.NewClient(primaryNetworkInfo.NodeURIs[0]),
 		5,
+		mockSignatureAggregator,
 	)
 	// sanity check
 	Expect(len(serializedShards)).Should(Equal(4))
@@ -147,6 +152,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		// N.B. This must be the same as above so that the constructor arguments match
 		// for both deployments
 		5,
+		mockSignatureAggregator,
 	)
 	// Ensure that the contract address is the same as the one deployed on Ethereum
 	Expect(contractAddress).Should(Equal(registryContractAddress))
@@ -255,6 +261,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		ecdsaVerifierContractAddress,
 		registryContractAddress,
 	)
+	Expect(err).Should(BeNil())
 	var (
 		adapterContractTransaction []byte
 		adapterDeployerAddress     common.Address
@@ -311,6 +318,7 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				ecdsaVerifierContractAddress,
 				adapterContractAddress,
 				teleporterInfo,
+				mockSignatureAggregator,
 			)
 		})
 
