@@ -147,7 +147,7 @@ func DeployDiffUpdaterWithMetadata(
 	)
 	Expect(err).Should(BeNil())
 
-	gasLimit := uint64(16_000_000)
+	gasLimit := uint64(10_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
@@ -189,7 +189,7 @@ func DeploySubsetUpdater(
 	)
 	Expect(err).Should(BeNil())
 
-	gasLimit := uint64(10000000)
+	gasLimit := uint64(16_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
