@@ -117,7 +117,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			},
 		},
 		6,
-		6,
+		7,
 		e2eFlags,
 	)
 
@@ -257,7 +257,6 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		func(ctx context.Context) {
 			servicesFlows.DiffUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
-
 	// ValidatorsOnlyNetwork runs last: it puts a subnet in validator-only mode, so any following
 	// test that dials all L1s (e.g. GetL1Infos) would fail until nodes are restarted with the
 	// normal chain config again. Running this spec last avoids that extra restore/restart pass for
