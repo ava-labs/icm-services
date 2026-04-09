@@ -275,7 +275,7 @@ func (mc *MessageCoordinator) ProcessBlock(
 	}
 	// Initiate message relay of all registered messages
 	for _, appRelayer := range mc.applicationRelayers {
-		if appRelayer.sourceBlockchain.GetBlockchainID() != blockchainID {
+		if appRelayer.relayerID.SourceBlockchainID != blockchainID {
 			continue
 		}
 		// Dispatch all messages in the block to the appropriate application relayer.
