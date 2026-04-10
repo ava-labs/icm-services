@@ -70,7 +70,7 @@ func NewApplicationRelayer(
 	network *peers.AppRequestNetwork,
 	relayerID database.RelayerID,
 	destinationClient vms.DestinationClient,
-	sourceBlockchain config.SourceBlockchain,
+	sourceBlockchain *config.SourceBlockchain,
 	checkpointManager CheckpointManager,
 	cfg *config.Config,
 	signatureAggregator *aggregator.SignatureAggregator,
