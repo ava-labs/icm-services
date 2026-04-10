@@ -165,6 +165,7 @@ func ZKAdapterVerifier(
 	zkAdapterABI, err := zkadapter.ZKAdapterMetaData.GetAbi()
 	Expect(err).Should(BeNil())
 
+	var signalSepoliaImageID = common.HexToHash("0x496f08eb75c83402975107a1a8b35a1c935bd6edf73b7a49e2d00ea180516b78")
 	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
 		zkAdapterABI,
 		byteCode,
@@ -173,7 +174,7 @@ func ZKAdapterVerifier(
 		fuluBeaconConfig,
 		big.NewInt(86400),
 		riscZeroVerifierAddress,
-		common.HexToHash("0x496f08eb75c83402975107a1a8b35a1c935bd6edf73b7a49e2d00ea180516b78"),
+		signalSepoliaImageID,
 		fundedAddress,
 		fundedAddress,
 	)
