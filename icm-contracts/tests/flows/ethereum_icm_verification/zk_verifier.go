@@ -168,12 +168,12 @@ func ZKAdapterVerifier(
 	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
 		zkAdapterABI,
 		byteCode,
-		big.NewInt(1), // Ethereum mainnet
+		big.NewInt(11155111), // Sepolia
 		startingState,
 		fuluBeaconConfig,
 		big.NewInt(86400),
 		riscZeroVerifierAddress,
-		common.HexToHash("0x0ccb3d146a7f64e78cc1d146acc26912138ea39bb79b4ca74423389d61b2c30e"),
+		common.HexToHash("0x496f08eb75c83402975107a1a8b35a1c935bd6edf73b7a49e2d00ea180516b78"),
 		fundedAddress,
 		fundedAddress,
 	)

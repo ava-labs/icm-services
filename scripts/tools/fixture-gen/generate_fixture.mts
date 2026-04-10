@@ -36,8 +36,8 @@ const G_INDEX_EXEC_ROOT         = BigInt(88);
 const G_INDEX_RECEIPTS_ROOT     = BigInt(35);  
 const STATE_ROOTS_VECTOR_SIZE   = BigInt(8192);
 
-// Ethereum beacon chain genesis time
-const MAINNET_BEACON_GENESIS_TIME = 1606824023;
+// Sepolia beacon chain genesis time
+const SEPOLIA_BEACON_GENESIS_TIME = 1655733600;
 const SECONDS_PER_SLOT = 12;
 
 // Helpers
@@ -46,7 +46,7 @@ function toHex(bytes: Uint8Array): string {
 }
 
 function blockTimestampToSlot(timestamp: number): number {
-  return Math.floor((timestamp - MAINNET_BEACON_GENESIS_TIME) / SECONDS_PER_SLOT);
+  return Math.floor((timestamp - SEPOLIA_BEACON_GENESIS_TIME) / SECONDS_PER_SLOT);
 }
 
 // Fetches raw SSZ-encoded bytes from the beacon API 
@@ -297,13 +297,13 @@ async function main() {
   const fixture = {
     anchorBeaconBlockRoot: anchorBeaconBlockRoot,
     metadata: {
-      description: "ZKAdapter e2e test fixture generated from Ethereum Mainnet (Fulu fork)",
+      description: "ZKAdapter e2e test fixture generated from Ethereum Sepolia (Fulu fork)",
       txHash: TX_HASH,
       blockNumber: receiptProofData.receipt.blockNumber,
       targetSlot,
       anchorSlot,
       fork: "fulu",
-      network: "mainnet",
+      network: "sepolia",
     },
     executionProof: {
       anchorSlot,
@@ -327,7 +327,7 @@ async function main() {
     },
   };
 
-  const outPath = path.join(__dirname, "testdata", "ethereum_fixture.json");
+  const outPath = path.join(__dirname, "testdata", "sepolia_fixture.json");
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(fixture, null, 2));
   console.log(`Fixture written to ${outPath}`);
