@@ -116,7 +116,7 @@ func NewApplicationRelayer(
 		}
 	}
 
-	ar := ApplicationRelayer{
+	return &ApplicationRelayer{
 		logger:                    logger,
 		metrics:                   metrics,
 		network:                   network,
@@ -128,9 +128,7 @@ func NewApplicationRelayer(
 		sourceWarpSignatureClient: warpClient,
 		signatureAggregator:       signatureAggregator,
 		processMessageSemaphore:   processMessageSemaphore,
-	}
-
-	return &ar, nil
+	}, nil
 }
 
 // Process [msgs] at height [height] by relaying each message to the destination chain.
