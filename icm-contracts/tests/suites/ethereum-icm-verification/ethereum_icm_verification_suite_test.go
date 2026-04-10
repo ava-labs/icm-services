@@ -63,7 +63,7 @@ func TestEthereumICMVerification(t *testing.T) {
 }
 
 //  1. Deploy a DiffUpdater contract on both chains
-//  2. Apply the shards to initialize the initial validator set on Ethereu (not necessary on Avalanche)
+//  2. Apply the shards to initialize the initial validator set on Ethereum (not necessary on Avalanche)
 //  3. Deploy an ECDSAVerifier contract on both chains
 //  4. Deploy an Adapter contract on both chains and initialize it with the ECDSAVerifier contract
 //     and DiffUpdater contracts
