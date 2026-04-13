@@ -535,7 +535,7 @@ func createApplicationRelayers(
 			checkpointMetrics,
 			db,
 			ticker,
-			*sourceBlockchain,
+			sourceBlockchain,
 			network,
 			cfg,
 			currentHeight,
@@ -565,7 +565,7 @@ func createApplicationRelayersForSourceChain(
 	checkpointMetrics *checkpoint.CheckpointManagerMetrics,
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
-	sourceBlockchain config.SourceBlockchain,
+	sourceBlockchain *config.SourceBlockchain,
 	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 	currentHeight uint64,
@@ -587,7 +587,7 @@ func createApplicationRelayersForSourceChain(
 		minHeight = height
 	}
 
-	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(&sourceBlockchain) {
+	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(sourceBlockchain) {
 		logger = logger.With(
 			zap.Stringer("relayerID", relayerID.ID),
 			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
@@ -728,6 +728,7 @@ func startSubsetSetUpdater(
 	}
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
+	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
 
 	updater := validatorupdater.NewSubsetSetUpdater(
 		logger,
@@ -742,6 +743,8 @@ func startSubsetSetUpdater(
 		subnetID,
 		extDest.ShardSize,
 		pollInterval,
+		extDest.WeightChangeThresholdPct,
+		maxUpdateInterval,
 	)
 
 	return updater.Start(ctx)

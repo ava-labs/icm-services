@@ -57,7 +57,10 @@ func NewCheckpointManager(
 
 	committedHeight := max(storedHeight, startingHeight)
 
-	cm := &CheckpointManager{
+	metrics.UpdateCommittedHeight(relayerID, committedHeight)
+	metrics.UpdatePendingCommitsHeapLength(relayerID, 0)
+
+	return &CheckpointManager{
 		logger:          logger,
 		metrics:         metrics,
 		database:        db,
@@ -67,12 +70,7 @@ func NewCheckpointManager(
 		lock:            &sync.RWMutex{},
 		pendingCommits:  h,
 		dirty:           true,
-	}
-
-	metrics.UpdateCommittedHeight(relayerID, committedHeight)
-	metrics.UpdatePendingCommitsHeapLength(relayerID, 0)
-
-	return cm, nil
+	}, nil
 }
 
 func (cm *CheckpointManager) Run() {
