@@ -117,7 +117,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			},
 		},
 		6,
-		7,
+		8,
 		e2eFlags,
 	)
 
