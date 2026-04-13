@@ -33,7 +33,7 @@ type Listener struct {
 	Subscriber                   *evm.Subscriber
 	currentRequestID             uint32
 	logger                       logging.Logger
-	sourceBlockchain             config.SourceBlockchain
+	sourceBlockchainID           ids.ID
 	healthStatus                 *atomic.Bool
 	ethClient                    *ethclient.Client
 	messageCoordinator           *MessageCoordinator
@@ -122,7 +122,7 @@ func newListener(
 		Subscriber:                   sub,
 		currentRequestID:             rand.Uint32(), // Initialize to a random value to mitigate requestID collision
 		logger:                       logger,
-		sourceBlockchain:             sourceBlockchain,
+		sourceBlockchainID:           blockchainID,
 		errChan:                      errChan,
 		healthStatus:                 relayerHealth,
 		ethClient:                    ethRPCClient,
@@ -170,7 +170,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 
 			go lstnr.messageCoordinator.ProcessBlock(
 				icmBlockInfo,
-				lstnr.sourceBlockchain.GetBlockchainID(),
+				lstnr.sourceBlockchainID,
 				lstnr.errChan,
 			)
 		case subError := <-lstnr.Subscriber.SubscribeErr():
