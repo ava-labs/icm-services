@@ -48,6 +48,15 @@ type SubsetSetUpdater struct {
 	subnetID     ids.ID
 	shardSize    uint32
 	pollInterval time.Duration
+
+	weightChangeThresholdPct float64
+	maxUpdateInterval        time.Duration
+
+	localValidatorSet []*Validator
+	localPChainHeight uint64
+	localTotalWeight  uint64
+	lastUpdateTime    time.Time
+	initialized       bool
 }
 
 func NewSubsetSetUpdater(
@@ -63,6 +72,8 @@ func NewSubsetSetUpdater(
 	subnetID ids.ID,
 	shardSize uint32,
 	pollInterval time.Duration,
+	weightChangeThresholdPct float64,
+	maxUpdateInterval time.Duration,
 ) *SubsetSetUpdater {
 	if shardSize == 0 {
 		shardSize = defaultShardSize
@@ -71,18 +82,20 @@ func NewSubsetSetUpdater(
 		pollInterval = defaultPollInterval
 	}
 	return &SubsetSetUpdater{
-		logger:              logger,
-		pChainClient:        pChainClient,
-		signatureAggregator: signatureAggregator,
-		ethClient:           ethClient,
-		contract:            contract,
-		contractAddress:     contractAddress,
-		txOpts:              txOpts,
-		networkID:           networkID,
-		blockchainID:        blockchainID,
-		subnetID:            subnetID,
-		shardSize:           shardSize,
-		pollInterval:        pollInterval,
+		logger:                   logger,
+		pChainClient:             pChainClient,
+		signatureAggregator:      signatureAggregator,
+		ethClient:                ethClient,
+		contract:                 contract,
+		contractAddress:          contractAddress,
+		txOpts:                   txOpts,
+		networkID:                networkID,
+		blockchainID:             blockchainID,
+		subnetID:                 subnetID,
+		shardSize:                shardSize,
+		pollInterval:             pollInterval,
+		weightChangeThresholdPct: weightChangeThresholdPct,
+		maxUpdateInterval:        maxUpdateInterval,
 	}
 }
 
@@ -91,6 +104,8 @@ func (s *SubsetSetUpdater) Start(ctx context.Context) error {
 	s.logger.Info("Starting SubsetSetUpdater",
 		zap.Stringer("blockchainID", s.blockchainID),
 		zap.Uint32("shardSize", s.shardSize),
+		zap.Float64("weightChangeThresholdPct", s.weightChangeThresholdPct),
+		zap.Duration("maxUpdateInterval", s.maxUpdateInterval),
 	)
 
 	if err := s.checkAndUpdate(ctx); err != nil {
@@ -114,33 +129,128 @@ func (s *SubsetSetUpdater) Start(ctx context.Context) error {
 }
 
 func (s *SubsetSetUpdater) checkAndUpdate(ctx context.Context) error {
+	if !s.initialized {
+		return s.initializeLocalState(ctx)
+	}
+
 	pChainHeight, err := s.pChainClient.GetLatestHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get P-chain height: %w", err)
 	}
 
+	if pChainHeight <= s.localPChainHeight {
+		s.logger.Debug("No new P-chain blocks",
+			zap.Uint64("pChainHeight", pChainHeight),
+			zap.Uint64("localPChainHeight", s.localPChainHeight),
+		)
+		return nil
+	}
+
+	newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch validators at height %d: %w", pChainHeight, err)
+	}
+
+	changes, _ := computeValidatorDiff(s.localValidatorSet, newValidators)
+
+	stale := s.isStale()
+	if len(changes) == 0 && !stale {
+		s.logger.Debug("No validator changes and not stale, skipping")
+		return nil
+	}
+
+	weightDelta := computeWeightDelta(s.localValidatorSet, changes)
+	thresholdCrossed := s.localTotalWeight > 0 &&
+		float64(weightDelta)/float64(s.localTotalWeight) >= s.weightChangeThresholdPct
+
+	if !thresholdCrossed && !stale {
+		s.logger.Debug("Below threshold, skipping update",
+			zap.Uint64("weightDelta", weightDelta),
+			zap.Uint64("localTotalWeight", s.localTotalWeight),
+			zap.Float64("thresholdPct", s.weightChangeThresholdPct),
+		)
+		return nil
+	}
+
+	s.logger.Info("Validator set update triggered",
+		zap.Uint64("localPChainHeight", s.localPChainHeight),
+		zap.Uint64("pChainHeight", pChainHeight),
+		zap.Int("numChanges", len(changes)),
+		zap.Uint64("weightDelta", weightDelta),
+		zap.Bool("thresholdCrossed", thresholdCrossed),
+		zap.Bool("stale", stale),
+	)
+
+	if err := s.performFullSetUpdate(ctx, pChainHeight, s.localPChainHeight, false); err != nil {
+		s.logger.Warn("Subset update failed, re-syncing from contract on next tick", zap.Error(err))
+		s.initialized = false
+		return err
+	}
+
+	s.localValidatorSet = newValidators
+	s.localPChainHeight = pChainHeight
+	s.localTotalWeight = sumWeights(newValidators)
+	s.lastUpdateTime = time.Now()
+
+	return nil
+}
+
+func (s *SubsetSetUpdater) initializeLocalState(ctx context.Context) error {
 	onChainVS, err := s.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, s.blockchainID)
 	if err != nil {
 		return fmt.Errorf("failed to get on-chain validator set: %w", err)
 	}
 
-	if onChainVS.PChainHeight >= pChainHeight {
-		s.logger.Debug("On-chain validator set is up to date",
+	isFirstRegistration := onChainVS.TotalWeight == 0
+	if isFirstRegistration {
+		pChainHeight, err := s.pChainClient.GetLatestHeight(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get P-chain height: %w", err)
+		}
+		s.logger.Info("First registration detected, performing full set update",
 			zap.Uint64("pChainHeight", pChainHeight),
-			zap.Uint64("onChainHeight", onChainVS.PChainHeight),
 		)
+		if err := s.performFullSetUpdate(ctx, pChainHeight, onChainVS.PChainHeight, true); err != nil {
+			return err
+		}
+		newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
+		if err != nil {
+			return fmt.Errorf("failed to fetch validators after first registration: %w", err)
+		}
+		s.localValidatorSet = newValidators
+		s.localPChainHeight = pChainHeight
+		s.localTotalWeight = sumWeights(newValidators)
+		s.lastUpdateTime = time.Now()
+		s.initialized = true
 		return nil
 	}
 
-	isFirstRegistration := onChainVS.TotalWeight == 0
+	validators, err := s.fetchSortedValidators(ctx, onChainVS.PChainHeight)
+	if err != nil {
+		return fmt.Errorf("failed to fetch P-chain validators at on-chain height %d: %w",
+			onChainVS.PChainHeight, err)
+	}
 
-	s.logger.Info("Validator set update needed",
-		zap.Uint64("onChainHeight", onChainVS.PChainHeight),
-		zap.Uint64("pChainHeight", pChainHeight),
-		zap.Bool("isFirstRegistration", isFirstRegistration),
+	s.localValidatorSet = validators
+	s.localPChainHeight = onChainVS.PChainHeight
+	s.localTotalWeight = sumWeights(validators)
+	s.lastUpdateTime = time.Now()
+	s.initialized = true
+
+	s.logger.Info("Initialized local validator set from contract",
+		zap.Uint64("pChainHeight", onChainVS.PChainHeight),
+		zap.Int("numValidators", len(validators)),
+		zap.Uint64("totalWeight", s.localTotalWeight),
 	)
 
-	return s.performFullSetUpdate(ctx, pChainHeight, onChainVS.PChainHeight, isFirstRegistration)
+	return nil
+}
+
+func (s *SubsetSetUpdater) isStale() bool {
+	if s.maxUpdateInterval == 0 {
+		return false
+	}
+	return time.Since(s.lastUpdateTime) >= s.maxUpdateInterval
 }
 
 // ---------------------------------------------------------------------------

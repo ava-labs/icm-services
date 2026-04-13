@@ -728,6 +728,7 @@ func startSubsetSetUpdater(
 	}
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
+	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
 
 	updater := validatorupdater.NewSubsetSetUpdater(
 		logger,
@@ -742,6 +743,8 @@ func startSubsetSetUpdater(
 		subnetID,
 		extDest.ShardSize,
 		pollInterval,
+		extDest.WeightChangeThresholdPct,
+		maxUpdateInterval,
 	)
 
 	return updater.Start(ctx)
