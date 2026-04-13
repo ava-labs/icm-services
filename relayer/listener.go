@@ -40,6 +40,7 @@ type Listener struct {
 	maxConcurrentMsg             uint64
 	errChan                      chan error
 	lastSubscriberBlockProcessed uint64
+	protocolAddr                 common.Address
 }
 
 // RunListener creates a Listener instance and the ApplicationRelayers for a subnet.
@@ -47,6 +48,7 @@ type Listener struct {
 func RunListener(
 	ctx context.Context,
 	logger logging.Logger,
+	protocolAddr common.Address,
 	sourceBlockchain config.SourceBlockchain,
 	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
@@ -64,6 +66,7 @@ func RunListener(
 	listener, err := newListener(
 		ctx,
 		logger,
+		protocolAddr,
 		sourceBlockchain,
 		ethRPCClient,
 		relayerHealth,
@@ -85,6 +88,7 @@ func RunListener(
 func newListener(
 	ctx context.Context,
 	logger logging.Logger,
+	protocolAddr common.Address,
 	sourceBlockchain config.SourceBlockchain,
 	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
@@ -114,7 +118,7 @@ func newListener(
 		ethWSClient,
 		ethRPCClient,
 		errChan,
-		[][]common.Hash{{types.WarpPrecompileLogFilter}, { /* TODO Teleporter Addr */ }},
+		[][]common.Hash{{types.WarpPrecompileLogFilter}, {common.BytesToHash(protocolAddr[:])}},
 	)
 
 	logger.Info("Creating relayer")
@@ -129,6 +133,7 @@ func newListener(
 		messageCoordinator:           messageCoordinator,
 		maxConcurrentMsg:             maxConcurrentMsg,
 		lastSubscriberBlockProcessed: startingHeight - 1,
+		protocolAddr:                 protocolAddr,
 	}
 
 	// Open the subscription. We must do this before processing any missed messages, otherwise we may

@@ -327,25 +327,32 @@ func main() {
 
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
-		// errgroup will cancel the context when the first goroutine returns an error
-		errGroup.Go(func() error {
-			log := logger.With(zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()))
-			// runListener runs until it errors or the context is canceled by another goroutine
-			err := relayer.RunListener(
-				ctx,
-				log,
-				*sourceBlockchain,
-				sourceClients[sourceBlockchain.GetBlockchainID()],
-				relayerHealth[sourceBlockchain.GetBlockchainID()],
-				minHeights[sourceBlockchain.GetBlockchainID()],
-				messageCoordinator,
-				cfg.MaxConcurrentMessages,
-			)
-			if err != nil {
-				log.Error("error running listener", zap.Error(err))
-			}
-			return err
-		})
+		for _, protocolAddr := range sourceBlockchain.ProtocolAddresses() {
+			// errgroup will cancel the context when the first goroutine returns an error
+			errGroup.Go(func() error {
+				log := logger.With(
+					zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
+					zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
+					zap.String("protocolAddress", protocolAddr.String()),
+				)
+				// runListener runs until it errors or the context is canceled by another goroutine
+				err := relayer.RunListener(
+					ctx,
+					log,
+					protocolAddr,
+					*sourceBlockchain,
+					sourceClients[sourceBlockchain.GetBlockchainID()],
+					relayerHealth[sourceBlockchain.GetBlockchainID()],
+					minHeights[sourceBlockchain.GetBlockchainID()],
+					messageCoordinator,
+					cfg.MaxConcurrentMessages,
+				)
+				if err != nil {
+					log.Error("error running listener", zap.Error(err))
+				}
+				return err
+			})
+		}
 	}
 
 	// Start validator set updaters for configured external EVM destinations
