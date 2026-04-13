@@ -30,6 +30,7 @@ func BasicRelay(
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
+	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 	err := utils.ClearRelayerStorage()
 	Expect(err).Should(BeNil())
@@ -123,13 +124,17 @@ func BasicRelay(
 	Expect(err).Should(BeNil())
 
 	// Create relayer keys that allow all source and destination addresses
+
+	// The address will be the same for all chains
 	relayerIDA := database.CalculateRelayerID(
+		teleporterAddress,
 		l1AInfo.BlockchainID,
 		l1BInfo.BlockchainID,
 		database.AllAllowedAddress,
 		database.AllAllowedAddress,
 	)
 	relayerIDB := database.CalculateRelayerID(
+		teleporterAddress,
 		l1BInfo.BlockchainID,
 		l1AInfo.BlockchainID,
 		database.AllAllowedAddress,

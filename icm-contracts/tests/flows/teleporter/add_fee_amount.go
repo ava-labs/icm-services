@@ -19,7 +19,7 @@ func AddFeeAmount(
 ) {
 	l1AInfo := network.GetPrimaryNetworkInfo()
 	l1BInfo, _ := network.GetTwoL1s()
-	teleporterContractAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
+	teleporterAddress := teleporter.TeleporterMessengerAddress(l1AInfo.BlockchainID)
 	fundedAddress, fundedKey := network.GetFundedAccountInfo()
 
 	// Use mock token as the fee token
@@ -31,7 +31,7 @@ func AddFeeAmount(
 	utils.ERC20Approve(
 		ctx,
 		mockToken,
-		teleporterContractAddress,
+		teleporterAddress,
 		big.NewInt(1e18),
 		l1AInfo,
 		fundedKey,
