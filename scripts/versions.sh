@@ -32,7 +32,7 @@ function extract_commit() {
 export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 # Don't export them as they're used in the context of other calls
 #AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/avalanchego)")}
-AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'1cc297952613e6622b234b8e6bea49be460cf646'}
+AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-'beb7614d017bb1fc7b96c2de4cfac3f8a9ccfa7a'}
 LIBEVM_VERSION=${LIBEVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/libevm)")}
 
 # Extract the Solidity version from foundry.toml

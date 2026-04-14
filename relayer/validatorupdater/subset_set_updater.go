@@ -6,6 +6,7 @@ package validatorupdater
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"sort"
 	"time"
@@ -282,11 +283,14 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
+	justification := make([]byte, 8)
+	binary.BigEndian.PutUint64(justification, uint64(s.shardSize))
+
 	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
 		ctx,
 		s.logger,
 		subsetUpdateMsg,
-		nil,
+		justification,
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
