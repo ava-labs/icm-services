@@ -3,6 +3,14 @@
 
 package config
 
+import "github.com/ava-labs/libevm/common"
+
+// Protocol pairs a contract address with the message protocol it implements.
+type Protocol struct {
+	Address  common.Address
+	Protocol MessageProtocol
+}
+
 // Supported Message Protocols
 type MessageProtocol int
 

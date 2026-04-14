@@ -23,8 +23,6 @@ import (
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
-	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
-	"github.com/ava-labs/icm-services/messages/teleporter"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/peers/clients"
@@ -327,14 +325,18 @@ func main() {
 
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
-		for _, protocolAddr := range sourceBlockchain.ProtocolAddresses() {
+		for _, protocol := range sourceBlockchain.Protocols() {
+			// We don't need to spawn a listener for the off-chain registry.
+			if protocol.Protocol == config.OFF_CHAIN_REGISTRY {
+				continue
+			}
 			// errgroup will cancel the context when the first goroutine returns an error
 			errGroup.Go(func() error {
 				// runListener runs until it errors or the context is canceled by another goroutine
 				return relayer.RunListener(
 					ctx,
 					logger,
-					protocolAddr,
+					protocol,
 					*sourceBlockchain,
 					sourceClients[sourceBlockchain.GetBlockchainID()],
 					relayerHealth[sourceBlockchain.GetBlockchainID()],
@@ -437,30 +439,7 @@ func createMessageHandlerFactories(
 		// Create message handler factories for each supported message protocol
 		for addressStr, cfg := range sourceBlockchain.MessageContracts {
 			address := common.HexToAddress(addressStr)
-			format := cfg.MessageFormat
-			var (
-				m   messages.MessageHandlerFactory
-				err error
-			)
-			switch config.ParseMessageProtocol(format) {
-			case config.TELEPORTER:
-				m, err = teleporter.NewMessageHandlerFactory(
-					address,
-					cfg,
-					deciderConnection,
-				)
-			case config.OFF_CHAIN_REGISTRY:
-				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
-			case config.TELEPORTER_V2:
-				// m, err = teleporterv2.NewMessageHandlerFactory(
-				// 	address,
-				// 	cfg,
-				// 	deciderConnection,
-				// )
-				err = fmt.Errorf("teleporter v2 is not yet supported")
-			default:
-				m, err = nil, fmt.Errorf("invalid message format %s", format)
-			}
+			m, err := relayer.NewMessageHandlerFactory(address, cfg, deciderConnection)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create message handler factory: %w", err)
 			}
