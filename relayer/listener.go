@@ -28,17 +28,13 @@ const (
 	retryResubscribeTimeout = 10 * time.Second
 )
 
-// EventFilterForProtocol returns the ethereum log filter topics for the given protocol and
-// contract address. Returns nil for protocols that do not use a listener.
-func EventFilterForProtocol(
-	protocol config.MessageProtocol,
-	address common.Address,
-) [][]common.Hash {
-	switch protocol {
+// EventFilterForProtocol returns the ethereum log filter topics for the given protocol and contract address.
+func EventFilterForProtocol(protocol config.Protocol) [][]common.Hash {
+	switch protocol.Type {
 	case config.TELEPORTER:
 		return [][]common.Hash{
 			{types.WarpPrecompileLogFilter},
-			{common.BytesToHash(address[:])},
+			{common.BytesToHash(protocol.Address[:])},
 		}
 	case config.TELEPORTER_V2:
 		panic("teleporter v2 is not yet supported")
@@ -138,7 +134,7 @@ func newListener(
 		ethWSClient,
 		ethRPCClient,
 		errChan,
-		EventFilterForProtocol(protocol.Protocol, protocol.Address),
+		EventFilterForProtocol(protocol),
 	)
 
 	logger.Info("Creating relayer")

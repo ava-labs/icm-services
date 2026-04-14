@@ -64,8 +64,8 @@ func (s *SourceBlockchain) Validate(destinationBlockchainIDs *set.Set[string]) e
 			return fmt.Errorf("unsupported message protocol for source subnet: %s", messageConfig.MessageFormat)
 		}
 		s.protocols = append(s.protocols, Protocol{
-			Address:  common.HexToAddress(messageContractAddress),
-			Protocol: protocol,
+			Address: common.HexToAddress(messageContractAddress),
+			Type:    protocol,
 		})
 	}
 

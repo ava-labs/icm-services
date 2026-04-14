@@ -327,7 +327,7 @@ func main() {
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		for _, protocol := range sourceBlockchain.Protocols() {
 			// We don't need to spawn a listener for the off-chain registry.
-			if protocol.Protocol == config.OFF_CHAIN_REGISTRY {
+			if protocol.Type == config.OFF_CHAIN_REGISTRY {
 				continue
 			}
 			// errgroup will cancel the context when the first goroutine returns an error

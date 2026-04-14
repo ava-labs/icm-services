@@ -7,8 +7,8 @@ import "github.com/ava-labs/libevm/common"
 
 // Protocol pairs a contract address with the message protocol it implements.
 type Protocol struct {
-	Address  common.Address
-	Protocol MessageProtocol
+	Address common.Address
+	Type    MessageProtocol
 }
 
 // Supported Message Protocols
