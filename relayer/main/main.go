@@ -330,15 +330,10 @@ func main() {
 		for _, protocolAddr := range sourceBlockchain.ProtocolAddresses() {
 			// errgroup will cancel the context when the first goroutine returns an error
 			errGroup.Go(func() error {
-				log := logger.With(
-					zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
-					zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
-					zap.String("protocolAddress", protocolAddr.String()),
-				)
 				// runListener runs until it errors or the context is canceled by another goroutine
-				err := relayer.RunListener(
+				return relayer.RunListener(
 					ctx,
-					log,
+					logger,
 					protocolAddr,
 					*sourceBlockchain,
 					sourceClients[sourceBlockchain.GetBlockchainID()],
@@ -347,10 +342,6 @@ func main() {
 					messageCoordinator,
 					cfg.MaxConcurrentMessages,
 				)
-				if err != nil {
-					log.Error("error running listener", zap.Error(err))
-				}
-				return err
 			})
 		}
 	}

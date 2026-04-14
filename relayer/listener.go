@@ -61,6 +61,7 @@ func RunListener(
 		zap.String("subnetIDHex", sourceBlockchain.GetSubnetID().Hex()),
 		zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
 		zap.String("blockchainIDHex", sourceBlockchain.GetBlockchainID().Hex()),
+		zap.String("protocolAddress", protocolAddr.String()),
 	)
 	// Create the Listener
 	listener, err := newListener(
