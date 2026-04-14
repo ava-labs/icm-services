@@ -22,7 +22,7 @@ const (
 	warpGenesisTemplateFile      = "./tests/utils/warp-genesis-template.json"
 	ethereumICMVerificationLabel = "ethereum-icm-verification"
 	zkAdapterByteCodeFile        = "./out/ZKAdapter.sol/ZKAdapter.json"
-	ethereumFixturePath          = "./tests/testdata/ethereum_fixture.json"
+	ethereumFixturePath          = "./tests/testdata/sepolia_fixture.json"
 	boundlessFixturePath         = "./tests/testdata/boundless_fixture.json"
 )
 
