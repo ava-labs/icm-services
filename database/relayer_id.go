@@ -110,7 +110,7 @@ func GetSourceBlockchainRelayerIDs(sourceBlockchain *config.SourceBlockchain) []
 	if len(srcAddresses) == 0 {
 		srcAddresses = append(srcAddresses, AllAllowedAddress)
 	}
-	for _, protocolAddress := range sourceBlockchain.ProtocolAddresses() {
+	for _, protocol := range sourceBlockchain.Protocols() {
 		for _, srcAddress := range srcAddresses {
 			for _, dst := range sourceBlockchain.SupportedDestinations {
 				dstAddresses := dst.GetAddresses()
@@ -120,7 +120,7 @@ func GetSourceBlockchainRelayerIDs(sourceBlockchain *config.SourceBlockchain) []
 				}
 				for _, dstAddress := range dstAddresses {
 					ids = append(ids, NewRelayerID(
-						protocolAddress,
+						protocol.Address,
 						sourceBlockchain.GetBlockchainID(),
 						dst.GetBlockchainID(),
 						srcAddress,
