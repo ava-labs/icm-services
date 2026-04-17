@@ -114,7 +114,10 @@ func EcdsaVerifier(
 		ecdsaVerifierContractAddress,
 		fundedEthereumKey,
 	)
-	teleporterInfo.SetTeleporterV2(teleporterContractAddress, localEthereumNetwork.EthereumTestInfo().ChainID())
+	teleporterInfo.SetTeleporterV2(
+		teleporterContractAddress,
+		localEthereumNetwork.EthereumTestInfo().ChainID(),
+	)
 
 	// send a message to the TeleporterMessengerV2 on Ethereum and retrieve the event
 	ethTeleporter := teleporterInfo.TeleporterMessengerV2(localEthereumNetwork.EthereumTestInfo())

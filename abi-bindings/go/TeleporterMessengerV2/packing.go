@@ -13,14 +13,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-var teleporterMessageType abi.Type
+var teleporterMessageV2Type abi.Type
 
 func init() {
-	// Create an ABI binding for TeleporterMessage, defined in ITeleporterMessenger.sol
+	// Create an ABI binding for TeleporterMessageV2, defined in ITeleporterMessenger.sol
 	// abigen does not support ABI bindings for standalone structs, only methods and events,
 	// so we must manually keep this up-to-date with the struct defined in the contract.
 	var err error
-	teleporterMessageType, err = abi.NewType("tuple", "struct Overloader.F", []abi.ArgumentMarshaling{
+	teleporterMessageV2Type, err = abi.NewType("tuple", "struct Overloader.F", []abi.ArgumentMarshaling{
 		{Name: "messageNonce", Type: "uint256"},
 		{Name: "originSenderAddress", Type: "address"},
 		{Name: "originTeleporterAddress", Type: "address"},
@@ -35,7 +35,7 @@ func init() {
 		{Name: "message", Type: "bytes"},
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to create TeleporterMessage ABI type: %v", err))
+		panic(fmt.Sprintf("failed to create TeleporterMessageV2 ABI type: %v", err))
 	}
 }
 
@@ -43,7 +43,7 @@ func (m *TeleporterMessageV2) Pack() ([]byte, error) {
 	args := abi.Arguments{
 		{
 			Name: "teleporterMessage",
-			Type: teleporterMessageType,
+			Type: teleporterMessageV2Type,
 		},
 	}
 	return args.Pack(m)
@@ -53,7 +53,7 @@ func (m *TeleporterMessageV2) Unpack(b []byte) error {
 	args := abi.Arguments{
 		{
 			Name: "teleporterMessage",
-			Type: teleporterMessageType,
+			Type: teleporterMessageV2Type,
 		},
 	}
 	unpacked, err := args.Unpack(b)
@@ -61,6 +61,15 @@ func (m *TeleporterMessageV2) Unpack(b []byte) error {
 		return fmt.Errorf("failed to unpack to teleporter message with err: %v", err)
 	}
 	return args.Copy(&m, unpacked)
+}
+
+func PackSendCrossChainMessage(input TeleporterMessageInput) ([]byte, error) {
+	abi, err := TeleporterMessengerV2MetaData.GetAbi()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get abi")
+	}
+
+	return abi.Pack("sendCrossChainMessage", input)
 }
 
 func PackRetryMessageExecution(sourceBlockchainID ids.ID, message TeleporterMessageV2) ([]byte, error) {
@@ -77,7 +86,7 @@ func PackRetryMessageExecution(sourceBlockchainID ids.ID, message TeleporterMess
 func PackReceiveCrossChainMessageV2(
 	teleporterMessage TeleporterMessageV2,
 	sourceBlockChainID ids.ID,
-	messageIndex uint64,
+	attestation []byte,
 	relayerRewardAddress common.Address,
 ) ([]byte, error) {
 	tabi, err := TeleporterMessengerV2MetaData.GetAbi()
@@ -85,25 +94,11 @@ func PackReceiveCrossChainMessageV2(
 		return nil, errors.Wrap(err, "failed to get abi")
 	}
 
-	attestation := make([]byte, 32)
-	big.NewInt(int64(messageIndex)).FillBytes(attestation)
-
 	return tabi.Pack("receiveCrossChainMessage", TeleporterICMMessage{
 		Message:            teleporterMessage,
 		SourceBlockchainID: sourceBlockChainID,
 		Attestation:        attestation,
 	}, relayerRewardAddress)
-}
-
-// PackReceiveCrossChainMessage packs a ReceiveCrossChainMessageInput to form
-// a call to the receiveCrossChainMessage function
-func PackReceiveCrossChainMessage(messageIndex uint32, relayerRewardAddress common.Address) ([]byte, error) {
-	abi, err := TeleporterMessengerV2MetaData.GetAbi()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get abi")
-	}
-
-	return abi.Pack("receiveCrossChainMessage", messageIndex, relayerRewardAddress)
 }
 
 // PackCalculateMessageID packs input to form a call to the calculateMessageID function

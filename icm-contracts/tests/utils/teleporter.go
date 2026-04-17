@@ -21,6 +21,7 @@ import (
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
 	testmessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/tests/TestMessenger"
+	warpadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/WarpAdapter"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
@@ -48,9 +49,10 @@ const (
 )
 
 type ChainTeleporterInfo struct {
-	teleporterRegistryAddress  common.Address
-	teleporterMessengerAddress common.Address
-	teleporterProtocol         TeleporterProtocol
+	teleporterRegistryAddress    common.Address
+	teleporterMessengerAddress   common.Address
+	teleporterProtocol           TeleporterProtocol
+	packReceiveCrossChainMessage func(*avalancheWarp.Message, *ecdsa.PrivateKey, testinfo.L1TestInfo) ([]byte, uint64)
 }
 
 type TeleporterTestInfo map[ids.ID]*ChainTeleporterInfo
@@ -111,16 +113,31 @@ func (t TeleporterTestInfo) TeleporterRegistryAddress(blockchainID ids.ID) commo
 	return t[blockchainID].teleporterRegistryAddress
 }
 
+func unimplementedPackReceiveCrossChainMessage(
+	*avalancheWarp.Message, *ecdsa.PrivateKey, testinfo.L1TestInfo,
+) ([]byte, uint64) {
+	panic("unimplemented PackReceiveCrossChainMessage function")
+}
+
 func (t TeleporterTestInfo) SetTeleporter(address common.Address, blockchainID ids.ID) {
 	info := t[blockchainID]
 	info.teleporterMessengerAddress = address
 	info.teleporterProtocol = TELEPORTER
+	info.packReceiveCrossChainMessage = PackReceiveCrossChainMessageV1
 }
 
 func (t TeleporterTestInfo) SetTeleporterV2(address common.Address, blockchainID ids.ID) {
 	info := t[blockchainID]
 	info.teleporterMessengerAddress = address
 	info.teleporterProtocol = TELEPORTER_V2
+	info.packReceiveCrossChainMessage = unimplementedPackReceiveCrossChainMessage
+}
+
+func (t TeleporterTestInfo) SetTeleporterV2WarpAdapter(address common.Address, blockchainID ids.ID) {
+	info := t[blockchainID]
+	info.teleporterMessengerAddress = address
+	info.teleporterProtocol = TELEPORTER_V2
+	info.packReceiveCrossChainMessage = PackReceiveCrossChainMessageWarpAdapter
 }
 
 func (t TeleporterTestInfo) SetTeleporterRegistry(address common.Address, blockchainID ids.ID) {
@@ -194,17 +211,14 @@ func (t TeleporterTestInfo) PackReceiveCrossChainMessage(
 	senderKey *ecdsa.PrivateKey,
 	destination testinfo.L1TestInfo,
 ) ([]byte, uint64) {
-	switch t.TeleporterProtocol(destination.BlockchainID) {
-	case TELEPORTER:
-		return t.PackReceiveCrossChainMessageV1(signedMessage, senderKey, destination)
-	case TELEPORTER_V2:
-		return t.PackReceiveCrossChainMessageV2(signedMessage, senderKey, destination)
-	default:
-		panic("unsupported teleporter protocol")
+	fn := t[destination.BlockchainID].packReceiveCrossChainMessage
+	if fn == nil {
+		panic("no PackReceiveCrossChainMessage function set for this chain")
 	}
+	return fn(signedMessage, senderKey, destination)
 }
 
-func (t TeleporterTestInfo) PackReceiveCrossChainMessageV1(
+func PackReceiveCrossChainMessageV1(
 	signedMessage *avalancheWarp.Message,
 	senderKey *ecdsa.PrivateKey,
 	destination testinfo.L1TestInfo,
@@ -233,7 +247,7 @@ func (t TeleporterTestInfo) PackReceiveCrossChainMessageV1(
 	return callData, gasLimit
 }
 
-func (t TeleporterTestInfo) PackReceiveCrossChainMessageV2(
+func PackReceiveCrossChainMessageWarpAdapter(
 	signedMessage *avalancheWarp.Message,
 	senderKey *ecdsa.PrivateKey,
 	destination testinfo.L1TestInfo,
@@ -253,8 +267,8 @@ func (t TeleporterTestInfo) PackReceiveCrossChainMessageV2(
 	)
 	Expect(err).Should(BeNil())
 
-	callData, err := teleportermessengerv2.PackReceiveCrossChainMessageV2(
-		*teleporterMessage,
+	callData, err := warpadapter.PackReceiveCrossChainMessage(
+		teleporterMessage,
 		signedMessage.SourceChainID,
 		0,
 		PrivateKeyToAddress(senderKey),
@@ -584,7 +598,7 @@ func DeployNewTeleporterVersion(
 // Parsing utils
 //
 
-func ParseTeleporterMessageV1(unsignedMessage avalancheWarp.UnsignedMessage) *teleportermessenger.TeleporterMessage {
+func ParseTeleporterMessageV1(unsignedMessage avalancheWarp.UnsignedMessage) teleportermessenger.TeleporterMessage {
 	addressedPayload, err := payload.ParseAddressedCall(unsignedMessage.Payload)
 	Expect(err).Should(BeNil())
 
@@ -592,12 +606,12 @@ func ParseTeleporterMessageV1(unsignedMessage avalancheWarp.UnsignedMessage) *te
 	err = teleporterMessage.Unpack(addressedPayload.Payload)
 	Expect(err).Should(BeNil())
 
-	return &teleporterMessage
+	return teleporterMessage
 }
 
 func ParseTeleporterMessageV2(
 	unsignedMessage avalancheWarp.UnsignedMessage,
-) *teleportermessengerv2.TeleporterMessageV2 {
+) teleportermessengerv2.TeleporterMessageV2 {
 	addressedPayload, err := payload.ParseAddressedCall(unsignedMessage.Payload)
 	Expect(err).Should(BeNil())
 
@@ -605,7 +619,7 @@ func ParseTeleporterMessageV2(
 	err = teleporterMessage.Unpack(addressedPayload.Payload)
 	Expect(err).Should(BeNil())
 
-	return &teleporterMessage
+	return teleporterMessage
 }
 
 //
