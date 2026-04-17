@@ -13,7 +13,7 @@ require (
 	github.com/ava-labs/avalanchego/graft/subnet-evm v1.14.2
 	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
 	github.com/aws/aws-sdk-go-v2 v1.41.5
-	github.com/aws/aws-sdk-go-v2/config v1.32.14
+	github.com/aws/aws-sdk-go-v2/config v1.32.15
 	github.com/aws/aws-sdk-go-v2/service/kms v1.50.4
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -100,7 +100,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.9 // indirect
