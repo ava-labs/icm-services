@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"sort"
 	"time"
@@ -346,15 +347,21 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
+	// 24-byte diff justification: shard_size(8) + prev_height(8) + prev_timestamp(8)
+	var justification [24]byte
+	binary.BigEndian.PutUint64(justification[:8], uint64(d.shardSize))
+	binary.BigEndian.PutUint64(justification[8:16], onChainVS.PChainHeight)
+	binary.BigEndian.PutUint64(justification[16:24], onChainVS.PChainTimestamp)
+
 	signedMsg, err := d.signatureAggregator.CreateSignedMessage(
 		ctx,
 		d.logger,
 		unsignedMsg,
-		nil,
+		justification[:],
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
-		onChainVS.PChainHeight,
+		pChainHeight,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
@@ -435,11 +442,17 @@ func (d *DiffSetUpdater) performDiffUpdate(
 	signingSubnet := d.subnetID
 	d.logger.Info("Signing diff update", zap.Stringer("signingSubnet", signingSubnet))
 
+	// 24-byte diff justification: shard_size(8) + prev_height(8) + prev_timestamp(8)
+	var justification [24]byte
+	binary.BigEndian.PutUint64(justification[:8], uint64(d.shardSize))
+	binary.BigEndian.PutUint64(justification[8:16], d.localPChainHeight)
+	binary.BigEndian.PutUint64(justification[16:24], localPChainTimestamp)
+
 	signedMsg, err := d.signatureAggregator.CreateSignedMessage(
 		ctx,
 		d.logger,
 		unsignedMsg,
-		nil,
+		justification[:],
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
