@@ -20,6 +20,7 @@ var (
 
 // RelayerID is a unique identifier for an application relayer
 type RelayerID struct {
+	ProtocolAddress         common.Address
 	SourceBlockchainID      ids.ID
 	DestinationBlockchainID ids.ID
 	OriginSenderAddress     common.Address
@@ -28,18 +29,21 @@ type RelayerID struct {
 }
 
 func NewRelayerID(
+	protocolAddress common.Address,
 	sourceBlockchainID ids.ID,
 	destinationBlockchainID ids.ID,
 	originSenderAddress common.Address,
 	destinationAddress common.Address,
 ) RelayerID {
 	id := CalculateRelayerID(
+		protocolAddress,
 		sourceBlockchainID,
 		destinationBlockchainID,
 		originSenderAddress,
 		destinationAddress,
 	)
 	return RelayerID{
+		ProtocolAddress:         protocolAddress,
 		SourceBlockchainID:      sourceBlockchainID,
 		DestinationBlockchainID: destinationBlockchainID,
 		OriginSenderAddress:     originSenderAddress,
@@ -50,6 +54,27 @@ func NewRelayerID(
 
 // Standalone utility to calculate a relayer ID.
 func CalculateRelayerID(
+	protocolAddress common.Address,
+	sourceBlockchainID ids.ID,
+	destinationBlockchainID ids.ID,
+	originSenderAddress common.Address,
+	destinationAddress common.Address,
+) common.Hash {
+	return crypto.Keccak256Hash(
+		[]byte(strings.Join(
+			[]string{
+				protocolAddress.String(),
+				sourceBlockchainID.String(),
+				destinationBlockchainID.String(),
+				originSenderAddress.String(),
+				destinationAddress.String(),
+			},
+			"-",
+		)),
+	)
+}
+
+func CalculateRelayerIDHistorical(
 	sourceBlockchainID ids.ID,
 	destinationBlockchainID ids.ID,
 	originSenderAddress common.Address,
@@ -85,20 +110,23 @@ func GetSourceBlockchainRelayerIDs(sourceBlockchain *config.SourceBlockchain) []
 	if len(srcAddresses) == 0 {
 		srcAddresses = append(srcAddresses, AllAllowedAddress)
 	}
-	for _, srcAddress := range srcAddresses {
-		for _, dst := range sourceBlockchain.SupportedDestinations {
-			dstAddresses := dst.GetAddresses()
-			// If no addresses are provided, use the zero address to construct the relayer ID
-			if len(dstAddresses) == 0 {
-				dstAddresses = append(dstAddresses, AllAllowedAddress)
-			}
-			for _, dstAddress := range dstAddresses {
-				ids = append(ids, NewRelayerID(
-					sourceBlockchain.GetBlockchainID(),
-					dst.GetBlockchainID(),
-					srcAddress,
-					dstAddress,
-				))
+	for _, protocol := range sourceBlockchain.Protocols() {
+		for _, srcAddress := range srcAddresses {
+			for _, dst := range sourceBlockchain.SupportedDestinations {
+				dstAddresses := dst.GetAddresses()
+				// If no addresses are provided, use the zero address to construct the relayer ID
+				if len(dstAddresses) == 0 {
+					dstAddresses = append(dstAddresses, AllAllowedAddress)
+				}
+				for _, dstAddress := range dstAddresses {
+					ids = append(ids, NewRelayerID(
+						protocol.Address,
+						sourceBlockchain.GetBlockchainID(),
+						dst.GetBlockchainID(),
+						srcAddress,
+						dstAddress,
+					))
+				}
 			}
 		}
 	}

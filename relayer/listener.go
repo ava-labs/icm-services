@@ -28,18 +28,34 @@ const (
 	retryResubscribeTimeout = 10 * time.Second
 )
 
+// EventFilterForProtocol returns the ethereum log filter topics for the given protocol and contract address.
+func EventFilterForProtocol(protocol config.Protocol) [][]common.Hash {
+	switch protocol.Type {
+	case config.TELEPORTER:
+		return [][]common.Hash{
+			{types.WarpPrecompileLogFilter},
+			{common.BytesToHash(protocol.Address[:])},
+		}
+	case config.TELEPORTER_V2:
+		panic("teleporter v2 is not yet supported")
+	default:
+		panic("unsupported protocol")
+	}
+}
+
 // Listener handles all messages sent from a given source chain
 type Listener struct {
 	Subscriber                   *evm.Subscriber
 	currentRequestID             uint32
 	logger                       logging.Logger
-	sourceBlockchain             config.SourceBlockchain
+	sourceBlockchainID           ids.ID
 	healthStatus                 *atomic.Bool
 	ethClient                    *ethclient.Client
 	messageCoordinator           *MessageCoordinator
 	maxConcurrentMsg             uint64
 	errChan                      chan error
 	lastSubscriberBlockProcessed uint64
+	protocol                     config.Protocol
 }
 
 // RunListener creates a Listener instance and the ApplicationRelayers for a subnet.
@@ -47,6 +63,7 @@ type Listener struct {
 func RunListener(
 	ctx context.Context,
 	logger logging.Logger,
+	protocol config.Protocol,
 	sourceBlockchain config.SourceBlockchain,
 	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
@@ -59,11 +76,13 @@ func RunListener(
 		zap.String("subnetIDHex", sourceBlockchain.GetSubnetID().Hex()),
 		zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
 		zap.String("blockchainIDHex", sourceBlockchain.GetBlockchainID().Hex()),
+		zap.String("protocolAddress", protocol.Address.String()),
 	)
 	// Create the Listener
 	listener, err := newListener(
 		ctx,
 		logger,
+		protocol,
 		sourceBlockchain,
 		ethRPCClient,
 		relayerHealth,
@@ -85,6 +104,7 @@ func RunListener(
 func newListener(
 	ctx context.Context,
 	logger logging.Logger,
+	protocol config.Protocol,
 	sourceBlockchain config.SourceBlockchain,
 	ethRPCClient *ethclient.Client,
 	relayerHealth *atomic.Bool,
@@ -114,7 +134,7 @@ func newListener(
 		ethWSClient,
 		ethRPCClient,
 		errChan,
-		[][]common.Hash{{types.WarpPrecompileLogFilter}, { /* TODO Teleporter Addr */ }},
+		EventFilterForProtocol(protocol),
 	)
 
 	logger.Info("Creating relayer")
@@ -122,13 +142,14 @@ func newListener(
 		Subscriber:                   sub,
 		currentRequestID:             rand.Uint32(), // Initialize to a random value to mitigate requestID collision
 		logger:                       logger,
-		sourceBlockchain:             sourceBlockchain,
+		sourceBlockchainID:           blockchainID,
 		errChan:                      errChan,
 		healthStatus:                 relayerHealth,
 		ethClient:                    ethRPCClient,
 		messageCoordinator:           messageCoordinator,
 		maxConcurrentMsg:             maxConcurrentMsg,
 		lastSubscriberBlockProcessed: startingHeight - 1,
+		protocol:                     protocol,
 	}
 
 	// Open the subscription. We must do this before processing any missed messages, otherwise we may
@@ -170,7 +191,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 
 			go lstnr.messageCoordinator.ProcessBlock(
 				icmBlockInfo,
-				lstnr.sourceBlockchain.GetBlockchainID(),
+				lstnr.sourceBlockchainID,
 				lstnr.errChan,
 			)
 		case subError := <-lstnr.Subscriber.SubscribeErr():

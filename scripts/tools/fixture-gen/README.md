@@ -26,6 +26,9 @@ npm install
 
 Boundless ZK consensus proofs can be queried from the Signal Ethereum subgraph. To deploy your own subgraph instance, see https://github.com/austinabell/signal-ethereum-subgraph.
 
+The Signal ZK proof orders for Sepolia on Boundless can be seen here: https://explorer.boundless.network/requestors/0xe30260d1dc14e70b17951e97719a9d81e768d2c1
+The `SIGNAL_ETHEREUM_IMAGE_ID` should match the latest image ID on the explorer link above. Currently, this is `0x496f08eb75c83402975107a1a8b35a1c935bd6edf73b7a49e2d00ea180516b78`.
+
 The fixture must contain `preState`, `postState`, `journalData`, `seal`, and `finalizedSlot`. The `finalizedSlot` determines which beacon block root gets stored on-chain, and the Ethereum fixture must be generated against a slot within an appropriate range of this value. 
 
 Move the fixture to `tests/testdata/boundless_fixture.json` before running the e2e tests.
@@ -45,7 +48,7 @@ export TX_HASH=0x...
 NODE_OPTIONS="--max-old-space-size=8192" node generate_fixtures.mts
 ```
 
-Move the fixture to `tests/testdata/ethereum_fixture.json` before running the e2e tests. The fixture output includes:
+Move the fixture to `tests/testdata/sepolia_fixture.json` before running the e2e tests. The fixture output includes:
 
 - `anchorBeaconBlockRoot` — the beacon block root used as the trusted anchor
 - `metadata` — transaction and slot information for reference (not used by the e2e test)

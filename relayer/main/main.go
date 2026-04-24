@@ -23,8 +23,6 @@ import (
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
-	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
-	"github.com/ava-labs/icm-services/messages/teleporter"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
 	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/peers/clients"
@@ -327,25 +325,27 @@ func main() {
 
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
-		// errgroup will cancel the context when the first goroutine returns an error
-		errGroup.Go(func() error {
-			log := logger.With(zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()))
-			// runListener runs until it errors or the context is canceled by another goroutine
-			err := relayer.RunListener(
-				ctx,
-				log,
-				*sourceBlockchain,
-				sourceClients[sourceBlockchain.GetBlockchainID()],
-				relayerHealth[sourceBlockchain.GetBlockchainID()],
-				minHeights[sourceBlockchain.GetBlockchainID()],
-				messageCoordinator,
-				cfg.MaxConcurrentMessages,
-			)
-			if err != nil {
-				log.Error("error running listener", zap.Error(err))
+		for _, protocol := range sourceBlockchain.Protocols() {
+			// We don't need to spawn a listener for the off-chain registry.
+			if protocol.Type == config.OFF_CHAIN_REGISTRY {
+				continue
 			}
-			return err
-		})
+			// errgroup will cancel the context when the first goroutine returns an error
+			errGroup.Go(func() error {
+				// runListener runs until it errors or the context is canceled by another goroutine
+				return relayer.RunListener(
+					ctx,
+					logger,
+					protocol,
+					*sourceBlockchain,
+					sourceClients[sourceBlockchain.GetBlockchainID()],
+					relayerHealth[sourceBlockchain.GetBlockchainID()],
+					minHeights[sourceBlockchain.GetBlockchainID()],
+					messageCoordinator,
+					cfg.MaxConcurrentMessages,
+				)
+			})
+		}
 	}
 
 	// Start validator set updaters for configured external EVM destinations
@@ -439,30 +439,7 @@ func createMessageHandlerFactories(
 		// Create message handler factories for each supported message protocol
 		for addressStr, cfg := range sourceBlockchain.MessageContracts {
 			address := common.HexToAddress(addressStr)
-			format := cfg.MessageFormat
-			var (
-				m   messages.MessageHandlerFactory
-				err error
-			)
-			switch config.ParseMessageProtocol(format) {
-			case config.TELEPORTER:
-				m, err = teleporter.NewMessageHandlerFactory(
-					address,
-					cfg,
-					deciderConnection,
-				)
-			case config.OFF_CHAIN_REGISTRY:
-				m, err = offchainregistry.NewMessageHandlerFactory(cfg)
-			case config.TELEPORTER_V2:
-				// m, err = teleporterv2.NewMessageHandlerFactory(
-				// 	address,
-				// 	cfg,
-				// 	deciderConnection,
-				// )
-				err = fmt.Errorf("teleporter v2 is not yet supported")
-			default:
-				m, err = nil, fmt.Errorf("invalid message format %s", format)
-			}
+			m, err := relayer.NewMessageHandlerFactory(address, cfg, deciderConnection)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create message handler factory: %w", err)
 			}
@@ -535,7 +512,7 @@ func createApplicationRelayers(
 			checkpointMetrics,
 			db,
 			ticker,
-			*sourceBlockchain,
+			sourceBlockchain,
 			network,
 			cfg,
 			currentHeight,
@@ -565,7 +542,7 @@ func createApplicationRelayersForSourceChain(
 	checkpointMetrics *checkpoint.CheckpointManagerMetrics,
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
-	sourceBlockchain config.SourceBlockchain,
+	sourceBlockchain *config.SourceBlockchain,
 	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 	currentHeight uint64,
@@ -587,7 +564,7 @@ func createApplicationRelayersForSourceChain(
 		minHeight = height
 	}
 
-	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(&sourceBlockchain) {
+	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(sourceBlockchain) {
 		logger = logger.With(
 			zap.Stringer("relayerID", relayerID.ID),
 			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
@@ -728,6 +705,7 @@ func startSubsetSetUpdater(
 	}
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
+	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
 
 	updater := validatorupdater.NewSubsetSetUpdater(
 		logger,
@@ -742,6 +720,8 @@ func startSubsetSetUpdater(
 		subnetID,
 		extDest.ShardSize,
 		pollInterval,
+		extDest.WeightChangeThresholdPct,
+		maxUpdateInterval,
 	)
 
 	return updater.Start(ctx)

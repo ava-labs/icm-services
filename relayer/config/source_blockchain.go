@@ -28,6 +28,7 @@ type SourceBlockchain struct {
 	WarpAPIEndpoint basecfg.APIConfig `mapstructure:"warp-api-endpoint" json:"warp-api-endpoint"` //nolint:lll
 
 	// convenience fields to access parsed data after initialization
+	protocols                    []Protocol
 	subnetID                     ids.ID
 	blockchainID                 ids.ID
 	allowedOriginSenderAddresses []common.Address
@@ -53,19 +54,19 @@ func (s *SourceBlockchain) Validate(destinationBlockchainIDs *set.Set[string]) e
 		s.useAppRequestNetwork = true
 	}
 
-	// Validate the EVM settings
-	for messageContractAddress := range s.MessageContracts {
+	// Validate the EVM settings and message protocol for each contract
+	for messageContractAddress, messageConfig := range s.MessageContracts {
 		if !common.IsHexAddress(messageContractAddress) {
 			return fmt.Errorf("invalid message contract address in EVM source subnet: %s", messageContractAddress)
 		}
-	}
-
-	// Validate message settings correspond to a supported message protocol
-	for _, messageConfig := range s.MessageContracts {
 		protocol := ParseMessageProtocol(messageConfig.MessageFormat)
 		if protocol == UNKNOWN_MESSAGE_PROTOCOL {
 			return fmt.Errorf("unsupported message protocol for source subnet: %s", messageConfig.MessageFormat)
 		}
+		s.protocols = append(s.protocols, Protocol{
+			Address: common.HexToAddress(messageContractAddress),
+			Type:    protocol,
+		})
 	}
 
 	// Validate and store the subnet and blockchain IDs for future use
@@ -156,6 +157,10 @@ func (s *SourceBlockchain) GetAllowedOriginSenderAddresses() []common.Address {
 
 func (s *SourceBlockchain) UseAppRequestNetwork() bool {
 	return s.useAppRequestNetwork
+}
+
+func (s *SourceBlockchain) Protocols() []Protocol {
+	return s.protocols
 }
 
 // Specifies a supported destination blockchain and addresses for a source blockchain.
