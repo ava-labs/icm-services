@@ -22,9 +22,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURE_DIR="$SCRIPT_DIR/tools/fixture-gen"
-SHARED_TESTDATA="$ROOT_DIR/tests/testdata"
-
-mkdir -p "$SHARED_TESTDATA"
+TESTDATA="$ROOT_DIR/tests/testdata"
 
 echo " ******************************"
 echo "  Nightly ZK Integration Test"
@@ -42,10 +40,10 @@ docker run --rm \
   -e ETH_RPC_URL="$ETH_RPC_URL" \
   -e SENDER_PRIVATE_KEY="$SENDER_PRIVATE_KEY" \
   -e SENDER_CONTRACT="$SENDER_CONTRACT" \
-  -v "$SHARED_TESTDATA:/app/testdata" \
-  fixture-gen node send_message.mts
+  -v "$TESTDATA:/app/testdata" \
+  fixture-gen node send_sepolia_message.mts
 
-TX_HASH=$(jq -r '.txHash' "$SHARED_TESTDATA/tx_info.json")
+TX_HASH=$(jq -r '.txHash' "$TESTDATA/tx_info.json")
 echo "Transaction hash: $TX_HASH"
 echo ""
 
@@ -55,14 +53,14 @@ docker run --rm \
   -e SUBGRAPH_URL="$SUBGRAPH_URL" \
   -e ETH_RPC_URL="$ETH_RPC_URL" \
   -e TX_HASH="$TX_HASH" \
-  -v "$SHARED_TESTDATA:/app/testdata" \
-  fixture-gen node prepare_fixtures.mts
+  -v "$TESTDATA:/app/testdata" \
+  fixture-gen node poll_boundless_proofs.mts
 
-ANCHOR_SLOT=$(jq -r '.finalizedSlot' "$SHARED_TESTDATA/boundless_fixture.json")
+ANCHOR_SLOT=$(jq -r '.finalizedSlot' "$TESTDATA/boundless_fixture.json")
 echo ""
 echo " ******************************"
 echo "  Phase 1 Complete"
 echo "  TX hash:     $TX_HASH"
 echo "  Anchor slot: $ANCHOR_SLOT"
-echo "  Fixtures:    $SHARED_TESTDATA"
+echo "  Fixtures:    $TESTDATA"
 echo " ******************************"

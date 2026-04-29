@@ -28,7 +28,7 @@ if (!ETH_RPC_URL || !SENDER_PRIVATE_KEY || !SENDER_CONTRACT) {
   process.exit(1);
 }
 
-// Matches the generated Go bindings ABI for ECDSAVerifier
+// From ABI Go bindings for ECDSAVerifier
 const ECDSA_VERIFIER_ABI = [
   "function sendMessage(tuple(uint256 messageNonce, address originSenderAddress, address originTeleporterAddress, bytes32 destinationBlockchainID, address destinationAddress, uint256 requiredGasLimit, address[] allowedRelayerAddresses, tuple(uint256 receivedMessageNonce, address relayerRewardAddress)[] receipts, bytes message) message) external",
   "event ECDSAVerifierSendMessage(tuple(uint256 messageNonce, address originSenderAddress, address originTeleporterAddress, bytes32 destinationBlockchainID, address destinationAddress, uint256 requiredGasLimit, address[] allowedRelayerAddresses, tuple(uint256 receivedMessageNonce, address relayerRewardAddress)[] receipts, bytes message) message)"
@@ -59,11 +59,11 @@ async function main() {
   };
 
   const tx = await contract.sendMessage(message);
-  console.log(`TX submitted: ${tx.hash}`);
+  console.log(`Tx submitted: ${tx.hash}`);
   console.log("Waiting for confirmation...");
 
   const receipt = await tx.wait();
-  console.log(`TX confirmed in block ${receipt.blockNumber}`);
+  console.log(`Tx confirmed in block ${receipt.blockNumber}`);
   console.log(`Gas used: ${receipt.gasUsed.toString()}`);
   console.log(`Logs emitted: ${receipt.logs.length}`);
 
@@ -79,7 +79,7 @@ async function main() {
   }
   console.log(`ECDSAVerifierSendMessage event at log index: ${logIndex}`);
 
-  // Write TX info for prepare_fixtures.mts
+  // Write out tx info
   const outputPath = path.join(__dirname, "testdata", "tx_info.json");
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, JSON.stringify({
@@ -90,7 +90,7 @@ async function main() {
     eventTopic: EVENT_TOPIC,
   }, null, 2));
 
-  console.log(`\nTX info written to ${outputPath}`);
+  console.log(`\nTx info written to ${outputPath}`);
   console.log(`TX_HASH=${tx.hash}`);
   console.log(`LOG_INDEX=${logIndex}`);
 }

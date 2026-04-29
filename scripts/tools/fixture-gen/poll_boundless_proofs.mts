@@ -1,11 +1,11 @@
 /**
- * Given a Sepolia TX hash (from send_message.mts), polls the Boundless subgraph
- * until a ZK proof covers the TX's slot, then writes the Boundless fixture.
+ * Given a Sepolia tx hash, polls the Boundless subgraph
+ * until a ZK proof covers the tx's slot, then writes the Boundless fixture.
  * 
  * Required env vars:
  *   SUBGRAPH_URL   - Boundless subgraph GraphQL endpoint
  *   ETH_RPC_URL    - Sepolia execution layer RPC
- *   TX_HASH        - Sepolia TX hash to wait for (or reads from testdata/tx_info.json)
+ *   TX_HASH        - Sepolia tx hash to look for
  *
  * Output:
  *   testdata/boundless_fixture.json
@@ -35,14 +35,14 @@ if (!SUBGRAPH_URL || !ETH_RPC_URL) {
   process.exit(1);
 }
 
-// Resolve TX hash from env var or from tx_info.json (written by send_message.mts)
+// Resolve tx hash from env var or from tx_info.json (written by send_sepolia_message.mts)
 function resolveTxHash(): string {
   if (process.env.TX_HASH) return process.env.TX_HASH;
   
   const txInfoPath = path.join(__dirname, "testdata", "tx_info.json");
   if (fs.existsSync(txInfoPath)) {
     const txInfo = JSON.parse(fs.readFileSync(txInfoPath, "utf-8"));
-    console.log(`Read TX hash from ${txInfoPath}`);
+    console.log(`Read tx hash from ${txInfoPath}`);
     return txInfo.txHash;
   }
 
@@ -58,7 +58,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function queryProofCoveringSlot(minSlot: number): Promise<{
+async function queryProof(minSlot: number): Promise<{
   finalizedSlot: number;
   preState: string;
   postState: string;
@@ -103,23 +103,23 @@ async function main() {
   const txHash = resolveTxHash();
   const provider = new ethers.providers.JsonRpcProvider(ETH_RPC_URL);
 
-  // Step 1: Look up the TX and compute its slot
-  console.log("=== Step 1: Looking up TX slot ===");
+  // Look up the tx and compute its slot
+  console.log("=== Step 1: Looking up tx slot ===");
   const receipt = await provider.getTransactionReceipt(txHash);
   if (!receipt) throw new Error(`Transaction ${txHash} not found`);
   const block = await provider.getBlock(receipt.blockNumber);
   const txSlot = blockTimestampToSlot(block.timestamp);
-  console.log(`TX is in block ${receipt.blockNumber}, slot ${txSlot}`);
+  console.log(`tx is in block ${receipt.blockNumber}, slot ${txSlot}`);
 
-  // The proof's finalizedSlot must be after the TX's slot so the anchor can reach it.
-  // We need finalizedSlot > txSlot (the TX must be within 8192 slots of the anchor).
+  // The proof's finalizedSlot must be after the tx's slot so the anchor can reach it.
+  // We need finalizedSlot > txSlot and the tx must be within 8192 slots of the anchor.
   const minFinalizedSlot = txSlot + 1;
-  console.log(`Need a proof with finalizedSlot > ${minFinalizedSlot}\n`);
+  console.log(`The minimum finalized slot is ${minFinalizedSlot}\n`);
 
-  // Step 2: Poll the subgraph until a suitable proof is available
-  console.log("=== Step 2: Waiting for Boundless proof ===");
+  // Poll the Boundless subgraph until a suitable proof is available
+  console.log("=== Step 2: Waiting for Boundless ZK proof ===");
   const startTime = Date.now();
-  let proof = await queryProofCoveringSlot(minFinalizedSlot);
+  let proof = await queryProof(minFinalizedSlot);
 
   while (!proof) {
     const elapsed = Date.now() - startTime;
@@ -129,21 +129,21 @@ async function main() {
     const minutesLeft = ((MAX_WAIT_MS - elapsed) / 60000).toFixed(1);
     console.log(`No proof yet. Retrying in ${POLL_INTERVAL_MS / 1000}s (${minutesLeft}min remaining)...`);
     await sleep(POLL_INTERVAL_MS);
-    proof = await queryProofCoveringSlot(minFinalizedSlot);
+    proof = await queryProof(minFinalizedSlot);
   }
 
-  console.log(`Found proof! Finalized slot: ${proof.finalizedSlot}`);
+  console.log(`Found proof at finalized slot: ${proof.finalizedSlot}`);
 
-  // Step 3: Verify the TX is within range
+  // Verify the tx is within range
   const slotDiff = proof.finalizedSlot - txSlot;
   if (slotDiff > 8192) {
     throw new Error(
-      `TX slot ${txSlot} is too far from finalized slot ${proof.finalizedSlot} (diff: ${slotDiff}, max: 8192)`
+      `Tx slot ${txSlot} is too far from finalized slot ${proof.finalizedSlot} (diff: ${slotDiff}, max: 8192)`
     );
   }
-  console.log(`Anchor slot: ${proof.finalizedSlot}, TX slot: ${txSlot}, diff: ${slotDiff} (within 8192 limit)\n`);
+  console.log(`Anchor slot: ${proof.finalizedSlot}, Tx slot: ${txSlot}, diff: ${slotDiff} (within 8192 limit)\n`);
 
-  // Step 4: Save Boundless fixture
+  // Save Boundless fixture
   console.log("=== Step 3: Writing Boundless fixture ===");
   const boundlessFixture = {
     finalizedSlot: proof.finalizedSlot.toString(),
