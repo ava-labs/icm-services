@@ -1,0 +1,35 @@
+# Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
+# See the file LICENSE for licensing terms.
+
+name: Nightly Integration Tests
+
+on:
+  schedule:
+    - cron: '0 16 * * *'  # 12pm ET daily
+  workflow_dispatch:       
+
+concurrency:
+  group: nightly-tests
+  cancel-in-progress: true
+
+jobs:
+  nightly_zk_test:
+    name: nightly-zk-test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Run nightly test
+        run: ./scripts/nightly_test.sh
+        env:
+          ETH_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
+          SENDER_PRIVATE_KEY: ${{ secrets.SEPOLIA_SENDER_PRIVATE_KEY }}
+          SENDER_CONTRACT: ${{ secrets.SEPOLIA_SENDER_CONTRACT }}
+          SUBGRAPH_URL: ${{ secrets.BOUNDLESS_SUBGRAPH_URL }}
+
+  

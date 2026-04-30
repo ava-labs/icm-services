@@ -59,7 +59,7 @@ docker run --rm \
 ANCHOR_SLOT=$(jq -r '.finalizedSlot' "$TESTDATA/boundless_fixture.json")
 echo ""
 echo " ******************************"
-echo "  Phase 1 Complete"
+echo "  Boundless ZK proof indexed successfully"
 echo "  TX hash:     $TX_HASH"
 echo "  Anchor slot: $ANCHOR_SLOT"
 echo "  Fixtures:    $TESTDATA"

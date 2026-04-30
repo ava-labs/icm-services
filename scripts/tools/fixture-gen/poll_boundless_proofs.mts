@@ -25,10 +25,10 @@ const ETH_RPC_URL = process.env.ETH_RPC_URL!;
 const SEPOLIA_BEACON_GENESIS_TIME = 1655733600;
 const SECONDS_PER_SLOT = 12;
 
-// How long to wait for a proof before giving up (45 minutes)
-const MAX_WAIT_MS = 45 * 60 * 1000;
-// How often to poll the subgraph (30 seconds)
-const POLL_INTERVAL_MS = 30 * 1000;
+// How long to wait for a proof before giving up (3 hours)
+const MAX_WAIT_MS = 180 * 60 * 1000; 
+// How often to poll the subgraph (5 minutes)
+const POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 if (!SUBGRAPH_URL || !ETH_RPC_URL) {
   console.error("Required env vars: SUBGRAPH_URL, ETH_RPC_URL");
