@@ -29,6 +29,7 @@ if (!ETH_RPC_URL || !SENDER_PRIVATE_KEY || !SENDER_CONTRACT) {
 }
 
 // From ABI Go bindings for ECDSAVerifier
+// TODO: Swap out with DiffUpdater ABI once sendMessage implementation is complete. Issue: https://github.com/ava-labs/icm-services/issues/1282
 const ECDSA_VERIFIER_ABI = [
   "function sendMessage(tuple(uint256 messageNonce, address originSenderAddress, address originTeleporterAddress, bytes32 destinationBlockchainID, address destinationAddress, uint256 requiredGasLimit, address[] allowedRelayerAddresses, tuple(uint256 receivedMessageNonce, address relayerRewardAddress)[] receipts, bytes message) message) external",
   "event ECDSAVerifierSendMessage(tuple(uint256 messageNonce, address originSenderAddress, address originTeleporterAddress, bytes32 destinationBlockchainID, address destinationAddress, uint256 requiredGasLimit, address[] allowedRelayerAddresses, tuple(uint256 receivedMessageNonce, address relayerRewardAddress)[] receipts, bytes message) message)"
