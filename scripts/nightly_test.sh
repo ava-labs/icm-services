@@ -22,7 +22,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURE_DIR="$SCRIPT_DIR/tools/fixture-gen"
-TESTDATA="$ROOT_DIR/tests/testdata"
+TESTDATA="$ROOT_DIR/tests/testdata/nightly"
+mkdir -p "$TESTDATA"
 
 echo " ******************************"
 echo "  Nightly ZK Integration Test"
