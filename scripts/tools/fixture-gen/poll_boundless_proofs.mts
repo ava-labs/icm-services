@@ -27,8 +27,8 @@ const SECONDS_PER_SLOT = 12;
 
 // How long to wait for a proof before giving up (3 hours)
 const MAX_WAIT_MS = 180 * 60 * 1000; 
-// How often to poll the subgraph (5 minutes)
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
+// How often to poll the subgraph (1 minute)
+const POLL_INTERVAL_MS = 60 * 1000;
 
 if (!SUBGRAPH_URL || !ETH_RPC_URL) {
   console.error("Required env vars: SUBGRAPH_URL, ETH_RPC_URL");
