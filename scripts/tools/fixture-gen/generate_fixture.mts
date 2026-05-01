@@ -196,7 +196,7 @@ async function main() {
   // Find a valid anchor slot
   // Scan forward from targetSlot + 64 (2 epochs) to handle missed slots and to ensure slot is finalized
   console.log("Scanning for valid anchor slot...");
-  const anchorSlot = await findNextValidSlot(targetSlot + 64);
+  const anchorSlot = process.env.ANCHOR_SLOT ? parseInt(process.env.ANCHOR_SLOT): await findNextValidSlot(targetSlot + 64);
   console.log(`Anchor slot: ${anchorSlot}\n`);
 
   if (BigInt(anchorSlot - targetSlot) > STATE_ROOTS_VECTOR_SIZE) {

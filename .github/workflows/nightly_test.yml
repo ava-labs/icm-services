@@ -16,7 +16,7 @@ jobs:
   nightly_zk_test:
     name: nightly-zk-test
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 240
 
     steps:
       - name: Checkout repository and submodules
@@ -24,10 +24,26 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Run nightly test
-        run: ./scripts/nightly_test.sh
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Install Geth
+        run: ./scripts/install_geth.sh
+
+      - name: Run nightly ZK integration test
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH="$PATH:$GOPATH/bin"
+          export PATH="$PATH:$HOME/.geth"
+          ./scripts/nightly_test.sh
         env:
           ETH_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
+          BEACON_API_URL: ${{ secrets.SEPOLIA_BEACON_URL }}
           SENDER_PRIVATE_KEY: ${{ secrets.SEPOLIA_SENDER_PRIVATE_KEY }}
           SENDER_CONTRACT: ${{ secrets.SEPOLIA_SENDER_CONTRACT }}
           SUBGRAPH_URL: ${{ secrets.BOUNDLESS_SUBGRAPH_URL }}

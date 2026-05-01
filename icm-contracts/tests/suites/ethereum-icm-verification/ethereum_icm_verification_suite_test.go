@@ -22,8 +22,11 @@ const (
 	warpGenesisTemplateFile      = "./tests/utils/warp-genesis-template.json"
 	ethereumICMVerificationLabel = "ethereum-icm-verification"
 	zkAdapterByteCodeFile        = "./out/ZKAdapter.sol/ZKAdapter.json"
-	ethereumFixturePath          = "./tests/testdata/sepolia_fixture.json"
-	boundlessFixturePath         = "./tests/testdata/boundless_fixture.json"
+)
+
+var (
+	ethereumFixturePath  = envOrDefault("ETHEREUM_FIXTURE_PATH", "./tests/testdata/sepolia_fixture.json")
+	boundlessFixturePath = envOrDefault("BOUNDLESS_FIXTURE_PATH", "./tests/testdata/boundless_fixture.json")
 )
 
 var (
@@ -32,6 +35,13 @@ var (
 	teleporterInfo                utils.TeleporterTestInfo
 	e2eFlags                      *e2e.FlagVars
 )
+
+func envOrDefault(key, default_path string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return default_path
+}
 
 func TestMain(m *testing.M) {
 	e2eFlags = e2e.RegisterFlags()
