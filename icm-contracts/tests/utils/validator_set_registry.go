@@ -10,11 +10,14 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/utils/crypto/bls/signer/localsigner"
 	"github.com/ava-labs/avalanchego/vms/platformvm"
 	"github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
 	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	"github.com/ava-labs/libevm/common"
@@ -25,6 +28,56 @@ const (
 	diffUpdaterByteCodeFile   = "./out/DiffUpdater.sol/DiffUpdater.json"
 	subsetUpdaterByteCodeFile = "./out/SubsetUpdater.sol/SubsetUpdater.json"
 )
+
+// MockSignatureAggregator A mock of the signature aggregator that uses internally stored signers to
+// sign messages.
+//
+// TODO: Remove this once we have a proper signature aggregator.
+type MockSignatureAggregator struct {
+	Signers    map[ids.ID][]*localsigner.LocalSigner
+	Validators map[ids.ID]validators.WarpSet
+}
+
+// NewMockSignatureAggregator creates a new MockSignatureAggregator with the given number of validators
+// for the specified blockchain ID.
+func NewMockSignatureAggregator(
+	avalancheChainID ids.ID,
+	numValidators uint32,
+) *MockSignatureAggregator {
+	mockSigner := &MockSignatureAggregator{}
+	// Create a map from public key bytes to signer for reordering later
+	pubKeyToSigner := make(map[string]*localsigner.LocalSigner)
+	rawValidators := make(map[ids.NodeID]*validators.GetValidatorOutput)
+
+	for i := 0; i < int(numValidators); i++ {
+		localSigner, err := localsigner.New()
+		Expect(err).Should(BeNil())
+		// Derive the public key from the secret key
+		blsPublicKey := localSigner.PublicKey()
+		blsPublicKeyBytes := bls.PublicKeyToUncompressedBytes(blsPublicKey)
+		pubKeyToSigner[string(blsPublicKeyBytes)] = localSigner
+
+		nodeID := ids.GenerateTestNodeID()
+		rawValidators[nodeID] = &validators.GetValidatorOutput{
+			NodeID:    nodeID,
+			PublicKey: blsPublicKey,
+			Weight:    1000000000000000,
+		}
+	}
+	canonicalValidatorSet, err := validators.FlattenValidatorSet(rawValidators)
+	Expect(err).Should(BeNil())
+
+	// Reorder signers to match the sorted validator set
+	sortedSigners := make([]*localsigner.LocalSigner, len(canonicalValidatorSet.Validators))
+	for i, validator := range canonicalValidatorSet.Validators {
+		sortedSigners[i] = pubKeyToSigner[string(validator.PublicKeyBytes)]
+	}
+	mockSigner.Signers = make(map[ids.ID][]*localsigner.LocalSigner)
+	mockSigner.Validators = make(map[ids.ID]validators.WarpSet)
+	mockSigner.Signers[avalancheChainID] = sortedSigners
+	mockSigner.Validators[avalancheChainID] = canonicalValidatorSet
+	return mockSigner
+}
 
 // DeployDiffUpdater Deploys an instance of the `DiffUpdater` contract using
 // Nick's method. Crucially, this function assumes that the initial validator
@@ -40,9 +93,10 @@ func DeployDiffUpdater(
 	avalancheSubnetID ids.ID,
 	pChainClient *platformvm.Client,
 	shardNumber uint32,
+	mockSigner *MockSignatureAggregator,
 ) (common.Address, [][]byte) {
 	// Create the shards for initializing the p-chain validator set
-	diffs := createShards(ctx, avalancheChainID, avalancheSubnetID, pChainClient, shardNumber)
+	diffs := createShards(ctx, avalancheChainID, avalancheSubnetID, pChainClient, shardNumber, mockSigner)
 	shardBytes := make([][]byte, len(diffs))
 	shardHashes := make([][32]byte, len(diffs))
 	for i, diff := range diffs {
@@ -93,7 +147,7 @@ func DeployDiffUpdaterWithMetadata(
 	)
 	Expect(err).Should(BeNil())
 
-	gasLimit := uint64(16_000_000)
+	gasLimit := uint64(10_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
@@ -135,7 +189,7 @@ func DeploySubsetUpdater(
 	)
 	Expect(err).Should(BeNil())
 
-	gasLimit := uint64(10000000)
+	gasLimit := uint64(16_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
@@ -162,6 +216,7 @@ func createShards(
 	avalancheSubnetID ids.ID,
 	pChainClient *platformvm.Client,
 	shardNumber uint32,
+	mockSigner *MockSignatureAggregator,
 ) []diffupdater.ValidatorSetDiff {
 	// Get the p-chain block height
 	pChainHeight, err := pChainClient.GetHeight(ctx)
@@ -176,10 +231,15 @@ func createShards(
 	Expect(ok).Should(BeTrue())
 
 	// Get the validators from the block height
-	rawValidators, err := pChainClient.GetValidatorsAt(ctx, avalancheSubnetID, api.Height(pChainHeight))
-	Expect(err).Should(BeNil())
-	canonicalValidatorSet, err := validators.FlattenValidatorSet(rawValidators)
-	Expect(err).Should(BeNil())
+	var canonicalValidatorSet validators.WarpSet
+	if mockSigner != nil {
+		canonicalValidatorSet = mockSigner.Validators[avalancheChainID]
+	} else {
+		rawValidators, err := pChainClient.GetValidatorsAt(ctx, avalancheSubnetID, api.Height(pChainHeight))
+		Expect(err).Should(BeNil())
+		canonicalValidatorSet, err = validators.FlattenValidatorSet(rawValidators)
+		Expect(err).Should(BeNil())
+	}
 
 	// compute the size of each shard
 	shardSize := len(canonicalValidatorSet.Validators) / int(shardNumber)
@@ -266,4 +326,43 @@ func SerializeValidatorSetDiff(
 	data = append(data, numAdded...)
 
 	return data
+}
+
+// SerializeTeleporterMessageV2 Serializes a `TeleporterMessageV2` to bytes in the same manner as the
+// `TeleporterMessengerV2` contract expects it to be serialized.
+func SerializeTeleporterMessageV2(message teleportermessengerv2.TeleporterMessageV2) []byte {
+	nonceBytes := make([]byte, 32)
+	message.MessageNonce.FillBytes(nonceBytes)
+	gasLimitBytes := make([]byte, 32)
+	message.RequiredGasLimit.FillBytes(gasLimitBytes)
+	relayerCountBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(relayerCountBytes, uint32(len(message.AllowedRelayerAddresses)))
+
+	result := bytes.Join([][]byte{
+		nonceBytes,
+		message.OriginSenderAddress.Bytes(),
+		message.OriginTeleporterAddress.Bytes(),
+		message.DestinationBlockchainID[:],
+		message.DestinationAddress.Bytes(),
+		gasLimitBytes,
+		relayerCountBytes,
+	}, nil)
+
+	for _, addr := range message.AllowedRelayerAddresses {
+		result = append(result, addr.Bytes()...)
+	}
+
+	receiptsCountBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(receiptsCountBytes, uint32(len(message.Receipts)))
+	result = append(result, receiptsCountBytes...)
+
+	for _, receipt := range message.Receipts {
+		receipt.ReceivedMessageNonce.FillBytes(nonceBytes)
+		result = append(result, nonceBytes...)
+		result = append(result, receipt.RelayerRewardAddress.Bytes()...)
+	}
+
+	result = append(result, message.Message...)
+
+	return result
 }
