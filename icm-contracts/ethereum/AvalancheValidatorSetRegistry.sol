@@ -124,20 +124,45 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             revert("A registration is already in progress");
         }
 
-        // First registration for this payload chain: P-chain signs. Updates: that chain's validators sign.
-        if (!isRegistered(payloadBlockchainID)) {
+        // Signature routing:
+        //   - First registration (!isRegistered): signed by the P-chain
+        //     validator set initialized on this contract at deploy time.
+        //   - Any subsequent registration, including a "reset" that
+        //     wholesale replaces the registered set, is signed by the
+        //     registered L1 validator set. The contract cannot trust a
+        //     fresh P-chain-signed payload here because the stored P-chain
+        //     set is static from deployment and cannot verify signatures
+        //     produced by the current (possibly drifted) P-chain set. The
+        //     reset flow relies on sufficient weight overlap between the
+        //     current L1 set and the registered set to achieve quorum.
+        bool wasAlreadyRegistered = isRegistered(payloadBlockchainID);
+        if (!wasAlreadyRegistered) {
             verifyICMMessage(message, pChainID);
         } else {
             verifyICMMessage(message, payloadBlockchainID);
         }
 
-        // Parse and validate the validator set payload
+        // Parse and validate the validator set payload. For DiffUpdater the
+        // child contract additionally returns an `isReset` flag derived
+        // from the shard's `previousHeight == 0 && previousTimestamp == 0`
+        // markers. Contracts that do not support reset semantics (e.g.
+        // SubsetUpdater) always return false.
         (
             ValidatorSetMetadata memory validatorSetMetadata,
             Validator[] memory validators,
-            uint64 validatorWeight
+            uint64 validatorWeight,
+            bool isReset
         ) = parseValidatorSetMetadata(message, shardBytes);
+
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
+
+        // Only treat the payload as a true "reset" event (emitting the
+        // dedicated event and instructing multi-shard processing to skip
+        // anchor checks) when the chain was already registered. For a
+        // fresh registration the prev=0 / prev=0 markers are just the
+        // natural encoding of "no prior state" and should emit the normal
+        // `ValidatorSetRegistered` event.
+        bool isActualReset = isReset && wasAlreadyRegistered;
 
         // This validator set is sharded
         if (validatorSetMetadata.shardHashes.length > 1) {
@@ -153,11 +178,16 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             partialSet.shardsReceived = 1;
             partialSet.partialWeight = 0;
             partialSet.inProgress = true;
+            // Track whether this multi-shard registration is a reset so that
+            // subsequent shards (processed by `updateValidatorSet` ->
+            // `applyShard`) can skip stale-anchor checks and the final shard
+            // emits `ValidatorSetReset` instead of `ValidatorSetUpdated`.
+            partialSet.isReset = isActualReset;
             applyPartialUpdate(
                 validatorSetMetadata.avalancheBlockchainID, validators, validatorWeight
             );
 
-            if (!isRegistered(avalancheBlockchainID)) {
+            if (!wasAlreadyRegistered) {
                 _validatorSets[validatorSetMetadata.avalancheBlockchainID].avalancheBlockchainID =
                     validatorSetMetadata.avalancheBlockchainID;
                 _partialValidatorSets[avalancheBlockchainID].pChainHeight =
@@ -178,7 +208,12 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             valSet.pChainTimestamp = validatorSetMetadata.pChainTimestamp;
             ValidatorSets.replaceValidators(valSet.validators, validators);
         }
-        emit ValidatorSetRegistered(avalancheBlockchainID);
+
+        if (isActualReset) {
+            emit ValidatorSetReset(avalancheBlockchainID);
+        } else {
+            emit ValidatorSetRegistered(avalancheBlockchainID);
+        }
     }
 
     /**
@@ -202,9 +237,16 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
                 == sha256(shardBytes),
             "Unexpected shard hash"
         );
+        // Capture the reset flag before `applyShard` potentially clears it as
+        // part of finalization so the correct event is emitted below.
+        bool wasReset = _partialValidatorSets[avalancheBlockchainID].isReset;
         applyShard(shard, shardBytes);
         if (!isRegistrationInProgress(shard.avalancheBlockchainID)) {
-            emit ValidatorSetUpdated(shard.avalancheBlockchainID);
+            if (wasReset) {
+                emit ValidatorSetReset(shard.avalancheBlockchainID);
+            } else {
+                emit ValidatorSetUpdated(shard.avalancheBlockchainID);
+            }
         }
     }
 
@@ -261,13 +303,21 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
      * @return The parsed validator set metadata
      * @return A parsed validators array
      * @return The total weight of the parsed validators
+     * @return isReset True iff the payload encodes a reset, i.e. a fresh set
+     * starting from an empty prior state. Implementations that do not
+     * support reset semantics (e.g. SubsetUpdater) must always return false.
      */
     function parseValidatorSetMetadata(
         /* solhint-disable-next-line no-unused-vars */
         ICMMessage calldata icmMessage,
         /* solhint-disable-next-line no-unused-vars */
         bytes calldata shardBytes
-    ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
+    )
+        public
+        view
+        virtual
+        returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool)
+    {
         revert("Not implemented");
     }
 

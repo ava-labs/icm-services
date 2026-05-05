@@ -59,6 +59,12 @@ struct PartialValidatorSet {
     uint64 partialWeight;
     // A flag to indicate that this is now a complete validator set
     bool inProgress;
+    // A flag to indicate that this partial update is a reset that discards
+    // the previously registered validator set. When true, diff shards are
+    // applied against an empty starting set rather than the registered set,
+    // and the anchor checks against the registered set's pChainHeight /
+    // pChainTimestamp are skipped.
+    bool isReset;
 }
 
 struct ValidatorSetSignature {

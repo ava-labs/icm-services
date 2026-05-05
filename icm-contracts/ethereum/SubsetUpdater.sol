@@ -80,12 +80,17 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
     }
 
     /**
-     * @dev The partial validator set is simply a serialized subset of the registered validator set
+     * @dev The partial validator set is simply a serialized subset of the registered validator set.
+     *
+     * SubsetUpdater does not implement reset semantics, so the `isReset`
+     * return value is always false. The base contract will therefore select
+     * the signing subnet based solely on whether the chain has been
+     * registered before.
      */
     function parseValidatorSetMetadata(
         ICMMessage calldata icmMessage,
         bytes calldata shardBytes
-    ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
+    ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool) {
         // Parse the validator set state payload.
         ValidatorSetMetadata memory validatorSetMetadata =
             ValidatorSets.parseValidatorSetMetadata(icmMessage.rawMessage);
@@ -108,6 +113,6 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
         );
         require(validators.length > 0, "Validator set cannot be empty");
         require(totalWeight > 0, "Total weight must exceed 0");
-        return (validatorSetMetadata, validators, totalWeight);
+        return (validatorSetMetadata, validators, totalWeight, false);
     }
 }

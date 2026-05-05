@@ -32,6 +32,18 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
      * @notice Updates an existing validator set by applying a diff.
      * @dev This function assumes the number of changes in the `diff`
      * (validators added + removed + modified) is small relative to the total validator set size.
+     *
+     * When `currentPartialValSet.isReset` is true this shard belongs to a
+     * reset registration whose first shard was already validated in
+     * `parseValidatorSetMetadata`. The anchor checks against the stale
+     * registered set do not apply to a reset, so they are skipped. The
+     * shard's bytes are still authenticated via `shardHashes` in the signed
+     * metadata parsed by shard 0, so the reset path relies on that
+     * commitment for integrity.
+     *
+     * Does not emit `ValidatorSetUpdated` directly; the base
+     * `updateValidatorSet` checks the reset flag and emits either
+     * `ValidatorSetUpdated` or `ValidatorSetReset`.
      */
     function applyShard(
         ValidatorSetShard calldata shard,
@@ -42,20 +54,26 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
         ValidatorSetDiff memory diff =
             ValidatorSets.parseValidatorSetDiff(shardBytes, currentPartialValSet.validators.length);
 
-        // Safety Checks
-        ValidatorSet memory currentValidatorSet = this.getValidatorSet(chainID);
         require(diff.avalancheBlockchainID == chainID, "Blockchain ID mismatch");
-        require(
-            diff.previousHeight == currentValidatorSet.pChainHeight, "Diff anchor height mismatch"
-        );
-        require(
-            diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
-            "Diff anchor timestamp mismatch"
-        );
-        require(diff.currentHeight > currentValidatorSet.pChainHeight, "P-Chain height too low");
-        require(
-            diff.currentTimestamp > currentValidatorSet.pChainTimestamp, "P-Chain timestamp too low"
-        );
+
+        if (!currentPartialValSet.isReset) {
+            ValidatorSet memory currentValidatorSet = this.getValidatorSet(chainID);
+            require(
+                diff.previousHeight == currentValidatorSet.pChainHeight,
+                "Diff anchor height mismatch"
+            );
+            require(
+                diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
+                "Diff anchor timestamp mismatch"
+            );
+            require(
+                diff.currentHeight > currentValidatorSet.pChainHeight, "P-Chain height too low"
+            );
+            require(
+                diff.currentTimestamp > currentValidatorSet.pChainTimestamp,
+                "P-Chain timestamp too low"
+            );
+        }
 
         // Apply Diff
         Validator[] memory newValidators = applyDiff(chainID, diff);
@@ -66,7 +84,6 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
             _validatorSets[chainID].totalWeight = currentPartialValSet.partialWeight;
             _validatorSets[chainID].pChainHeight = currentPartialValSet.pChainHeight;
             _validatorSets[chainID].pChainTimestamp = currentPartialValSet.pChainTimestamp;
-            emit ValidatorSetUpdated(chainID);
         }
     }
 
@@ -106,13 +123,22 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
     }
 
     /**
-     * @dev The returned validator set if the result of applying the first diff to the currently registered
-     * set. The weight returned is the weight of the resulting set.
+     * @dev Returns the validator set that results from applying the first diff.
+     *
+     * The diff is interpreted as a reset when it carries `previousHeight == 0`
+     * and `previousTimestamp == 0`. A reset diff describes the entire current
+     * validator set as additions against an empty starting set, which lets
+     * the relayer recover when the registered on-chain P-chain height has
+     * fallen below the P-chain's minimum retained height and L1-signed
+     * incremental updates can no longer be produced. First-time registration
+     * also uses this wire format; the caller distinguishes "first
+     * registration" from "reset of an already-registered chain" based on
+     * whether the chain has a non-zero total weight on-chain.
      */
     function parseValidatorSetMetadata(
         ICMMessage calldata icmMessage,
         bytes calldata shardBytes
-    ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64) {
+    ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool) {
         // Parse
         ValidatorSetMetadata memory validatorSetMetadata =
             ValidatorSets.parseValidatorSetMetadata(icmMessage.rawMessage);
@@ -126,11 +152,35 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
 
         // Safety Checks
         require(diff.avalancheBlockchainID == chainID, "Blockchain ID mismatch");
-        require(diff.previousHeight == currentValidatorSet.pChainHeight, "P-Chain height too low");
-        require(
-            diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
-            "P-Chain timestamp too low"
-        );
+
+        bool isReset = (diff.previousHeight == 0 && diff.previousTimestamp == 0);
+
+        if (isReset) {
+            // A reset must describe only additions: the diff is applied
+            // against an empty starting set, so every change entry must add
+            // a new validator with positive weight. A weight-0 entry would
+            // be a removal against an empty set (impossible) and a
+            // weight-only modification is also nonsensical here.
+            require(
+                diff.numAdded == diff.changes.length,
+                "Reset diff must contain only additions"
+            );
+            // The diff was parsed with
+            // `parseValidatorSetDiff(shardBytes, currentValidatorSet.validators.length)`,
+            // which computes `newSize = currentValidatorCount + numAdded -
+            // numRemoved`. For a reset we must instead interpret newSize
+            // against an empty starting set so that the subsequent size
+            // check matches the actual resulting length.
+            diff.newSize = uint256(diff.numAdded);
+        } else {
+            require(
+                diff.previousHeight == currentValidatorSet.pChainHeight, "P-Chain height too low"
+            );
+            require(
+                diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
+                "P-Chain timestamp too low"
+            );
+        }
         require(
             diff.currentHeight > currentValidatorSet.pChainHeight
                 && diff.currentHeight == validatorSetMetadata.pChainHeight,
@@ -142,14 +192,19 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
             "P-Chain timestamp too low"
         );
 
-        // Apply
+        // Apply: for a reset the diff is applied against an empty set so the
+        // previously registered validators are discarded wholesale. For a
+        // regular incremental update the diff is applied against the
+        // registered set.
+        Validator[] memory startingSet =
+            isReset ? new Validator[](0) : currentValidatorSet.validators;
         (Validator[] memory newValidators, uint64 newWeight) =
-            ValidatorSets.applyValidatorSetDiff(currentValidatorSet.validators, diff);
+            ValidatorSets.applyValidatorSetDiff(startingSet, diff);
         require(
             newValidators.length > 0 && diff.newSize == newValidators.length,
             "Resulting validator set size mismatch"
         );
         require(newWeight > 0, "Total weight must exceed 0");
-        return (validatorSetMetadata, newValidators, newWeight);
+        return (validatorSetMetadata, newValidators, newWeight, isReset);
     }
 }
