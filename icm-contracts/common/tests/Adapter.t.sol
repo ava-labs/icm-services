@@ -52,7 +52,7 @@ contract AdapterTest is Test {
             allowedRelayerAddresses: new address[](0),
             message: hex"deadbeef"
         });
-        vm.expectRevert("Adapter 1");
+        vm.expectRevert("Adapter 2");
         _teleporter1.sendCrossChainMessage(input1);
 
         TeleporterMessageInput memory input2 = TeleporterMessageInput({
@@ -63,7 +63,7 @@ contract AdapterTest is Test {
             allowedRelayerAddresses: new address[](0),
             message: hex"deadbeef"
         });
-        vm.expectRevert("Adapter 2");
+        vm.expectRevert("Adapter 1");
         _teleporter2.sendCrossChainMessage(input2);
 
         TeleporterMessageInput memory input3 = TeleporterMessageInput({
