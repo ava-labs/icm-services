@@ -90,7 +90,12 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
     function parseValidatorSetMetadata(
         ICMMessage calldata icmMessage,
         bytes calldata shardBytes
-    ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool) {
+    )
+        public
+        view
+        override
+        returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool)
+    {
         // Parse the validator set state payload.
         ValidatorSetMetadata memory validatorSetMetadata =
             ValidatorSets.parseValidatorSetMetadata(icmMessage.rawMessage);

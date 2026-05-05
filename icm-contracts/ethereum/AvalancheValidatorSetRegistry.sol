@@ -312,12 +312,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
         ICMMessage calldata icmMessage,
         /* solhint-disable-next-line no-unused-vars */
         bytes calldata shardBytes
-    )
-        public
-        view
-        virtual
-        returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool)
-    {
+    ) public view virtual returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool) {
         revert("Not implemented");
     }
 

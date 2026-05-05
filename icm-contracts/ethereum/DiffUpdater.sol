@@ -66,9 +66,7 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
                 diff.previousTimestamp == currentValidatorSet.pChainTimestamp,
                 "Diff anchor timestamp mismatch"
             );
-            require(
-                diff.currentHeight > currentValidatorSet.pChainHeight, "P-Chain height too low"
-            );
+            require(diff.currentHeight > currentValidatorSet.pChainHeight, "P-Chain height too low");
             require(
                 diff.currentTimestamp > currentValidatorSet.pChainTimestamp,
                 "P-Chain timestamp too low"
@@ -138,7 +136,12 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
     function parseValidatorSetMetadata(
         ICMMessage calldata icmMessage,
         bytes calldata shardBytes
-    ) public view override returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool) {
+    )
+        public
+        view
+        override
+        returns (ValidatorSetMetadata memory, Validator[] memory, uint64, bool)
+    {
         // Parse
         ValidatorSetMetadata memory validatorSetMetadata =
             ValidatorSets.parseValidatorSetMetadata(icmMessage.rawMessage);
@@ -161,10 +164,7 @@ contract DiffUpdater is AvalancheValidatorSetRegistry {
             // a new validator with positive weight. A weight-0 entry would
             // be a removal against an empty set (impossible) and a
             // weight-only modification is also nonsensical here.
-            require(
-                diff.numAdded == diff.changes.length,
-                "Reset diff must contain only additions"
-            );
+            require(diff.numAdded == diff.changes.length, "Reset diff must contain only additions");
             // The diff was parsed with
             // `parseValidatorSetDiff(shardBytes, currentValidatorSet.validators.length)`,
             // which computes `newSize = currentValidatorCount + numAdded -

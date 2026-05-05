@@ -1210,6 +1210,176 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         }
     }
 
+    /**
+     * @dev Happy path: a chain that has already been registered receives a
+     * single-shard "reset" payload (a `ValidatorSetDiff` with
+     * `previousHeight == 0 && previousTimestamp == 0` listing every
+     * current validator as an addition), L1-signed. The registered set
+     * must be replaced wholesale and `ValidatorSetReset` must be emitted.
+     */
+    function testResetL1SingleShard() public {
+        _registerAndApplyInitialL1Set();
+
+        (Validator[] memory newValidators, ICMMessage memory message, bytes memory shardBytes) =
+            _buildResetFixtureSingleShard(10, 10, 6);
+
+        assertTrue(_diffRegistry.isRegistered(L1_BLOCKCHAIN_ID));
+        assertFalse(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
+
+        vm.expectEmit(true, false, false, false, address(_diffRegistry));
+        emit IAvalancheValidatorSetRegistry.ValidatorSetReset(L1_BLOCKCHAIN_ID);
+        _diffRegistry.registerValidatorSet(message, shardBytes);
+
+        // Single shard reset finalizes synchronously
+        assertFalse(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
+        ValidatorSet memory registered = _diffRegistry.getValidatorSet(L1_BLOCKCHAIN_ID);
+        assertEq(registered.validators.length, 2);
+        assertEq(registered.validators[0].blsPublicKey, newValidators[0].blsPublicKey);
+        assertEq(registered.validators[1].blsPublicKey, newValidators[1].blsPublicKey);
+        assertEq(
+            uint256(registered.totalWeight),
+            uint256(newValidators[0].weight + newValidators[1].weight)
+        );
+        assertEq(uint256(registered.pChainHeight), 10);
+        assertEq(uint256(registered.pChainTimestamp), 10);
+    }
+
+    /**
+     * @dev Happy path: same as the single-shard variant, but the reset
+     * spans two shards. Only the final shard finalizes the registered
+     * set and emits `ValidatorSetReset`.
+     */
+    function testResetL1MultipleShards() public {
+        _registerAndApplyInitialL1Set();
+
+        (Validator[] memory newValidators, ICMMessage memory message, bytes[] memory shards) =
+            _buildResetFixtureMultiShard(10, 10, 6);
+
+        // Shard 1 is delivered via registerValidatorSet (does not emit a
+        // ValidatorSetReset event yet, finalization happens on the last
+        // shard).
+        _diffRegistry.registerValidatorSet(message, shards[0]);
+        assertTrue(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
+
+        // Shard 2 finalizes the reset and must emit ValidatorSetReset.
+        ValidatorSetShard memory shard =
+            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: L1_BLOCKCHAIN_ID});
+        vm.expectEmit(true, false, false, false, address(_diffRegistry));
+        emit IAvalancheValidatorSetRegistry.ValidatorSetReset(L1_BLOCKCHAIN_ID);
+        _diffRegistry.updateValidatorSet(shard, shards[1]);
+
+        assertFalse(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
+        ValidatorSet memory registered = _diffRegistry.getValidatorSet(L1_BLOCKCHAIN_ID);
+        assertEq(registered.validators.length, 2);
+        assertEq(registered.validators[0].blsPublicKey, newValidators[0].blsPublicKey);
+        assertEq(registered.validators[1].blsPublicKey, newValidators[1].blsPublicKey);
+        assertEq(
+            uint256(registered.totalWeight),
+            uint256(newValidators[0].weight + newValidators[1].weight)
+        );
+        assertEq(uint256(registered.pChainHeight), 10);
+        assertEq(uint256(registered.pChainTimestamp), 10);
+    }
+
+    /**
+     * @dev Negative: a reset payload signed by the P-chain (rather than
+     * the registered L1 set) on an already-registered chain must fail
+     * signature verification, since the signature routing for already-
+     * registered chains demands an L1 quorum.
+     */
+    function testResetWronglySignedByPChain() public {
+        _registerAndApplyInitialL1Set();
+
+        // Build single-shard reset bytes/metadata, but sign with the
+        // P-chain set instead of the L1 set.
+        (, bytes memory rawMessage, bytes memory shardBytes) = _buildResetMessageRaw(10, 10, 6);
+        bytes memory signature = dummyPChainValidatorSetSign(L1_BLOCKCHAIN_ID, rawMessage);
+        ICMMessage memory message = ICMMessage({
+            rawMessage: rawMessage,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: L1_BLOCKCHAIN_ID,
+            attestation: signature
+        });
+
+        vm.expectRevert(bytes("Failed to verify signatures"));
+        _diffRegistry.registerValidatorSet(message, shardBytes);
+    }
+
+    /**
+     * @dev Negative: a reset diff that contains a removal (i.e.
+     * `numAdded < changes.length`) is nonsensical because resets are
+     * applied against an empty starting set, and must be rejected by
+     * `parseValidatorSetMetadata`.
+     */
+    function testResetDiffWithRemovalRejected() public {
+        _registerAndApplyInitialL1Set();
+
+        // Build a "reset" diff (prev=0/0) but with one removal mixed in.
+        // The removal targets one of the existing L1 validators (key 2).
+        Validator[] memory newValidators = new Validator[](2);
+        {
+            bytes memory previousPublicKey =
+                new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
+            for (uint256 i = 0; i <= 1; i++) {
+                newValidators[i] = Validator({
+                    blsPublicKey: BLST.getPublicKeyFromSecret(i + 6),
+                    weight: uint64(i + 6)
+                });
+                assertEq(
+                    BLST.comparePublicKeys(
+                        BLST.unPadUncompressedBlsPublicKey(newValidators[i].blsPublicKey),
+                        previousPublicKey
+                    ),
+                    1
+                );
+                previousPublicKey =
+                    BLST.unPadUncompressedBlsPublicKey(newValidators[i].blsPublicKey);
+            }
+        }
+        ValidatorChange[] memory changes = new ValidatorChange[](3);
+        changes[0] = ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(2), weight: 0});
+        changes[1] = ValidatorChange({
+            blsPublicKey: newValidators[0].blsPublicKey,
+            weight: newValidators[0].weight
+        });
+        changes[2] = ValidatorChange({
+            blsPublicKey: newValidators[1].blsPublicKey,
+            weight: newValidators[1].weight
+        });
+        sortValidatorChanges(changes);
+        ValidatorSetDiff memory diff = ValidatorSetDiff({
+            avalancheBlockchainID: L1_BLOCKCHAIN_ID,
+            previousHeight: 0,
+            previousTimestamp: 0,
+            currentHeight: 10,
+            currentTimestamp: 10,
+            changes: changes,
+            // numAdded < changes.length: signals a removal is present.
+            numAdded: 2,
+            newSize: 0
+        });
+        bytes memory shardBytes = ValidatorSets.serializeValidatorSetDiff(diff);
+        bytes32[] memory shardHashes = new bytes32[](1);
+        shardHashes[0] = sha256(shardBytes);
+        ValidatorSetMetadata memory metadata = ValidatorSetMetadata({
+            avalancheBlockchainID: L1_BLOCKCHAIN_ID,
+            pChainHeight: 10,
+            pChainTimestamp: 10,
+            shardHashes: shardHashes
+        });
+        bytes memory rawMessage = ValidatorSets.serializeValidatorSetMetadata(metadata);
+        bytes memory signature = l1ValidatorSetSign(rawMessage);
+        ICMMessage memory message = ICMMessage({
+            rawMessage: rawMessage,
+            sourceNetworkID: NETWORK_ID,
+            sourceBlockchainID: L1_BLOCKCHAIN_ID,
+            attestation: signature
+        });
+
+        vm.expectRevert(bytes("Reset diff must contain only additions"));
+        _diffRegistry.registerValidatorSet(message, shardBytes);
+    }
+
     function _testRegisterNewChain(
         RegistryTestCase memory testCase
     ) internal {
@@ -1536,174 +1706,6 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
         registry.updateValidatorSet(shard, testCase.shardBytes[1]);
         // check that the registration is no longer in progress
         assertFalse(registry.isRegistrationInProgress(message.sourceBlockchainID));
-    }
-
-    /**
-     * @dev Happy path: a chain that has already been registered receives a
-     * single-shard "reset" payload (a `ValidatorSetDiff` with
-     * `previousHeight == 0 && previousTimestamp == 0` listing every
-     * current validator as an addition), L1-signed. The registered set
-     * must be replaced wholesale and `ValidatorSetReset` must be emitted.
-     */
-    function testResetL1SingleShard() public {
-        _registerAndApplyInitialL1Set();
-
-        (
-            Validator[] memory newValidators,
-            ICMMessage memory message,
-            bytes memory shardBytes
-        ) = _buildResetFixtureSingleShard(10, 10, 6);
-
-        assertTrue(_diffRegistry.isRegistered(L1_BLOCKCHAIN_ID));
-        assertFalse(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
-
-        vm.expectEmit(true, false, false, false, address(_diffRegistry));
-        emit IAvalancheValidatorSetRegistry.ValidatorSetReset(L1_BLOCKCHAIN_ID);
-        _diffRegistry.registerValidatorSet(message, shardBytes);
-
-        // Single shard reset finalizes synchronously
-        assertFalse(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
-        ValidatorSet memory registered = _diffRegistry.getValidatorSet(L1_BLOCKCHAIN_ID);
-        assertEq(registered.validators.length, 2);
-        assertEq(registered.validators[0].blsPublicKey, newValidators[0].blsPublicKey);
-        assertEq(registered.validators[1].blsPublicKey, newValidators[1].blsPublicKey);
-        assertEq(uint256(registered.totalWeight), uint256(newValidators[0].weight + newValidators[1].weight));
-        assertEq(uint256(registered.pChainHeight), 10);
-        assertEq(uint256(registered.pChainTimestamp), 10);
-    }
-
-    /**
-     * @dev Happy path: same as the single-shard variant, but the reset
-     * spans two shards. Only the final shard finalizes the registered
-     * set and emits `ValidatorSetReset`.
-     */
-    function testResetL1MultipleShards() public {
-        _registerAndApplyInitialL1Set();
-
-        (Validator[] memory newValidators, ICMMessage memory message, bytes[] memory shards) =
-            _buildResetFixtureMultiShard(10, 10, 6);
-
-        // Shard 1 is delivered via registerValidatorSet (does not emit a
-        // ValidatorSetReset event yet, finalization happens on the last
-        // shard).
-        _diffRegistry.registerValidatorSet(message, shards[0]);
-        assertTrue(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
-
-        // Shard 2 finalizes the reset and must emit ValidatorSetReset.
-        ValidatorSetShard memory shard =
-            ValidatorSetShard({shardNumber: 2, avalancheBlockchainID: L1_BLOCKCHAIN_ID});
-        vm.expectEmit(true, false, false, false, address(_diffRegistry));
-        emit IAvalancheValidatorSetRegistry.ValidatorSetReset(L1_BLOCKCHAIN_ID);
-        _diffRegistry.updateValidatorSet(shard, shards[1]);
-
-        assertFalse(_diffRegistry.isRegistrationInProgress(L1_BLOCKCHAIN_ID));
-        ValidatorSet memory registered = _diffRegistry.getValidatorSet(L1_BLOCKCHAIN_ID);
-        assertEq(registered.validators.length, 2);
-        assertEq(registered.validators[0].blsPublicKey, newValidators[0].blsPublicKey);
-        assertEq(registered.validators[1].blsPublicKey, newValidators[1].blsPublicKey);
-        assertEq(uint256(registered.totalWeight), uint256(newValidators[0].weight + newValidators[1].weight));
-        assertEq(uint256(registered.pChainHeight), 10);
-        assertEq(uint256(registered.pChainTimestamp), 10);
-    }
-
-    /**
-     * @dev Negative: a reset payload signed by the P-chain (rather than
-     * the registered L1 set) on an already-registered chain must fail
-     * signature verification, since the signature routing for already-
-     * registered chains demands an L1 quorum.
-     */
-    function testResetWronglySignedByPChain() public {
-        _registerAndApplyInitialL1Set();
-
-        // Build single-shard reset bytes/metadata, but sign with the
-        // P-chain set instead of the L1 set.
-        (, bytes memory rawMessage, bytes memory shardBytes) =
-            _buildResetMessageRaw(10, 10, 6);
-        bytes memory signature = dummyPChainValidatorSetSign(L1_BLOCKCHAIN_ID, rawMessage);
-        ICMMessage memory message = ICMMessage({
-            rawMessage: rawMessage,
-            sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: L1_BLOCKCHAIN_ID,
-            attestation: signature
-        });
-
-        vm.expectRevert(bytes("Failed to verify signatures"));
-        _diffRegistry.registerValidatorSet(message, shardBytes);
-    }
-
-    /**
-     * @dev Negative: a reset diff that contains a removal (i.e.
-     * `numAdded < changes.length`) is nonsensical because resets are
-     * applied against an empty starting set, and must be rejected by
-     * `parseValidatorSetMetadata`.
-     */
-    function testResetDiffWithRemovalRejected() public {
-        _registerAndApplyInitialL1Set();
-
-        // Build a "reset" diff (prev=0/0) but with one removal mixed in.
-        // The removal targets one of the existing L1 validators (key 2).
-        Validator[] memory newValidators = new Validator[](2);
-        {
-            bytes memory previousPublicKey =
-                new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
-            for (uint256 i = 0; i <= 1; i++) {
-                newValidators[i] = Validator({
-                    blsPublicKey: BLST.getPublicKeyFromSecret(i + 6),
-                    weight: uint64(i + 6)
-                });
-                assertEq(
-                    BLST.comparePublicKeys(
-                        BLST.unPadUncompressedBlsPublicKey(newValidators[i].blsPublicKey),
-                        previousPublicKey
-                    ),
-                    1
-                );
-                previousPublicKey =
-                    BLST.unPadUncompressedBlsPublicKey(newValidators[i].blsPublicKey);
-            }
-        }
-        ValidatorChange[] memory changes = new ValidatorChange[](3);
-        changes[0] = ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(2), weight: 0});
-        changes[1] = ValidatorChange({
-            blsPublicKey: newValidators[0].blsPublicKey,
-            weight: newValidators[0].weight
-        });
-        changes[2] = ValidatorChange({
-            blsPublicKey: newValidators[1].blsPublicKey,
-            weight: newValidators[1].weight
-        });
-        sortValidatorChanges(changes);
-        ValidatorSetDiff memory diff = ValidatorSetDiff({
-            avalancheBlockchainID: L1_BLOCKCHAIN_ID,
-            previousHeight: 0,
-            previousTimestamp: 0,
-            currentHeight: 10,
-            currentTimestamp: 10,
-            changes: changes,
-            // numAdded < changes.length: signals a removal is present.
-            numAdded: 2,
-            newSize: 0
-        });
-        bytes memory shardBytes = ValidatorSets.serializeValidatorSetDiff(diff);
-        bytes32[] memory shardHashes = new bytes32[](1);
-        shardHashes[0] = sha256(shardBytes);
-        ValidatorSetMetadata memory metadata = ValidatorSetMetadata({
-            avalancheBlockchainID: L1_BLOCKCHAIN_ID,
-            pChainHeight: 10,
-            pChainTimestamp: 10,
-            shardHashes: shardHashes
-        });
-        bytes memory rawMessage = ValidatorSets.serializeValidatorSetMetadata(metadata);
-        bytes memory signature = l1ValidatorSetSign(rawMessage);
-        ICMMessage memory message = ICMMessage({
-            rawMessage: rawMessage,
-            sourceNetworkID: NETWORK_ID,
-            sourceBlockchainID: L1_BLOCKCHAIN_ID,
-            attestation: signature
-        });
-
-        vm.expectRevert(bytes("Reset diff must contain only additions"));
-        _diffRegistry.registerValidatorSet(message, shardBytes);
     }
 
     /**
