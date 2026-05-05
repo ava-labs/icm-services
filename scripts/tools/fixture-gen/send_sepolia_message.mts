@@ -19,23 +19,25 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ETH_RPC_URL = process.env.ETH_RPC_URL!;
-const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY!;
-const SENDER_CONTRACT = process.env.SENDER_CONTRACT!;
+const ETH_RPC_URL = process.env.ETH_RPC_URL;
+const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY;
+const SENDER_CONTRACT = process.env.SENDER_CONTRACT;
 
 if (!ETH_RPC_URL || !SENDER_PRIVATE_KEY || !SENDER_CONTRACT) {
   console.error("Required env vars: ETH_RPC_URL, SENDER_PRIVATE_KEY, SENDER_CONTRACT");
   process.exit(1);
 }
 
-// From ABI Go bindings for ECDSAVerifier
+// Generated from ABI Go bindings for ECDSAVerifier
 // TODO: Swap out with DiffUpdater ABI once sendMessage implementation is complete. Issue: https://github.com/ava-labs/icm-services/issues/1282
+// NOTE: If ECDSAVerifier.sendMessage's signature changes, update this ABI string to match the new function signature.
 const ECDSA_VERIFIER_ABI = [
   "function sendMessage(tuple(uint256 messageNonce, address originSenderAddress, address originTeleporterAddress, bytes32 destinationBlockchainID, address destinationAddress, uint256 requiredGasLimit, address[] allowedRelayerAddresses, tuple(uint256 receivedMessageNonce, address relayerRewardAddress)[] receipts, bytes message) message) external",
-  "event ECDSAVerifierSendMessage(tuple(uint256 messageNonce, address originSenderAddress, address originTeleporterAddress, bytes32 destinationBlockchainID, address destinationAddress, uint256 requiredGasLimit, address[] allowedRelayerAddresses, tuple(uint256 receivedMessageNonce, address relayerRewardAddress)[] receipts, bytes message) message)"
 ];
 
-// ECDSAVerifierSendMessage event topic
+// Generated from ABI Go bindings for ECDSAVerifier
+// ECDSAVerifierSendMessage event topic. This is the keccak256 of the ECDSAVerifierSendMessage event signature. 
+// NOTE: If the contract is regenerated and this hash changes, update here too.
 const EVENT_TOPIC = "0x7f79990a356de554936f38da80d42a1fb6ea1198955703669370ad6bfcf297d8";
 
 async function main() {
@@ -76,7 +78,7 @@ async function main() {
   );
 
   if (logIndex === -1) {
-    throw new Error("ECDSAVerifierSendMessage event not found in receipt");
+    throw new Error("ECDSAVerifierSendMessage event not found in receipt. This will fail if EVENT_TOPIC has changed");
   }
   console.log(`ECDSAVerifierSendMessage event at log index: ${logIndex}`);
 
