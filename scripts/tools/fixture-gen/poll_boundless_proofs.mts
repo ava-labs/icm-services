@@ -19,8 +19,13 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SUBGRAPH_URL = process.env.SUBGRAPH_URL!;
-const ETH_RPC_URL = process.env.ETH_RPC_URL!;
+const SUBGRAPH_URL = process.env.SUBGRAPH_URL;
+const ETH_RPC_URL = process.env.ETH_RPC_URL;
+
+if (!SUBGRAPH_URL || !ETH_RPC_URL) {
+  console.error("Required env vars: SUBGRAPH_URL, ETH_RPC_URL");
+  process.exit(1);
+}
 
 const SEPOLIA_BEACON_GENESIS_TIME = 1655733600;
 const SECONDS_PER_SLOT = 12;
@@ -29,11 +34,6 @@ const SECONDS_PER_SLOT = 12;
 const MAX_WAIT_MS = 180 * 60 * 1000; 
 // How often to poll the subgraph (1 minute)
 const POLL_INTERVAL_MS = 60 * 1000;
-
-if (!SUBGRAPH_URL || !ETH_RPC_URL) {
-  console.error("Required env vars: SUBGRAPH_URL, ETH_RPC_URL");
-  process.exit(1);
-}
 
 // Resolve tx hash from env var or from tx_info.json (written by send_sepolia_message.mts)
 function resolveTxHash(): string {
