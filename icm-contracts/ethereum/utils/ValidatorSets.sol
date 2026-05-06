@@ -659,22 +659,44 @@ library ValidatorSets {
 
     /**
      * @dev Reconstructs the unsigned Warp message bytes that validators sign for ICM addressed-call payloads.
-     * Layout: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
-     *         | addressedCallCodec(2) | typeID(4) | srcAddrLen(4) | innerPayloadLen(4) | payload
+     * If senderAddress is address(0), the sender field is omitted from the AddressedCall encoding — this is
+     * the case for validator set update messages, which carry no sender address.
+     * If senderAddress is non-zero (e.g. address(this) for ICM messages sent by a contract), the
+     * warp precompile sets msg.sender as the source address and it must be included in the reconstruction.
+     *
+     * Layout without sender: warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
+     *                        | addressedCallCodec(2) | typeID(4) | srcAddrLen(4)=0 | innerPayloadLen(4) | payload
+     * Layout with sender:    warpCodec(2) | networkID(4) | sourceChainID(32) | payloadFieldLen(4)
+     *                        | addressedCallCodec(2) | typeID(4) | srcAddrLen(4)=20 | srcAddr(20) | innerPayloadLen(4) | payload
      */
     function buildUnsignedWarpMessage(
         uint32 networkID,
         bytes32 sourceBlockchainID,
+        address senderAddress,
         bytes memory payload
     ) internal pure returns (bytes memory) {
+        if (senderAddress == address(0)) {
+            return abi.encodePacked(
+                bytes2(0),
+                networkID,
+                sourceBlockchainID,
+                uint32(payload.length + 14),
+                bytes2(0),
+                uint32(1),
+                uint32(0),
+                uint32(payload.length),
+                payload
+            );
+        }
         return abi.encodePacked(
             bytes2(0),
             networkID,
             sourceBlockchainID,
-            uint32(payload.length + 14),
+            uint32(payload.length + 34),
             bytes2(0),
             uint32(1),
-            uint32(0),
+            uint32(20),
+            bytes20(senderAddress),
             uint32(payload.length),
             payload
         );
