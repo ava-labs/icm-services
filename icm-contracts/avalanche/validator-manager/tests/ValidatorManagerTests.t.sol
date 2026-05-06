@@ -54,6 +54,9 @@ abstract contract ValidatorManagerTest is Test {
     uint256 public constant DEFAULT_STARTING_TOTAL_WEIGHT = 1e10 + DEFAULT_WEIGHT;
     uint64 public constant DEFAULT_MINIMUM_VALIDATION_DURATION = 24 hours;
     uint64 public constant DEFAULT_COMPLETION_TIMESTAMP = 100_000;
+    // Foundry's default block.timestamp at the start of each test (before any vm.warp calls).
+    // Used to replay validator registrations with the same validationID.
+    uint64 public constant DEFAULT_INITIAL_TIMESTAMP = 1;
     uint64 public constant REGISTRATION_EXPIRY_LENGTH = 1 days;
     // solhint-disable-next-line var-name-mixedcase
     PChainOwner public DEFAULT_P_CHAIN_OWNER;
@@ -301,7 +304,6 @@ abstract contract ValidatorManagerTest is Test {
     }
 
     function testReplayValidatorRegistration() public virtual {
-        uint64 initialTimestamp = uint64(block.timestamp);
         bytes32 validationID = _registerDefaultValidator();
         bytes memory setWeightMessage =
             ValidatorMessages.packL1ValidatorWeightMessage(validationID, 1, 0);
@@ -327,7 +329,11 @@ abstract contract ValidatorManagerTest is Test {
 
         // Set the timestamp to be the same as when we registered the initial validator so that the
         // expiries will be the same, leading to the same validation ID.
-        vm.warp(initialTimestamp);
+        // NOTE: avoid reading block.timestamp into a local variable here — with --via-ir the Yul
+        // optimizer defers the TIMESTAMP opcode to the point of first use, so by the time
+        // vm.warp() is called the value would reflect a later warp rather than the initial one.
+        // Use the explicit constant instead.
+        vm.warp(DEFAULT_INITIAL_TIMESTAMP);
         _beforeSend(_weightToValue(DEFAULT_WEIGHT), address(this));
 
         vm.expectRevert(
