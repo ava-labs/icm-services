@@ -295,8 +295,9 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         bytes memory payload
     ) public view returns (bytes memory) {
         uint256[] memory secretKeys = dummyPChainValidatorSetSecretKeys();
-        bytes memory signedData =
-            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, avalancheBlockchainID, payload);
+        bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
+            NETWORK_ID, avalancheBlockchainID, address(0), payload
+        );
         bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature = ValidatorSetSignature({
             // all five validators sign (bits 0-4 set = 0x1F)
@@ -315,8 +316,9 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         uint256[] memory secretKeys = new uint256[](2);
         secretKeys[0] = 2;
         secretKeys[1] = 3;
-        bytes memory signedData =
-            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, L1_BLOCKCHAIN_ID, payload);
+        bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
+            NETWORK_ID, L1_BLOCKCHAIN_ID, address(0), payload
+        );
         bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature = ValidatorSetSignature({
             // both validators sign (bits 0-1 set = 0x03)
@@ -336,7 +338,7 @@ contract AvalancheValidatorSetRegistryCommon is Test {
         bytes memory payload
     ) public view returns (bytes memory) {
         bytes memory signedData =
-            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, chainID, payload);
+            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, chainID, address(0), payload);
         bytes memory rawSig = BLST.createAggregateSignature(secretKeys, signedData);
         ValidatorSetSignature memory signature =
             ValidatorSetSignature({signers: signersBitmask, signature: rawSig});
