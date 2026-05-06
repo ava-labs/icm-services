@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -27,6 +29,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// errAnchorUnsignable is returned by performDiffUpdate when signing the
+// diff at the registered anchor height fails. The most common cause is
+// that the L1 set at that height can no longer be enumerated for
+// ACP-118 (e.g. the P-chain has advanced past its retained-history
+// window for that height), but transient quorum/network failures
+// surface here too -- they take the same recovery path. checkAndUpdate
+// reacts by falling back to a reset; if the underlying cause was
+// transient, the reset attempt also fails, and the next tick re-syncs
+// from the contract.
+var errAnchorUnsignable = errors.New("cannot sign diff at local anchor")
+
 type DiffSetUpdater struct {
 	logger              logging.Logger
 	pChainClient        clients.CanonicalValidatorState
@@ -45,11 +58,12 @@ type DiffSetUpdater struct {
 	weightChangeThresholdPct float64
 	maxUpdateInterval        time.Duration
 
-	localValidatorSet []*Validator
-	localPChainHeight uint64
-	localTotalWeight  uint64
-	lastUpdateTime    time.Time
-	initialized       bool
+	localValidatorSet    []*Validator
+	localPChainHeight    uint64
+	localPChainTimestamp uint64
+	localTotalWeight     uint64
+	lastUpdateTime       time.Time
+	initialized          bool
 }
 
 func NewDiffSetUpdater(
@@ -174,14 +188,39 @@ func (d *DiffSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", stale),
 	)
 
-	if err := d.performDiffUpdate(ctx, pChainHeight, newValidators, changes); err != nil {
-		d.logger.Warn("Diff update failed, re-syncing from contract on next tick", zap.Error(err))
-		d.initialized = false
-		return err
+	pChainTimestamp, err := d.performDiffUpdate(ctx, pChainHeight, newValidators, changes)
+	if err != nil {
+		// If signing the diff at the registered anchor height failed
+		// (likely because the L1 set at that height is no longer
+		// enumerable for ACP-118), fall back to a reset: sign a fresh
+		// L1-signed payload at the latest height that replaces the
+		// on-chain set wholesale.
+		if errors.Is(err, errAnchorUnsignable) {
+			d.logger.Info("Anchor height is stale, falling back to reset update",
+				zap.Uint64("localPChainHeight", d.localPChainHeight),
+				zap.Uint64("pChainHeight", pChainHeight),
+			)
+			resetTimestamp, resetErr := d.performResetUpdate(ctx, pChainHeight)
+			if resetErr != nil {
+				d.logger.Warn("Reset update failed, re-syncing from contract on next tick",
+					zap.Error(resetErr),
+				)
+				d.initialized = false
+				return fmt.Errorf("reset after stale anchor failed: %w", resetErr)
+			}
+			pChainTimestamp = resetTimestamp
+		} else {
+			d.logger.Warn("Diff update failed, re-syncing from contract on next tick",
+				zap.Error(err),
+			)
+			d.initialized = false
+			return err
+		}
 	}
 
 	d.localValidatorSet = newValidators
 	d.localPChainHeight = pChainHeight
+	d.localPChainTimestamp = pChainTimestamp
 	d.localTotalWeight = sumWeights(newValidators)
 	d.lastUpdateTime = time.Now()
 
@@ -203,7 +242,8 @@ func (d *DiffSetUpdater) initializeLocalState(ctx context.Context) error {
 		d.logger.Info("First registration detected, performing full set update",
 			zap.Uint64("pChainHeight", pChainHeight),
 		)
-		if err := d.performFullSetUpdate(ctx, pChainHeight, onChainVS); err != nil {
+		pChainTimestamp, err := d.performFullSetUpdate(ctx, pChainHeight, onChainVS)
+		if err != nil {
 			return err
 		}
 		newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
@@ -212,6 +252,7 @@ func (d *DiffSetUpdater) initializeLocalState(ctx context.Context) error {
 		}
 		d.localValidatorSet = newValidators
 		d.localPChainHeight = pChainHeight
+		d.localPChainTimestamp = pChainTimestamp
 		d.localTotalWeight = sumWeights(newValidators)
 		d.lastUpdateTime = time.Now()
 		d.initialized = true
@@ -226,6 +267,7 @@ func (d *DiffSetUpdater) initializeLocalState(ctx context.Context) error {
 
 	d.localValidatorSet = validators
 	d.localPChainHeight = onChainVS.PChainHeight
+	d.localPChainTimestamp = onChainVS.PChainTimestamp
 	d.localTotalWeight = sumWeights(validators)
 	d.lastUpdateTime = time.Now()
 	d.initialized = true
@@ -277,17 +319,90 @@ func computeWeightDelta(oldSet []*Validator, changes []ValidatorChange) uint64 {
 }
 
 // ---------------------------------------------------------------------------
-// First registration: treat all validators as additions in a diff
+// Updates that replace the entire set (first registration and reset).
+//
+// Both encode the full current validator set as additions in a
+// ValidatorSetDiff with previousHeight = 0 and previousTimestamp = 0; the
+// contract interprets this as "starts from empty" and replaces the
+// registered set wholesale. They differ in who signs the message:
+//
+//   - First registration: signed by the P-chain validator set. The contract
+//     verifies the signature against the P-chain validator set initialized
+//     on it at deployment time. No L1 set is yet registered.
+//
+//   - Reset: signed by the current L1 validator set at the latest P-chain
+//     height. The contract verifies the signature against the L1 set
+//     currently registered on-chain. The contract's stored P-chain set is
+//     static from deployment and cannot verify signatures produced by the
+//     current (possibly drifted) P-chain set, so we cannot reuse the
+//     first-registration signing path. Reset relies on sufficient weight
+//     overlap between the current L1 set and the registered set to reach
+//     quorum against the registered set; for gradual validator churn this
+//     holds comfortably.
 // ---------------------------------------------------------------------------
 
+// performFullSetUpdate is used for the first on-chain registration of this
+// blockchain's validator set. Returns the P-chain timestamp committed.
 func (d *DiffSetUpdater) performFullSetUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
 	onChainVS diffupdater.ValidatorSet,
-) error {
+) (uint64, error) {
+	// For first registration the contract has no prior L1 set, so the
+	// signature aggregator uses the P-chain validators. The on-chain
+	// height is zero before any registration; the aggregator interprets
+	// this as "latest" for the primary network.
+	return d.performEmptySetUpdate(
+		ctx,
+		pChainHeight,
+		constants.PrimaryNetworkID,
+		onChainVS.PChainHeight,
+		false, // isReset: false for first registration
+	)
+}
+
+// performResetUpdate is called when the on-chain anchor height has become
+// too stale for incremental diff updates to be signed. It submits an
+// L1-signed payload containing every current L1 validator as an addition;
+// the contract discards the previously registered set and installs the new
+// one. Verification against the stale registered L1 set relies on sufficient
+// weight overlap with the current L1 signers. Returns the P-chain timestamp
+// committed.
+func (d *DiffSetUpdater) performResetUpdate(
+	ctx context.Context,
+	pChainHeight uint64,
+) (uint64, error) {
+	// Sign with the L1 validators enumerated at the latest P-chain height;
+	// those are reachable regardless of how stale the registered on-chain
+	// anchor has become. The contract still verifies against its stored L1
+	// set (quorum overlap with current L1 signers).
+	return d.performEmptySetUpdate(
+		ctx,
+		pChainHeight,
+		d.subnetID,
+		pChainHeight,
+		true, // isReset: true for reset
+	)
+}
+
+// performEmptySetUpdate builds a diff message with an empty prior state
+// (prevHeight = 0, prevTimestamp = 0) containing every current validator as
+// an addition, signs it with the given signing subnet at the given height,
+// and submits it via registerValidatorSet + updateValidatorSet shards.
+//
+// On success returns the P-chain timestamp at `pChainHeight` that was
+// committed to the contract; the caller uses this to update its cached
+// `localPChainTimestamp`.
+func (d *DiffSetUpdater) performEmptySetUpdate(
+	ctx context.Context,
+	pChainHeight uint64,
+	signingSubnet ids.ID,
+	signingHeight uint64,
+	isReset bool,
+) (uint64, error) {
 	newValidators, err := d.fetchSortedValidators(ctx, pChainHeight)
 	if err != nil {
-		return fmt.Errorf("failed to fetch validators: %w", err)
+		return 0, fmt.Errorf("failed to fetch validators: %w", err)
 	}
 
 	changes := make([]ValidatorChange, len(newValidators))
@@ -300,20 +415,20 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 
 	pChainTimestamp, err := d.pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
 	if err != nil {
-		return fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
+		return 0, fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
 	}
 
 	shardBytesList, shardHashes, err := d.shardDiff(
 		d.blockchainID,
-		onChainVS.PChainHeight,
-		onChainVS.PChainTimestamp,
+		0, // prevHeight: signals empty starting set to P-chain verifier and contract
+		0, // prevTimestamp: same
 		pChainHeight,
 		pChainTimestamp,
-		nil, // empty starting set for first registration
+		nil, // empty starting set
 		changes,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to shard diff: %w", err)
+		return 0, fmt.Errorf("failed to shard diff: %w", err)
 	}
 
 	metadataMsg, err := NewValidatorSetMetadata(
@@ -323,12 +438,12 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		shardHashes,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create ValidatorSetMetadata: %w", err)
+		return 0, fmt.Errorf("failed to create ValidatorSetMetadata: %w", err)
 	}
 
 	addressedCall, err := warppayload.NewAddressedCall(nil, metadataMsg.Bytes())
 	if err != nil {
-		return fmt.Errorf("failed to create addressed call: %w", err)
+		return 0, fmt.Errorf("failed to create addressed call: %w", err)
 	}
 
 	unsignedMsg, err := avalancheWarp.NewUnsignedMessage(
@@ -337,50 +452,87 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		addressedCall.Bytes(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create unsigned warp message: %w", err)
+		return 0, fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
 
-	// First L1 registration: contract verifies signatures against the P-chain set.
-	signingSubnet := constants.PrimaryNetworkID
-	d.logger.Info("Signing diff (first L1 registration)",
+	d.logger.Info("Signing empty-set diff",
+		zap.Bool("isReset", isReset),
 		zap.Stringer("signingSubnet", signingSubnet),
+		zap.Uint64("signingHeight", signingHeight),
+		zap.Int("numValidators", len(newValidators)),
 	)
 
 	signedMsg, err := d.signatureAggregator.CreateSignedMessage(
 		ctx,
 		d.logger,
 		unsignedMsg,
-		nil,
+		BuildDiffJustification(d.shardSize, 0, 0),
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
-		onChainVS.PChainHeight,
+		signingHeight,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to sign message: %w", err)
+		return 0, fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return d.sendDiffUpdate(ctx, signedMsg, shardBytesList)
+	if err := d.sendDiffUpdate(ctx, signedMsg, shardBytesList); err != nil {
+		return 0, err
+	}
+	return pChainTimestamp, nil
+}
+
+// BuildDiffJustification constructs the 24-byte justification that the
+// P-chain's ACP-118 verifier expects for `ValidatorSetMetadata` payloads
+// that encode diff-format shards. Layout:
+//
+//	[0:8]   shard size (big endian uint64)
+//	[8:16]  previous height (big endian uint64)
+//	[16:24] previous timestamp (big endian uint64)
+//
+// See `verifyValidatorSetMetadata` in
+// avalanchego/vms/platformvm/network/warp.go.
+//
+// Exported for use by tests that build reset-shaped payloads directly
+// (bypassing the relayer's auto-trigger, which can't be exercised in
+// tmpnet) and need the same justification the relayer would produce.
+func BuildDiffJustification(shardSize uint32, prevHeight, prevTimestamp uint64) []byte {
+	justification := make([]byte, 24)
+	binary.BigEndian.PutUint64(justification[0:8], uint64(shardSize))
+	binary.BigEndian.PutUint64(justification[8:16], prevHeight)
+	binary.BigEndian.PutUint64(justification[16:24], prevTimestamp)
+	return justification
 }
 
 // ---------------------------------------------------------------------------
 // Diff update using local validator set tracking
 // ---------------------------------------------------------------------------
 
+// performDiffUpdate signs and submits an incremental ValidatorSetDiff
+// against the currently registered on-chain anchor (`d.localPChainHeight`,
+// `d.localPChainTimestamp`).
+//
+// On success returns the P-chain timestamp at `pChainHeight` so the caller
+// can update its cached `localPChainTimestamp`.
+//
+// If `signatureAggregator.CreateSignedMessage` fails, the returned error
+// wraps `errAnchorUnsignable` so the caller can fall back to a reset
+// update. The most common cause is that the L1 validators at the
+// registered height can no longer be enumerated for ACP-118 signing
+// (typically because the P-chain has advanced past its retained-history
+// window for that height). Transient sign failures (network, quorum
+// loss) take the same path; the subsequent reset attempt will use the
+// same aggregator and thus also fail, and the caller re-syncs from the
+// contract on the next tick.
 func (d *DiffSetUpdater) performDiffUpdate(
 	ctx context.Context,
 	pChainHeight uint64,
 	newValidators []*Validator,
 	changes []ValidatorChange,
-) error {
-	localPChainTimestamp, err := d.pChainClient.GetBlockTimestampAtHeight(ctx, d.localPChainHeight)
-	if err != nil {
-		return fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", d.localPChainHeight, err)
-	}
-
+) (uint64, error) {
 	pChainTimestamp, err := d.pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
 	if err != nil {
-		return fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
+		return 0, fmt.Errorf("failed to get P-chain block timestamp at height %d: %w", pChainHeight, err)
 	}
 
 	// If stale but no actual changes, send the diff with the full current set
@@ -398,14 +550,14 @@ func (d *DiffSetUpdater) performDiffUpdate(
 	shardBytesList, shardHashes, err := d.shardDiff(
 		d.blockchainID,
 		d.localPChainHeight,
-		localPChainTimestamp,
+		d.localPChainTimestamp,
 		pChainHeight,
 		pChainTimestamp,
 		d.localValidatorSet,
 		changes,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to shard diff: %w", err)
+		return 0, fmt.Errorf("failed to shard diff: %w", err)
 	}
 
 	metadataMsg, err := NewValidatorSetMetadata(
@@ -415,12 +567,12 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		shardHashes,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create ValidatorSetMetadata: %w", err)
+		return 0, fmt.Errorf("failed to create ValidatorSetMetadata: %w", err)
 	}
 
 	addressedCall, err := warppayload.NewAddressedCall(nil, metadataMsg.Bytes())
 	if err != nil {
-		return fmt.Errorf("failed to create addressed call: %w", err)
+		return 0, fmt.Errorf("failed to create addressed call: %w", err)
 	}
 
 	unsignedMsg, err := avalancheWarp.NewUnsignedMessage(
@@ -429,7 +581,7 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		addressedCall.Bytes(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create unsigned warp message: %w", err)
+		return 0, fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
 
 	signingSubnet := d.subnetID
@@ -439,14 +591,20 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		ctx,
 		d.logger,
 		unsignedMsg,
-		nil,
+		BuildDiffJustification(d.shardSize, d.localPChainHeight, d.localPChainTimestamp),
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
 		d.localPChainHeight,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to sign message: %w", err)
+		d.logger.Warn(
+			"Failed to sign diff at local anchor height; falling back to reset",
+			zap.Uint64("localPChainHeight", d.localPChainHeight),
+			zap.Error(err),
+		)
+		return 0, fmt.Errorf("%w: local height %d: %w",
+			errAnchorUnsignable, d.localPChainHeight, err)
 	}
 
 	d.logger.Info("Sending diff update",
@@ -454,7 +612,10 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		zap.Int("numShards", len(shardBytesList)),
 	)
 
-	return d.sendDiffUpdate(ctx, signedMsg, shardBytesList)
+	if err := d.sendDiffUpdate(ctx, signedMsg, shardBytesList); err != nil {
+		return 0, err
+	}
+	return pChainTimestamp, nil
 }
 
 // ---------------------------------------------------------------------------
