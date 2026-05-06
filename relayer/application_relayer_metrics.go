@@ -12,7 +12,6 @@ type ApplicationRelayerMetrics struct {
 	createSignedMessageLatencyMS  *prometheus.GaugeVec
 	failedRelayMessageCount       *prometheus.CounterVec
 	fetchSignatureAppRequestCount *prometheus.CounterVec
-	fetchSignatureRPCCount        *prometheus.CounterVec
 }
 
 func NewApplicationRelayerMetrics(registerer prometheus.Registerer) *ApplicationRelayerMetrics {
@@ -45,20 +44,12 @@ func NewApplicationRelayerMetrics(registerer prometheus.Registerer) *Application
 			},
 			[]string{"destination_chain_id", "source_chain_id"},
 		),
-		fetchSignatureRPCCount: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "fetch_signature_rpc_count",
-				Help: "Number of aggregate signatures fetched via Warp API",
-			},
-			[]string{"destination_chain_id", "source_chain_id"},
-		),
 	}
 
 	registerer.MustRegister(m.successfulRelayMessageCount)
 	registerer.MustRegister(m.createSignedMessageLatencyMS)
 	registerer.MustRegister(m.failedRelayMessageCount)
 	registerer.MustRegister(m.fetchSignatureAppRequestCount)
-	registerer.MustRegister(m.fetchSignatureRPCCount)
 
 	return &m
 }
