@@ -11,7 +11,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/peers"
@@ -20,8 +19,6 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/common/hexutil"
-	"github.com/ava-labs/libevm/rpc"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -51,17 +48,16 @@ type CheckpointManager interface {
 // to a specific destination address on a specific destination blockchain. This routing information is
 // encapsulated in [relayerID], which also represents the database key for an ApplicationRelayer.
 type ApplicationRelayer struct {
-	logger                    logging.Logger
-	metrics                   *ApplicationRelayerMetrics
-	network                   *peers.AppRequestNetwork
-	signingSubnetID           ids.ID
-	destinationClient         vms.DestinationClient
-	relayerID                 database.RelayerID
-	warpConfig                config.WarpConfig
-	checkpointManager         CheckpointManager
-	sourceWarpSignatureClient *rpc.Client // nil if configured to fetch signatures via AppRequest
-	signatureAggregator       *aggregator.SignatureAggregator
-	processMessageSemaphore   chan struct{}
+	logger                  logging.Logger
+	metrics                 *ApplicationRelayerMetrics
+	network                 *peers.AppRequestNetwork
+	signingSubnetID         ids.ID
+	destinationClient       vms.DestinationClient
+	relayerID               database.RelayerID
+	warpConfig              config.WarpConfig
+	checkpointManager       CheckpointManager
+	signatureAggregator     *aggregator.SignatureAggregator
+	processMessageSemaphore chan struct{}
 }
 
 func NewApplicationRelayer(
@@ -99,35 +95,17 @@ func NewApplicationRelayer(
 
 	checkpointManager.Run()
 
-	var warpClient *rpc.Client
-	if !sourceBlockchain.UseAppRequestNetwork() {
-		// The subnet-evm Warp API client does not support query parameters or HTTP headers
-		// and expects the URI to be in a specific form.
-		// Instead, we invoke the Warp API directly via the RPC client.
-		warpClient, err = utils.DialWithConfig(
-			context.Background(),
-			sourceBlockchain.WarpAPIEndpoint.BaseURL,
-			sourceBlockchain.WarpAPIEndpoint.HTTPHeaders,
-			sourceBlockchain.WarpAPIEndpoint.QueryParams,
-		)
-		if err != nil {
-			logger.Error("Failed to create Warp API client", zap.Error(err))
-			return nil, err
-		}
-	}
-
 	return &ApplicationRelayer{
-		logger:                    logger,
-		metrics:                   metrics,
-		network:                   network,
-		destinationClient:         destinationClient,
-		relayerID:                 relayerID,
-		signingSubnetID:           signingSubnet,
-		warpConfig:                warpConfig,
-		checkpointManager:         checkpointManager,
-		sourceWarpSignatureClient: warpClient,
-		signatureAggregator:       signatureAggregator,
-		processMessageSemaphore:   processMessageSemaphore,
+		logger:                  logger,
+		metrics:                 metrics,
+		network:                 network,
+		destinationClient:       destinationClient,
+		relayerID:               relayerID,
+		signingSubnetID:         signingSubnet,
+		warpConfig:              warpConfig,
+		checkpointManager:       checkpointManager,
+		signatureAggregator:     signatureAggregator,
+		processMessageSemaphore: processMessageSemaphore,
 	}, nil
 }
 
@@ -187,47 +165,35 @@ func (r *ApplicationRelayer) processMessage(
 	unsignedMessage := handler.GetUnsignedMessage()
 
 	startCreateSignedMessageTime := time.Now()
-	// Query nodes on the origin chain for signatures, and construct the signed warp message.
-	var signedMessage *avalancheWarp.Message
 
-	// sourceWarpSignatureClient is nil iff the source blockchain is configured to fetch signatures via AppRequest
-	if r.sourceWarpSignatureClient == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
+	defer cancel()
 
-		quorumPercentageBuffer := utils.CalculateQuorumPercentageBuffer(
-			r.warpConfig.QuorumNumerator,
-			defaultQuorumPercentageBuffer,
-		)
-		// Determine the appropriate P-Chain height for validator set selection
-		pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx)
-		if err != nil {
-			r.incFailedRelayMessageCount("failed to determine P-Chain height")
-			return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)
-		}
+	quorumPercentageBuffer := utils.CalculateQuorumPercentageBuffer(
+		r.warpConfig.QuorumNumerator,
+		defaultQuorumPercentageBuffer,
+	)
+	// Determine the appropriate P-Chain height for validator set selection
+	pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx)
+	if err != nil {
+		r.incFailedRelayMessageCount("failed to determine P-Chain height")
+		return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)
+	}
 
-		signedMessage, err = r.signatureAggregator.CreateSignedMessage(
-			ctx,
-			logger,
-			unsignedMessage,
-			nil,
-			r.signingSubnetID,
-			r.warpConfig.QuorumNumerator,
-			quorumPercentageBuffer,
-			pchainHeight,
-		)
-		r.incFetchSignatureAppRequestCount()
-		if err != nil {
-			r.incFailedRelayMessageCount("failed to create signed warp message via AppRequest network")
-			return common.Hash{}, fmt.Errorf("failed to create signed warp messsage via AppRequest network: %w", err)
-		}
-	} else {
-		r.incFetchSignatureRPCCount()
-		signedMessage, err = r.createSignedMessage(unsignedMessage)
-		if err != nil {
-			r.incFailedRelayMessageCount("failed to create signed warp message via RPC")
-			return common.Hash{}, fmt.Errorf("failed to create signed warp message via RPC: %w", err)
-		}
+	signedMessage, err := r.signatureAggregator.CreateSignedMessage(
+		ctx,
+		logger,
+		unsignedMessage,
+		nil,
+		r.signingSubnetID,
+		r.warpConfig.QuorumNumerator,
+		quorumPercentageBuffer,
+		pchainHeight,
+	)
+	r.incFetchSignatureAppRequestCount()
+	if err != nil {
+		r.incFailedRelayMessageCount("failed to create signed warp message via AppRequest network")
+		return common.Hash{}, fmt.Errorf("failed to create signed warp messsage via AppRequest network: %w", err)
 	}
 
 	// create signed message latency (ms)
@@ -274,49 +240,6 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 	return common.Hash{}, err
 }
 
-// createSignedMessage fetches the signed Warp message from the source chain via RPC.
-// Each VM may implement their own RPC method to construct the aggregate signature, which
-// will need to be accounted for here.
-func (r *ApplicationRelayer) createSignedMessage(
-	unsignedMessage *avalancheWarp.UnsignedMessage,
-) (*avalancheWarp.Message, error) {
-	r.logger.Info("Fetching aggregate signature from the source chain validators via API")
-
-	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
-	defer cancel()
-
-	// The warp_getMessageAggregateSignature method does not support the optional quorum percentage
-	// buffer, so just use the required quorum percentage here.
-	var signedWarpMessageBytes hexutil.Bytes
-	operation := func() error {
-		return r.sourceWarpSignatureClient.CallContext(
-			cctx,
-			&signedWarpMessageBytes,
-			"warp_getMessageAggregateSignature",
-			unsignedMessage.ID(),
-			r.warpConfig.QuorumNumerator,
-			r.signingSubnetID.String(),
-		)
-	}
-	notify := func(err error, duration time.Duration) {
-		r.logger.Warn(
-			"warp_getMessageAggregateSignature failed, retrying...",
-			zap.Duration("retryIn", duration),
-			zap.Error(err),
-		)
-	}
-	err := utils.WithRetriesTimeout(operation, notify, retryTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get aggregate signature from node endpoint: %w", err)
-	}
-
-	warpMsg, err := avalancheWarp.ParseMessage(signedWarpMessageBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse signed warp message: %w", err)
-	}
-	return warpMsg, nil
-}
-
 //
 // Metrics
 //
@@ -344,14 +267,6 @@ func (r *ApplicationRelayer) setCreateSignedMessageLatencyMS(latency float64) {
 			r.relayerID.DestinationBlockchainID.String(),
 			r.relayerID.SourceBlockchainID.String(),
 		).Set(latency)
-}
-
-func (r *ApplicationRelayer) incFetchSignatureRPCCount() {
-	r.metrics.fetchSignatureRPCCount.
-		WithLabelValues(
-			r.relayerID.DestinationBlockchainID.String(),
-			r.relayerID.SourceBlockchainID.String(),
-		).Inc()
 }
 
 func (r *ApplicationRelayer) incFetchSignatureAppRequestCount() {
