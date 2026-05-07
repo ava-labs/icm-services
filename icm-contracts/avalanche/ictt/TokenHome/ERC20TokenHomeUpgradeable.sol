@@ -114,19 +114,26 @@ contract ERC20TokenHomeUpgradeable is IERC20TokenHome, TokenHome {
     ) internal onlyInitializing {
         _getERC20TokenHomeStorage()._token = IERC20(tokenAddress);
     }
+
     // solhint-enable ordering
 
     /**
      * @dev See {IERC20TokenTransferrer-send}
      */
-    function send(SendTokensInput calldata input, uint256 amount) external {
+    function send(
+        SendTokensInput calldata input,
+        uint256 amount
+    ) external {
         _send(input, amount);
     }
 
     /**
      * @dev See {IERC20TokenTransferrer-sendAndCall}
      */
-    function sendAndCall(SendAndCallInput calldata input, uint256 amount) external {
+    function sendAndCall(
+        SendAndCallInput calldata input,
+        uint256 amount
+    ) external {
         _sendAndCall({
             sourceBlockchainID: getBlockchainID(),
             originTokenTransferrerAddress: address(this),
@@ -160,7 +167,10 @@ contract ERC20TokenHomeUpgradeable is IERC20TokenHome, TokenHome {
     /**
      * @dev See {TokenHome-_withdraw}
      */
-    function _withdraw(address recipient, uint256 amount) internal virtual override {
+    function _withdraw(
+        address recipient,
+        uint256 amount
+    ) internal virtual override {
         ERC20TokenHomeStorage storage $ = _getERC20TokenHomeStorage();
         emit TokensWithdrawn(recipient, amount);
         $._token.safeTransfer(recipient, amount);

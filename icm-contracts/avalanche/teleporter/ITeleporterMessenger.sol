@@ -158,7 +158,10 @@ interface ITeleporterMessenger {
      * @dev The message specified by `messageIndex` must be provided at that index in the access list storage slots of the transaction,
      * and is verified in the precompile predicate.
      */
-    function receiveCrossChainMessage(uint32 messageIndex, address relayerRewardAddress) external;
+    function receiveCrossChainMessage(
+        uint32 messageIndex,
+        address relayerRewardAddress
+    ) external;
 
     /**
      * @notice Retries the execution of a previously delivered message by verifying the payload matches

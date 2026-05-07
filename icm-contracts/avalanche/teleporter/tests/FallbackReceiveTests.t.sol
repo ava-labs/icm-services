@@ -22,7 +22,10 @@ contract FallbackReceiveApp {
     address public immutable originSenderAddress;
     uint256 public nonce;
 
-    constructor(bytes32 sourceBlockchainID_, address originSenderAddress_) {
+    constructor(
+        bytes32 sourceBlockchainID_,
+        address originSenderAddress_
+    ) {
         sourceBlockchainID = sourceBlockchainID_;
         originSenderAddress = originSenderAddress_;
     }

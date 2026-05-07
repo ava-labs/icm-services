@@ -109,7 +109,9 @@ library TeleporterMessageV2Parsing {
             // parse the receipts
             for (uint256 i = 0; i < numReceipts; i++) {
                 receipts[i] = TeleporterMessageReceipt({
-                    receivedMessageNonce: uint256(bytes32(data[offsetReceipts:offsetReceipts + 32])),
+                    receivedMessageNonce: uint256(
+                        bytes32(data[offsetReceipts:offsetReceipts + 32])
+                    ),
                     relayerRewardAddress: address(
                         bytes20(data[offsetReceipts + 32:offsetReceipts + 52])
                     )
