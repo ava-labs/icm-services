@@ -49,8 +49,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
         for (uint256 i = 0; i < 4; i++) {
             validators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(secretKeys[i]),
-                weight: uint64(i + 1)
+                blsPublicKey: BLST.getPublicKeyFromSecret(secretKeys[i]), weight: uint64(i + 1)
             });
             assertEq(
                 BLST.comparePublicKeys(
@@ -273,10 +272,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
         proofFlags[2] = true;
 
         ValidatorSetMerkleAttestation memory att = ValidatorSetMerkleAttestation({
-            signers: signers,
-            proof: proof,
-            proofFlags: proofFlags,
-            aggregateBlsSig: aggregateSig
+            signers: signers, proof: proof, proofFlags: proofFlags, aggregateBlsSig: aggregateSig
         });
 
         TeleporterICMMessage memory message = TeleporterICMMessage({
@@ -468,8 +464,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         Validator[] memory wrongValidators = new Validator[](4);
         for (uint256 i = 0; i < 4; i++) {
             wrongValidators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(wrongSecretKeys[i]),
-                weight: uint64(i + 1)
+                blsPublicKey: BLST.getPublicKeyFromSecret(wrongSecretKeys[i]), weight: uint64(i + 1)
             });
         }
 
@@ -553,10 +548,12 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         bytes memory aggregateBlsSig = BLST.createAggregateSignature(partialSecretKeys, signedData);
 
         // Build the multi-proof
-        bytes32 l2 =
-            sha256(abi.encodePacked(_pchainValidators[2].blsPublicKey, _pchainValidators[2].weight));
-        bytes32 l3 =
-            sha256(abi.encodePacked(_pchainValidators[3].blsPublicKey, _pchainValidators[3].weight));
+        bytes32 l2 = sha256(
+            abi.encodePacked(_pchainValidators[2].blsPublicKey, _pchainValidators[2].weight)
+        );
+        bytes32 l3 = sha256(
+            abi.encodePacked(_pchainValidators[3].blsPublicKey, _pchainValidators[3].weight)
+        );
         bytes32 cd = l2 < l3 ? sha256(abi.encodePacked(l2, l3)) : sha256(abi.encodePacked(l3, l2));
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = cd;
@@ -567,10 +564,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         proofFlags[1] = false;
 
         ValidatorSetMerkleAttestation memory att = ValidatorSetMerkleAttestation({
-            signers: signers,
-            proof: proof,
-            proofFlags: proofFlags,
-            aggregateBlsSig: aggregateBlsSig
+            signers: signers, proof: proof, proofFlags: proofFlags, aggregateBlsSig: aggregateBlsSig
         });
 
         ICMMessage memory message = ICMMessage({
@@ -647,8 +641,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
         for (uint256 i = 0; i < l1SecretKeys.length; i++) {
             l1Validators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(l1SecretKeys[i]),
-                weight: uint64(i + 1)
+                blsPublicKey: BLST.getPublicKeyFromSecret(l1SecretKeys[i]), weight: uint64(i + 1)
             });
             assertEq(
                 BLST.comparePublicKeys(
@@ -693,8 +686,9 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
             pChainTimestamp: 5
         });
         bytes memory rawUpdate = ValidatorSets.serializeMerkleCommitment(updatedCommitment);
-        bytes memory signedData =
-            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, _NEW_CHAIN_ID, address(0), rawUpdate);
+        bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
+            NETWORK_ID, _NEW_CHAIN_ID, address(0), rawUpdate
+        );
         bytes memory aggregateSig = BLST.createAggregateSignature(l1SecretKeys, signedData);
         bool[] memory proofFlags = new bool[](3);
         proofFlags[0] = true;

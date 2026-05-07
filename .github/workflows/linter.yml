@@ -79,7 +79,15 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Cache reforge binary
+        id: cache-reforge
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/reforge
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
       - name: Cache Cargo (icm-macros)
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -90,6 +98,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
         run: ./scripts/build_reforge.sh
 
       - name: Check Solidity Formatting
@@ -132,7 +141,15 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Cache reforge binary
+        id: cache-reforge
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/reforge
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
       - name: Cache Cargo (icm-macros)
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -143,6 +160,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
         run: ./scripts/build_reforge.sh
 
       - name: Install solc
