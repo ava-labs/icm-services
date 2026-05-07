@@ -21,7 +21,10 @@ contract ExecutionHarness {
         return _config;
     }
 
-    function verify(bytes32 trustedBeaconBlockRoot, Execution.Proof calldata proof) external view {
+    function verify(
+        bytes32 trustedBeaconBlockRoot,
+        Execution.Proof calldata proof
+    ) external view {
         Execution.verify(trustedBeaconBlockRoot, proof, _config);
     }
 }
@@ -138,7 +141,10 @@ contract ExecutionTest is Test {
     /**
      * @notice Invalid slot relationships should always revert.
      */
-    function testFuzzVerifyRevertInvalidSlots(uint64 target, uint64 anchor) public {
+    function testFuzzVerifyRevertInvalidSlots(
+        uint64 target,
+        uint64 anchor
+    ) public {
         vm.assume(target >= anchor);
         Execution.Proof memory proof = _makeBaseProof();
         proof.targetSlot = target;

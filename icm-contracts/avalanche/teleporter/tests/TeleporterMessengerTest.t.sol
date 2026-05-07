@@ -26,7 +26,8 @@ contract TeleporterMessengerTest is Test {
         bytes32(hex"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd");
     bytes32 public constant DEFAULT_DESTINATION_BLOCKCHAIN_ID =
         bytes32(hex"1234567812345678123456781234567812345678123456781234567812345678");
-    address public constant DEFAULT_DESTINATION_ADDRESS = 0xd54e3E251b9b0EEd3ed70A858e927bbC2659587d;
+    address public constant DEFAULT_DESTINATION_ADDRESS =
+        0xd54e3E251b9b0EEd3ed70A858e927bbC2659587d;
     uint256 public constant DEFAULT_REQUIRED_GAS_LIMIT = 1e6;
     address public constant WARP_PRECOMPILE_ADDRESS = 0x0200000000000000000000000000000000000005;
     address public constant DEFAULT_RELAYER_REWARD_ADDRESS =

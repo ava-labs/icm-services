@@ -18,7 +18,10 @@ pragma solidity ^0.8.20;
 import "./Node.sol";
 
 library TrieDB {
-    function get(TrieNode[] memory nodes, bytes32 hash) internal pure returns (bytes memory) {
+    function get(
+        TrieNode[] memory nodes,
+        bytes32 hash
+    ) internal pure returns (bytes memory) {
         for (uint256 i = 0; i < nodes.length; i++) {
             if (nodes[i].hash == hash) {
                 return nodes[i].node;

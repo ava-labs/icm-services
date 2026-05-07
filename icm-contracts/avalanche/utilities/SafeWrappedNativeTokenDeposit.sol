@@ -25,7 +25,10 @@ library SafeWrappedNativeTokenDeposit {
      * increase.
      */
     // solhint-disable private-vars-leading-underscore
-    function safeDeposit(IWrappedNativeToken token, uint256 amount) internal returns (uint256) {
+    function safeDeposit(
+        IWrappedNativeToken token,
+        uint256 amount
+    ) internal returns (uint256) {
         uint256 balanceBefore = token.balanceOf(address(this));
         token.deposit{value: amount}();
         uint256 balanceAfter = token.balanceOf(address(this));
