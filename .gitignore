@@ -42,6 +42,9 @@ icm-contracts/UniversalTeleporterDeployerTransaction.txt
 icm-contracts/UniversalTeleporterDeployerAddress.txt
 icm-contracts/UniversalTeleporterMessengerContractAddress.txt
 
+# icm-macros
+icm-macros/testing/**/mismatched/
+
 # debug artifacts
 *.debug.txt
 

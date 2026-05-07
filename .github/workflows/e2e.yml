@@ -76,6 +76,16 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Cache Cargo (icm-macros)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
       - name: Build reforge
         run: ./scripts/build_reforge.sh
 
@@ -104,6 +114,16 @@ jobs:
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
+
+      - name: Cache Cargo (icm-macros)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge
         run: ./scripts/build_reforge.sh
@@ -134,6 +154,16 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Cache Cargo (icm-macros)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
       - name: Build reforge
         run: ./scripts/build_reforge.sh
 
@@ -162,6 +192,16 @@ jobs:
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
+
+      - name: Cache Cargo (icm-macros)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge
         run: ./scripts/build_reforge.sh
@@ -192,6 +232,16 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Cache Cargo (icm-macros)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
       - name: Build reforge
         run: ./scripts/build_reforge.sh
 
@@ -220,6 +270,16 @@ jobs:
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
+
+      - name: Cache Cargo (icm-macros)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge
         run: ./scripts/build_reforge.sh
@@ -255,6 +315,16 @@ jobs:
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
+
+      - name: Cache Cargo (icm-macros)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge
         run: ./scripts/build_reforge.sh
