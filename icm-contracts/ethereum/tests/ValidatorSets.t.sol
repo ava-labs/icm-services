@@ -364,10 +364,7 @@ contract ValidatorSetsTest is Test {
             aggregateBlsSig[i] = bytes1(uint8(i & 0xff));
         }
         ValidatorSetMerkleAttestation memory attestation = ValidatorSetMerkleAttestation({
-            signers: signers,
-            proof: proof,
-            proofFlags: proofFlags,
-            aggregateBlsSig: aggregateBlsSig
+            signers: signers, proof: proof, proofFlags: proofFlags, aggregateBlsSig: aggregateBlsSig
         });
         // Serialize
         bytes memory serialized = ValidatorSets.serializeMerkleAttestation(attestation);
