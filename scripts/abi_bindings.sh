@@ -59,8 +59,8 @@ if [ "$HELP" = true ]; then
     exit 0
 fi
 
-if ! command -v forge &> /dev/null; then
-    echo "forge not found. You can install by calling $REPO_PATH/scripts/install_foundry.sh" && exit 1
+if ! command -v reforge &> /dev/null; then
+    echo "reforge not found. You can install by calling $REPO_PATH/scripts/build_reforge.sh" && exit 1
 fi
 
 if ! command -v solc &> /dev/null; then

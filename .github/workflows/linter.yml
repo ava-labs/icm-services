@@ -78,10 +78,13 @@ jobs:
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
-      
+
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Check Solidity Formatting
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           ./scripts/lint.sh --sol-format-check
         
   gomod_check:
@@ -119,6 +122,9 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Install solc
         run: |
           source ./scripts/versions.sh
@@ -128,7 +134,7 @@ jobs:
 
       - name: Generate ABI Go bindings
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export GOPATH=$HOME/go
           export PATH="$PATH:$GOPATH/bin"
           ./scripts/abi_bindings.sh

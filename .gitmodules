@@ -8,3 +8,6 @@
 [submodule "lib/solidity-merkle-trees"]
 	path = lib/solidity-merkle-trees
 	url = https://github.com/polytope-labs/solidity-merkle-trees
+[submodule "lib/icm-macros"]
+	path = lib/icm-macros
+	url = git@github.com:ava-labs/icm-macros.git

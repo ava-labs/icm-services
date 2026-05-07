@@ -34,9 +34,12 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Run Slither
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           slither ./ --fail-none --sarif ./results.sarif
 
       - name: Upload SARIF file
