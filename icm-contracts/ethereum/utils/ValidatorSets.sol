@@ -888,7 +888,6 @@ library ValidatorSets {
         );
     }
 
-    // TODO: Move elsewhere
     function _sha256Pair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
         return a < b
             ? sha256(abi.encodePacked(a, b))

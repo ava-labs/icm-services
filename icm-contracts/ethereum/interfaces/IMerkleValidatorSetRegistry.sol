@@ -9,30 +9,19 @@ import {ValidatorSetMerkleCommitment} from "../utils/ValidatorSets.sol";
 /**
  * @title IMerkleValidatorSetRegistry
  * @notice Interface for a Merkle-committed Avalanche Validator Registry contract
- * @dev This interface defines the events and functions for managing Avalanche validator set
- * commitments and verifying signed messages against them. Validator data lives off-chain;
- * the contract retains only a Merkle root over the set, and signers supply Merkle inclusion
- * proofs alongside their attestations.
+ * @dev Interface for managing Avalanche validator set commitments and verifying
+ * signed messages against them. The full validator set is stored off-chain.
+ * Each set is represented on-chain by a single Merkle root commitment over its
+ * validators, against which messages are verified using calldata-supplied
+ * signers and multi-proofs.
  */
 interface IMerkleValidatorSetRegistry {
     event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID);
 
-    /**
-     * @notice Installs a new validator set commitment for the Avalanche blockchain ID
-     * named in the payload. The new commitment fits in a single transaction at any
-     * validator-set size, so no sharding or multi-transaction coordination is required.
-     *
-     * Emits a `ValidatorSetUpdated` event upon successful update.
-     * @dev A validator set update can be submitted by anyone, but it must be signed by the
-     * current P-chain validator set known to this contract if no previous registration to the
-     * same blockchain ID exists. Otherwise, it must be signed by the latest validator set
-     * registered to the blockchain ID so that the P-chain validator sets have no elevated
-     * permission after registration. On updates, the new P-chain height and timestamp must
-     * both strictly exceed the currently stored values.
-     * @param message The ICM message containing the new commitment payload and a
-     * Merkle attestation signed by the appropriate authorizing set. See
-     * `ValidatorSetCommitment` and `MerkleAttestation` for further details.
-     */
+    /// TODO: Implement in follow-up work. 
+    function registerValidatorSet(ICMMessage calldata message, bytes memory shardBytes) external;
+
+    /// TODO: Implement in follow-up work. 
     function applyValidatorSetUpdate(
         ICMMessage calldata message
     ) external;

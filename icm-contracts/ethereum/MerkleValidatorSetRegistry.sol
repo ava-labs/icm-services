@@ -54,6 +54,14 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         );
     }
 
+    /// TODO: Implement in follow-up work.
+    function registerValidatorSet(
+        ICMMessage calldata, /* message */
+        bytes memory /* validatorSetBytes */
+    ) external {
+        revert("Not implemented");
+    }
+
     /// TODO: Implement in follow-up work. 
     function applyValidatorSetUpdate(
         ICMMessage calldata /* message */
