@@ -248,8 +248,7 @@ contract ValidatorMessagesTest is Test {
     }
 
     function testRegisterL1ValidatorMessage() public view {
-        (bytes32 validationID, bytes memory packed) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (bytes32 validationID, bytes memory packed) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 subnetID: DEFAULT_SUBNET_ID,
                 nodeID: DEFAULT_NODE_ID,
@@ -287,9 +286,7 @@ contract ValidatorMessagesTest is Test {
     function testPackL1ConversionData() public pure {
         InitialValidator[] memory initialValidators = new InitialValidator[](1);
         initialValidators[0] = InitialValidator({
-            nodeID: DEFAULT_NODE_ID,
-            weight: DEFAULT_WEIGHT,
-            blsPublicKey: DEFAULT_BLS_PUBLIC_KEY
+            nodeID: DEFAULT_NODE_ID, weight: DEFAULT_WEIGHT, blsPublicKey: DEFAULT_BLS_PUBLIC_KEY
         });
         bytes memory packed = ValidatorMessages.packConversionData(
             ConversionData({

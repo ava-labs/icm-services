@@ -148,7 +148,9 @@ contract NativeTokenRemoteTest is NativeTokenTransferrerTest, TokenRemoteTest {
             nativeAssetSymbol: DEFAULT_SYMBOL,
             initialReserveImbalance: _DEFAULT_INITIAL_RESERVE_IMBALANCE,
             burnedFeesReportingRewardPercentage: _DEFAULT_BURN_FEE_REWARDS_PERCENTAGE,
-            expectedErrorMessage: _formatErrorMessage("cannot deploy to same blockchain as token home")
+            expectedErrorMessage: _formatErrorMessage(
+                "cannot deploy to same blockchain as token home"
+            )
         });
     }
 
@@ -418,7 +420,10 @@ contract NativeTokenRemoteTest is NativeTokenTransferrerTest, TokenRemoteTest {
         return instance;
     }
 
-    function _checkExpectedWithdrawal(address recipient, uint256 amount) internal override {
+    function _checkExpectedWithdrawal(
+        address recipient,
+        uint256 amount
+    ) internal override {
         vm.expectEmit(true, true, true, true, address(tokenRemote));
         emit TokensWithdrawn(recipient, amount);
         vm.mockCall(
@@ -433,7 +438,10 @@ contract NativeTokenRemoteTest is NativeTokenTransferrerTest, TokenRemoteTest {
         vm.deal(recipient, amount);
     }
 
-    function _setUpMockMint(address recipient, uint256 amount) internal override {
+    function _setUpMockMint(
+        address recipient,
+        uint256 amount
+    ) internal override {
         vm.mockCall(
             NATIVE_MINTER_PRECOMPILE_ADDRESS,
             abi.encodeCall(INativeMinter.mintNativeCoin, (recipient, amount)),
@@ -502,7 +510,10 @@ contract NativeTokenRemoteTest is NativeTokenTransferrerTest, TokenRemoteTest {
         }
     }
 
-    function _setUpExpectedDeposit(uint256, uint256 feeAmount) internal override {
+    function _setUpExpectedDeposit(
+        uint256,
+        uint256 feeAmount
+    ) internal override {
         app.deposit{value: feeAmount}();
         // Transfer the fee to the token transferrer if it is greater than 0
         if (feeAmount > 0) {

@@ -102,7 +102,9 @@ contract HandleInitialMessageExecutionTest is TeleporterMessengerTest {
             requiredGasLimit: DEFAULT_REQUIRED_GAS_LIMIT,
             allowedRelayerAddresses: new address[](0),
             receipts: new TeleporterMessageReceipt[](0),
-            message: abi.encode(SampleMessageReceiverAction.Receive, abi.encode(messageString, true))
+            message: abi.encode(
+                SampleMessageReceiverAction.Receive, abi.encode(messageString, true)
+            )
         });
         WarpMessage memory warpMessage =
             _createDefaultWarpMessage(DEFAULT_SOURCE_BLOCKCHAIN_ID, abi.encode(messageToReceive));
@@ -151,7 +153,9 @@ contract HandleInitialMessageExecutionTest is TeleporterMessengerTest {
             ),
             allowedRelayerAddresses: new address[](0),
             receipts: new TeleporterMessageReceipt[](0),
-            message: abi.encode(SampleMessageReceiverAction.Receive, abi.encode(messageString, true))
+            message: abi.encode(
+                SampleMessageReceiverAction.Receive, abi.encode(messageString, true)
+            )
         });
         WarpMessage memory warpMessage =
             _createDefaultWarpMessage(DEFAULT_SOURCE_BLOCKCHAIN_ID, abi.encode(messageToReceive));
@@ -175,7 +179,9 @@ contract HandleInitialMessageExecutionTest is TeleporterMessengerTest {
             requiredGasLimit: DEFAULT_REQUIRED_GAS_LIMIT,
             allowedRelayerAddresses: new address[](0),
             receipts: new TeleporterMessageReceipt[](0),
-            message: abi.encode(SampleMessageReceiverAction.ReceiveRecursive, abi.encode(messageString))
+            message: abi.encode(
+                SampleMessageReceiverAction.ReceiveRecursive, abi.encode(messageString)
+            )
         });
         WarpMessage memory warpMessage =
             _createDefaultWarpMessage(DEFAULT_SOURCE_BLOCKCHAIN_ID, abi.encode(messageToReceive));
@@ -225,7 +231,9 @@ contract HandleInitialMessageExecutionTest is TeleporterMessengerTest {
             requiredGasLimit: DEFAULT_REQUIRED_GAS_LIMIT,
             allowedRelayerAddresses: new address[](0),
             receipts: new TeleporterMessageReceipt[](0),
-            message: abi.encode(SampleMessageReceiverAction.Receive, abi.encode(messageString, false))
+            message: abi.encode(
+                SampleMessageReceiverAction.Receive, abi.encode(messageString, false)
+            )
         });
         WarpMessage memory warpMessage =
             _createDefaultWarpMessage(DEFAULT_SOURCE_BLOCKCHAIN_ID, abi.encode(messageToReceive));

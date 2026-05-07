@@ -23,7 +23,12 @@ contract Adapter is IAdapter {
     IAdapter public immutable adapter1;
     IAdapter public immutable adapter2;
 
-    constructor(bytes32 chain1_, bytes32 chain2_, address adapter1_, address adapter2_) {
+    constructor(
+        bytes32 chain1_,
+        bytes32 chain2_,
+        address adapter1_,
+        address adapter2_
+    ) {
         chain1 = chain1_;
         chain2 = chain2_;
         adapter1 = IAdapter(adapter1_);

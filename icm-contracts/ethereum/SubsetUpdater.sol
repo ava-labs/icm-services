@@ -51,13 +51,13 @@ contract SubsetUpdater is AvalancheValidatorSetRegistry {
             // mark this set as complete
             _partialValidatorSets[avalancheBlockchainID].inProgress = false;
             _validatorSets[avalancheBlockchainID].validators =
-                _partialValidatorSets[avalancheBlockchainID].validators;
+            _partialValidatorSets[avalancheBlockchainID].validators;
             _validatorSets[avalancheBlockchainID].totalWeight =
-                _partialValidatorSets[avalancheBlockchainID].partialWeight;
+            _partialValidatorSets[avalancheBlockchainID].partialWeight;
             _validatorSets[avalancheBlockchainID].pChainHeight =
-                _partialValidatorSets[avalancheBlockchainID].pChainHeight;
+            _partialValidatorSets[avalancheBlockchainID].pChainHeight;
             _validatorSets[avalancheBlockchainID].pChainTimestamp =
-                _partialValidatorSets[avalancheBlockchainID].pChainTimestamp;
+            _partialValidatorSets[avalancheBlockchainID].pChainTimestamp;
         }
     }
 

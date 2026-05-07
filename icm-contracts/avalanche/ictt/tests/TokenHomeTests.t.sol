@@ -736,8 +736,7 @@ abstract contract TokenHomeTest is TokenTransferrerTest {
             remoteTokenDecimals: uint8(remoteTokenDecimals)
         });
         TransferrerMessage memory message = TransferrerMessage({
-            messageType: TransferrerMessageType.REGISTER_REMOTE,
-            payload: abi.encode(payload)
+            messageType: TransferrerMessageType.REGISTER_REMOTE, payload: abi.encode(payload)
         });
         vm.prank(MOCK_TELEPORTER_MESSENGER_ADDRESS);
         tokenHome.receiveTeleporterMessage(
@@ -771,12 +770,13 @@ abstract contract TokenHomeTest is TokenTransferrerTest {
             destinationBlockchainID: input.destinationBlockchainID,
             destinationAddress: input.destinationTokenTransferrerAddress,
             feeInfo: TeleporterFeeInfo({
-                feeTokenAddress: address(transferredToken),
-                amount: input.primaryFee
+                feeTokenAddress: address(transferredToken), amount: input.primaryFee
             }),
             requiredGasLimit: input.requiredGasLimit,
             allowedRelayerAddresses: new address[](0),
-            message: _encodeSingleHopSendMessage(amount / tokenMultiplier, DEFAULT_RECIPIENT_ADDRESS)
+            message: _encodeSingleHopSendMessage(
+                amount / tokenMultiplier, DEFAULT_RECIPIENT_ADDRESS
+            )
         });
         _checkExpectedTeleporterCallsForSend(expectedMessage);
         vm.expectEmit(true, true, true, true, address(tokenTransferrer));
@@ -843,8 +843,7 @@ abstract contract TokenHomeTest is TokenTransferrerTest {
             remoteTokenDecimals: remoteTokenDecimals
         });
         TransferrerMessage memory message = TransferrerMessage({
-            messageType: TransferrerMessageType.REGISTER_REMOTE,
-            payload: abi.encode(payload)
+            messageType: TransferrerMessageType.REGISTER_REMOTE, payload: abi.encode(payload)
         });
         vm.prank(MOCK_TELEPORTER_MESSENGER_ADDRESS);
         tokenHome.receiveTeleporterMessage(

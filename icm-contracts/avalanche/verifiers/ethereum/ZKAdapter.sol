@@ -61,11 +61,11 @@ contract ZKAdapter is ZKStateManager, IMessageVerifier {
      * @notice Teleporter-specific logic to handle the imported event.
      * @dev Override to process verified cross-chain events.
      */
+    // solhint-disable no-empty-blocks
     function _onEventImport(
         ZKEventInfo memory eventInfo
-    ) internal override 
-    // solhint-disable-next-line no-empty-blocks
-    {
+    ) internal override {
         // TODO: Implement event processing
     }
+    // solhint-enable no-empty-blocks
 }

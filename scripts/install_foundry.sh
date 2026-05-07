@@ -8,7 +8,7 @@ set -e
 # This can vary for different environments, so it is set to $HOME for consistency.
 export XDG_CONFIG_HOME=$HOME
 
-FOUNDRY_VERSION=v1.0.0
+FOUNDRY_VERSION=v1.6.0-rc1
 curl -L https://raw.githubusercontent.com/foundry-rs/foundry/${FOUNDRY_VERSION}/foundryup/install > /tmp/foundry-install-script
 # Set the foundry version in the install script
 # Avoid using sed -i due to macos m1 incompatibility

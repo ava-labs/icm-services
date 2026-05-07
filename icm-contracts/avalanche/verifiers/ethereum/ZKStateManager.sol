@@ -275,14 +275,19 @@ contract ZKStateManager is AccessControl {
      */
     function _onEventImport(
         ZKEventInfo memory eventInfo
-    ) internal virtual 
-    // solhint-disable-next-line no-empty-blocks
-    {}
+    )
+        internal
+        virtual
+        // solhint-disable-next-line no-empty-blocks
+         {}
 
     /**
      * @notice Transitions and updates the consensus state of the contract to the new post-state.
      */
-    function _transition(Journal memory journal, uint64 finalizedSlot) internal {
+    function _transition(
+        Journal memory journal,
+        uint64 finalizedSlot
+    ) internal {
         _currentState = journal.postState;
         emit Transitioned(
             journal.preState.finalizedCheckpoint.epoch,
@@ -296,7 +301,10 @@ contract ZKStateManager is AccessControl {
     /**
      * @notice Confirms and stores a beacon block root for a given slot.
      */
-    function _confirmBeaconBlock(uint64 slot, bytes32 root) internal {
+    function _confirmBeaconBlock(
+        uint64 slot,
+        bytes32 root
+    ) internal {
         if (_allowedBeaconBlocks[slot] == UNDEFINED_ROOT) {
             _allowedBeaconBlocks[slot] = root;
         }
@@ -312,7 +320,10 @@ contract ZKStateManager is AccessControl {
      * 2. The consensus post-state can be transitioned to following Ethereum consensus rules (Casper FFG) starting at the pre-state.
      * This step is verified by the ZK proof. Note: This function solely performs verification. The state update must be handled by the caller.
      */
-    function _verify(Journal memory journal, ConsensusData calldata consensus) internal view {
+    function _verify(
+        Journal memory journal,
+        ConsensusData calldata consensus
+    ) internal view {
         // Ensure the proof is anchored to the current contract state.
         // The `preState` claimed in the ZK journal must match the `_currentState` actually stored in this contract.
         if (!Consensus.compareState(_currentState, journal.preState)) {
