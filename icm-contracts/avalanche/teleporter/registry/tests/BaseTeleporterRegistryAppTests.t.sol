@@ -83,7 +83,8 @@ abstract contract BaseTeleporterRegistryAppTest is TeleporterRegistryTest {
         bytes32(hex"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd");
     bytes32 public constant DEFAULT_DESTINATION_BLOCKCHAIN_ID =
         bytes32(hex"1234567812345678123456781234567812345678123456781234567812345678");
-    address public constant DEFAULT_DESTINATION_ADDRESS = 0xd54e3E251b9b0EEd3ed70A858e927bbC2659587d;
+    address public constant DEFAULT_DESTINATION_ADDRESS =
+        0xd54e3E251b9b0EEd3ed70A858e927bbC2659587d;
     address public constant DEFAULT_ORIGIN_ADDRESS = 0xd54e3E251b9b0EEd3ed70A858e927bbC2659587d;
 
     ExampleRegistryApp public app;

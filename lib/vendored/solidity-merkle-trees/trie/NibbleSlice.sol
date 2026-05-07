@@ -30,7 +30,10 @@ library NibbleSliceOps {
         return nibble.data.length * NIBBLE_PER_BYTE - nibble.offset;
     }
 
-    function mid(NibbleSlice memory self, uint256 i) internal pure returns (NibbleSlice memory) {
+    function mid(
+        NibbleSlice memory self,
+        uint256 i
+    ) internal pure returns (NibbleSlice memory) {
         return NibbleSlice(self.data, self.offset + i);
     }
 
@@ -40,11 +43,17 @@ library NibbleSliceOps {
         return len(self) == 0;
     }
 
-    function eq(NibbleSlice memory self, NibbleSlice memory other) internal pure returns (bool) {
+    function eq(
+        NibbleSlice memory self,
+        NibbleSlice memory other
+    ) internal pure returns (bool) {
         return len(self) == len(other) && startsWith(self, other);
     }
 
-    function at(NibbleSlice memory self, uint256 i) internal pure returns (uint256) {
+    function at(
+        NibbleSlice memory self,
+        uint256 i
+    ) internal pure returns (uint256) {
         uint256 ix = (self.offset + i) / NIBBLE_PER_BYTE;
         uint256 pad = (self.offset + i) % NIBBLE_PER_BYTE;
         uint8 data = uint8(self.data[ix]);
@@ -94,7 +103,10 @@ library NibbleSliceOps {
         }
     }
 
-    function biggestDepth(bytes memory a, bytes memory b) internal pure returns (uint256) {
+    function biggestDepth(
+        bytes memory a,
+        bytes memory b
+    ) internal pure returns (uint256) {
         uint256 upperBound = min(a.length, b.length);
         uint256 i = 0;
         while (i < upperBound) {
@@ -106,7 +118,10 @@ library NibbleSliceOps {
         return i * NIBBLE_PER_BYTE;
     }
 
-    function leftCommon(bytes1 a, bytes1 b) internal pure returns (uint256) {
+    function leftCommon(
+        bytes1 a,
+        bytes1 b
+    ) internal pure returns (uint256) {
         if (a == b) {
             return 2;
         } else if (uint8(a) & 0xF0 == uint8(b) & 0xF0) {
@@ -116,7 +131,10 @@ library NibbleSliceOps {
         }
     }
 
-    function bytesSlice(bytes memory _bytes, uint256 _start) internal pure returns (bytes memory) {
+    function bytesSlice(
+        bytes memory _bytes,
+        uint256 _start
+    ) internal pure returns (bytes memory) {
         uint256 bytesLength = _bytes.length;
         uint256 _length = bytesLength - _start;
         require(bytesLength >= _start, "slice_outOfBounds");
@@ -153,7 +171,10 @@ library NibbleSliceOps {
         return tempBytes;
     }
 
-    function min(uint256 a, uint256 b) private pure returns (uint256) {
+    function min(
+        uint256 a,
+        uint256 b
+    ) private pure returns (uint256) {
         return (a < b) ? a : b;
     }
 }

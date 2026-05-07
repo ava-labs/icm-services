@@ -85,7 +85,10 @@ contract NativeTokenHomeTest is NativeTokenTransferrerTest, TokenHomeTest {
         );
     }
 
-    function _checkExpectedWithdrawal(address recipient, uint256 amount) internal override {
+    function _checkExpectedWithdrawal(
+        address recipient,
+        uint256 amount
+    ) internal override {
         vm.expectEmit(true, true, true, true, address(tokenHome));
         emit TokensWithdrawn(recipient, amount);
         vm.expectCall(address(wavax), abi.encodeCall(IWrappedNativeToken.withdraw, (amount)));
@@ -136,7 +139,10 @@ contract NativeTokenHomeTest is NativeTokenTransferrerTest, TokenHomeTest {
         }
     }
 
-    function _setUpExpectedDeposit(uint256 amount, uint256 feeAmount) internal override {
+    function _setUpExpectedDeposit(
+        uint256 amount,
+        uint256 feeAmount
+    ) internal override {
         wavax.deposit{value: feeAmount}();
         // Transfer the fee to the token transferrer if it is greater than 0
         if (feeAmount > 0) {
@@ -154,13 +160,11 @@ contract NativeTokenHomeTest is NativeTokenTransferrerTest, TokenHomeTest {
         emit Deposit(address(nativeTokenTransferrer), amount);
     }
 
+    // solhint-disable no-empty-blocks
     function _setUpDeposit(
         uint256 amount
-    )
-        internal
-        virtual
-        override // solhint-disable-next-line no-empty-blocks
-    {}
+    ) internal virtual override {}
+    // solhint-enable no-empty-blocks
 
     function _setUpExpectedZeroAmountRevert() internal override {
         vm.expectRevert("SafeWrappedNativeTokenDeposit: balance not increased");

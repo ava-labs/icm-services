@@ -247,17 +247,26 @@ contract NativeTokenStakingManagerTest is StakingManagerTest {
     }
 
     // solhint-disable no-empty-blocks
-    function _beforeSend(uint256 amount, address spender) internal override {
+    function _beforeSend(
+        uint256 amount,
+        address spender
+    ) internal override {
         // Native tokens no need pre approve
     }
     // solhint-enable no-empty-blocks
 
-    function _expectStakeUnlock(address account, uint256 amount) internal override {
+    function _expectStakeUnlock(
+        address account,
+        uint256 amount
+    ) internal override {
         // empty calldata implies the receive function will be called
         vm.expectCall(account, amount, "");
     }
 
-    function _expectRewardIssuance(address account, uint256 amount) internal override {
+    function _expectRewardIssuance(
+        address account,
+        uint256 amount
+    ) internal override {
         address nativeMinter = address(app.NATIVE_MINTER());
         bytes memory callData = abi.encodeCall(INativeMinter.mintNativeCoin, (account, amount));
         vm.mockCall(nativeMinter, callData, "");
@@ -294,7 +303,10 @@ contract TestableNativeTokenStakingManager is NativeTokenStakingManager, Test {
         ICMInitializable init
     ) NativeTokenStakingManager(init) {}
 
-    function _reward(address account, uint256 amount) internal virtual override {
+    function _reward(
+        address account,
+        uint256 amount
+    ) internal virtual override {
         super._reward(account, amount);
         // Units tests don't have access to the native minter precompile, so use vm.deal instead.
         vm.deal(account, account.balance + amount);
