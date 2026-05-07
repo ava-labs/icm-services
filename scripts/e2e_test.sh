@@ -119,9 +119,9 @@ export PATH=$PATH:$HOME/.foundry/bin
 "$REPO_PATH"/scripts/build_signature_aggregator.sh
 
 cd "$REPO_PATH"
-forge build --skip test
-FOUNDRY_PROFILE=common forge build --skip test
-FOUNDRY_PROFILE=ethereum forge build --skip test
+reforge build --skip test
+FOUNDRY_PROFILE=common reforge build --skip test
+FOUNDRY_PROFILE=ethereum reforge build --skip test
 
 for component in $(echo $components | tr ',' ' '); do
     echo "Building e2e tests for $component"
