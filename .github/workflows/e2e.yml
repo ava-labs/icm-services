@@ -76,10 +76,13 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Run E2E Tests
         # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           ./scripts/e2e_test.sh --components teleporter
 
@@ -102,10 +105,13 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Run E2E Tests
         # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           ./scripts/e2e_test.sh --components teleporterV2
 
@@ -128,10 +134,13 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Run E2E Tests
         # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           ./scripts/e2e_test.sh --components governance
 
@@ -154,10 +163,13 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Run E2E Tests
         # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           ./scripts/e2e_test.sh --components validator-manager
 
@@ -180,10 +192,13 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Run E2E Tests
         # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           ./scripts/e2e_test.sh --components ictt
 
@@ -206,13 +221,16 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Install geth
         run: ./scripts/install_geth.sh
 
       - name: Run E2E Tests
         # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           export PATH="$PATH:$HOME/.geth"
           ./scripts/e2e_test.sh --components ethereum-icm-verification
@@ -237,14 +255,17 @@ jobs:
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
-      
+
+      - name: Build reforge
+        run: ./scripts/build_reforge.sh
+
       - name: Install geth
         run: ./scripts/install_geth.sh
 
       - name: Run E2E Tests
         # Forge installs to BASE_DIR, but updates the PATH definition in $HOME/.bashrc
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           export PATH="$PATH:$HOME/.geth"
           ./scripts/e2e_test.sh --components services
