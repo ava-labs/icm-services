@@ -4,6 +4,9 @@
 pragma solidity ^0.8.30;
 
 import {BLST} from "./BLST.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+
 
 /**
  * THIS IS LIBRARY IS UN-AUDITED CODE.
@@ -85,6 +88,26 @@ struct ValidatorSetDiff {
     ValidatorChange[] changes;
     uint32 numAdded;
     uint256 newSize;
+}
+
+ /// Compact, constant size on-chain commitment to an Avalanche validator set. 
+struct ValidatorSetMerkleCommitment {
+    bytes32 avalancheBlockchainID;
+    bytes32 root;                 
+    uint64  totalWeight;          
+    uint64  pChainHeight;          
+    uint64  pChainTimestamp;       
+}
+
+/// Attestation envelope for a BLS-signed ICM message. Contains the
+/// signing validators for a specific chain, a Merkle multi-inclusion proof binding 
+/// them to the registry's stored root, and the aggregate BLS signature.
+/// @dev The signers must be stored in increasing lexicographic order by their BLS public key.
+struct ValidatorSetMerkleAttestation {
+    Validator[]  signers;
+    bytes32[] proof;
+    bool[]     proofFlags;
+    bytes     aggregateBlsSig;
 }
 
 library ValidatorSets {
@@ -210,6 +233,69 @@ library ValidatorSets {
             }
         }
         return (aggregatePublicKey, aggregateWeight);
+    }
+
+    /**
+    * @dev ICM message verification scheme using Merkle attestations. Includes the following steps: 
+    * 1. Reconstruct each signer's leaf
+    * 2. Verify all leaves against the stored root via a Merkle multi-inclusion proof
+    * 3. Enforce uniqueness of signers 
+    * 4. Perform a stake-weighted quorum threshold check
+    * 5. Perform aggregate BLS signature verification
+    */ 
+    function verifyMerkleAttestation(
+        bytes calldata rawAttestation,
+        bytes memory signedData,
+        ValidatorSetMerkleCommitment storage comm
+    ) internal view returns (bool) {
+        ValidatorSetMerkleAttestation memory att = ValidatorSets.parseMerkleAttestation(rawAttestation);
+        uint256 numSigners = att.signers.length;
+        require(numSigners > 0, "No signers");
+
+        // Reconstruct leaves
+        bytes32[] memory leaves = new bytes32[](numSigners);
+        for (uint256 i = 0; i < numSigners;) {
+            leaves[i] = sha256(abi.encodePacked(att.signers[i].blsPublicKey, att.signers[i].weight));
+            unchecked {
+                ++i;
+            }
+        }
+        
+        // Perform Merkle multi-inclusion proof verification against the stored root
+        // TODO: Switch to multiProofVerifyCalldata once parseMerkleAttestation returns calldata slice offsets instead of a memory struct for additional gas savings
+        if (!MerkleProof.multiProofVerify(att.proof, att.proofFlags, comm.root, leaves, _sha256Pair)) {
+            return false;
+        }
+            
+        // Enforce uniqueness of signers
+        for (uint256 i = 0; i + 1 < numSigners;) {
+            require(
+                BLST.comparePublicKeys(
+                    BLST.unPadUncompressedBlsPublicKey(att.signers[i].blsPublicKey),
+                    BLST.unPadUncompressedBlsPublicKey(att.signers[i + 1].blsPublicKey)
+                ) < 0,
+                "Signers not strictly increasing"
+            );
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Stake-weighted quorum threshold check
+        uint64 signerWeight = 0;
+        for (uint256 i = 0; i < numSigners; ++i) {
+            signerWeight += att.signers[i].weight;
+        }
+        if (!ValidatorSets.verifyWeight(signerWeight, comm.totalWeight)) {
+            return false;
+        }
+
+        // Aggregate pubkeys and verify BLS signature over the warp preimage.
+        bytes memory aggregateKey = att.signers[0].blsPublicKey;
+        for (uint256 i = 1; i < numSigners; ++i) {
+            aggregateKey = BLST.addG1(aggregateKey, att.signers[i].blsPublicKey);
+        }
+        return BLST.verifySignature(aggregateKey, att.aggregateBlsSig, signedData);
     }
 
     /**
@@ -440,6 +526,72 @@ library ValidatorSets {
         offset += 8;
         change = ValidatorChange({blsPublicKey: blsPublicKey, weight: weight});
         return (change, offset);
+    }
+
+    /**
+    * @notice Parses a ValidatorSetMerkleAttestation from serialized bytes
+    * @param data The serialized attestation
+    * @return att The parsed ValidatorSetMerkleAttestation
+    */
+    function parseMerkleAttestation(
+        bytes calldata data
+    ) internal pure returns (ValidatorSetMerkleAttestation memory att) {
+        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+        uint256 offset = 2;
+
+        // Parse the signers
+        {
+            uint32 numSigners = uint32(bytes4(data[offset:offset + NUM_VALIDATOR_LENGTH]));
+            offset += NUM_VALIDATOR_LENGTH;
+            att.signers = new Validator[](numSigners);
+            for (uint32 i = 0; i < numSigners;) {
+                bytes memory unformattedPublicKey =
+                    data[offset:offset + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH];
+                offset += BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH;
+                uint64 weight = uint64(bytes8(data[offset:offset + VALIDATOR_WEIGHT_LENGTH]));
+                offset += VALIDATOR_WEIGHT_LENGTH;
+                att.signers[i] = Validator({
+                    blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey),
+                    weight: weight
+                });
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+        // Parse the proof
+        {
+            uint32 numProofHashes = uint32(bytes4(data[offset:offset + 4]));
+            offset += 4;
+            att.proof = new bytes32[](numProofHashes);
+            for (uint32 i = 0; i < numProofHashes;) {
+                att.proof[i] = bytes32(data[offset:offset + 32]);
+                offset += 32;
+                unchecked {
+                    ++i;
+                }
+            }
+            uint32 numFlags = uint32(bytes4(data[offset:offset + 4]));
+            offset += 4;
+            uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
+
+            // Parse the proof flags 
+            att.proofFlags = new bool[](numFlags);
+            for (uint256 i = 0; i < numFlags;) {
+                uint8 byteVal = uint8(data[offset + (i >> 3)]);
+                att.proofFlags[i] = (byteVal >> (i & 7)) & 1 == 1;
+                unchecked {
+                    ++i;
+                }
+            }
+
+            offset += flagBytesLen;
+        }
+        // Parse the signature
+        att.aggregateBlsSig = data[offset:offset + BLST.BLS_SIGNATURE_LENGTH];
+        offset += BLST.BLS_SIGNATURE_LENGTH;
+        require(offset == data.length, "Trailing bytes in attestation");
+        return att;
     }
 
     /**
@@ -701,4 +853,12 @@ library ValidatorSets {
             payload
         );
     }
+
+    // TODO: Move elsewhere
+    function _sha256Pair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+        return a < b
+            ? sha256(abi.encodePacked(a, b))
+            : sha256(abi.encodePacked(b, a));
+    }
+
 }
