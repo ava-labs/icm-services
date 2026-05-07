@@ -1,0 +1,114 @@
+name: ICM Macros CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  icm-macros-lint:
+    name: ICM Macros Lint
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Format
+        working-directory: icm-macros
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: icm-macros
+        run: cargo clippy -- -D warnings
+
+  icm-macros-test:
+    name: ICM Macros Tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.91.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build
+        working-directory: icm-macros
+        run: cargo build
+
+      - name: Test
+        working-directory: icm-macros
+        run: cargo test -- --skip tests::test_e2e
+
+  icm-macros-test-e2e:
+    name: ICM Macros E2E Tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.91.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Build
+        working-directory: icm-macros
+        run: cargo build
+
+      - name: Test (e2e)
+        working-directory: icm-macros
+        run: cargo test tests::test_e2e

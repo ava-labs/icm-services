@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-ICM_MACROS_DIR="$REPO_ROOT/lib/icm-macros"
+ICM_MACROS_DIR="$REPO_ROOT/icm-macros"
 INSTALL_DIR="$HOME/.local/bin"
 
 if ! command -v forge &> /dev/null; then
