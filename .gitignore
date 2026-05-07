@@ -25,6 +25,7 @@ cache/
 target/
 bin/
 */Cargo.lock
+!icm-macros/Cargo.lock
 
 # Binaries
 icm-contracts/cmd/teleporter-cli/teleporter-cli
