@@ -70,7 +70,10 @@ library StructHash {
     }
 
     // @notice Hash the list by using taggedListCons to repeatedly add to the head of the list.
-    function taggedList(bytes32 tagDigest, bytes32[] memory list) internal pure returns (bytes32) {
+    function taggedList(
+        bytes32 tagDigest,
+        bytes32[] memory list
+    ) internal pure returns (bytes32) {
         bytes32 curr = bytes32(0x0000000000000000000000000000000000000000000000000000000000000000);
         for (uint256 i = 0; i < list.length; i++) {
             curr = taggedListCons(tagDigest, list[list.length - 1 - i], curr);
