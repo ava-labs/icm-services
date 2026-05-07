@@ -268,9 +268,9 @@ library ValidatorSets {
 
         // Perform Merkle multi-inclusion proof verification against the stored root
         // TODO: Switch to multiProofVerifyCalldata once parseMerkleAttestation returns calldata slice offsets instead of a memory struct for additional gas savings
-        if (
-            !MerkleProof.multiProofVerify(att.proof, att.proofFlags, comm.root, leaves, _sha256Pair)
-        ) {
+        if (!MerkleProof.multiProofVerify(
+                att.proof, att.proofFlags, comm.root, leaves, _sha256Pair
+            )) {
             return false;
         }
 
@@ -925,7 +925,10 @@ library ValidatorSets {
         );
     }
 
-    function _sha256Pair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+    function _sha256Pair(
+        bytes32 a,
+        bytes32 b
+    ) internal pure returns (bytes32) {
         return a < b ? sha256(abi.encodePacked(a, b)) : sha256(abi.encodePacked(b, a));
     }
 }
