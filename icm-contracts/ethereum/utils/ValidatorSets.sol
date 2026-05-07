@@ -400,6 +400,40 @@ library ValidatorSets {
         return serialized;
     }
 
+    /*
+    * @dev Serializes a ValidatorSetMerkleAttestation in the format expected by parseMerkleAttestation.
+    */
+    function serializeMerkleAttestation(
+        ValidatorSetMerkleAttestation memory att
+    ) internal pure returns (bytes memory) {
+        bytes2 codec = bytes2(0);
+        bytes memory data = abi.encodePacked(codec, uint32(att.signers.length));
+        // Encode public keys 
+        for (uint256 i = 0; i < att.signers.length; i++) {
+            data = abi.encodePacked(
+                data,
+                BLST.unPadUncompressedBlsPublicKey(att.signers[i].blsPublicKey),
+                att.signers[i].weight
+            );
+        }
+        // Encode proof
+        data = abi.encodePacked(data, uint32(att.proof.length));
+        for (uint256 i = 0; i < att.proof.length; i++) {
+            data = abi.encodePacked(data, att.proof[i]);
+        }
+        // Encode proof flags
+        uint32 numFlags = uint32(att.proofFlags.length);
+        uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
+        bytes memory packedFlags = new bytes(flagBytesLen);
+        for (uint256 i = 0; i < numFlags; i++) {
+            if (att.proofFlags[i]) {
+                packedFlags[i >> 3] |= bytes1(uint8(1) << uint8(i & 7));
+            }
+        }
+        data = abi.encodePacked(data, numFlags, packedFlags);
+        return abi.encodePacked(data, att.aggregateBlsSig);
+    }
+
     /**
      * @notice Deserializes the validator state payload
      * @param data The serialized validator state payload. The serialized format is:
@@ -579,7 +613,7 @@ library ValidatorSets {
             att.proofFlags = new bool[](numFlags);
             for (uint256 i = 0; i < numFlags;) {
                 uint8 byteVal = uint8(data[offset + (i >> 3)]);
-                att.proofFlags[i] = (byteVal >> (i & 7)) & 1 == 1;
+                att.proofFlags[i] = (byteVal >> uint8(i & 7)) & 1 == 1;
                 unchecked {
                     ++i;
                 }
