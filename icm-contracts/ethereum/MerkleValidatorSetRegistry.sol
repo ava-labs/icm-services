@@ -31,10 +31,18 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
     uint32 public immutable avalancheNetworkID;
     // The Avalanche blockchain ID of the P-chain
     bytes32 public immutable pChainID;
-    // Mapping of Avalanche blockchain IDs to their validator set commitments. 
+    // Mapping of Avalanche blockchain IDs to their validator set commitments.
     mapping(bytes32 => ValidatorSetMerkleCommitment) internal _valSetCommitments;
     // Constructs a new registry instance with the initial validator set commitment registered on the P-chain.
-    constructor(uint32 avalancheNetworkID_, bytes32 pChainID_, bytes32 pChainGenesisRoot, uint64 pChainTotalWeight, uint64 pChainHeight, uint64 pChainTimestamp) {
+
+    constructor(
+        uint32 avalancheNetworkID_,
+        bytes32 pChainID_,
+        bytes32 pChainGenesisRoot,
+        uint64 pChainTotalWeight,
+        uint64 pChainHeight,
+        uint64 pChainTimestamp
+    ) {
         avalancheNetworkID = avalancheNetworkID_;
         pChainID = pChainID_;
         _valSetCommitments[pChainID_] = ValidatorSetMerkleCommitment({
@@ -62,12 +70,12 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         revert("Not implemented");
     }
 
-    /// TODO: Implement in follow-up work. 
+    /// TODO: Implement in follow-up work.
     function applyValidatorSetUpdate(
         ICMMessage calldata /* message */
     ) external {
         revert("Not implemented");
-    } 
+    }
 
     /// @notice Verifies a TeleporterICMMessage against the registered validator set commitment for message.sourceBlockchainID.
     function verifyMessage(
@@ -85,7 +93,7 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         );
         ValidatorSetMerkleCommitment storage comm = _valSetCommitments[message.sourceBlockchainID];
         return ValidatorSets.verifyMerkleAttestation(message.attestation, signedData, comm);
-    }  
+    }
 
     /**
      * @notice Returns the current validator set commitment registered for the given Avalanche blockchain ID.

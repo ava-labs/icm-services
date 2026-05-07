@@ -4,9 +4,8 @@
 pragma solidity ^0.8.30;
 
 import {BLST} from "./BLST.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-
+import {Math} from "@openzeppelin/contracts@5.1.0/utils/math/Math.sol";
+import {MerkleProof} from "@openzeppelin/contracts@5.1.0/utils/cryptography/MerkleProof.sol";
 
 /**
  * THIS IS LIBRARY IS UN-AUDITED CODE.
@@ -90,24 +89,24 @@ struct ValidatorSetDiff {
     uint256 newSize;
 }
 
- /// Compact, constant size on-chain commitment to an Avalanche validator set. 
+/// Compact, constant size on-chain commitment to an Avalanche validator set.
 struct ValidatorSetMerkleCommitment {
     bytes32 avalancheBlockchainID;
-    bytes32 root;                 
-    uint64  totalWeight;          
-    uint64  pChainHeight;          
-    uint64  pChainTimestamp;       
+    bytes32 root;
+    uint64 totalWeight;
+    uint64 pChainHeight;
+    uint64 pChainTimestamp;
 }
 
 /// Attestation envelope for a BLS-signed ICM message. Contains the
-/// signing validators for a specific chain, a Merkle multi-inclusion proof binding 
+/// signing validators for a specific chain, a Merkle multi-inclusion proof binding
 /// them to the registry's stored root, and the aggregate BLS signature.
 /// @dev The signers must be stored in increasing lexicographic order by their BLS public key.
 struct ValidatorSetMerkleAttestation {
-    Validator[]  signers;
+    Validator[] signers;
     bytes32[] proof;
-    bool[]     proofFlags;
-    bytes     aggregateBlsSig;
+    bool[] proofFlags;
+    bytes aggregateBlsSig;
 }
 
 library ValidatorSets {
@@ -236,19 +235,20 @@ library ValidatorSets {
     }
 
     /**
-    * @dev ICM message verification scheme using Merkle attestations. Includes the following steps: 
-    * 1. Reconstruct each signer's leaf
-    * 2. Verify all leaves against the stored root via a Merkle multi-inclusion proof
-    * 3. Enforce uniqueness of signers 
-    * 4. Perform a stake-weighted quorum threshold check
-    * 5. Perform aggregate BLS signature verification
-    */ 
+     * @dev ICM message verification scheme using Merkle attestations. Includes the following steps:
+     * 1. Reconstruct each signer's leaf
+     * 2. Verify all leaves against the stored root via a Merkle multi-inclusion proof
+     * 3. Enforce uniqueness of signers
+     * 4. Perform a stake-weighted quorum threshold check
+     * 5. Perform aggregate BLS signature verification
+     */
     function verifyMerkleAttestation(
         bytes calldata rawAttestation,
         bytes memory signedData,
         ValidatorSetMerkleCommitment storage comm
     ) internal view returns (bool) {
-        ValidatorSetMerkleAttestation memory att = ValidatorSets.parseMerkleAttestation(rawAttestation);
+        ValidatorSetMerkleAttestation memory att =
+            ValidatorSets.parseMerkleAttestation(rawAttestation);
         uint256 numSigners = att.signers.length;
         require(numSigners > 0, "No signers");
 
@@ -260,13 +260,15 @@ library ValidatorSets {
                 ++i;
             }
         }
-        
+
         // Perform Merkle multi-inclusion proof verification against the stored root
         // TODO: Switch to multiProofVerifyCalldata once parseMerkleAttestation returns calldata slice offsets instead of a memory struct for additional gas savings
-        if (!MerkleProof.multiProofVerify(att.proof, att.proofFlags, comm.root, leaves, _sha256Pair)) {
+        if (
+            !MerkleProof.multiProofVerify(att.proof, att.proofFlags, comm.root, leaves, _sha256Pair)
+        ) {
             return false;
         }
-            
+
         // Enforce uniqueness of signers
         for (uint256 i = 0; i + 1 < numSigners;) {
             require(
@@ -408,7 +410,7 @@ library ValidatorSets {
     ) internal pure returns (bytes memory) {
         bytes2 codec = bytes2(0);
         bytes memory data = abi.encodePacked(codec, uint32(att.signers.length));
-        // Encode public keys 
+        // Encode public keys
         for (uint256 i = 0; i < att.signers.length; i++) {
             data = abi.encodePacked(
                 data,
@@ -563,10 +565,10 @@ library ValidatorSets {
     }
 
     /**
-    * @notice Parses a ValidatorSetMerkleAttestation from serialized bytes
-    * @param data The serialized attestation
-    * @return att The parsed ValidatorSetMerkleAttestation
-    */
+     * @notice Parses a ValidatorSetMerkleAttestation from serialized bytes
+     * @param data The serialized attestation
+     * @return att The parsed ValidatorSetMerkleAttestation
+     */
     function parseMerkleAttestation(
         bytes calldata data
     ) internal pure returns (ValidatorSetMerkleAttestation memory att) {
@@ -609,7 +611,7 @@ library ValidatorSets {
             offset += 4;
             uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
 
-            // Parse the proof flags 
+            // Parse the proof flags
             att.proofFlags = new bool[](numFlags);
             for (uint256 i = 0; i < numFlags;) {
                 uint8 byteVal = uint8(data[offset + (i >> 3)]);
@@ -889,9 +891,6 @@ library ValidatorSets {
     }
 
     function _sha256Pair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
-        return a < b
-            ? sha256(abi.encodePacked(a, b))
-            : sha256(abi.encodePacked(b, a));
+        return a < b ? sha256(abi.encodePacked(a, b)) : sha256(abi.encodePacked(b, a));
     }
-
 }

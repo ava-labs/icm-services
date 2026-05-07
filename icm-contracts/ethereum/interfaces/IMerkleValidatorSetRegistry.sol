@@ -18,10 +18,10 @@ import {ValidatorSetMerkleCommitment} from "../utils/ValidatorSets.sol";
 interface IMerkleValidatorSetRegistry {
     event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID);
 
-    /// TODO: Implement in follow-up work. 
+    /// TODO: Implement in follow-up work.
     function registerValidatorSet(ICMMessage calldata message, bytes memory shardBytes) external;
 
-    /// TODO: Implement in follow-up work. 
+    /// TODO: Implement in follow-up work.
     function applyValidatorSetUpdate(
         ICMMessage calldata message
     ) external;

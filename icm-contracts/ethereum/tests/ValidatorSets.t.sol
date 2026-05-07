@@ -349,7 +349,7 @@ contract ValidatorSetsTest is Test {
         for (uint256 i; i < numFlags; i++) {
             proofFlags[i] = (i % 2 == 0);
         }
-        // Build aggregate dummy signature 
+        // Build aggregate dummy signature
         bytes memory aggregateBlsSig = new bytes(BLST.BLS_SIGNATURE_LENGTH);
         for (uint256 i; i < BLST.BLS_SIGNATURE_LENGTH; i++) {
             aggregateBlsSig[i] = bytes1(uint8(i & 0xff));

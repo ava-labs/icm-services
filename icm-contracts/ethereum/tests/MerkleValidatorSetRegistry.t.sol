@@ -6,17 +6,12 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {MerkleValidatorSetRegistry} from "../MerkleValidatorSetRegistry.sol";
 import {BLST} from "../utils/BLST.sol";
-import {
-    Validator,
-    ValidatorSetMerkleAttestation,
-    ValidatorSets
-} from "../utils/ValidatorSets.sol";
+import {Validator, ValidatorSetMerkleAttestation, ValidatorSets} from "../utils/ValidatorSets.sol";
 import {
     TeleporterMessageV2,
     TeleporterMessageV2Parsing,
     TeleporterICMMessage
 } from "../../common/TeleporterMessageV2.sol";
-
 
 contract MerkleValidatorSetRegistryCommon is Test {
     uint32 public constant NETWORK_ID = 1;
@@ -35,13 +30,14 @@ contract MerkleValidatorSetRegistryCommon is Test {
     }
 }
 /**
-* @dev Tests for the MerkleValidatorSetRegistry.verifyMessage pipeline. 
-* The registry is bootstrapped at construction with a single validator set committed 
-* under pChainID and these tests verify messages against that set. 
-* 
-* TODO: Tests covering verification against L1-registered sets require the ability to register 
-* validator set commitments under arbitrary blockchain IDs, which is currently not implemented. 
-*/
+ * @dev Tests for the MerkleValidatorSetRegistry.verifyMessage pipeline.
+ * The registry is bootstrapped at construction with a single validator set committed
+ * under pChainID and these tests verify messages against that set.
+ *
+ * TODO: Tests covering verification against L1-registered sets require the ability to register
+ * validator set commitments under arbitrary blockchain IDs, which is currently not implemented.
+ */
+
 contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegistryCommon {
     MerkleValidatorSetRegistry private _registry;
     Validator[] private _validators;
@@ -68,7 +64,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
             totalWeight += validators[i].weight;
             _validators.push(validators[i]);
         }
-        // Initialize 
+        // Initialize
         _registry = new MerkleValidatorSetRegistry({
             avalancheNetworkID_: NETWORK_ID,
             pChainID_: PCHAIN_BLOCKCHAIN_ID,
@@ -127,23 +123,20 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
     }
 
     /**
-    * @dev verifyMessage returns true when all 4 validators sign and the proof reconstructs the stored root. 
-    *           root
-    *          /    \
-    *        AB      CD
-    *       /  \    /  \
-    *      L0  L1  L2  L3
-    */
+     * @dev verifyMessage returns true when all 4 validators sign and the proof reconstructs the stored root.
+     *           root
+     *          /    \
+     *        AB      CD
+     *       /  \    /  \
+     *      L0  L1  L2  L3
+     */
     function testVerifyMessageSuccessAllSignersBalancedTree() public view {
-        // Construct unsigned warp message 
+        // Construct unsigned warp message
         TeleporterMessageV2 memory inner;
         bytes memory innerSerialized =
             TeleporterMessageV2Parsing.serializeTeleporterMessageV2(inner);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
-            NETWORK_ID,
-            PCHAIN_BLOCKCHAIN_ID,
-            address(_registry),
-            innerSerialized
+            NETWORK_ID, PCHAIN_BLOCKCHAIN_ID, address(_registry), innerSerialized
         );
 
         // Sign the message
@@ -151,7 +144,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
         bytes memory aggregateBlsSig = BLST.createAggregateSignature(secretKeys, signedData);
 
         // Build the multi-proof. The proof is empty since all validators are signers, so the flags simply instruct the verifier to hash up the tree from the leaves.
-        // Recall the number of flags is computed as #leaves + #proofHashes - 1. 
+        // Recall the number of flags is computed as #leaves + #proofHashes - 1.
         bool[] memory proofFlags = new bool[](3);
         proofFlags[0] = true;
         proofFlags[1] = true;
@@ -172,46 +165,43 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
         });
 
         assertTrue(_registry.verifyMessage(message));
-    }   
+    }
 
     /**
-    * @dev verifyMessage returns true with a partial signer set requiring a non-empty
-    * Merkle multi-proof. Signers are validators 0, 2, 3 (skipping validator 1), so
-    * L1 must be supplied as an external sibling hash.
-    *
-    *           root
-    *          /    \
-    *        AB      CD
-    *       /  \    /  \
-    *      L0  L1  L2  L3
-    *
-    * Signers = [L0, L2, L3], proof = [L1]
-    *
-    * Steps to compute proof; #flags = #leaves + #proofHashes - 1 = 3 + 1 - 1 flags
-    *   1. AB = hash(L0, L1)  indicates to take L0 from leaves and L1 from proof, so the flag is false
-    *   2. CD   = hash(L2, L3) indicates to take both from leaves, so the flag is true
-    *   3. root = hash(AB, CD)  indicates to take both sibling nodes, so the flag is true
-    */
+     * @dev verifyMessage returns true with a partial signer set requiring a non-empty
+     * Merkle multi-proof. Signers are validators 0, 2, 3 (skipping validator 1), so
+     * L1 must be supplied as an external sibling hash.
+     *
+     *           root
+     *          /    \
+     *        AB      CD
+     *       /  \    /  \
+     *      L0  L1  L2  L3
+     *
+     * Signers = [L0, L2, L3], proof = [L1]
+     *
+     * Steps to compute proof; #flags = #leaves + #proofHashes - 1 = 3 + 1 - 1 flags
+     *   1. AB = hash(L0, L1)  indicates to take L0 from leaves and L1 from proof, so the flag is false
+     *   2. CD   = hash(L2, L3) indicates to take both from leaves, so the flag is true
+     *   3. root = hash(AB, CD)  indicates to take both sibling nodes, so the flag is true
+     */
     function testVerifyMessageSuccessPartialSignersBalancedTree() public view {
         // Reconstruct the unsigned warp message
         TeleporterMessageV2 memory inner;
         bytes memory innerSerialized =
             TeleporterMessageV2Parsing.serializeTeleporterMessageV2(inner);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
-            NETWORK_ID,
-            PCHAIN_BLOCKCHAIN_ID,
-            address(_registry),
-            innerSerialized
+            NETWORK_ID, PCHAIN_BLOCKCHAIN_ID, address(_registry), innerSerialized
         );
 
         // Sign the message
         uint256[] memory secretKeys = new uint256[](3);
-        secretKeys[0] = 2; 
-        secretKeys[1] = 4; 
+        secretKeys[0] = 2;
+        secretKeys[1] = 4;
         secretKeys[2] = 5;
         bytes memory aggregateSig = BLST.createAggregateSignature(secretKeys, signedData);
 
-        // Add validators who signed the message  
+        // Add validators who signed the message
         Validator[] memory signers = new Validator[](3);
         signers[0] = _validators[0];
         signers[1] = _validators[2];
@@ -219,14 +209,12 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
 
         // Build the proof
         bytes32[] memory proof = new bytes32[](1);
-        proof[0] = sha256(
-            abi.encodePacked(_validators[1].blsPublicKey, _validators[1].weight)
-        );
+        proof[0] = sha256(abi.encodePacked(_validators[1].blsPublicKey, _validators[1].weight));
 
         // Flags per combination step, see comment above
         bool[] memory proofFlags = new bool[](3);
-        proofFlags[0] = false; 
-        proofFlags[1] = true;  
+        proofFlags[0] = false;
+        proofFlags[1] = true;
         proofFlags[2] = true;
 
         ValidatorSetMerkleAttestation memory att = ValidatorSetMerkleAttestation({
@@ -246,11 +234,11 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
     }
 
     /**
-    * @dev Helper function that builds the Merkle root over the validator leaves using the same
-    * scheme that verifyMerkleAttestation expects. The leaves are computed as leaf := sha256(pubkey || weight),
-    * where the public keys are lexiographically sorted.  
-    * NOTE: Assumes number of validators is a power of 2 otherwise this won't match OZ's MerkleProof verifier.
-    */
+     * @dev Helper function that builds the Merkle root over the validator leaves using the same
+     * scheme that verifyMerkleAttestation expects. The leaves are computed as leaf := sha256(pubkey || weight),
+     * where the public keys are lexiographically sorted.
+     * NOTE: Assumes number of validators is a power of 2 otherwise this won't match OZ's MerkleProof verifier.
+     */
     function _buildRoot(
         Validator[] memory validators
     ) internal pure returns (bytes32) {
@@ -266,9 +254,8 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
                 if (2 * i + 1 < layer.length) {
                     bytes32 a = layer[2 * i];
                     bytes32 b = layer[2 * i + 1];
-                    next[i] = a < b
-                        ? sha256(abi.encodePacked(a, b))
-                        : sha256(abi.encodePacked(b, a));
+                    next[i] =
+                        a < b ? sha256(abi.encodePacked(a, b)) : sha256(abi.encodePacked(b, a));
                 } else {
                     next[i] = layer[2 * i];
                 }
