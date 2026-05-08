@@ -14,7 +14,7 @@ contract TestRoundTrip is Test {
         bytes memory f,
         string memory g,
         uint8 numPrimitives
-    ) public {
+    ) public pure {
         vm.assume(numPrimitives <= 10);
 
         Primitives memory primitive = Primitives({

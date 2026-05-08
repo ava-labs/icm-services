@@ -87,12 +87,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.91.0"
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
 
-      - name: Cache Cargo
+      - name: Cache reforge binary
+        id: cache-reforge
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/reforge
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
+      - name: Cache Cargo (icm-macros)
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -102,13 +108,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Install Foundry
-        run: ./scripts/install_foundry.sh
+      - name: Build reforge
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: ./scripts/build_reforge.sh
 
-      - name: Build
-        working-directory: icm-macros
-        run: cargo build
-
-      - name: Test (e2e)
-        working-directory: icm-macros
-        run: cargo test tests::test_e2e
+      - name: Run Solidity tests
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+          FOUNDRY_PROFILE=macros reforge test
