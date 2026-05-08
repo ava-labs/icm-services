@@ -94,6 +94,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
+
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
         run: ./scripts/build_reforge.sh
@@ -141,6 +147,12 @@ jobs:
             icm-macros/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
 
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
@@ -190,6 +202,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
+
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
         run: ./scripts/build_reforge.sh
@@ -237,6 +255,12 @@ jobs:
             icm-macros/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
 
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
@@ -286,6 +310,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
+
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
         run: ./scripts/build_reforge.sh
@@ -333,6 +363,12 @@ jobs:
             icm-macros/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
 
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
@@ -387,6 +423,12 @@ jobs:
             icm-macros/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
 
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'

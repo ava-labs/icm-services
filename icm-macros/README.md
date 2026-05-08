@@ -180,21 +180,3 @@ When a snapshot test fails, the actual output is written to `mismatched/`. Inspe
 ```sh
 mv testing/{macro}/mismatched/Foo.sol testing/{macro}/expected/Foo.sol
 ```
-
-### End-to-end tests
-
-`testing/e2e/` is a Foundry project that exercises the full pack/unpack round-trip against a real EVM. It uses `forge-std` (checked out as a git submodule under `testing/e2e/lib/forge-std`).
-
-Initialise the submodule if needed:
-
-```sh
-git submodule update --init --recursive
-```
-
-Run the end-to-end tests with:
-
-```sh
-cargo test tests::test_e2e
-```
-
-This builds the `icm-macros` binary and invokes it as `icm-macros test --root testing/e2e`, running all Solidity fuzz tests under `testing/e2e/tests/`.
