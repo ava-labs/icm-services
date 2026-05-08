@@ -27,6 +27,12 @@ skip = ['lib/**']
 evm_version = 'prague'
 via_ir = true
 
+[profile.macros]
+src = 'icm-macros/testing/e2e'
+skip = ['lib/**']
+evm_version = 'prague'
+via_ir = true
+
 [fmt]
 line_length = 100
 tab_width = 4
