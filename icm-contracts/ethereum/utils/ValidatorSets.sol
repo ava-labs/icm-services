@@ -269,20 +269,6 @@ library ValidatorSets {
             return false;
         }
 
-        // Enforce uniqueness of signers
-        for (uint256 i = 0; i + 1 < numSigners;) {
-            require(
-                BLST.comparePublicKeys(
-                    BLST.unPadUncompressedBlsPublicKey(att.signers[i].blsPublicKey),
-                    BLST.unPadUncompressedBlsPublicKey(att.signers[i + 1].blsPublicKey)
-                ) < 0,
-                "Signers not strictly increasing"
-            );
-            unchecked {
-                ++i;
-            }
-        }
-
         // Stake-weighted quorum threshold check
         uint64 signerWeight = 0;
         for (uint256 i = 0; i < numSigners; ++i) {

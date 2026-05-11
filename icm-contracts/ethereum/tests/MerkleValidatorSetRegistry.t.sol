@@ -29,6 +29,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
         return secretKeys;
     }
 }
+
 /**
  * @dev Tests for the MerkleValidatorSetRegistry.verifyMessage pipeline.
  * The registry is bootstrapped at construction with a single validator set committed
@@ -37,14 +38,13 @@ contract MerkleValidatorSetRegistryCommon is Test {
  * TODO: Tests covering verification against L1-registered sets require the ability to register
  * validator set commitments under arbitrary blockchain IDs, which is currently not implemented.
  */
-
 contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegistryCommon {
     MerkleValidatorSetRegistry private _registry;
     Validator[] private _validators;
 
     function setUp() public {
         uint256[] memory secretKeys = dummyPChainValidatorSetSecretKeys();
-        // Build a 5-validator set
+        // Build a 4-validator set
         Validator[] memory validators = new Validator[](4);
         uint64 totalWeight = 0;
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
