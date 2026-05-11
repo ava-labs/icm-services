@@ -34,8 +34,11 @@ const (
 	warpGenesisTemplateFile      = "./tests/utils/warp-genesis-template.json"
 	ethereumICMVerificationLabel = "ethereum-icm-verification"
 	zkAdapterByteCodeFile        = "./out/ZKAdapter.sol/ZKAdapter.json"
-	ethereumFixturePath          = "./tests/testdata/sepolia_fixture.json"
-	boundlessFixturePath         = "./tests/testdata/boundless_fixture.json"
+)
+
+var (
+	ethereumFixturePath  = envOrDefault("ETHEREUM_FIXTURE_PATH", "./tests/testdata/sepolia_fixture.json")
+	boundlessFixturePath = envOrDefault("BOUNDLESS_FIXTURE_PATH", "./tests/testdata/boundless_fixture.json")
 )
 
 var (
@@ -45,8 +48,14 @@ var (
 	ecdsaVerifierContractAddress  common.Address
 	ecdsaSigner                   *ecdsa.PrivateKey
 	adapterContractAddress        common.Address
-	mockSignatureAggregator       *utils.MockSignatureAggregator
 )
+
+func envOrDefault(key, default_path string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return default_path
+}
 
 func TestMain(m *testing.M) {
 	e2eFlags = e2e.RegisterFlags()
@@ -102,9 +111,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	var err error
 	ecdsaSigner, err = ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	Expect(err).Should(BeNil())
-	// Create a mock signature aggregator
-	// TODO: Replace this with a real signature aggregator
-	mockSignatureAggregator = utils.NewMockSignatureAggregator(primaryNetworkInfo.BlockchainID, 4)
 
 	// =========================================================================
 	// Step 1: Deploy the DiffUpdater contract on both chains
@@ -115,12 +121,11 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		ctx,
 		ethereumNetworkInfo,
 		fundedEthereumKey,
-		1,
+		localAvalancheNetworkInstance.GetNetworkID(),
 		primaryNetworkInfo.BlockchainID,
 		primaryNetworkInfo.SubnetID,
 		platformvm.NewClient(primaryNetworkInfo.NodeURIs[0]),
 		5,
-		mockSignatureAggregator,
 	)
 	// sanity check
 	Expect(len(serializedShards)).Should(Equal(4))
@@ -140,14 +145,13 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		ctx,
 		&primaryNetworkInfo,
 		fundedAvalancheKey,
-		1,
+		localAvalancheNetworkInstance.GetNetworkID(),
 		primaryNetworkInfo.BlockchainID,
 		primaryNetworkInfo.SubnetID,
 		platformvm.NewClient(primaryNetworkInfo.NodeURIs[0]),
 		// N.B. This must be the same as above so that the constructor arguments match
 		// for both deployments
 		5,
-		mockSignatureAggregator,
 	)
 	// Ensure that the contract address is the same as the one deployed on Ethereum
 	Expect(contractAddress).Should(Equal(registryContractAddress))
@@ -312,7 +316,6 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				ecdsaSigner,
 				ecdsaVerifierContractAddress,
 				adapterContractAddress,
-				mockSignatureAggregator,
 			)
 		})
 
