@@ -62,26 +62,55 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         );
     }
 
-    /// TODO: Implement in follow-up work.
+    /**
+     * @notice Registers or updates the Merkle commitment for a validator set keyed by Avalanche
+     * blockchain ID.
+     */
     function registerValidatorSet(
-        ICMMessage calldata, /* message */
-        bytes memory /* validatorSetBytes */
+        ICMMessage calldata message
     ) external {
-        revert("Not implemented");
+        require(pChainInitialized(), "No P-chain validator set registered.");
+        require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
+
+        // Parse the new commitment
+        ValidatorSetMerkleCommitment memory newCommitment =
+            ValidatorSets.parseMerkleCommitment(message.rawMessage);
+        bytes32 payloadBlockchainID = newCommitment.avalancheBlockchainID;
+
+        // Verify the message under the appropriate validator set
+        bytes32 signingChainID = isRegistered(payloadBlockchainID) ? payloadBlockchainID : pChainID;
+        verifyICMMessage(message, signingChainID);
+        _valSetCommitments[payloadBlockchainID] = newCommitment;
+        emit ValidatorSetRegistered(payloadBlockchainID);
     }
 
-    /// TODO: Implement in follow-up work.
-    function applyValidatorSetUpdate(
-        ICMMessage calldata /* message */
+    /**
+     * @notice Replace the registered Merkle commitment for a validator set with a new one
+     * signed by that set's current validators.
+     */
+    function updateValidatorSet(
+        ICMMessage calldata message
     ) external {
-        revert("Not implemented");
+        ValidatorSetMerkleCommitment memory newCommitment =
+            ValidatorSets.parseMerkleCommitment(message.rawMessage);
+        bytes32 payloadBlockchainID = newCommitment.avalancheBlockchainID;
+        require(isRegistered(payloadBlockchainID), "Chain not registered.");
+        verifyICMMessage(message, payloadBlockchainID);
+        _valSetCommitments[payloadBlockchainID] = newCommitment;
+        emit ValidatorSetUpdated(payloadBlockchainID);
     }
 
-    /// @notice Verifies a TeleporterICMMessage against the registered validator set commitment for message.sourceBlockchainID.
+    /**
+     * @notice Verifies that a TeleporterICMMessage was signed by the validator set committed
+     * to under the Merkle root registered for `message.sourceBlockchainID`.
+     *
+     * @dev This is the entry point for verifying Teleporter application messages. It is the
+     * counterpart to `verifyICMMessage`, which verifies validator set update messages.
+     */
     function verifyMessage(
         TeleporterICMMessage calldata message
     ) external view returns (bool) {
-        require(pChainInitialized(), "P-chain not initialized");
+        require(pChainInitialized(), "No P-chain validator set registered.");
         require(isRegistered(message.sourceBlockchainID), "No validator set registered to given ID");
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
 
@@ -91,22 +120,57 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             address(this),
             TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message.message)
         );
-        ValidatorSetMerkleCommitment storage comm = _valSetCommitments[message.sourceBlockchainID];
-        return ValidatorSets.verifyMerkleAttestation(message.attestation, signedData, comm);
+        return ValidatorSets.verifyMerkleAttestation(
+            message.attestation, signedData, _valSetCommitments[message.sourceBlockchainID]
+        );
     }
 
     /**
      * @notice Returns the current validator set commitment registered for the given Avalanche blockchain ID.
      */
-    function getValidatorSet(
+    function getValidatorSetCommitment(
         bytes32 avalancheBlockchainID
     ) external view returns (ValidatorSetMerkleCommitment memory) {
         return _valSetCommitments[avalancheBlockchainID];
     }
 
     /**
+     * @notice Verify the message. Does the following checks:
+     *   1. P-chain root of trust has been initialized.
+     *   2. The given chain has a registered validator set commitment.
+     *   3. The message is intended for this network.
+     *   4. The attestation is signed by a quorum of validators committed to under
+     * `avalancheBlockchainID`'s stored Merkle root.
+     * Reverts if any check fails.
+     *
+     * @dev Used to verify validator set update messages and called by `registerValidatorSet`.
+     * These messages differ from Teleporter application messages in that they originate
+     * directly from the P-chain rather than from a contract invoking `sendWarpMessage`,
+     * so the warp preimage's `originSenderAddress` is `address(0)` instead of
+     * `address(this)`.
+     */
+    function verifyICMMessage(
+        ICMMessage calldata message,
+        bytes32 avalancheBlockchainID
+    ) public view {
+        require(pChainInitialized(), "P-chain not initialized");
+        require(isRegistered(avalancheBlockchainID), "No validator set registered to given ID");
+        require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
+
+        bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
+            message.sourceNetworkID, message.sourceBlockchainID, address(0), message.rawMessage
+        );
+        require(
+            ValidatorSets.verifyMerkleAttestation(
+                message.attestation, signedData, _valSetCommitments[avalancheBlockchainID]
+            ),
+            "Failed to verify attestation"
+        );
+    }
+
+    /**
      * @dev Check if a P-chain validator set has been completely registered.
-     * Until is has, no functions other than adding to this validator set are
+     * Until it has, no functions other than adding to this validator set are
      * permitted.
      */
     function pChainInitialized() public view returns (bool) {

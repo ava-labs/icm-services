@@ -423,6 +423,25 @@ library ValidatorSets {
     }
 
     /**
+     * @notice Serializes a ValidatorSetMerkleCommitment payload.
+     */
+    function serializeMerkleCommitment(
+        ValidatorSetMerkleCommitment memory commitment
+    ) internal pure returns (bytes memory) {
+        bytes2 codec = bytes2(0);
+        bytes4 payloadType = bytes4(0x00000006);
+        return abi.encodePacked(
+            codec,
+            payloadType,
+            commitment.avalancheBlockchainID,
+            commitment.root,
+            commitment.totalWeight,
+            commitment.pChainHeight,
+            commitment.pChainTimestamp
+        );
+    }
+
+    /**
      * @notice Deserializes the validator state payload
      * @param data The serialized validator state payload. The serialized format is:
      * - 2 bytes: codec ID (0x0000)
@@ -614,6 +633,33 @@ library ValidatorSets {
         offset += BLST.BLS_SIGNATURE_LENGTH;
         require(offset == data.length, "Trailing bytes in attestation");
         return att;
+    }
+
+    /**
+     * @notice Parses a ValidatorSetMerkleCommitment payload from serialized bytes.
+     * @dev The serialized format is:
+     * - 2 bytes:  codec ID
+     * - 4 bytes:  payload type ID
+     * - 32 bytes: Avalanche blockchain ID
+     * - 32 bytes: Merkle root over the validator set
+     * - 8 bytes:  total validator weight
+     * - 8 bytes:  P-chain height
+     * - 8 bytes:  P-chain timestamp
+     */
+    function parseMerkleCommitment(
+        bytes calldata data
+    ) internal pure returns (ValidatorSetMerkleCommitment memory) {
+        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+        uint32 payloadTypeID = uint32(bytes4(data[2:6]));
+        require(payloadTypeID == 6, "Invalid ValidatorSetMerkleCommitment payload type ID");
+
+        return ValidatorSetMerkleCommitment({
+            avalancheBlockchainID: bytes32(data[6:38]),
+            root: bytes32(data[38:70]),
+            totalWeight: uint64(bytes8(data[70:78])),
+            pChainHeight: uint64(bytes8(data[78:86])),
+            pChainTimestamp: uint64(bytes8(data[86:94]))
+        });
     }
 
     /**
