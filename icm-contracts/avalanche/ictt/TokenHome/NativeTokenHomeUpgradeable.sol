@@ -16,7 +16,7 @@ import {
 import {IWrappedNativeToken} from "../interfaces/IWrappedNativeToken.sol";
 import {CallUtils} from "@utilities/CallUtils.sol";
 import {SafeWrappedNativeTokenDeposit} from "@utilities/SafeWrappedNativeTokenDeposit.sol";
-import {Address} from "@openzeppelin/contracts@5.0.2/utils/Address.sol";
+import {Address} from "@openzeppelin/contracts@5.1.0/utils/Address.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 
 /**

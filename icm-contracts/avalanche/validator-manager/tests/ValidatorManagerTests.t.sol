@@ -19,7 +19,7 @@ import {
     ValidatorStatus
 } from "../interfaces/IACP99Manager.sol";
 import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
 
 // TODO: Remove this once all unit tests implemented
 // solhint-disable no-empty-blocks

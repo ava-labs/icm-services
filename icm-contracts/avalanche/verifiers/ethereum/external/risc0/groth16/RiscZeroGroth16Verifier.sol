@@ -20,7 +20,7 @@
 /* solhint-disable */
 pragma solidity ^0.8.30;
 
-import {SafeCast} from "@openzeppelin/contracts@5.0.2/utils/math/SafeCast.sol";
+import {SafeCast} from "@openzeppelin/contracts@5.1.0/utils/math/SafeCast.sol";
 
 import {ControlID} from "./ControlID.sol";
 import {Groth16Verifier} from "./Groth16Verifier.sol";
