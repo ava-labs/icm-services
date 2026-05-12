@@ -85,7 +85,7 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
     }
 
     /**
-     * @notice Replace the registered Merkle commitment for a validator set with a new one
+     * @notice Updates the registered Merkle commitment for a validator set with a new one
      * signed by that set's current validators.
      */
     function updateValidatorSet(
@@ -103,9 +103,6 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
     /**
      * @notice Verifies that a TeleporterICMMessage was signed by the validator set committed
      * to under the Merkle root registered for `message.sourceBlockchainID`.
-     *
-     * @dev This is the entry point for verifying Teleporter application messages. It is the
-     * counterpart to `verifyICMMessage`, which verifies validator set update messages.
      */
     function verifyMessage(
         TeleporterICMMessage calldata message
@@ -144,8 +141,8 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
      * Reverts if any check fails.
      *
      * @dev Used to verify validator set update messages and called by `registerValidatorSet`.
-     * These messages differ from Teleporter application messages in that they originate
-     * directly from the P-chain rather than from a contract invoking `sendWarpMessage`,
+     * These messages differ from Teleporter application messages in that they are emitted
+     * directly by the P-chain rather than from a contract invoking `sendWarpMessage`,
      * so the warp preimage's `originSenderAddress` is `address(0)` instead of
      * `address(this)`.
      */
