@@ -76,8 +76,8 @@ type ValidatorSetMerkleAttestation struct {
 }
 
 // Node Keeps track if a node is on a path from the
-// / root of the merkle tree to one of the leaves
-// / being included in a multi-proof.
+// root of the merkle tree to one of the leaves
+// being included in a multi-proof.
 type Node struct {
 	Hash   [32]byte
 	OnPath bool
@@ -131,8 +131,11 @@ func NewValidatorSetMerkleAttestation(
 		return &ValidatorSetMerkleAttestation{}, fmt.Errorf("failed to decompress BLS signature: %w", err)
 	}
 
+	// Pad to the next power of two so the tree is balanced and the resulting
+	// multi-proof is compatible with OpenZeppelin's MerkleProof.multiProofVerify.
+	n := nextPow2(len(validators))
 	signers := make([]*Validator, 0)
-	layer := make([]Node, len(validators))
+	layer := make([]Node, n)
 	for i, v := range validators {
 		byteIdx := i / 8
 		bitIdx := uint(i % 8)
@@ -144,29 +147,30 @@ func NewValidatorSetMerkleAttestation(
 			layer[i] = Node{Hash: hash, OnPath: false}
 		}
 	}
+	// Null padding — never on the signing path.
+	for i := len(validators); i < n; i++ {
+		layer[i] = Node{Hash: nullLeafHash, OnPath: false}
+	}
 
+	// Build the multi-proof bottom-up over the (always-even) padded layer.
 	proof := make([][32]byte, 0)
 	proofFlags := make([]bool, 0)
 	for len(layer) > 1 {
-		nextLen := (len(layer) + 1) / 2
+		nextLen := len(layer) / 2 // always even
 		nextLayer := make([]Node, nextLen)
 		for i := 0; i < nextLen; i++ {
-			if 2*i+1 < len(layer) {
-				nextHash := sha256Pair(layer[2*i].Hash, layer[2*i+1].Hash)
-				// A node is on the path if either of its children are on the path.
-				nextLayer[i] = Node{Hash: nextHash, OnPath: layer[2*i].OnPath || layer[2*i+1].OnPath}
-				if nextLayer[i].OnPath {
-					// proof flags are only needed for nodes on the path to distinguish if both children are on the path
-					// or only one.
-					proofFlags = append(proofFlags, layer[2*i].OnPath && layer[2*i+1].OnPath)
-					if !layer[2*i].OnPath {
-						proof = append(proof, layer[2*i].Hash)
-					} else if !layer[2*i+1].OnPath {
-						proof = append(proof, layer[2*i+1].Hash)
-					}
+			left, right := layer[2*i], layer[2*i+1]
+			nextHash := sha256Pair(left.Hash, right.Hash)
+			onPath := left.OnPath || right.OnPath
+			nextLayer[i] = Node{Hash: nextHash, OnPath: onPath}
+			if onPath {
+				// Flag indicates whether both children contributed to the path.
+				proofFlags = append(proofFlags, left.OnPath && right.OnPath)
+				if !left.OnPath {
+					proof = append(proof, left.Hash)
+				} else if !right.OnPath {
+					proof = append(proof, right.Hash)
 				}
-			} else {
-				nextLayer[i] = layer[2*i]
 			}
 		}
 		layer = nextLayer
@@ -219,32 +223,58 @@ func (v *ValidatorSetMerkleAttestation) Bytes() []byte {
 	return buf
 }
 
-// BuildMerkleRoot returns the root hash of the merkle tree of the given validators along with
-// the total weight. This function assumes that the validators are sorted by their public keys.
+// nullLeafHash is the leaf hash used to pad the validator set to the next power
+// of two. It is sha256 of 136 zero bytes (the null padded key + zero weight),
+// which cannot be produced by any real validator.
+var nullLeafHash = sha256.Sum256(make([]byte, 136))
+
+// nextPow2 returns the smallest power of two >= n (minimum 1).
+func nextPow2(n int) int {
+	p := 1
+	for p < n {
+		p <<= 1
+	}
+	return p
+}
+
+// BuildMerkleRoot returns the root hash of the Merkle tree of the given validators.
+// Validators must be sorted by public key. The leaf set is padded to the next
+// power of two with nullLeafHash so that the resulting tree is always balanced
+// and compatible with OpenZeppelin's MerkleProof.multiProofVerify.
 func BuildMerkleRoot(validators []*Validator) [32]byte {
-	layer := make([][32]byte, len(validators))
+	if len(validators) == 0 {
+		return [32]byte{}
+	}
+	n := nextPow2(len(validators))
+	layer := make([][32]byte, n)
 	for i, v := range validators {
 		layer[i] = validatorHash(v)
 	}
+	for i := len(validators); i < n; i++ {
+		layer[i] = nullLeafHash
+	}
 	for len(layer) > 1 {
-		nextLen := (len(layer) + 1) / 2
+		nextLen := len(layer) / 2 // always even — no promotion needed
 		nextLayer := make([][32]byte, nextLen)
 		for i := 0; i < nextLen; i++ {
-			if 2*i+1 < len(layer) {
-				nextLayer[i] = sha256Pair(layer[2*i], layer[2*i+1])
-			} else {
-				nextLayer[i] = layer[2*i]
-			}
+			nextLayer[i] = sha256Pair(layer[2*i], layer[2*i+1])
 		}
 		layer = nextLayer
 	}
 	return layer[0]
 }
 
+// validatorHash computes the Merkle leaf hash for a validator using the 128-byte
+// BLST-padded public key format: [16 zeros][48 bytes X][16 zeros][48 bytes Y].
+// This matches Solidity's sha256(abi.encodePacked(paddedKey, weight)) in
+// ValidatorSets.verifyMerkleAttestation.
 func validatorHash(validator *Validator) [32]byte {
-	var buf [104]byte // 96 bytes key + 8 bytes weight
-	copy(buf[:96], validator.UncompressedPublicKeyBytes[:])
-	binary.BigEndian.PutUint64(buf[96:], validator.Weight)
+	var buf [136]byte // 128 bytes padded key + 8 bytes weight
+	// X coordinate (bytes 0-47 of uncompressed key) → bytes 16-63 of padded key
+	copy(buf[16:64], validator.UncompressedPublicKeyBytes[:48])
+	// Y coordinate (bytes 48-95 of uncompressed key) → bytes 80-127 of padded key
+	copy(buf[80:128], validator.UncompressedPublicKeyBytes[48:96])
+	binary.BigEndian.PutUint64(buf[128:], validator.Weight)
 	return sha256.Sum256(buf[:])
 }
 

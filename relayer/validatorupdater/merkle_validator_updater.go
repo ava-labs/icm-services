@@ -149,7 +149,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
-	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, s.localValidatorSet, false); err != nil {
+	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false); err != nil {
 		s.logger.Warn("Merkle root update failed, re-syncing from contract on next tick", zap.Error(err))
 		s.initialized = false
 		return err
@@ -188,29 +188,10 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 			return fmt.Errorf("failed to build validator set commitment: %w", err)
 		}
 
-		// First registration is verified against the P-chain Merkle root stored in the
-		// contract constructor. Fetch the primary network validators used to build that
-		// root so the attestation proof is computed against the correct ordered set.
-		pChainWarpSet, err := s.pChainClient.GetProposedValidators(ctx, ids.Empty)
-		if err != nil {
-			return fmt.Errorf("failed to get P-chain validators for first registration: %w", err)
-		}
-		pChainValidators := make([]*Validator, len(pChainWarpSet.Validators))
-		for i, vdr := range pChainWarpSet.Validators {
-			pChainValidators[i] = &Validator{
-				UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
-				Weight:                     vdr.Weight,
-			}
-		}
-		sort.Slice(pChainValidators, func(i, j int) bool {
-			return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) < string(pChainValidators[j].UncompressedPublicKeyBytes[:])
-		})
-
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
-			zap.Int("numPChainValidators", len(pChainValidators)),
 		)
-		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, pChainValidators, true); err != nil {
+		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true); err != nil {
 			return err
 		}
 		s.localValidatorSet = newValidators
@@ -264,7 +245,6 @@ func (s *MerkleSetUpdater) performUpdate(
 	ctx context.Context,
 	onChainPChainHeight uint64,
 	validatorSetUpdate *ValidatorSetMerkleCommitment,
-	signingValidators []*Validator,
 	isFirstRegistration bool,
 ) error {
 	var signingSubnet ids.ID
@@ -309,16 +289,39 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return s.sendUpdate(ctx, signedMsg, signingValidators, isFirstRegistration)
+	return s.sendUpdate(ctx, signedMsg, isFirstRegistration)
 }
 
 func (s *MerkleSetUpdater) sendUpdate(
 	ctx context.Context,
 	signedMsg *avalancheWarp.Message,
-	validators []*Validator,
 	isFirstRegistration bool,
 ) error {
-	icmMessage, err := s.buildICMMessage(signedMsg, validators)
+	var attestationValidators []*Validator
+	if isFirstRegistration {
+		// First registration is verified against the P-chain Merkle root stored in the
+		// contract constructor. Fetch the primary network validators used to build that
+		// root so the attestation proof is computed against the correct ordered set.
+		pChainWarpSet, err := s.pChainClient.GetProposedValidators(ctx, ids.Empty)
+		if err != nil {
+			return fmt.Errorf("failed to get P-chain validators for attestation: %w", err)
+		}
+		attestationValidators = make([]*Validator, len(pChainWarpSet.Validators))
+		for i, vdr := range pChainWarpSet.Validators {
+			attestationValidators[i] = &Validator{
+				UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+				Weight:                     vdr.Weight,
+			}
+		}
+		sort.Slice(attestationValidators, func(i, j int) bool {
+			return string(attestationValidators[i].UncompressedPublicKeyBytes[:]) <
+				string(attestationValidators[j].UncompressedPublicKeyBytes[:])
+		})
+	} else {
+		attestationValidators = s.localValidatorSet
+	}
+
+	icmMessage, err := s.buildICMMessage(signedMsg, attestationValidators)
 	if err != nil {
 		return err
 	}
