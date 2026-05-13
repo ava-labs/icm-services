@@ -52,12 +52,15 @@ func NewValidatorSetMerkleCommitment(
 }
 
 func (v *ValidatorSetMerkleCommitment) Bytes() []byte {
-	var buf [88]byte // 32 + 32 + 8 + 8 + 8
-	copy(buf[0:32], v.AvalancheBlockchainID[:])
-	copy(buf[32:64], v.RootHash[:])
-	binary.BigEndian.PutUint64(buf[64:72], v.TotalWeight)
-	binary.BigEndian.PutUint64(buf[72:80], v.PChainHeight)
-	binary.BigEndian.PutUint64(buf[80:88], v.PChainTimestamp)
+	var buf [94]byte // 2 (codec) + 4 (payload type) + 32 + 32 + 8 + 8 + 8
+	// codec ID: 0x0000
+	// payload type ID: 6
+	binary.BigEndian.PutUint32(buf[2:6], 6)
+	copy(buf[6:38], v.AvalancheBlockchainID[:])
+	copy(buf[38:70], v.RootHash[:])
+	binary.BigEndian.PutUint64(buf[70:78], v.TotalWeight)
+	binary.BigEndian.PutUint64(buf[78:86], v.PChainHeight)
+	binary.BigEndian.PutUint64(buf[86:94], v.PChainTimestamp)
 	return buf[:]
 }
 
