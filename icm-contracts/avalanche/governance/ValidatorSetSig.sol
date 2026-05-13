@@ -6,7 +6,7 @@
 pragma solidity 0.8.30;
 
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts@5.0.2/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts@5.1.0/utils/ReentrancyGuard.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.

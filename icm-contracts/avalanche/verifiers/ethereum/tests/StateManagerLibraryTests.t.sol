@@ -6,7 +6,7 @@ pragma solidity ^0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {Execution} from "../StateManagerLibrary.sol";
 import {SSZ} from "../../../utilities/SimpleSerialize.sol";
-import {Math} from "@openzeppelin/contracts@5.0.2/utils/math/Math.sol";
+import {Math} from "@openzeppelin/contracts@5.1.0/utils/math/Math.sol";
 
 contract ExecutionHarness {
     Execution.BeaconConfig internal _config;

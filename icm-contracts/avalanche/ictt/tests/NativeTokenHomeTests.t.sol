@@ -12,11 +12,11 @@ import {NativeTokenHome} from "../TokenHome/NativeTokenHome.sol";
 import {IWrappedNativeToken} from "../interfaces/IWrappedNativeToken.sol";
 import {INativeSendAndCallReceiver} from "../interfaces/INativeSendAndCallReceiver.sol";
 import {WrappedNativeToken} from "../WrappedNativeToken.sol";
-import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts@5.1.0/access/Ownable.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
-import {Initializable} from "@openzeppelin/contracts@5.0.2/proxy/utils/Initializable.sol";
+import {Initializable} from "@openzeppelin/contracts@5.1.0/proxy/utils/Initializable.sol";
 
 contract NativeTokenHomeTest is NativeTokenTransferrerTest, TokenHomeTest {
     using SafeERC20 for IERC20;

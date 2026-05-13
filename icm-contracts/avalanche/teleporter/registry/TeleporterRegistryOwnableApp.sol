@@ -6,7 +6,7 @@
 pragma solidity 0.8.30;
 
 import {TeleporterRegistryApp} from "./TeleporterRegistryApp.sol";
-import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
+import {Ownable} from "@openzeppelin/contracts@5.1.0/access/Ownable.sol";
 
 /**
  * @dev Contract that inherits {TeleporterRegistryApp} and allows

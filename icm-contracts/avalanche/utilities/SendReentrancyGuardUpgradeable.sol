@@ -6,7 +6,7 @@
 pragma solidity 0.8.30;
 
 import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 
 /**
  * @dev Abstract contract that helps implement reentrancy guards for Avalanche interchain token transfer {_send} and {_sendAndCall}
