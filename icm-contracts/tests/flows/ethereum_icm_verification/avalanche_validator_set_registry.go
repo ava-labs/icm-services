@@ -8,7 +8,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	ecdsaverifier "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ECDSAVerifier"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
@@ -17,6 +16,7 @@ import (
 	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	. "github.com/onsi/gomega"
 )
@@ -28,7 +28,7 @@ import (
 //  3. Manually relay the message: Recover the emitted event and sign it and submit the signed
 //     message to the contract on Avalanche
 //  4. Send a cross-chain message from Avalanche to Ethereum
-//  5. Manually relay the message: Uses a mock signature aggregator to sign the message and
+//  5. Manually relay the message: Uses the signature aggregator to sign the message and
 //     submit the signed message to the contract on Ethereum
 func AvalancheValidatorSetRegistry(
 	ctx context.Context,
@@ -37,7 +37,6 @@ func AvalancheValidatorSetRegistry(
 	ecdsaSigner *ecdsa.PrivateKey,
 	ecdsaVerifierContractAddress common.Address,
 	adapterContractAddress common.Address,
-	mockSigner *utils.MockSignatureAggregator,
 ) {
 	// set top-level variables
 	_, fundedEthereumKey := localEthereumNetwork.GetFundedAccountInfo()
@@ -169,24 +168,17 @@ func AvalancheValidatorSetRegistry(
 	// Step 5: Manually relay the message to Ethereum
 	// =========================================================================
 	// sign the message
-	if mockSigner != nil {
-		attestation = mockSignMessageAvalanche(
-			primaryNetworkInfo,
-			avalancheEvent.Message,
-			mockSigner,
-		)
-	} else {
-		signatureAggregator := localAvalancheNetwork.GetSignatureAggregator()
-		defer signatureAggregator.Shutdown()
-		attestation = signMessageAvalanche(
-			primaryNetworkInfo,
-			avalancheEvent.Message,
-			signatureAggregator,
-		).Bytes()
-	}
+	signatureAggregator := localAvalancheNetwork.GetSignatureAggregator()
+	defer signatureAggregator.Shutdown()
+	attestation = signMessageAvalanche(
+		ctx,
+		receipt,
+		primaryNetworkInfo,
+		signatureAggregator,
+	)
 	avalancheMsg := teleportermessengerv2.TeleporterICMMessage{
 		Message:            avalancheEvent.Message,
-		SourceNetworkID:    1,
+		SourceNetworkID:    localAvalancheNetwork.GetNetworkID(),
 		SourceBlockchainID: primaryNetworkInfo.BlockchainID,
 		Attestation:        attestation,
 	}
@@ -237,73 +229,23 @@ func signMessageEcdsa(
 	return sig
 }
 
-func mockSignMessageAvalanche(
-	primaryNetworkInfo testinfo.L1TestInfo,
-	message teleportermessengerv2.TeleporterMessageV2,
-	mockSigner *utils.MockSignatureAggregator,
-) []byte {
-	addressedCall, err := payload.NewAddressedCall(
-		nil,
-		utils.SerializeTeleporterMessageV2(message))
-	Expect(err).Should(BeNil())
-	unsignedMsg, err := avalancheWarp.NewUnsignedMessage(
-		1,
-		primaryNetworkInfo.ChainID(),
-		addressedCall.Bytes(),
-	)
-	Expect(err).Should(BeNil())
-
-	// Get the signers for this blockchain
-	signers := mockSigner.Signers[primaryNetworkInfo.ChainID()]
-
-	// Sign the message with each signer
-	signatures := make([]*bls.Signature, len(signers))
-	for i, signer := range signers {
-		sig, err := signer.Sign(unsignedMsg.Bytes())
-		Expect(err).Should(BeNil())
-		signatures[i] = sig
-	}
-
-	// Aggregate all signatures
-	aggregatedSig, err := bls.AggregateSignatures(signatures)
-	Expect(err).Should(BeNil())
-	numBytes := (len(signers) + 7) / 8
-	bitsetBytes := make([]byte, numBytes)
-	for i := range signers {
-		byteOffset := i / 8
-		byteIdx := numBytes - 1 - byteOffset // Big-endian: reverse byte order
-		bitPos := i % 8
-		bitsetBytes[byteIdx] |= (1 << bitPos)
-	}
-	// Get uncompressed signature (192 bytes) - Solidity BLST requires uncompressed
-	uncompressedSig := aggregatedSig.Serialize()
-
-	// Construct attestation bytes: bitset || uncompressed signature
-	// This matches the format expected by parseValidatorSetSignature
-	return append(bitsetBytes, uncompressedSig...)
-}
-
 func signMessageAvalanche(
+	ctx context.Context,
+	receipt *types.Receipt,
 	primaryNetworkInfo testinfo.L1TestInfo,
-	message teleportermessengerv2.TeleporterMessageV2,
 	aggregator *utils.SignatureAggregator,
-) *avalancheWarp.Message {
-	addressedCall, err := payload.NewAddressedCall(
-		nil,
-		utils.SerializeTeleporterMessageV2(message))
-	Expect(err).Should(BeNil())
-	unsignedMsg, err := avalancheWarp.NewUnsignedMessage(
-		1,
-		primaryNetworkInfo.ChainID(),
-		addressedCall.Bytes(),
-	)
-	Expect(err).Should(BeNil())
-	signedMsg := utils.GetSignedMessage(
+) []byte {
+	signedMsg := utils.ConstructSignedWarpMessage(
+		ctx,
+		receipt,
 		primaryNetworkInfo,
 		primaryNetworkInfo,
-		unsignedMsg,
 		nil,
 		aggregator,
 	)
-	return signedMsg
+	bitSetSig, ok := signedMsg.Signature.(*avalancheWarp.BitSetSignature)
+	Expect(ok).Should(BeTrue())
+	sig, err := bls.SignatureFromBytes(bitSetSig.Signature[:])
+	Expect(err).Should(BeNil())
+	return append(bitSetSig.Signers, sig.Serialize()...)
 }

@@ -5,7 +5,7 @@
 
 pragma solidity 0.8.30;
 
-import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
 
 /**
  * @notice Extension of the ERC20 standard that allows for minting new tokens.

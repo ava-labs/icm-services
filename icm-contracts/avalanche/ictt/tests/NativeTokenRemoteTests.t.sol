@@ -19,11 +19,11 @@ import {
     TeleporterFeeInfo
 } from "@teleporter/ITeleporterMessenger.sol";
 import {SendTokensInput} from "../interfaces/ITokenTransferrer.sol";
-import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
 import {ExampleERC20} from "@mocks/ExampleERC20.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
-import {Initializable} from "@openzeppelin/contracts@5.0.2/proxy/utils/Initializable.sol";
+import {Initializable} from "@openzeppelin/contracts@5.1.0/proxy/utils/Initializable.sol";
 
 contract NativeTokenRemoteTest is NativeTokenTransferrerTest, TokenRemoteTest {
     using SafeERC20 for IERC20;

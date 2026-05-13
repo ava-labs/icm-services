@@ -5,7 +5,7 @@
 
 pragma solidity 0.8.30;
 
-import {Math} from "@openzeppelin/contracts@5.0.2/utils/math/Math.sol";
+import {Math} from "@openzeppelin/contracts@5.1.0/utils/math/Math.sol";
 import {TeleporterMessageReceipt} from "./ITeleporterMessenger.sol";
 
 /**

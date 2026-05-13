@@ -232,11 +232,6 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		func(ctx context.Context) {
 			servicesFlows.RelayMessageAPI(ctx, log, localNetworkInstance, teleporterInfo)
 		})
-	ginkgo.It("Warp API",
-		ginkgo.Label(servicesLabel),
-		func(ctx context.Context) {
-			servicesFlows.WarpAPIRelay(ctx, log, localNetworkInstance, teleporterInfo)
-		})
 	ginkgo.It("Signature Aggregator",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {

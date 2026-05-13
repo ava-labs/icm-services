@@ -8,9 +8,9 @@ pragma solidity 0.8.30;
 import {TokenTransferrerTest} from "./TokenTransferrerTests.t.sol";
 import {IERC20TokenTransferrer} from "../interfaces/IERC20TokenTransferrer.sol";
 import {SendTokensInput, SendAndCallInput} from "../interfaces/ITokenTransferrer.sol";
-import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
-import {IERC20Errors} from "@openzeppelin/contracts@5.0.2/interfaces/draft-IERC6093.sol";
+import {IERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Errors} from "@openzeppelin/contracts@5.1.0/interfaces/draft-IERC6093.sol";
 
 abstract contract ERC20TokenTransferrerTest is TokenTransferrerTest {
     using SafeERC20 for IERC20;
