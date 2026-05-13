@@ -836,7 +836,7 @@ func startMerkleSetUpdater(
 	contractAddr := common.HexToAddress(extDest.ContractAddress)
 	contract, err := merklevalidatorsetregistry.NewMerkleValidatorSetRegistry(contractAddr, ethClient)
 	if err != nil {
-		return fmt.Errorf("failed to bind DiffUpdater contract: %w", err)
+		return fmt.Errorf("failed to bind MerkleValidatorSetRegistry contract: %w", err)
 	}
 
 	pChainClient := clients.NewCanonicalValidatorClient(cfg.PChainAPI)

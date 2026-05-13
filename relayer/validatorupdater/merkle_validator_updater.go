@@ -133,7 +133,10 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch validators at height %d: %w", pChainHeight, err)
 	}
 
-	validatorSetUpdate := s.nextUpdate(newValidators, pChainHeight, pChainTimestamp)
+	validatorSetUpdate, err := s.nextUpdate(newValidators, pChainHeight, pChainTimestamp)
+	if err != nil {
+		return fmt.Errorf("failed to build validator set commitment: %w", err)
+	}
 	if validatorSetUpdate == nil {
 		s.logger.Debug("No validator changes and not stale, skipping")
 		return nil
@@ -146,7 +149,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
-	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false); err != nil {
+	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, s.localValidatorSet, false); err != nil {
 		s.logger.Warn("Merkle root update failed, re-syncing from contract on next tick", zap.Error(err))
 		s.initialized = false
 		return err
@@ -180,12 +183,34 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to fetch validators after first registration: %w", err)
 		}
-		cmt := NewValidatorSetMerkleCommitment(s.blockchainID, newValidators, pChainHeight, pChainTimestamp)
+		cmt, err := NewValidatorSetMerkleCommitment(s.blockchainID, newValidators, pChainHeight, pChainTimestamp)
+		if err != nil {
+			return fmt.Errorf("failed to build validator set commitment: %w", err)
+		}
+
+		// First registration is verified against the P-chain Merkle root stored in the
+		// contract constructor. Fetch the primary network validators used to build that
+		// root so the attestation proof is computed against the correct ordered set.
+		pChainWarpSet, err := s.pChainClient.GetProposedValidators(ctx, ids.Empty)
+		if err != nil {
+			return fmt.Errorf("failed to get P-chain validators for first registration: %w", err)
+		}
+		pChainValidators := make([]*Validator, len(pChainWarpSet.Validators))
+		for i, vdr := range pChainWarpSet.Validators {
+			pChainValidators[i] = &Validator{
+				UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+				Weight:                     vdr.Weight,
+			}
+		}
+		sort.Slice(pChainValidators, func(i, j int) bool {
+			return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) < string(pChainValidators[j].UncompressedPublicKeyBytes[:])
+		})
 
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
+			zap.Int("numPChainValidators", len(pChainValidators)),
 		)
-		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true); err != nil {
+		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, pChainValidators, true); err != nil {
 			return err
 		}
 		s.localValidatorSet = newValidators
@@ -228,18 +253,18 @@ func (s *MerkleSetUpdater) nextUpdate(
 	newValidators []*Validator,
 	pChainHeight uint64,
 	pChainTimestamp uint64,
-) *ValidatorSetMerkleCommitment {
+) (*ValidatorSetMerkleCommitment, error) {
 	if BuildMerkleRoot(s.localValidatorSet) != BuildMerkleRoot(newValidators) || s.isStale() {
 		return NewValidatorSetMerkleCommitment(s.blockchainID, newValidators, pChainHeight, pChainTimestamp)
-	} else {
-		return nil
 	}
+	return nil, nil
 }
 
 func (s *MerkleSetUpdater) performUpdate(
 	ctx context.Context,
 	onChainPChainHeight uint64,
 	validatorSetUpdate *ValidatorSetMerkleCommitment,
+	signingValidators []*Validator,
 	isFirstRegistration bool,
 ) error {
 	var signingSubnet ids.ID
@@ -284,33 +309,46 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return s.sendUpdate(ctx, signedMsg)
+	return s.sendUpdate(ctx, signedMsg, signingValidators, isFirstRegistration)
 }
 
 func (s *MerkleSetUpdater) sendUpdate(
 	ctx context.Context,
 	signedMsg *avalancheWarp.Message,
+	validators []*Validator,
+	isFirstRegistration bool,
 ) error {
-	icmMessage, err := s.buildICMMessage(signedMsg)
+	icmMessage, err := s.buildICMMessage(signedMsg, validators)
 	if err != nil {
 		return err
 	}
-	s.logger.Info("Sending registerValidatorSet")
-	// TODO: Fix me once this function has been implemented
-	tx, err := s.contract.RegisterValidatorSet(s.txOpts, icmMessage)
-	if err != nil {
-		return fmt.Errorf("registerValidatorSet failed: %w", err)
+
+	var tx *types.Transaction
+	if isFirstRegistration {
+		s.logger.Info("Sending registerValidatorSet")
+		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage)
+		if err != nil {
+			return fmt.Errorf("registerValidatorSet failed: %w", err)
+		}
+	} else {
+		s.logger.Info("Sending updateValidatorSet")
+		tx, err = s.contract.UpdateValidatorSet(s.txOpts, icmMessage)
+		if err != nil {
+			return fmt.Errorf("updateValidatorSet failed: %w", err)
+		}
 	}
+
 	receipt, err := bind.WaitMined(ctx, s.ethClient, tx)
 	if err != nil {
-		return fmt.Errorf("waiting for registerValidatorSet tx: %w", err)
+		return fmt.Errorf("waiting for validator set tx: %w", err)
 	}
 	if receipt.Status == types.ReceiptStatusFailed {
-		return fmt.Errorf("registerValidatorSet tx reverted: %s", tx.Hash().Hex())
+		return fmt.Errorf("validator set tx reverted: %s", tx.Hash().Hex())
 	}
-	s.logger.Info("registerValidatorSet confirmed",
+	s.logger.Info("validator set tx confirmed",
 		zap.String("txHash", tx.Hash().Hex()),
 		zap.Uint64("blockNumber", receipt.BlockNumber.Uint64()),
+		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 	return nil
 }
@@ -349,6 +387,7 @@ func (s *MerkleSetUpdater) fetchSortedValidators(
 
 func (s *MerkleSetUpdater) buildICMMessage(
 	signedMsg *avalancheWarp.Message,
+	validators []*Validator,
 ) (merklevalidatorsetregistry.ICMMessage, error) {
 	addressedCall, err := warppayload.ParseAddressedCall(signedMsg.UnsignedMessage.Payload)
 	if err != nil {
@@ -361,7 +400,7 @@ func (s *MerkleSetUpdater) buildICMMessage(
 		return merklevalidatorsetregistry.ICMMessage{}, fmt.Errorf("expected BitSetSignature, got %T", signedMsg.Signature)
 	}
 
-	attestation, err := NewValidatorSetMerkleAttestation(s.localValidatorSet, bitSetSig)
+	attestation, err := NewValidatorSetMerkleAttestation(validators, bitSetSig)
 	if err != nil {
 		return merklevalidatorsetregistry.ICMMessage{}, fmt.Errorf("failed to build validator set attestation: %w", err)
 	}

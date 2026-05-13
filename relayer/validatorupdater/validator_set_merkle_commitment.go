@@ -4,19 +4,68 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"math"
 
+	"github.com/ava-labs/avalanchego/codec"
+	"github.com/ava-labs/avalanchego/codec/linearcodec"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 )
 
+// ValidatorSetMerkleCommitment is the warp payload for Merkle validator set
+// registration. Wire layout (linear codec type ID 6) matches
+// platformvm/warp/message on avalanchego branches that register
+// … ValidatorSetMerkleCommitment in seventh position.
+//
+// serialized holds the full codec output after
+// [initializeValidatorSetMerkleCommitment]; it is not part of the struct
+// encoding.
 type ValidatorSetMerkleCommitment struct {
-	AvalancheBlockchainID ids.ID
-	RootHash              [32]byte
-	TotalWeight           uint64
-	PChainHeight          uint64
-	PChainTimestamp       uint64
+	serialized []byte `serialize:"false"`
+
+	AvalancheBlockchainID ids.ID   `serialize:"true" json:"blockchainID"`
+	RootHash              [32]byte `serialize:"true" json:"rootHash"`
+	TotalWeight           uint64   `serialize:"true" json:"totalWeight"`
+	PChainHeight          uint64   `serialize:"true" json:"pChainHeight"`
+	PChainTimestamp       uint64   `serialize:"true" json:"pChainTimestamp"`
+}
+
+func (v *ValidatorSetMerkleCommitment) initialize(b []byte) {
+	v.serialized = b
+}
+
+type validatorSetMerkleCommitmentPayload interface {
+	Bytes() []byte
+	initialize([]byte)
+}
+
+const merkleCommitmentCodecVersion = 0
+
+// merkleCommitmentCodec registers the same first seven warp message types as
+// current avalanchego development branches, so ValidatorSetMerkleCommitment
+// keeps type ID 6.
+var merkleCommitmentCodec codec.Manager
+
+func init() {
+	merkleCommitmentCodec = codec.NewManager(math.MaxInt)
+	lc := linearcodec.NewDefault()
+	err := errors.Join(
+		lc.RegisterType(&message.SubnetToL1Conversion{}),
+		lc.RegisterType(&message.RegisterL1Validator{}),
+		lc.RegisterType(&message.L1ValidatorRegistration{}),
+		lc.RegisterType(&message.L1ValidatorWeight{}),
+		lc.RegisterType(&ValidatorSetMetadata{}),
+		lc.RegisterType(&ValidatorSetDiff{}),
+		lc.RegisterType(&ValidatorSetMerkleCommitment{}),
+		merkleCommitmentCodec.RegisterCodec(merkleCommitmentCodecVersion, lc),
+	)
+	if err != nil {
+		panic(err)
+	}
 }
 
 type ValidatorSetMerkleAttestation struct {
@@ -34,34 +83,38 @@ type Node struct {
 	OnPath bool
 }
 
+func (v *ValidatorSetMerkleCommitment) Bytes() []byte {
+	return v.serialized
+}
+
+// NewValidatorSetMerkleCommitment builds and serializes a
+// ValidatorSetMerkleCommitment payload.
 func NewValidatorSetMerkleCommitment(
 	avalancheBlockchainID ids.ID,
 	validators []*Validator,
 	pChainHeight uint64,
 	pChainTimestamp uint64,
-) *ValidatorSetMerkleCommitment {
+) (*ValidatorSetMerkleCommitment, error) {
 	rootHash := BuildMerkleRoot(validators)
 	totalWeight := sumWeights(validators)
-	return &ValidatorSetMerkleCommitment{
+	msg := &ValidatorSetMerkleCommitment{
 		AvalancheBlockchainID: avalancheBlockchainID,
 		RootHash:              rootHash,
 		TotalWeight:           totalWeight,
 		PChainHeight:          pChainHeight,
 		PChainTimestamp:       pChainTimestamp,
 	}
+	return msg, initializeValidatorSetMerkleCommitment(msg)
 }
 
-func (v *ValidatorSetMerkleCommitment) Bytes() []byte {
-	var buf [94]byte // 2 (codec) + 4 (payload type) + 32 + 32 + 8 + 8 + 8
-	// codec ID: 0x0000
-	// payload type ID: 6
-	binary.BigEndian.PutUint32(buf[2:6], 6)
-	copy(buf[6:38], v.AvalancheBlockchainID[:])
-	copy(buf[38:70], v.RootHash[:])
-	binary.BigEndian.PutUint64(buf[70:78], v.TotalWeight)
-	binary.BigEndian.PutUint64(buf[78:86], v.PChainHeight)
-	binary.BigEndian.PutUint64(buf[86:94], v.PChainTimestamp)
-	return buf[:]
+func initializeValidatorSetMerkleCommitment(v *ValidatorSetMerkleCommitment) error {
+	var p validatorSetMerkleCommitmentPayload = v
+	b, err := merkleCommitmentCodec.Marshal(merkleCommitmentCodecVersion, &p)
+	if err != nil {
+		return fmt.Errorf("couldn't marshal ValidatorSetMerkleCommitment payload: %w", err)
+	}
+	v.initialize(b)
+	return nil
 }
 
 // NewValidatorSetMerkleAttestation constructs a ValidatorSetMerkleAttestation from a full
