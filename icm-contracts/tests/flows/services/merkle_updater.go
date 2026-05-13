@@ -50,7 +50,7 @@ func MerkleUpdater(
 ) {
 	log.Info("Starting MerkleUpdater e2e test")
 
-	l1Info := avalancheNetwork.GetL1Infos()[0]
+	l1Info := avalancheNetwork.GetL1Infos()[2]
 	l1BlockchainID := l1Info.BlockchainID
 	networkID := avalancheNetwork.GetNetworkID()
 
@@ -381,6 +381,11 @@ func MerkleUpdater(
 	// refreshes the commitment to a newer P-chain height.
 	// =========================================================================
 	log.Info("Phase 2: Waiting for staleness-forced update (no validator changes)...")
+
+	// Issue a transaction toAdvance the P-chain by one block so the relayer has
+	// a new height to commit to when its staleness timer fires.
+	_, err = avalancheNetwork.GetPChainWallet().IssueBaseTx(nil)
+	Expect(err).Should(BeNil())
 
 	elapsed := time.Since(firstRegistrationTime)
 	stalenessTimeout := time.Duration(merkleMaxUpdateIntervalSeconds)*time.Second + 90*time.Second
