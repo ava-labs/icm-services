@@ -213,7 +213,7 @@ func (t TeleporterTestInfo) PackReceiveCrossChainMessage(
 ) ([]byte, uint64) {
 	fn := t[destination.BlockchainID].packReceiveCrossChainMessage
 	if fn == nil {
-		panic("no PackReceiveCrossChainMessage function set for this chain")
+		panic(fmt.Sprintf("no PackReceiveCrossChainMessage function set for %s", destination.BlockchainID.Hex()))
 	}
 	return fn(signedMessage, senderKey, destination)
 }
