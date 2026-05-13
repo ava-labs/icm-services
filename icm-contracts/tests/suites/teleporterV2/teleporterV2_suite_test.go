@@ -88,7 +88,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			warpAdapterAddress := utils.DeployWarpAdapterContract(ctx, &l1, fundedKey)
 			teleporterContractAddress = utils.DeployTeleporterV2(ctx, &l1, warpAdapterAddress, fundedKey)
-			teleporterInfo.SetTeleporterV2(teleporterContractAddress, l1.BlockchainID)
+			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, l1.BlockchainID)
 			teleporterInfo.DeployTeleporterRegistry(ctx, &l1, fundedKey)
 		}
 
@@ -111,7 +111,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		Expect(err).Should(BeNil())
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterInfo.SetTeleporterV2(teleporterContractAddress, l1.BlockchainID)
+			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, l1.BlockchainID)
 			teleporterInfo.SetTeleporterRegistry(
 				common.HexToAddress(registryAddresseses[l1.BlockchainID.Hex()]),
 				l1.BlockchainID,
