@@ -40,6 +40,7 @@ jobs:
           export PATH=$PATH:$HOME/.foundry/bin
           export PATH="$PATH:$GOPATH/bin"
           export PATH="$PATH:$HOME/.geth"
+          chmod +x ./scripts/nightly_test.sh
           ./scripts/nightly_test.sh
         env:
           ETH_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
