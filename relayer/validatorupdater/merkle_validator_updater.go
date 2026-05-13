@@ -161,7 +161,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 }
 
 func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
-	onChainVS, err := s.contract.GetValidatorSet(&bind.CallOpts{Context: ctx}, s.blockchainID)
+	onChainVS, err := s.contract.GetValidatorSetCommitment(&bind.CallOpts{Context: ctx}, s.blockchainID)
 	if err != nil {
 		return fmt.Errorf("failed to get on-chain validator set: %w", err)
 	}
@@ -297,7 +297,7 @@ func (s *MerkleSetUpdater) sendUpdate(
 	}
 	s.logger.Info("Sending registerValidatorSet")
 	// TODO: Fix me once this function has been implemented
-	tx, err := s.contract.RegisterValidatorSet(s.txOpts, icmMessage, make([]byte, 0))
+	tx, err := s.contract.RegisterValidatorSet(s.txOpts, icmMessage)
 	if err != nil {
 		return fmt.Errorf("registerValidatorSet failed: %w", err)
 	}
