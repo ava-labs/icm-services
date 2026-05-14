@@ -221,6 +221,28 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Wait for the transaction to be accepted
 	utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
 
+	// Deploy the ECDSAVerifier contract on the Avalanche L1
+	l1Info := localAvalancheNetworkInstance.GetL1Infos()[0]
+	utils.DeployWithNicksMethod(
+		ctx,
+		&l1Info,
+		ecdsaVerifierContractTransaction,
+		ecdsaVerifierDeployerAddress,
+		ecdsaVerifierContractAddress,
+		fundedAvalancheKey,
+	)
+	// Initialize the ECDSAVerifier contract on the L1 with the `ecdsaSigner` address
+	l1EcdsaVerifier, err := ecdsaverifier.NewECDSAVerifier(
+		ecdsaVerifierContractAddress,
+		l1Info.EthClient,
+	)
+	Expect(err).Should(BeNil())
+	opts, err = bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, l1Info.EVMChainID)
+	Expect(err).Should(BeNil())
+	tx, err = l1EcdsaVerifier.Initialize(opts, crypto.PubkeyToAddress(ecdsaSigner.PublicKey))
+	Expect(err).Should(BeNil())
+	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, tx.Hash())
+
 	// Deploy the ECDSAVerifier contract on the Ethereum chain
 	utils.DeployWithNicksMethod(
 		ctx,
@@ -330,4 +352,16 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				boundlessFixturePath,
 			)
 		})
-})
+	
+	ginkgo.It("Test MerkleValidatorSetRegistry",
+    	ginkgo.Label(ethereumICMVerificationLabel),
+    	func(ctx context.Context) {
+        	ethereumIcmVerification.MerkleValidatorSetRegistry(
+            	ctx,
+            	localAvalancheNetworkInstance,
+            	localEthereumNetworkInstance,
+            	ecdsaSigner,
+            	ecdsaVerifierContractAddress,
+        	)
+    	})
+	})
