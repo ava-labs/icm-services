@@ -352,16 +352,16 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				boundlessFixturePath,
 			)
 		})
-	
+
 	ginkgo.It("Test MerkleValidatorSetRegistry",
-    	ginkgo.Label(ethereumICMVerificationLabel),
-    	func(ctx context.Context) {
-        	ethereumIcmVerification.MerkleValidatorSetRegistry(
-            	ctx,
-            	localAvalancheNetworkInstance,
-            	localEthereumNetworkInstance,
-            	ecdsaSigner,
-            	ecdsaVerifierContractAddress,
-        	)
-    	})
-	})
+		ginkgo.Label(ethereumICMVerificationLabel),
+		func(ctx context.Context) {
+			ethereumIcmVerification.MerkleValidatorSetRegistry(
+				ctx,
+				localAvalancheNetworkInstance,
+				localEthereumNetworkInstance,
+				ecdsaSigner,
+				ecdsaVerifierContractAddress,
+			)
+		})
+})

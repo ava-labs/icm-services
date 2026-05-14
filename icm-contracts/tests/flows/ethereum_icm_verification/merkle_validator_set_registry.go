@@ -9,13 +9,13 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	warppayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	ecdsaverifier "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ECDSAVerifier"
 	"github.com/ava-labs/icm-services/config"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
-	warppayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/validatorupdater"
@@ -27,7 +27,7 @@ import (
 )
 
 /**
-* Test roundtrip ICM message verification using MerkleValidatorSetRegistry and ECDASAVerifier. 
+* Test roundtrip ICM message verification using MerkleValidatorSetRegistry and ECDASAVerifier.
 * - Ethereum -> Avalanche L1: signed with ECDSA and verified by ECDSAVerifier on the Avalanche L1
 * - Avalanche L1 -> Ethereum: signed by the L1 validator set and verified by the MerkleValidatorSetRegistry on Ethereum
 *
@@ -40,7 +40,7 @@ import (
 * 4. Send a cross-chain TeleporterV2 message from the L1 to Ethereum.
 * 5. Manually relay by aggregating the BLS signatures, building the Merkle attestation, and submitting to
 *    Ethereum's TeleporterMessengerV2.
-*/
+ */
 func MerkleValidatorSetRegistry(
 	ctx context.Context,
 	avalancheNetwork *localnetwork.LocalAvalancheNetwork,
@@ -81,7 +81,7 @@ func MerkleValidatorSetRegistry(
 		}
 	}
 	sort.Slice(pChainValidators, func(i, j int) bool {
-		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) < 
+		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) <
 			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
 	})
 	pChainRoot := validatorupdater.BuildMerkleRoot(pChainValidators)
@@ -96,12 +96,12 @@ func MerkleValidatorSetRegistry(
 		networkID, constants.PlatformChainID,
 		pChainRoot, pChainTotalWeight, pChainHeight, pChainTimestamp,
 	)
-	
+
 	// Deploy MerkleValidatorSetRegistry on the Avalanche L1
 	merkleRegistryAddrL1 := utils.DeployMerkleValidatorSetRegistry(
-    	ctx, &l1Info, fundedAvalancheKey,
-    	networkID, constants.PlatformChainID,
-    	pChainRoot, pChainTotalWeight, pChainHeight, pChainTimestamp,
+		ctx, &l1Info, fundedAvalancheKey,
+		networkID, constants.PlatformChainID,
+		pChainRoot, pChainTotalWeight, pChainHeight, pChainTimestamp,
 	)
 	Expect(merkleRegistryAddrL1).Should(Equal(merkleRegistryAddr))
 
@@ -136,7 +136,7 @@ func MerkleValidatorSetRegistry(
 	teleporterInfo.SetTeleporterV2(ethTeleporterAddr, ethInfo.ChainID())
 	Expect(l1TeleporterAddr).Should(Equal(ethTeleporterAddr))
 
-	// Register the L1's validator set on Ethereum under the P-Chain root of trust commitment 
+	// Register the L1's validator set on Ethereum under the P-Chain root of trust commitment
 	signatureAggregator := avalancheNetwork.GetSignatureAggregator()
 	defer signatureAggregator.Shutdown()
 
@@ -145,7 +145,7 @@ func MerkleValidatorSetRegistry(
 		networkID, l1Info, merkleRegistry, ethereumOpts, ethereumNetwork.EthClient,
 	)
 
-	// Step 2: Send cross-chain message from Ethereum -> Avalanche L1 verifying against ECDSAVerifier 
+	// Step 2: Send cross-chain message from Ethereum -> Avalanche L1 verifying against ECDSAVerifier
 	ethTeleporter := teleporterInfo.TeleporterMessengerV2(ethInfo)
 	ethMessage := teleportermessengerv2.TeleporterMessageInput{
 		DestinationBlockchainID: l1Info.BlockchainID,
@@ -193,7 +193,7 @@ func MerkleValidatorSetRegistry(
 	Expect(err).Should(BeNil())
 	Expect(receiptEvent.Message.Message).Should(Equal(ethMsg.Message.Message))
 
-  	// Step 4: Send cross-chain message from the Avalanche L1 -> Ethereum verifying against MerkleValidatorSetRegistry
+	// Step 4: Send cross-chain message from the Avalanche L1 -> Ethereum verifying against MerkleValidatorSetRegistry
 	avalancheMessage := teleportermessengerv2.TeleporterMessageInput{
 		DestinationBlockchainID: ethereumBlockchainID,
 		DestinationAddress:      common.Address{},
@@ -269,11 +269,11 @@ func registerL1ValidatorSet(
 	Expect(err).Should(BeNil())
 
 	signedMsg, err := aggregator.CreateSignedMessage(
-    	unsignedMsg,
-    	nil,
-    	ids.Empty,
-    	67,
-    	l1Info,
+		unsignedMsg,
+		nil,
+		ids.Empty,
+		67,
+		l1Info,
 	)
 	Expect(err).Should(BeNil())
 
