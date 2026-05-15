@@ -14,7 +14,8 @@ import {
     ValidatorSetSignature,
     ValidatorSetMetadata,
     ValidatorSetShard,
-    ValidatorSetMerkleAttestation
+    ValidatorSetMerkleAttestation,
+    ValidatorSetMerkleCommitment
 } from "../utils/ValidatorSets.sol";
 
 contract ValidatorSetsTestHarness {
@@ -60,6 +61,12 @@ contract ValidatorSetsTestHarness {
         bytes calldata attestationBytes
     ) public pure returns (ValidatorSetMerkleAttestation memory) {
         return ValidatorSets.parseMerkleAttestation(attestationBytes);
+    }
+
+    function parseMerkleCommitment(
+        bytes calldata data
+    ) public pure returns (ValidatorSetMerkleCommitment memory) {
+        return ValidatorSets.parseMerkleCommitment(data);
     }
 }
 
@@ -379,6 +386,27 @@ contract ValidatorSetsTest is Test {
             assertEq(attestation.proofFlags[i], deserialized.proofFlags[i]);
         }
         assertEq(attestation.aggregateBlsSig, deserialized.aggregateBlsSig);
+    }
+
+    /**
+     * @dev Serialize/parse roundtrip for ValidatorSetMerkleCommitment payloads.
+     */
+    function testRoundtripMerkleCommitment() public view {
+        ValidatorSetMerkleCommitment memory original = ValidatorSetMerkleCommitment({
+            avalancheBlockchainID: 0x1234567890123456789012345678901234567890123456789012345678901234,
+            root: 0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef,
+            totalWeight: 1_000_000,
+            pChainHeight: 42,
+            pChainTimestamp: 1_700_000_000
+        });
+        bytes memory serialized = ValidatorSets.serializeMerkleCommitment(original);
+        ValidatorSetMerkleCommitment memory parsed = _harness.parseMerkleCommitment(serialized);
+
+        assertEq(parsed.avalancheBlockchainID, original.avalancheBlockchainID);
+        assertEq(parsed.root, original.root);
+        assertEq(parsed.totalWeight, original.totalWeight);
+        assertEq(parsed.pChainHeight, original.pChainHeight);
+        assertEq(parsed.pChainTimestamp, original.pChainTimestamp);
     }
 
     /*
