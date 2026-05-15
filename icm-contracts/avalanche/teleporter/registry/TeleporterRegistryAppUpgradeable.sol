@@ -9,13 +9,13 @@ import {TeleporterRegistry} from "./TeleporterRegistry.sol";
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 import {ITeleporterMessenger, TeleporterMessageInput} from "@teleporter/ITeleporterMessenger.sol";
 import {ContextUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/utils/ContextUpgradeable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/utils/ContextUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/utils/ReentrancyGuardUpgradeable.sol";
-import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
-import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/utils/ReentrancyGuardUpgradeable.sol";
+import {SafeERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
 import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 
 /**
  * @dev TeleporterRegistryAppUpgradeable provides upgrade utility for applications built on top

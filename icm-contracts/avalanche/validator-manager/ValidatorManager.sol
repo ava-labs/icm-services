@@ -17,9 +17,9 @@ import {
 import {ACP99Manager} from "./ACP99Manager.sol";
 import {IWarpMessenger, WarpMessage} from "@subnet-evm/IWarpMessenger.sol";
 import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
 import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 
 /**

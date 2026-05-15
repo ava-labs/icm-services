@@ -11,7 +11,7 @@ import {
     ExampleRegistryOwnableAppUpgradeable
 } from "./BaseTeleporterRegistryOwnableAppTest.t.sol";
 import {ExampleRegistryApp} from "./BaseTeleporterRegistryAppTests.t.sol";
-import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
+import {Ownable} from "@openzeppelin/contracts@5.1.0/access/Ownable.sol";
 
 contract TeleporterRegistryOwnableAppTest is BaseTeleporterRegistryOwnableAppTest {
     function setUp() public virtual override {

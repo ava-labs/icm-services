@@ -8,8 +8,8 @@ pragma solidity 0.8.30;
 import {ValidatorManagerTest} from "./ValidatorManagerTests.t.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts@5.0.2/proxy/utils/Initializable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts@5.1.0/proxy/utils/Initializable.sol";
 import {IACP99Manager, PChainOwner, ConversionData} from "../interfaces/IACP99Manager.sol";
 import {IValidatorManager, ValidatorManager} from "../ValidatorManager.sol";
 import {ValidatorMessages} from "../ValidatorMessages.sol";

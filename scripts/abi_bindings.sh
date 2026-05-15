@@ -26,7 +26,7 @@ ECDSAVerifier ZKStateManager ZKAdapter RiscZeroGroth16Verifier"
 
 DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2 Adapter"
 
-DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater"
+DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater MerkleValidatorSetRegistry"
 
 PROXY_LIST="TransparentUpgradeableProxy ProxyAdmin"
 ACCESS_LIST="OwnableUpgradeable"
