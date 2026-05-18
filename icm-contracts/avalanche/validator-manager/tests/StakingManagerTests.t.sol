@@ -1423,7 +1423,6 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
     }
 
     function testReplayValidatorRegistration() public virtual override {
-        uint64 initialTimestamp = uint64(block.timestamp);
         bytes32 validationID = _registerDefaultValidator();
 
         bytes memory setWeightMessage =
@@ -1461,7 +1460,9 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
 
         // Set the timestamp to be the same as when we registered the initial validator so that the
         // expiries will be the same, leading to the same validation ID.
-        vm.warp(initialTimestamp);
+        // See ValidatorManagerTests.testReplayValidatorRegistration for explanation of why
+        // DEFAULT_INITIAL_TIMESTAMP is used instead of a captured block.timestamp local.
+        vm.warp(DEFAULT_INITIAL_TIMESTAMP);
         _beforeSend(_weightToValue(DEFAULT_WEIGHT), address(this));
 
         vm.expectRevert(

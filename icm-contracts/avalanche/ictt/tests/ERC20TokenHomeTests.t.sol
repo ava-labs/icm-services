@@ -11,15 +11,15 @@ import {IERC20SendAndCallReceiver} from "../interfaces/IERC20SendAndCallReceiver
 import {SendTokensInput} from "../interfaces/ITokenTransferrer.sol";
 import {ERC20TokenHomeUpgradeable} from "../TokenHome/ERC20TokenHomeUpgradeable.sol";
 import {ERC20TokenHome} from "../TokenHome/ERC20TokenHome.sol";
-import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
 import {ExampleERC20} from "@mocks/ExampleERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
 import {TeleporterMessageInput, TeleporterFeeInfo} from "@teleporter/ITeleporterMessenger.sol";
 import {TokenScalingUtils} from "@utilities/TokenScalingUtils.sol";
 import {RemoteTokenTransferrerSettings} from "../TokenHome/interfaces/ITokenHome.sol";
-import {Ownable} from "@openzeppelin/contracts@5.0.2/access/Ownable.sol";
+import {Ownable} from "@openzeppelin/contracts@5.1.0/access/Ownable.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
-import {Initializable} from "@openzeppelin/contracts@5.0.2/proxy/utils/Initializable.sol";
+import {Initializable} from "@openzeppelin/contracts@5.1.0/proxy/utils/Initializable.sol";
 
 contract ERC20TokenHomeTest is ERC20TokenTransferrerTest, TokenHomeTest {
     using SafeERC20 for IERC20;

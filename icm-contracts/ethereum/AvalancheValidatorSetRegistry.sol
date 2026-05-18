@@ -20,6 +20,7 @@ import {
     TeleporterMessageV2
 } from "../common/TeleporterMessageV2.sol";
 import {IAdapter} from "../common/ITeleporterMessengerV2.sol";
+import {IWarpMessenger} from "../avalanche/subnet-evm/IWarpMessenger.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -34,6 +35,8 @@ import {IAdapter} from "../common/ITeleporterMessengerV2.sol";
 // how the data is sharded across these transactions. Two virtual functions should
 // be overridden in a child contract to specify this.
 contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapter {
+    address private constant _WARP_PRECOMPILE_ADDRESS = 0x0200000000000000000000000000000000000005;
+
     uint32 public immutable avalancheNetworkID;
     // The Avalanche blockchain ID of the P-chain
     bytes32 public immutable pChainID;
@@ -67,10 +70,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
     }
 
     function sendMessage(
-        /* solhint-disable-next-line no-unused-vars */
         TeleporterMessageV2 calldata message
     ) external {
-        return;
+        IWarpMessenger(_WARP_PRECOMPILE_ADDRESS).sendWarpMessage(
+            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message)
+        );
     }
 
     function verifyMessage(
@@ -84,6 +88,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
             message.sourceNetworkID,
             message.sourceBlockchainID,
+            address(this),
             TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message.message)
         );
         return ValidatorSets.verifyValidatorSetSignature(
@@ -305,7 +310,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
         ValidatorSetSignature memory sig =
             ValidatorSets.parseValidatorSetSignature(message.attestation);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
-            message.sourceNetworkID, message.sourceBlockchainID, message.rawMessage
+            message.sourceNetworkID, message.sourceBlockchainID, address(0), message.rawMessage
         );
         require(
             ValidatorSets.verifyValidatorSetSignature(

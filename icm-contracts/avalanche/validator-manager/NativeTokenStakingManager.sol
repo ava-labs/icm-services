@@ -11,9 +11,9 @@ import {PChainOwner} from "./ACP99Manager.sol";
 import {INativeTokenStakingManager} from "./interfaces/INativeTokenStakingManager.sol";
 import {INativeMinter} from "@subnet-evm/INativeMinter.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
-import {Address} from "@openzeppelin/contracts@5.0.2/utils/Address.sol";
+import {Address} from "@openzeppelin/contracts@5.1.0/utils/Address.sol";
 import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+    "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 
 /**
  * @dev Implementation of the {INativeTokenStakingManager} interface.

@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
 	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	"github.com/ava-labs/libevm/common"
@@ -93,7 +94,7 @@ func DeployDiffUpdaterWithMetadata(
 	)
 	Expect(err).Should(BeNil())
 
-	gasLimit := uint64(16_000_000)
+	gasLimit := uint64(10_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
@@ -135,7 +136,7 @@ func DeploySubsetUpdater(
 	)
 	Expect(err).Should(BeNil())
 
-	gasLimit := uint64(10000000)
+	gasLimit := uint64(16_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
@@ -175,7 +176,7 @@ func createShards(
 	banffBlock, ok := pChainBlock.(block.BanffBlock)
 	Expect(ok).Should(BeTrue())
 
-	// Get the validators from the block height
+	// Get the validators from the P-chain at the current height
 	rawValidators, err := pChainClient.GetValidatorsAt(ctx, avalancheSubnetID, api.Height(pChainHeight))
 	Expect(err).Should(BeNil())
 	canonicalValidatorSet, err := validators.FlattenValidatorSet(rawValidators)
@@ -266,4 +267,43 @@ func SerializeValidatorSetDiff(
 	data = append(data, numAdded...)
 
 	return data
+}
+
+// SerializeTeleporterMessageV2 Serializes a `TeleporterMessageV2` to bytes in the same manner as the
+// `TeleporterMessengerV2` contract expects it to be serialized.
+func SerializeTeleporterMessageV2(message teleportermessengerv2.TeleporterMessageV2) []byte {
+	nonceBytes := make([]byte, 32)
+	message.MessageNonce.FillBytes(nonceBytes)
+	gasLimitBytes := make([]byte, 32)
+	message.RequiredGasLimit.FillBytes(gasLimitBytes)
+	relayerCountBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(relayerCountBytes, uint32(len(message.AllowedRelayerAddresses)))
+
+	result := bytes.Join([][]byte{
+		nonceBytes,
+		message.OriginSenderAddress.Bytes(),
+		message.OriginTeleporterAddress.Bytes(),
+		message.DestinationBlockchainID[:],
+		message.DestinationAddress.Bytes(),
+		gasLimitBytes,
+		relayerCountBytes,
+	}, nil)
+
+	for _, addr := range message.AllowedRelayerAddresses {
+		result = append(result, addr.Bytes()...)
+	}
+
+	receiptsCountBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(receiptsCountBytes, uint32(len(message.Receipts)))
+	result = append(result, receiptsCountBytes...)
+
+	for _, receipt := range message.Receipts {
+		receipt.ReceivedMessageNonce.FillBytes(nonceBytes)
+		result = append(result, nonceBytes...)
+		result = append(result, receipt.RelayerRewardAddress.Bytes()...)
+	}
+
+	result = append(result, message.Message...)
+
+	return result
 }

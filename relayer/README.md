@@ -77,8 +77,7 @@ The Fuji and Mainnet [public API nodes](https://docs.avax.network/tooling/rpc-pr
 
 ### Peer-to-Peer Connections
 
-- By default, the ICM relayer implementation gathers BLS signatures from the validators of the source Subnet via peer-to-peer `AppRequest` messages. Validator nodes need to be configured to accept incoming peer connections. Otherwise, the relayer will fail to gather Warp message signatures. For example, networking rules may need to be adjusted to allow traffic on the default AvalancheGo P2P port (9651), or the public IP may need to be manually set in the [node configuration](https://docs.avax.network/nodes/configure/avalanchego-config-flags#public-ip).
-- **DEPRECATED** If configured to use the Warp API (see `warp-api-endpoint` in [Configuration](#configuration)) then aggregate signatures are fetched via a single RPC request, rather than `AppRequests` to individual validators. Note that the Warp API is disabled on the public API.
+- The ICM relayer implementation gathers BLS signatures from the validators of the source Subnet via peer-to-peer `AppRequest` messages. Validator nodes need to be configured to accept incoming peer connections. Otherwise, the relayer will fail to gather Warp message signatures. For example, networking rules may need to be adjusted to allow traffic on the default AvalancheGo P2P port (9651), or the public IP may need to be manually set in the [node configuration](https://docs.avax.network/nodes/configure/avalanchego-config-flags#public-ip).
 
 ### Private Key Management
 
@@ -290,22 +289,6 @@ The relayer is configured via a JSON file, the path to which is passed in via th
   `"allowed-origin-sender-addresses": []string`
 
   - List of addresses on this source blockchain to relay Warp messages from. The sending address is defined by the message protocol. For example, it could be defined as the EOA that initiates the transaction, or the address that calls the message protocol contract. If empty, then all addresses are allowed.
-
-  `"DEPRECATED warp-api-endpoint": APIConfig`
-
-  - The RPC endpoint configuration for the Warp API, which is used to fetch Warp aggregate signatures. If omitted, then signatures are fetched via AppRequest instead.  An `APIConfig` has the following fields:
-
-    `"base-url": string`
-
-    - The URL that will be queried. The API node is expected to have `warp.getMessageAggregateSignature` enabled.
-
-    `"query-params": map[string]string`
-
-    - A map of query parameters to values that will be added to the base URL
-
-    `"http-headers": map[string]string`
-
-    - A map of HTTP headers to include in the requests to this API
 
 `"destination-blockchains": []DestinationBlockchains`
 
