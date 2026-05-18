@@ -134,12 +134,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
         //     validator set initialized on this contract at deploy time.
         //   - Any subsequent registration, including a "reset" that
         //     wholesale replaces the registered set, is signed by the
-        //     registered L1 validator set. The contract cannot trust a
-        //     fresh P-chain-signed payload here because the stored P-chain
-        //     set is static from deployment and cannot verify signatures
-        //     produced by the current (possibly drifted) P-chain set. The
-        //     reset flow relies on sufficient weight overlap between the
-        //     current L1 set and the registered set to achieve quorum.
+        //     registered L1 validator set. Once a chain has been
+        //     registered, the authority to update its validator set
+        //     belongs to the L1 itself rather than the P-chain, so all
+        //     follow-up payloads must carry an L1 signature.
         bool wasAlreadyRegistered = isRegistered(payloadBlockchainID);
         if (!wasAlreadyRegistered) {
             verifyICMMessage(message, pChainID);
@@ -147,11 +145,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             verifyICMMessage(message, payloadBlockchainID);
         }
 
-        // Parse and validate the validator set payload. For DiffUpdater the
-        // child contract additionally returns an `isReset` flag derived
-        // from the shard's `previousHeight == 0 && previousTimestamp == 0`
-        // markers. Contracts that do not support reset semantics (e.g.
-        // SubsetUpdater) always return false.
+        // Parse and validate the validator set payload. The `isReset`
+        // return value is true only when the payload encodes a wholesale
+        // replacement of an already-registered set; child contracts that
+        // do not support reset semantics must always return false.
         (
             ValidatorSetMetadata memory validatorSetMetadata,
             Validator[] memory validators,
@@ -160,14 +157,6 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
         ) = parseValidatorSetMetadata(message, shardBytes);
 
         bytes32 avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
-
-        // Only treat the payload as a true "reset" event (emitting the
-        // dedicated event and instructing multi-shard processing to skip
-        // anchor checks) when the chain was already registered. For a
-        // fresh registration the prev=0 / prev=0 markers are just the
-        // natural encoding of "no prior state" and should emit the normal
-        // `ValidatorSetRegistered` event.
-        bool isActualReset = isReset && wasAlreadyRegistered;
 
         // This validator set is sharded
         if (validatorSetMetadata.shardHashes.length > 1) {
@@ -183,11 +172,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             partialSet.shardsReceived = 1;
             partialSet.partialWeight = 0;
             partialSet.inProgress = true;
-            // Track whether this multi-shard registration is a reset so that
-            // subsequent shards (processed by `updateValidatorSet` ->
-            // `applyShard`) can skip stale-anchor checks and the final shard
-            // emits `ValidatorSetReset` instead of `ValidatorSetUpdated`.
-            partialSet.isReset = isActualReset;
+            // Track whether this multi-shard registration is a reset so
+            // that the final shard emits `ValidatorSetReset` instead of
+            // `ValidatorSetUpdated`.
+            partialSet.isReset = isReset;
             applyPartialUpdate(
                 validatorSetMetadata.avalancheBlockchainID, validators, validatorWeight
             );
@@ -202,10 +190,10 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             }
         } else {
             // This branch is reached both on first registration and on
-            // subsequent single-shard updates (e.g. DiffUpdater diff updates).
-            // On subsequent calls valSet.validators already contains the
-            // previous set, so we must use replaceValidators to overwrite
-            // it rather than push, which would append duplicates.
+            // subsequent single-shard updates. On subsequent calls
+            // valSet.validators already contains the previous set, so we
+            // must use replaceValidators to overwrite it rather than push,
+            // which would append duplicates.
             ValidatorSet storage valSet = _validatorSets[validatorSetMetadata.avalancheBlockchainID];
             valSet.avalancheBlockchainID = validatorSetMetadata.avalancheBlockchainID;
             valSet.totalWeight = validatorWeight;
@@ -214,7 +202,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             ValidatorSets.replaceValidators(valSet.validators, validators);
         }
 
-        if (isActualReset) {
+        if (isReset) {
             emit ValidatorSetReset(avalancheBlockchainID);
         } else {
             emit ValidatorSetRegistered(avalancheBlockchainID);
@@ -308,9 +296,9 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
      * @return The parsed validator set metadata
      * @return A parsed validators array
      * @return The total weight of the parsed validators
-     * @return isReset True iff the payload encodes a reset, i.e. a fresh set
-     * starting from an empty prior state. Implementations that do not
-     * support reset semantics (e.g. SubsetUpdater) must always return false.
+     * @return isReset True iff the payload encodes a wholesale
+     * replacement of an already registered validator set. Implementations
+     * that do not support reset semantics must always return false.
      */
     function parseValidatorSetMetadata(
         /* solhint-disable-next-line no-unused-vars */

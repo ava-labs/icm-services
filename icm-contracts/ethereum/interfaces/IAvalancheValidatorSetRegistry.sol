@@ -21,7 +21,7 @@ interface IAvalancheValidatorSetRegistry {
     /// A reset occurs when the registered P-chain height for a chain has
     /// advanced past the P-chain's minimum retained height so that signatures
     /// anchored at the registered height can no longer be obtained. In that
-    /// case, the relayer submits a fresh P-chain-signed payload containing
+    /// case, the relayer submits a fresh L1-signed payload containing
     /// all current validators as additions; the registered set is replaced
     /// wholesale rather than diffed incrementally.
     event ValidatorSetReset(bytes32 indexed avalancheBlockchainID);

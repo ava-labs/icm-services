@@ -1378,7 +1378,7 @@ contract AvalancheValidatorSetRegistryPostInitialization is AvalancheValidatorSe
             attestation: signature
         });
 
-        vm.expectRevert(bytes("Reset diff must contain only additions"));
+        vm.expectRevert(bytes("Diff against empty set must contain only additions"));
         _diffRegistry.registerValidatorSet(message, shardBytes);
     }
 
