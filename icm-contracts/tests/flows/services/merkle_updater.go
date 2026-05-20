@@ -183,7 +183,9 @@ func MerkleUpdater(
 	)
 	defer relayerCleanup()
 
-	startupCtx, startupCancel := context.WithTimeout(ctx, 60*time.Second)
+	// MerkleUpdater uses L1 C with 10 validators (vs 4 for other tests), so
+	// InitializeConnectionsAndCheckStake takes longer on CI. Use 2 minutes.
+	startupCtx, startupCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer startupCancel()
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
