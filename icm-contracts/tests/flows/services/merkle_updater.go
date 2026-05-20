@@ -50,7 +50,7 @@ func MerkleUpdater(
 ) {
 	log.Info("Starting MerkleUpdater e2e test")
 
-	l1Info := avalancheNetwork.GetL1Infos()[0]
+	l1Info := avalancheNetwork.GetL1Infos()[2]
 	l1BlockchainID := l1Info.BlockchainID
 	networkID := avalancheNetwork.GetNetworkID()
 

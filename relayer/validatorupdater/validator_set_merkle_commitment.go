@@ -12,6 +12,7 @@ import (
 	"github.com/ava-labs/avalanchego/codec/linearcodec"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
+	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 )
@@ -136,11 +137,13 @@ func NewValidatorSetMerkleAttestation(
 	n := nextPow2(len(validators))
 	signers := make([]*Validator, 0)
 	layer := make([]Node, n)
+	// AvalancheGo encodes BitSetSignature.Signers as a big-endian big.Int
+	// (bytes[0] is most significant). Use set.BitsFromBytes to correctly map
+	// bit index i to validator i regardless of how many bytes are present.
+	signerBits := set.BitsFromBytes(bitSetSig.Signers)
 	for i, v := range validators {
-		byteIdx := i / 8
-		bitIdx := uint(i % 8)
 		hash := validatorHash(validators[i])
-		if byteIdx < len(bitSetSig.Signers) && bitSetSig.Signers[byteIdx]&(1<<bitIdx) != 0 {
+		if signerBits.Contains(i) {
 			signers = append(signers, v)
 			layer[i] = Node{Hash: hash, OnPath: true}
 		} else {
