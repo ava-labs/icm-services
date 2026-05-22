@@ -17,7 +17,6 @@ import {ValidatorSetMerkleCommitment} from "../utils/ValidatorSets.sol";
  */
 interface IMerkleValidatorSetRegistry {
     event ValidatorSetRegistered(bytes32 indexed avalancheBlockchainID);
-    event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID);
 
     /**
      * @notice Registers or updates the Merkle commitment for a validator set keyed by Avalanche
