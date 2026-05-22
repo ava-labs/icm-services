@@ -63,9 +63,7 @@ func MerkleUpdater(
 
 	ethClient := ethereumNetwork.EthClient
 	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
-	chainID := ethereumNetwork.ChainID
 	fundedAddress, fundedKey := avalancheNetwork.GetFundedAccountInfo()
-	_ = chainID
 
 	// =========================================================================
 	// Setup: Fetch P-chain validators and compute the genesis Merkle root
@@ -144,7 +142,7 @@ func MerkleUpdater(
 
 	initialCommitment, err := contract.GetValidatorSetCommitment(callOpts, l1BlockchainID)
 	Expect(err).Should(BeNil())
-	Expect(initialCommitment.TotalWeight).Should(Equal(uint64(0)),
+	Expect(initialCommitment.TotalWeight).Should(BeZero(),
 		"L1 commitment should start empty")
 
 	log.Info("Contract state verified: P-chain initialized, L1 not yet registered")
@@ -193,37 +191,22 @@ func MerkleUpdater(
 	// Wait for the relayer to register the initial L1 validator set.
 	// totalWeight == 0 always triggers an immediate registration.
 	// =========================================================================
-	pollCtx, pollCancel := context.WithTimeout(ctx, 120*time.Second)
-	defer pollCancel()
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	var firstTotalWeight uint64
-	var firstPChainHeight uint64
-
-	for done := false; !done; {
-		select {
-		case <-pollCtx.Done():
-			Expect(pollCtx.Err()).ShouldNot(HaveOccurred(),
-				"Timed out waiting for relayer to register L1 validator set")
-		case <-ticker.C:
-			cmt, err := contract.GetValidatorSetCommitment(callOpts, l1BlockchainID)
-			if err != nil {
-				log.Warn("Failed to query on-chain commitment", zap.Error(err))
-				continue
-			}
+	firstCmt := pollForCommitmentUpdate(
+		ctx, log, contract, callOpts, l1BlockchainID, 120*time.Second,
+		"Timed out waiting for relayer to register L1 validator set",
+		func(cmt merkleregistry.ValidatorSetMerkleCommitment) bool {
 			if cmt.TotalWeight == 0 {
 				log.Debug("Validator set not yet registered, waiting...")
-				continue
+				return false
 			}
-
+			return true
+		},
+		func(cmt merkleregistry.ValidatorSetMerkleCommitment) {
 			log.Info("Initial validator set registered",
 				zap.Uint64("totalWeight", cmt.TotalWeight),
 				zap.Uint64("pChainHeight", cmt.PChainHeight),
 				zap.String("root", hex.EncodeToString(cmt.Root[:])),
 			)
-
 			Expect(cmt.PChainHeight).Should(BeNumerically(">", 0),
 				"P-chain height should be positive")
 			Expect(cmt.PChainTimestamp).Should(BeNumerically(">", 0),
@@ -246,17 +229,13 @@ func MerkleUpdater(
 				"Merkle root should match the P-chain validator set at the recorded height")
 			Expect(cmt.TotalWeight).Should(Equal(expectedWeight),
 				"Total weight should match the sum of validator weights")
-
-			firstTotalWeight = cmt.TotalWeight
-			firstPChainHeight = cmt.PChainHeight
-			done = true
-		}
-	}
+		},
+	)
 
 	firstRegistrationTime := time.Now()
 	log.Info("Initial registration complete",
-		zap.Uint64("firstTotalWeight", firstTotalWeight),
-		zap.Uint64("firstPChainHeight", firstPChainHeight),
+		zap.Uint64("firstTotalWeight", firstCmt.TotalWeight),
+		zap.Uint64("firstPChainHeight", firstCmt.PChainHeight),
 	)
 
 	// =========================================================================
@@ -314,43 +293,26 @@ func MerkleUpdater(
 
 	// 90s timeout — well under the staleness cap. If the update arrives in this window
 	// it was triggered by the root change, not by staleness.
-	rootChangeCtx, rootChangeCancel := context.WithTimeout(ctx, 90*time.Second)
-	defer rootChangeCancel()
-
-	rootChangeTicker := time.NewTicker(2 * time.Second)
-	defer rootChangeTicker.Stop()
-
-	var secondPChainHeight uint64
-	var secondTotalWeight uint64
-	var secondRoot [32]byte
-
-	for {
-		select {
-		case <-rootChangeCtx.Done():
-			Expect(false).Should(BeTrue(),
-				"Phase 1: Timed out waiting for root-change-triggered update")
-		case <-rootChangeTicker.C:
-			cmt, err := contract.GetValidatorSetCommitment(callOpts, l1BlockchainID)
-			if err != nil {
-				log.Warn("Failed to query on-chain commitment", zap.Error(err))
-				continue
-			}
-
-			if cmt.PChainHeight <= firstPChainHeight {
+	secondCmt := pollForCommitmentUpdate(
+		ctx, log, contract, callOpts, l1BlockchainID, 90*time.Second,
+		"Phase 1: Timed out waiting for root-change-triggered update",
+		func(cmt merkleregistry.ValidatorSetMerkleCommitment) bool {
+			if cmt.PChainHeight <= firstCmt.PChainHeight {
 				log.Debug("Phase 1: Waiting for root-change update...",
 					zap.Uint64("currentPChainHeight", cmt.PChainHeight),
 				)
-				continue
+				return false
 			}
-
+			return true
+		},
+		func(cmt merkleregistry.ValidatorSetMerkleCommitment) {
 			log.Info("Phase 1: Root-change update detected!",
 				zap.Uint64("totalWeight", cmt.TotalWeight),
 				zap.Uint64("pChainHeight", cmt.PChainHeight),
 				zap.String("root", hex.EncodeToString(cmt.Root[:])),
 			)
-
-			Expect(cmt.PChainHeight).Should(BeNumerically(">", firstPChainHeight))
-			Expect(cmt.TotalWeight).Should(BeNumerically(">", firstTotalWeight),
+			Expect(cmt.PChainHeight).Should(BeNumerically(">", firstCmt.PChainHeight))
+			Expect(cmt.TotalWeight).Should(BeNumerically(">", firstCmt.TotalWeight),
 				"Phase 1: New commitment should include the added validator's weight")
 			Expect(cmt.Root).ShouldNot(Equal([32]byte{}))
 
@@ -361,18 +323,13 @@ func MerkleUpdater(
 			expectedRoot := validatorupdater.BuildMerkleRoot(expectedValidators)
 			Expect(cmt.Root).Should(Equal(expectedRoot),
 				"Phase 1: Merkle root should match the updated P-chain validator set")
-
-			secondPChainHeight = cmt.PChainHeight
-			secondTotalWeight = cmt.TotalWeight
-			secondRoot = cmt.Root
-		}
-		break
-	}
+		},
+	)
 
 	secondUpdateTime := time.Now()
 	log.Info("Phase 1 PASSED: Root-change-triggered update confirmed",
-		zap.Uint64("secondTotalWeight", secondTotalWeight),
-		zap.Uint64("secondPChainHeight", secondPChainHeight),
+		zap.Uint64("secondTotalWeight", secondCmt.TotalWeight),
+		zap.Uint64("secondPChainHeight", secondCmt.PChainHeight),
 	)
 
 	// =========================================================================
@@ -400,49 +357,73 @@ func MerkleUpdater(
 		zap.Duration("remainingWait", remainingWait),
 	)
 
-	stalenessCtx, stalenessCancel := context.WithTimeout(ctx, remainingWait)
-	defer stalenessCancel()
-
-	stalenessTicker := time.NewTicker(2 * time.Second)
-	defer stalenessTicker.Stop()
-
-	for {
-		select {
-		case <-stalenessCtx.Done():
-			Expect(false).Should(BeTrue(),
-				"Phase 2: Timed out waiting for staleness-forced update")
-		case <-stalenessTicker.C:
-			cmt, err := contract.GetValidatorSetCommitment(callOpts, l1BlockchainID)
-			if err != nil {
-				log.Warn("Failed to query on-chain commitment", zap.Error(err))
-				continue
-			}
-
-			if cmt.PChainHeight <= secondPChainHeight {
+	pollForCommitmentUpdate(
+		ctx, log, contract, callOpts, l1BlockchainID, remainingWait,
+		"Phase 2: Timed out waiting for staleness-forced update",
+		func(cmt merkleregistry.ValidatorSetMerkleCommitment) bool {
+			if cmt.PChainHeight <= secondCmt.PChainHeight {
 				log.Debug("Phase 2: Still waiting for staleness update...",
 					zap.Duration("elapsed", time.Since(secondUpdateTime)),
 				)
-				continue
+				return false
 			}
-
+			return true
+		},
+		func(cmt merkleregistry.ValidatorSetMerkleCommitment) {
 			log.Info("Phase 2: Staleness-forced update detected!",
 				zap.Uint64("totalWeight", cmt.TotalWeight),
 				zap.Uint64("pChainHeight", cmt.PChainHeight),
 				zap.String("root", hex.EncodeToString(cmt.Root[:])),
 			)
-
-			Expect(cmt.PChainHeight).Should(BeNumerically(">", secondPChainHeight))
-			Expect(cmt.TotalWeight).Should(Equal(secondTotalWeight),
+			Expect(cmt.PChainHeight).Should(BeNumerically(">", secondCmt.PChainHeight))
+			Expect(cmt.TotalWeight).Should(Equal(secondCmt.TotalWeight),
 				"Phase 2: Total weight should be unchanged (no new validators)")
-			Expect(cmt.Root).Should(Equal(secondRoot),
+			Expect(cmt.Root).Should(Equal(secondCmt.Root),
 				"Phase 2: Merkle root should be unchanged (no new validators)")
 
 			log.Info("Phase 2 PASSED: Staleness-forced update confirmed")
+		},
+	)
+
+	log.Info("MerkleUpdater e2e test PASSED")
+}
+
+func pollForCommitmentUpdate(
+	ctx context.Context,
+	log logging.Logger,
+	contract *merkleregistry.MerkleValidatorSetRegistry,
+	callOpts *bind.CallOpts,
+	l1BlockchainID ids.ID,
+	timeout time.Duration,
+	timeoutMsg string,
+	isUpdated func(cmt merkleregistry.ValidatorSetMerkleCommitment) bool,
+	validate func(cmt merkleregistry.ValidatorSetMerkleCommitment),
+) merkleregistry.ValidatorSetMerkleCommitment {
+	pollCtx, pollCancel := context.WithTimeout(ctx, timeout)
+	defer pollCancel()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-pollCtx.Done():
+			Expect(false).Should(BeTrue(), timeoutMsg)
+		case <-ticker.C:
+			cmt, err := contract.GetValidatorSetCommitment(callOpts, l1BlockchainID)
+			if err != nil {
+				log.Warn("Failed to query on-chain commitment", zap.Error(err))
+				continue
+			}
+			if !isUpdated(cmt) {
+				continue
+			}
+			validate(cmt)
+			return cmt
 		}
 		break
 	}
-
-	log.Info("MerkleUpdater e2e test PASSED")
+	panic("unreachable")
 }
 
 func createMerkleUpdaterRelayerConfig(

@@ -61,9 +61,6 @@ func NewMerkleSetUpdater(
 	pollInterval time.Duration,
 	maxUpdateInterval time.Duration,
 ) *MerkleSetUpdater {
-	if pollInterval == 0 {
-		pollInterval = defaultPollInterval
-	}
 	return &MerkleSetUpdater{
 		logger:              logger,
 		pChainClient:        pChainClient,
@@ -152,7 +149,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false); err != nil {
 		s.logger.Warn("Merkle root update failed, re-syncing from contract on next tick", zap.Error(err))
 		s.initialized = false
-		return err
+		return nil
 	}
 
 	s.localValidatorSet = newValidators
@@ -289,12 +286,13 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return s.sendUpdate(ctx, signedMsg, isFirstRegistration)
+	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, isFirstRegistration)
 }
 
 func (s *MerkleSetUpdater) sendUpdate(
 	ctx context.Context,
 	signedMsg *avalancheWarp.Message,
+	onChainPChainHeight uint64,
 	isFirstRegistration bool,
 ) error {
 	var attestationValidators []*Validator
@@ -302,9 +300,14 @@ func (s *MerkleSetUpdater) sendUpdate(
 		// First registration is verified against the P-chain Merkle root stored in the
 		// contract constructor. Fetch the primary network validators used to build that
 		// root so the attestation proof is computed against the correct ordered set.
-		pChainWarpSet, err := s.pChainClient.GetProposedValidators(ctx, ids.Empty)
+		allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, onChainPChainHeight)
 		if err != nil {
-			return fmt.Errorf("failed to get P-chain validators for attestation: %w", err)
+			return fmt.Errorf("failed to get P-chain validator sets at height %d for attestation: %w",
+				onChainPChainHeight, err)
+		}
+		pChainWarpSet, ok := allValidatorSets[ids.Empty]
+		if !ok {
+			return fmt.Errorf("primary network not found in validator sets at height %d", onChainPChainHeight)
 		}
 		attestationValidators = make([]*Validator, len(pChainWarpSet.Validators))
 		for i, vdr := range pChainWarpSet.Validators {
@@ -364,22 +367,19 @@ func (s *MerkleSetUpdater) fetchSortedValidators(
 	ctx context.Context,
 	pChainHeight uint64,
 ) ([]*Validator, error) {
-	allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, pChainHeight)
+	subnetValidatorSet, err := s.pChainClient.GetValidatorsAt(ctx, s.subnetID, pChainHeight)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validator sets: %w", err)
 	}
 
-	vdrSet, ok := allValidatorSets[s.subnetID]
-	if !ok {
-		return nil, fmt.Errorf("subnet %s not found in validator sets at height %d", s.subnetID, pChainHeight)
-	}
-
-	validators := make([]*Validator, len(vdrSet.Validators))
-	for i, vdr := range vdrSet.Validators {
-		validators[i] = &Validator{
+	validators := make([]*Validator, len(subnetValidatorSet))
+	ix := 0
+	for _, vdr := range subnetValidatorSet {
+		validators[ix] = &Validator{
 			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
 			Weight:                     vdr.Weight,
 		}
+		ix++
 	}
 	sort.Slice(validators, func(i, j int) bool {
 		return string(validators[i].UncompressedPublicKeyBytes[:]) < string(validators[j].UncompressedPublicKeyBytes[:])

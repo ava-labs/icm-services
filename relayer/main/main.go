@@ -849,7 +849,9 @@ func startMerkleSetUpdater(
 
 	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
 	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-
+	if pollInterval == 0 {
+		pollInterval = validatorupdater.DefaultPollInterval
+	}
 	updater := validatorupdater.NewMerkleSetUpdater(
 		logger,
 		pChainClient,

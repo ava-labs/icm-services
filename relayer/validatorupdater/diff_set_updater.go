@@ -73,7 +73,7 @@ func NewDiffSetUpdater(
 		shardSize = defaultShardSize
 	}
 	if pollInterval == 0 {
-		pollInterval = defaultPollInterval
+		pollInterval = DefaultPollInterval
 	}
 	return &DiffSetUpdater{
 		logger:                   logger,

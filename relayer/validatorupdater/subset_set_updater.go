@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	defaultPollInterval               = 10 * time.Second
+	DefaultPollInterval               = 10 * time.Second
 	defaultQuorumPercentage           = 67
 	defaultQuorumPercentageBuf        = 5
 	defaultShardSize           uint32 = 10
@@ -80,7 +80,7 @@ func NewSubsetSetUpdater(
 		shardSize = defaultShardSize
 	}
 	if pollInterval == 0 {
-		pollInterval = defaultPollInterval
+		pollInterval = DefaultPollInterval
 	}
 	return &SubsetSetUpdater{
 		logger:                   logger,

@@ -46,6 +46,15 @@ type validatorSetMerkleCommitmentPayload interface {
 
 const merkleCommitmentCodecVersion = 0
 
+const (
+	codecHeaderSize        = 2   // 2-byte codec version prefix
+	uint32Size             = 4   // BigEndian uint32 length prefix
+	uncompressedPubKeySize = 96  // uncompressed BLS public key bytes
+	validatorWeightSize    = 8   // uint64 weight in bytes
+	merkleHashSize         = 32  // SHA-256 hash / proof node size
+	aggregateSigSize       = 192 // BLS aggregate signature bytes
+)
+
 // merkleCommitmentCodec registers the same first seven warp message types as
 // current avalanchego development branches, so ValidatorSetMerkleCommitment
 // keeps type ID 6.
@@ -192,7 +201,11 @@ func (v *ValidatorSetMerkleAttestation) Bytes() []byte {
 	numFlags := len(v.ProofFlags)
 	flagBytesLen := (numFlags + 7) / 8
 
-	buf := make([]byte, 0, 2+4+len(v.Signers)*(96+8)+4+len(v.Proof)*32+4+flagBytesLen+192)
+	signersSectionSize := uint32Size + len(v.Signers)*(uncompressedPubKeySize+validatorWeightSize)
+	proofSectionSize := uint32Size + len(v.Proof)*merkleHashSize
+	flagsSectionSize := uint32Size + flagBytesLen
+	bufLength := codecHeaderSize + signersSectionSize + proofSectionSize + flagsSectionSize + aggregateSigSize
+	buf := make([]byte, 0, bufLength)
 
 	// codec (2 zero bytes)
 	buf = append(buf, 0, 0)
