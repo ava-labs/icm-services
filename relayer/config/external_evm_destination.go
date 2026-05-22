@@ -29,4 +29,10 @@ type ExternalEVMDestination struct {
 	// weight change is below the threshold, an update is forced after this
 	// interval. 0 means no staleness cap (legacy behavior).
 	MaxUpdateIntervalSeconds uint64 `mapstructure:"max-update-interval-seconds" json:"max-update-interval-seconds,omitempty"` //nolint:lll
+	// Maximum suggested gas price (in gwei) on the destination chain at which
+	// the relayer will submit a validator-set update transaction. When the
+	// network's suggested gas price exceeds this threshold the update is
+	// deferred and retried on the next poll. 0 disables gas-price gating
+	// (legacy behavior). Currently honored by the merkle updater only.
+	MaxGasPriceGwei uint64 `mapstructure:"max-gas-price-gwei" json:"max-gas-price-gwei,omitempty"`
 }

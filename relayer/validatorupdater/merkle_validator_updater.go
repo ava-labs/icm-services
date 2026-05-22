@@ -6,6 +6,7 @@ package validatorupdater
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"sort"
 	"time"
 
@@ -24,6 +25,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// weiPerGwei is the conversion factor between gwei and wei.
+var weiPerGwei = big.NewInt(1_000_000_000)
+
 type MerkleSetUpdater struct {
 	logger              logging.Logger
 	pChainClient        clients.CanonicalValidatorState
@@ -39,6 +43,11 @@ type MerkleSetUpdater struct {
 	pollInterval time.Duration
 
 	maxUpdateInterval time.Duration
+	// maxGasPriceWei, when non-nil, is the maximum suggested gas price (in
+	// wei) at which an update transaction will be submitted. If the
+	// destination network's suggested gas price exceeds this value, the
+	// update is deferred until the next poll. nil disables gas gating.
+	maxGasPriceWei *big.Int
 
 	localValidatorSet []*Validator
 	localPChainHeight uint64
@@ -60,7 +69,12 @@ func NewMerkleSetUpdater(
 	subnetID ids.ID,
 	pollInterval time.Duration,
 	maxUpdateInterval time.Duration,
+	maxGasPriceGwei uint64,
 ) *MerkleSetUpdater {
+	var maxGasPriceWei *big.Int
+	if maxGasPriceGwei > 0 {
+		maxGasPriceWei = new(big.Int).Mul(new(big.Int).SetUint64(maxGasPriceGwei), weiPerGwei)
+	}
 	return &MerkleSetUpdater{
 		logger:              logger,
 		pChainClient:        pChainClient,
@@ -74,6 +88,7 @@ func NewMerkleSetUpdater(
 		subnetID:            subnetID,
 		pollInterval:        pollInterval,
 		maxUpdateInterval:   maxUpdateInterval,
+		maxGasPriceWei:      maxGasPriceWei,
 	}
 }
 
@@ -146,6 +161,16 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
+	ok, err := s.shouldSubmit(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		// Local state intentionally not advanced so the same update is
+		// retried on the next poll once gas drops below the threshold.
+		return nil
+	}
+
 	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false); err != nil {
 		s.logger.Warn("Merkle root update failed, re-syncing from contract on next tick", zap.Error(err))
 		s.initialized = false
@@ -188,6 +213,15 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
 		)
+		ok, err := s.shouldSubmit(ctx)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			// initialized stays false so the first registration is retried on
+			// the next poll once gas drops below the threshold.
+			return nil
+		}
 		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true); err != nil {
 			return err
 		}
@@ -225,6 +259,33 @@ func (s *MerkleSetUpdater) isStale() bool {
 		return false
 	}
 	return time.Since(s.lastUpdateTime) >= s.maxUpdateInterval
+}
+
+// shouldSubmit returns true when an update transaction may be submitted to
+// the destination chain. When a max-gas-price threshold is configured, this
+// queries the network's suggested gas price and returns false if it exceeds
+// the threshold. Callers should treat a false result as "defer until the
+// next poll" and must not advance local state.
+func (s *MerkleSetUpdater) shouldSubmit(ctx context.Context) (bool, error) {
+	if s.maxGasPriceWei == nil {
+		return true, nil
+	}
+	suggested, err := s.ethClient.SuggestGasPrice(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get suggested gas price: %w", err)
+	}
+	if suggested.Cmp(s.maxGasPriceWei) > 0 {
+		s.logger.Info("Skipping validator set update: suggested gas price above threshold",
+			zap.String("suggestedGasPriceWei", suggested.String()),
+			zap.String("maxGasPriceWei", s.maxGasPriceWei.String()),
+		)
+		return false, nil
+	}
+	s.logger.Debug("Suggested gas price within threshold",
+		zap.String("suggestedGasPriceWei", suggested.String()),
+		zap.String("maxGasPriceWei", s.maxGasPriceWei.String()),
+	)
+	return true, nil
 }
 
 func (s *MerkleSetUpdater) nextUpdate(

@@ -865,6 +865,7 @@ func startMerkleSetUpdater(
 		subnetID,
 		pollInterval,
 		maxUpdateInterval,
+		extDest.MaxGasPriceGwei,
 	)
 
 	return updater.Start(ctx)
