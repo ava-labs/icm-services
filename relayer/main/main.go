@@ -305,6 +305,8 @@ func main() {
 	api.HandleRelay(logger, messageCoordinator)
 	api.HandleRelayMessage(logger, messageCoordinator)
 
+	logger.Info("APIs initialized")
+
 	errGroup.Go(func() error {
 		httpServer := &http.Server{
 			Addr: fmt.Sprintf(":%d", cfg.APIPort),
@@ -323,6 +325,8 @@ func main() {
 
 		return nil
 	})
+
+	logger.Info("APIs initialized")
 
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
@@ -356,7 +360,9 @@ func main() {
 			case "diff":
 				return startDiffSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
 			case "merkle":
-				return startMerkleSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
+				err = startMerkleSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
+				logger.Info("Geoff after merkle", zap.Error(err))
+				return err
 			default:
 				return startSubsetSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
 			}
@@ -368,12 +374,14 @@ func main() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-		sig := <-sigChan
-		logger.Info("Receive os signal", zap.Stringer("signal", sig))
-
-		// Cancel the parent context
-		// This will cascade to errgroup context
-		cancel()
+		select {
+		case sig := <-sigChan:
+			logger.Info("Received os signal", zap.Stringer("signal", sig))
+			// Cancel the parent context
+			// This will cascade to errgroup context
+			cancel()
+		case <-ctx.Done():
+		}
 
 		// No error for graceful shutdown
 		return nil

@@ -638,6 +638,9 @@ func runExecutable(
 				close(readyChan)
 				break
 			}
+			if resp != nil {
+				log.Info("Geoff check failed", zap.Int("statusCode", resp.StatusCode))
+			}
 			log.Info("Health check failed", zap.Error(err))
 			time.Sleep(time.Second * 1)
 		}

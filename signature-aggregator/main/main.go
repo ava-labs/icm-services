@@ -207,12 +207,14 @@ func main() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-		sig := <-sigChan
-		logger.Info("Receive os signal", zap.Stringer("signal", sig))
-
-		// Cancel the parent context
-		// This will cascade to errgroup context
-		cancel()
+		select {
+		case sig := <-sigChan:
+			logger.Info("Received os signal", zap.Stringer("signal", sig))
+			// Cancel the parent context
+			// This will cascade to errgroup context
+			cancel()
+		case <-ctx.Done():
+		}
 
 		// No error for graceful shutdown
 		return nil

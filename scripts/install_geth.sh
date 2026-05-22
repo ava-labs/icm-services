@@ -10,9 +10,9 @@ set -e
     rm -rf /var/lib/apt/lists/*
 
 # Set Geth version with commit hash
-# The "12b4131f" is the commit hash for the official v1.16.1 release of geth.
-# See: https://geth.ethereum.org/downloads/ and https://github.com/ethereum/go-ethereum/releases/tag/v1.16.1
-GETH_VERSION=1.16.1-12b4131f
+# The "be4dc0c4" is the commit hash for the official v1.17.2 release of geth.
+# See: https://geth.ethereum.org/downloads/ and https://github.com/ethereum/go-ethereum/releases/tag/v1.17.2
+GETH_VERSION=1.17.2-be4dc0c4
 
 GETH_DIR=$HOME/.geth
 mkdir $GETH_DIR
