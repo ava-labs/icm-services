@@ -240,9 +240,13 @@ func (v *ValidatorSetMerkleAttestation) Bytes() []byte {
 }
 
 // nullLeafHash is the leaf hash used to pad the validator set to the next power
-// of two. It is sha256 of 136 zero bytes (the null padded key + zero weight),
-// which cannot be produced by any real validator.
-var nullLeafHash = sha256.Sum256(make([]byte, 136))
+// of two. It matches sha256Validator(Validator{blsPublicKey: zeroes, weight: 0})
+// in ValidatorSets.sol: sha256(uint256(1) ++ 128-zero padded key ++ 8-zero weight).
+var nullLeafHash = func() [32]byte {
+	var buf [168]byte
+	buf[31] = 1 // uint256(1) leaf domain separator
+	return sha256.Sum256(buf[:])
+}()
 
 // nextPow2 returns the smallest power of two >= n (minimum 1).
 func nextPow2(n int) int {
@@ -280,25 +284,30 @@ func BuildMerkleRoot(validators []*Validator) [32]byte {
 	return layer[0]
 }
 
-// validatorHash computes the Merkle leaf hash for a validator using the 128-byte
-// BLST-padded public key format: [16 zeros][48 bytes X][16 zeros][48 bytes Y].
-// This matches Solidity's sha256(abi.encodePacked(paddedKey, weight)) in
-// ValidatorSets.verifyMerkleAttestation.
+// validatorHash computes the Merkle leaf hash for a validator, matching
+// Solidity's sha256Validator: sha256(abi.encodePacked(uint256(1), blsPublicKey, weight)).
+// The padded key format is [16 zeros][48 bytes X][16 zeros][48 bytes Y] (128 bytes),
+// so the full input is 32 + 128 + 8 = 168 bytes.
 func validatorHash(validator *Validator) [32]byte {
-	var buf [136]byte // 128 bytes padded key + 8 bytes weight
-	// X coordinate (bytes 0-47 of uncompressed key) → bytes 16-63 of padded key
-	copy(buf[16:64], validator.UncompressedPublicKeyBytes[:48])
-	// Y coordinate (bytes 48-95 of uncompressed key) → bytes 80-127 of padded key
-	copy(buf[80:128], validator.UncompressedPublicKeyBytes[48:96])
-	binary.BigEndian.PutUint64(buf[128:], validator.Weight)
+	var buf [168]byte // 32 bytes uint256(1) + 128 bytes padded key + 8 bytes weight
+	buf[31] = 1       // uint256(1) leaf domain separator
+	// X coordinate (bytes 0-47 of uncompressed key) → bytes 48-95 of buf
+	copy(buf[48:96], validator.UncompressedPublicKeyBytes[:48])
+	// Y coordinate (bytes 48-95 of uncompressed key) → bytes 112-159 of buf
+	copy(buf[112:160], validator.UncompressedPublicKeyBytes[48:96])
+	binary.BigEndian.PutUint64(buf[160:], validator.Weight)
 	return sha256.Sum256(buf[:])
 }
 
-// sha256Pair hashes two 32-byte values together, sorting them lexicographically
-// before hashing so that sha256Pair(a, b) == sha256Pair(b, a).
+// sha256Pair hashes two 32-byte values together, matching Solidity's
+// sha256InternalPair: sha256(abi.encodePacked(uint256(0), smaller, larger)).
+// The uint256(0) prefix is the internal-node domain separator.
 func sha256Pair(a, b [32]byte) [32]byte {
 	if bytes.Compare(a[:], b[:]) > 0 {
 		a, b = b, a
 	}
-	return sha256.Sum256(append(a[:], b[:]...))
+	var buf [96]byte // 32 bytes uint256(0) + 32 bytes smaller + 32 bytes larger
+	copy(buf[32:64], a[:])
+	copy(buf[64:96], b[:])
+	return sha256.Sum256(buf[:])
 }

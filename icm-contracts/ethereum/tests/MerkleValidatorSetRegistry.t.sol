@@ -86,7 +86,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
         uint256 n = validators.length;
         bytes32[] memory layer = new bytes32[](n);
         for (uint256 i = 0; i < n; i++) {
-            layer[i] = sha256(abi.encodePacked(validators[i].blsPublicKey, validators[i].weight));
+            layer[i] = ValidatorSets.sha256Validator(validators[i]);
         }
         while (layer.length > 1) {
             uint256 nextLen = (layer.length + 1) / 2;
@@ -95,8 +95,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
                 if (2 * i + 1 < layer.length) {
                     bytes32 a = layer[2 * i];
                     bytes32 b = layer[2 * i + 1];
-                    next[i] =
-                        a < b ? sha256(abi.encodePacked(a, b)) : sha256(abi.encodePacked(b, a));
+                    next[i] = ValidatorSets.sha256InternalPair(a, b);
                 } else {
                     next[i] = layer[2 * i];
                 }
@@ -267,7 +266,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
 
         // Build the proof
         bytes32[] memory proof = new bytes32[](1);
-        proof[0] = sha256(abi.encodePacked(_validators[1].blsPublicKey, _validators[1].weight));
+        proof[0] = ValidatorSets.sha256Validator(_validators[1]);
 
         // Flags per combination step, see comment above
         bool[] memory proofFlags = new bool[](3);
