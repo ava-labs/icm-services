@@ -638,7 +638,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
      */
     function testL1SelfSignedUpdateSuccess() public {
         // Build L1 validator set
-        uint256[] memory l1SecretKeys = new uint256[](4); // 10, 11, 12,13
+        uint256[] memory l1SecretKeys = new uint256[](4);
         l1SecretKeys[0] = 11;
         l1SecretKeys[1] = 12;
         l1SecretKeys[2] = 13;
