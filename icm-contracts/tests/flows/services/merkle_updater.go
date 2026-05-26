@@ -448,7 +448,7 @@ func createMerkleUpdaterRelayerConfig(
 
 	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
 
-	baseConfig.APIPort = 8084
+	baseConfig.APIPort = 8085
 
 	baseConfig.ExternalEVMDestinations = []*relayercfg.ExternalEVMDestination{
 		{
