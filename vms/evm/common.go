@@ -31,7 +31,6 @@ type CommonDestinationClient interface {
 	RPCClient() DestinationRPCClient
 	ConcurrentSigners() []*readonlyConcurrentSigner
 	AccessList(data txData) types.AccessList
-	TxInclusionTimeout() time.Duration
 }
 
 // DestionationRPCClient interface represents the minimal interface needed for querying RPC endpoints.
@@ -81,8 +80,9 @@ type concurrentSigner struct {
 	messageChan chan txData
 	// Semaphore to limit the number of transactions in the mempool for
 	// each account, otherwise they may be dropped.
-	queuedTxSemaphore chan struct{}
-	destinationClient CommonDestinationClient
+	queuedTxSemaphore  chan struct{}
+	txInclusionTimeout time.Duration
+	destinationClient  CommonDestinationClient
 }
 
 // processIncomingTransactions is a worker that issues transactions from a given concurrentSigner.
@@ -209,7 +209,7 @@ func (s *concurrentSigner) waitForReceipt(
 		)
 	}
 
-	err := utils.WithRetriesTimeout(operation, notify, s.destinationClient.TxInclusionTimeout())
+	err := utils.WithRetriesTimeout(operation, notify, s.txInclusionTimeout)
 	if err != nil {
 		resultChan <- txResult{
 			receipt: nil,

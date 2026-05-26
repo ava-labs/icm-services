@@ -147,12 +147,13 @@ func NewDestinationClient(
 			log.Debug("Pending txs accepted")
 
 			concurrentSigner := &concurrentSigner{
-				logger:            log,
-				signer:            signer,
-				currentNonce:      currentNonce,
-				messageChan:       make(chan txData),
-				queuedTxSemaphore: make(chan struct{}, poolTxsPerAccount),
-				destinationClient: &destClient,
+				logger:             log,
+				signer:             signer,
+				currentNonce:       currentNonce,
+				messageChan:        make(chan txData),
+				queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
+				txInclusionTimeout: destClient.txInclusionTimeout,
+				destinationClient:  &destClient,
 			}
 
 			go concurrentSigner.processIncomingTransactions()
@@ -183,7 +184,8 @@ func NewDestinationClient(
 		suggestedPriorityFeeBuffer: new(big.Int).SetUint64(destinationBlockchain.SuggestedPriorityFeeBuffer),
 		maxPriorityFeePerGas:       new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
 	}
-	destClient = destinationClient{
+
+	return &destinationClient{
 		avaRPCClient:              NewAvaDestinationClient(ethClient, rpcClient),
 		ethClient:                 ethClient,
 		readonlyConcurrentSigners: readonlyConcurrentSigners,
@@ -196,9 +198,7 @@ func NewDestinationClient(
 		txInclusionTimeout:        time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
 		proposerClient:            proposerClient,
 		epochDuration:             epochDuration,
-	}
-
-	return &destClient, nil
+	}, nil
 }
 
 func (c *destinationClient) RPCClient() DestinationRPCClient {
@@ -225,10 +225,6 @@ func (c *destinationClient) AccessList(data txData) types.AccessList {
 			StorageKeys: predicate,
 		},
 	}
-}
-
-func (c *destinationClient) TxInclusionTimeout() time.Duration {
-	return c.txInclusionTimeout
 }
 
 func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {

@@ -138,12 +138,13 @@ func NewExternalEVMDestinationClient(
 		}
 
 		cs := &concurrentSigner{
-			logger:            senderLogger,
-			signer:            &PrivateKeySigner{privateKey: privateKey},
-			currentNonce:      nonce,
-			messageChan:       make(chan txData),
-			queuedTxSemaphore: make(chan struct{}, externalEVMPoolTxsPerAccount),
-			destinationClient: destClient,
+			logger:             senderLogger,
+			signer:             &PrivateKeySigner{privateKey: privateKey},
+			currentNonce:       nonce,
+			messageChan:        make(chan txData),
+			queuedTxSemaphore:  make(chan struct{}, externalEVMPoolTxsPerAccount),
+			txInclusionTimeout: destClient.txInclusionTimeout,
+			destinationClient:  destClient,
 		}
 
 		// Start the transaction processing goroutine
@@ -179,10 +180,6 @@ func (c *ExternalEVMDestinationClient) ConcurrentSigners() []*readonlyConcurrent
 
 func (c *ExternalEVMDestinationClient) AccessList(_ txData) types.AccessList {
 	return types.AccessList{}
-}
-
-func (c *ExternalEVMDestinationClient) TxInclusionTimeout() time.Duration {
-	return c.txInclusionTimeout
 }
 
 // getFeePerGas calculates the gas fee cap and gas tip cap for transactions.

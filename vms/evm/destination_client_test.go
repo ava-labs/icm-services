@@ -150,12 +150,13 @@ func TestSendTx(t *testing.T) {
 	require.NoError(t, err)
 
 	signer := &concurrentSigner{
-		logger:            logging.NoLog{},
-		signer:            txSigners[0],
-		currentNonce:      0,
-		messageChan:       make(chan txData),
-		queuedTxSemaphore: make(chan struct{}, poolTxsPerAccount),
-		destinationClient: &destClient,
+		logger:             logging.NoLog{},
+		signer:             txSigners[0],
+		currentNonce:       0,
+		messageChan:        make(chan txData),
+		queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
+		txInclusionTimeout: destClient.txInclusionTimeout,
+		destinationClient:  &destClient,
 	}
 	go signer.processIncomingTransactions()
 
