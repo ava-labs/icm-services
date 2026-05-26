@@ -43,10 +43,10 @@ type MerkleSetUpdater struct {
 	pollInterval time.Duration
 
 	maxUpdateInterval time.Duration
-	// maxGasPriceWei, when non-nil, is the maximum suggested gas price (in
-	// wei) at which an update transaction will be submitted. If the
-	// destination network's suggested gas price exceeds this value, the
-	// update is deferred until the next poll. nil disables gas gating.
+	// maxGasPriceWei is the maximum suggested gas price (in wei) at which
+	// an update transaction will be submitted. If the destination network's
+	// suggested gas price exceeds this value, the update is deferred until
+	// the next poll. A zero value disables gas gating.
 	maxGasPriceWei *big.Int
 
 	localValidatorSet []*Validator
@@ -71,10 +71,7 @@ func NewMerkleSetUpdater(
 	maxUpdateInterval time.Duration,
 	maxGasPriceGwei uint64,
 ) *MerkleSetUpdater {
-	var maxGasPriceWei *big.Int
-	if maxGasPriceGwei > 0 {
-		maxGasPriceWei = new(big.Int).Mul(new(big.Int).SetUint64(maxGasPriceGwei), weiPerGwei)
-	}
+	maxGasPriceWei := new(big.Int).Mul(new(big.Int).SetUint64(maxGasPriceGwei), weiPerGwei)
 	return &MerkleSetUpdater{
 		logger:              logger,
 		pChainClient:        pChainClient,
@@ -267,7 +264,7 @@ func (s *MerkleSetUpdater) isStale() bool {
 // the threshold. Callers should treat a false result as "defer until the
 // next poll" and must not advance local state.
 func (s *MerkleSetUpdater) shouldSubmit(ctx context.Context) (bool, error) {
-	if s.maxGasPriceWei == nil {
+	if s.maxGasPriceWei.Sign() == 0 {
 		return true, nil
 	}
 	suggested, err := s.ethClient.SuggestGasPrice(ctx)

@@ -32,7 +32,7 @@ type ExternalEVMDestination struct {
 	// Maximum suggested gas price (in gwei) on the destination chain at which
 	// the relayer will submit a validator-set update transaction. When the
 	// network's suggested gas price exceeds this threshold the update is
-	// deferred and retried on the next poll. 0 disables gas-price gating
-	// (legacy behavior). Currently honored by the merkle updater only.
+	// deferred and retried on the next poll. 0 disables gas-price gating.
+	// Currently honored by the merkle updater only.
 	MaxGasPriceGwei uint64 `mapstructure:"max-gas-price-gwei" json:"max-gas-price-gwei,omitempty"`
 }
