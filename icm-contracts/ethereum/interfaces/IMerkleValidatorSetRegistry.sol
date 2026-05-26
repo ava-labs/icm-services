@@ -17,7 +17,6 @@ import {ValidatorSetMerkleCommitment} from "../utils/ValidatorSets.sol";
  */
 interface IMerkleValidatorSetRegistry {
     event ValidatorSetRegistered(bytes32 indexed avalancheBlockchainID);
-    event ValidatorSetUpdated(bytes32 indexed avalancheBlockchainID);
 
     /**
      * @notice Registers or updates the Merkle commitment for a validator set keyed by Avalanche
@@ -29,28 +28,14 @@ interface IMerkleValidatorSetRegistry {
      * The same function handles both first registration and subsequent updates and which case applies
      * is determined by whether the payload's blockchain ID is already registered. The first registration for a
      * given blockchain ID must be signed by the P-chain validator set, while subsequent updates must be signed by
-     * the currently registered validator set for that blockchain ID.
+     * the currently registered validator set for that blockchain ID, or the P-chain validator set as a fallback.
      * @param message The ICM message containing the new validator set commitment.
      * The signed warp preimage uses `message.sourceBlockchainID` and `address(0)` as the origin
      * sender, matching how the P-chain Warp precompile emits these messages.
+     * @param signingChainID The Avalanche blockchain ID of the validator set that signed the message. This can either
+     * be the same as the payload's blockchain ID for updates, or the P-chain ID for first registrations or further updates.
      */
-    function registerValidatorSet(
-        ICMMessage calldata message
-    ) external;
-
-    /**
-     * @notice Replace the registered Merkle commitment for a validator set with a new one
-     * signed by that set's current validators.
-     *
-     * Emits a `ValidatorSetUpdated` event once the new commitment is stored.
-     * @param message The ICM message containing the new validator set commitment. Must be
-     * signed by the currently registered validator set for the blockchain ID declared in
-     * the payload; reverts if the chain is not yet registered (use `registerValidatorSet`
-     * for first registrations) or if the attestation fails to verify.
-     */
-    function updateValidatorSet(
-        ICMMessage calldata message
-    ) external;
+    function registerValidatorSet(ICMMessage calldata message, bytes32 signingChainID) external;
 
     /**
      * @notice Retrieves the current validator set commitment registered for a given
