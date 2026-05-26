@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	// externalEVMDefaultBaseFeeFactor is the multiplier for base fee when not explicitly set
-	externalEVMDefaultBaseFeeFactor = 3
 	// externalEVMPoolTxsPerAccount limits pending txs per account in mempool
 	externalEVMPoolTxsPerAccount = 16
 	// gasLimitForSimulation is the gas limit used when simulating calls
@@ -173,10 +171,6 @@ func (c *ExternalEVMDestinationClient) EVMChainID() *big.Int {
 
 func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
 	return c.ethClient
-}
-
-func (c *ExternalEVMDestinationClient) FeeFactor() int64 {
-	return externalEVMDefaultBaseFeeFactor
 }
 
 func (c *ExternalEVMDestinationClient) ConcurrentSigners() []*readonlyConcurrentSigner {

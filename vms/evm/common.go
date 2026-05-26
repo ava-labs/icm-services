@@ -29,7 +29,6 @@ import (
 type CommonDestinationClient interface {
 	EVMChainID() *big.Int
 	RPCClient() DestinationRPCClient
-	FeeFactor() int64
 	ConcurrentSigners() []*readonlyConcurrentSigner
 	AccessList(data txData) types.AccessList
 	TxInclusionTimeout() time.Duration
@@ -241,7 +240,6 @@ func getFeePerGas(
 	gasFeeConfig *GasFeeConfig,
 ) (*big.Int, *big.Int, error) {
 	rpcClient := c.RPCClient()
-	feeFactor := c.FeeFactor()
 	// If the max base fee isn't explicitly set, then default to fetching the
 	// current base fee estimate and multiply it by `defaultMaxBaseFee` to allow for
 	// an increase prior to the transaction being included in a block.
@@ -256,7 +254,7 @@ func getFeePerGas(
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get base fee: %w", err)
 		}
-		maxBaseFee = new(big.Int).Mul(baseFee, big.NewInt(feeFactor))
+		maxBaseFee = new(big.Int).Mul(baseFee, big.NewInt(defaultBaseFeeFactor))
 	}
 
 	// Get the suggested gas tip cap of the network

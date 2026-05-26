@@ -209,10 +209,6 @@ func (c *destinationClient) EVMChainID() *big.Int {
 	return c.evmChainID
 }
 
-func (c *destinationClient) FeeFactor() int64 {
-	return defaultBaseFeeFactor
-}
-
 func (c *destinationClient) ConcurrentSigners() []*readonlyConcurrentSigner {
 	return c.readonlyConcurrentSigners
 }
