@@ -288,7 +288,8 @@ func registerL1ValidatorSet(
 		SourceNetworkID:    networkID,
 		SourceBlockchainID: constants.PlatformChainID,
 		Attestation:        att.Bytes(),
-	})
+	},
+		ids.Empty)
 	Expect(err).Should(BeNil())
 	receipt := utils.WaitForTransactionSuccess(ctx, ethClient, tx.Hash())
 
