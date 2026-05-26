@@ -21,6 +21,7 @@ pub struct FieldArgs {
     pub method: Option<String>,
     pub default: bool,
     pub memory: bool,
+    pub length: Option<String>,
 }
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
@@ -162,6 +163,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
             method: None,
             default: false,
             memory,
+            length: None,
         };
     };
     let Some(pack_start) = comment.find("#[unpack(") else {
@@ -169,6 +171,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
             method: None,
             default: false,
             memory,
+            length: None,
         };
     };
     let args_start = pack_start + "#[unpack(".len();
@@ -177,6 +180,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
             method: None,
             default: false,
             memory,
+            length: None,
         };
     };
     let args_str = comment[args_start..args_start + args_end_rel].trim();
@@ -186,15 +190,19 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
             method: None,
             default: true,
             memory,
+            length: None,
         };
     }
 
     let mut method = None;
     let mut default = false;
+    let mut length = None;
     for arg in args_str.split(',') {
         if let Some((key, val)) = arg.trim().split_once('=') {
-            if key.trim() == "method" {
-                method = Some(val.trim().trim_matches('"').to_string());
+            match key.trim() {
+                "method" => method = Some(val.trim().trim_matches('"').to_string()),
+                "length" => length = Some(val.trim().to_string()),
+                _ => {}
             }
         } else if arg.trim() == "default" {
             default = true;
@@ -205,12 +213,14 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
             method: None,
             default: true,
             memory,
+            length: None,
         }
     } else {
         FieldArgs {
             method,
             default: false,
             memory,
+            length,
         }
     }
 }
@@ -277,6 +287,11 @@ mod tests {
                     Some("#[unpack(default, method=\"Foo.bar\")]".to_string()),
                     false,
                 ),
+                (Some("#[unpack(length = uint32)]".to_string()), true),
+                (
+                    Some("#[unpack(method=\"Foo.bar\", length = uint64)]".to_string()),
+                    true,
+                ),
             ],
         )
         .unwrap();
@@ -288,6 +303,7 @@ mod tests {
                 method: Some("Foo.bar".to_string()),
                 default: false,
                 memory: false,
+                length: None,
             }
         );
         assert_eq!(
@@ -296,6 +312,7 @@ mod tests {
                 method: None,
                 default: true,
                 memory: true,
+                length: None,
             }
         );
         assert_eq!(
@@ -304,6 +321,25 @@ mod tests {
                 method: None,
                 default: true,
                 memory: false,
+                length: None,
+            }
+        );
+        assert_eq!(
+            raw.fields[3],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some("uint32".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[4],
+            FieldArgs {
+                method: Some("Foo.bar".to_string()),
+                default: false,
+                memory: true,
+                length: Some("uint64".to_string()),
             }
         );
     }
