@@ -643,7 +643,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         l1SecretKeys[1] = 12;
         l1SecretKeys[2] = 13;
         l1SecretKeys[3] = 10;
-        Validator[] memory l1Validators = new Validator[](4);
+        Validator[] memory l1Validators = new Validator[](l1SecretKeys.length);
         uint64 l1TotalWeight = 0;
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
         for (uint256 i = 0; i < l1SecretKeys.length; i++) {
