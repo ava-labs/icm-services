@@ -146,10 +146,19 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
-	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false); err != nil {
-		s.logger.Warn("Merkle root update failed, re-syncing from contract on next tick", zap.Error(err))
-		s.initialized = false
-		return nil
+	// Try signing with the L1 first but fallback to the P-chain on failure
+	err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false, s.subnetID)
+	if err != nil {
+		s.logger.Warn("Self-signed update failed, retrying with P-Chain signature",
+			zap.Error(err))
+		err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false, constants.PrimaryNetworkID)
+		if err != nil {
+			s.logger.Warn("P-Chain fallback update also failed, re-syncing from contract on next tick",
+				zap.Error(err))
+			s.initialized = false
+			return nil
+		}
+		s.logger.Info("P-Chain fallback succeeded")
 	}
 
 	s.localValidatorSet = newValidators
@@ -188,7 +197,7 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
 		)
-		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true); err != nil {
+		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true, ids.Empty); err != nil {
 			return err
 		}
 		s.localValidatorSet = newValidators
@@ -243,6 +252,7 @@ func (s *MerkleSetUpdater) performUpdate(
 	onChainPChainHeight uint64,
 	validatorSetUpdate *ValidatorSetMerkleCommitment,
 	isFirstRegistration bool,
+	signingChain ids.ID,
 ) error {
 	var signingSubnet ids.ID
 	if isFirstRegistration {
@@ -250,7 +260,11 @@ func (s *MerkleSetUpdater) performUpdate(
 		signingSubnet = constants.PrimaryNetworkID
 	} else {
 		// Contract verifies with the L1's registered set; preimage must use this chain ID.
-		signingSubnet = s.subnetID
+		if signingChain != constants.PrimaryNetworkID && signingChain != s.subnetID {
+			return fmt.Errorf("invalid signing chain %s: must be P-Chain or this subnet (%s)",
+				signingChain, s.subnetID)
+		}
+		signingSubnet = signingChain
 	}
 
 	addressedCall, err := warppayload.NewAddressedCall(nil, validatorSetUpdate.Bytes())
@@ -286,7 +300,7 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, isFirstRegistration)
+	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, isFirstRegistration, signingChain)
 }
 
 func (s *MerkleSetUpdater) sendUpdate(
@@ -294,12 +308,15 @@ func (s *MerkleSetUpdater) sendUpdate(
 	signedMsg *avalancheWarp.Message,
 	onChainPChainHeight uint64,
 	isFirstRegistration bool,
+	signingChain ids.ID,
 ) error {
+	// If the P-Chain signed the message in either initial registration or as a fallback,
+	// fetch the primary network validators used to build that root so the attestation
+	// proof is computed against the correct ordered set.
+	signedByPChain := isFirstRegistration || signingChain == constants.PrimaryNetworkID
+
 	var attestationValidators []*Validator
-	if isFirstRegistration {
-		// First registration is verified against the P-chain Merkle root stored in the
-		// contract constructor. Fetch the primary network validators used to build that
-		// root so the attestation proof is computed against the correct ordered set.
+	if signedByPChain {
 		allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, onChainPChainHeight)
 		if err != nil {
 			return fmt.Errorf("failed to get P-chain validator sets at height %d for attestation: %w",
@@ -338,7 +355,7 @@ func (s *MerkleSetUpdater) sendUpdate(
 		}
 	} else {
 		s.logger.Info("Sending registerValidatorSet (update)")
-		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(s.blockchainID))
+		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(signingChain))
 		if err != nil {
 			return fmt.Errorf("registerValidatorSet (update) failed: %w", err)
 		}
