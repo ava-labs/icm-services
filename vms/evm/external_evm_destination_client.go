@@ -174,10 +174,6 @@ func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
 	return c.ethClient
 }
 
-func (c *ExternalEVMDestinationClient) ConcurrentSigners() []*readonlyConcurrentSigner {
-	return c.concurrentSenders
-}
-
 func (c *ExternalEVMDestinationClient) AccessList(_ txData) types.AccessList {
 	return types.AccessList{}
 }
@@ -202,6 +198,7 @@ func (c *ExternalEVMDestinationClient) SendTx(
 		logger,
 		c,
 		c.gasFeeConfig,
+		c.concurrentSenders,
 		signedMessage,
 		deliverers,
 		toAddress,
@@ -213,7 +210,7 @@ func (c *ExternalEVMDestinationClient) SendTx(
 
 // SenderAddresses returns the addresses of all senders.
 func (c *ExternalEVMDestinationClient) SenderAddresses() []common.Address {
-	return SenderAddresses(c)
+	return SenderAddresses(c.concurrentSenders)
 }
 
 // Client returns the underlying ethclient.

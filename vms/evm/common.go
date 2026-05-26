@@ -29,7 +29,6 @@ import (
 type CommonDestinationClient interface {
 	EVMChainID() *big.Int
 	RPCClient() DestinationRPCClient
-	ConcurrentSigners() []*readonlyConcurrentSigner
 	AccessList(data txData) types.AccessList
 }
 
@@ -278,6 +277,7 @@ func SendTx(
 	logger logging.Logger,
 	c CommonDestinationClient,
 	gasFeeConfig *GasFeeConfig,
+	concurrentSigners []*readonlyConcurrentSigner,
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
 	toAddress common.Address,
@@ -303,7 +303,7 @@ func SendTx(
 	}
 
 	var cases []reflect.SelectCase
-	for _, concurrentSigner := range c.ConcurrentSigners() {
+	for _, concurrentSigner := range concurrentSigners {
 		signerAddress := concurrentSigner.signer.Address()
 		if deliverers.Len() != 0 && !deliverers.Contains(signerAddress) {
 			logger.Debug(
@@ -354,9 +354,9 @@ func SendTx(
 	return result.receipt, nil
 }
 
-func SenderAddresses(c CommonDestinationClient) []common.Address {
-	addresses := make([]common.Address, len(c.ConcurrentSigners()))
-	for i, concurrentSigner := range c.ConcurrentSigners() {
+func SenderAddresses(concurrentSigners []*readonlyConcurrentSigner) []common.Address {
+	addresses := make([]common.Address, len(concurrentSigners))
+	for i, concurrentSigner := range concurrentSigners {
 		addresses[i] = concurrentSigner.signer.Address()
 	}
 	return addresses

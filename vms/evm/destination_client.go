@@ -209,10 +209,6 @@ func (c *destinationClient) EVMChainID() *big.Int {
 	return c.evmChainID
 }
 
-func (c *destinationClient) ConcurrentSigners() []*readonlyConcurrentSigner {
-	return c.readonlyConcurrentSigners
-}
-
 func (c *destinationClient) AccessList(data txData) types.AccessList {
 	// Construct the actual transaction to broadcast on the destination chain
 	// Create predicate from the signed warp message
@@ -245,6 +241,7 @@ func (c *destinationClient) SendTx(
 		logger,
 		c,
 		c.gasFeeConfig,
+		c.readonlyConcurrentSigners,
 		signedMessage,
 		deliverers,
 		toAddress,
@@ -255,7 +252,7 @@ func (c *destinationClient) SendTx(
 }
 
 func (c *destinationClient) SenderAddresses() []common.Address {
-	return SenderAddresses(c)
+	return SenderAddresses(c.readonlyConcurrentSigners)
 }
 
 func (c *destinationClient) Client() Client {
