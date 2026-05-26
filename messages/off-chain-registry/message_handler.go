@@ -172,7 +172,7 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	receipt, err := m.destinationClient.SendTx(
 		signedMessage,
 		nil,
-		m.registryAddress.Hex(),
+		m.registryAddress,
 		addProtocolVersionGasLimit,
 		callData,
 	)

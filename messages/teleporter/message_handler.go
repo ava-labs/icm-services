@@ -275,7 +275,7 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	receipt, err := m.destinationClient.SendTx(
 		signedMessage,
 		set.Of(m.teleporterMessage.AllowedRelayerAddresses...),
-		m.protocolAddress.Hex(),
+		m.protocolAddress,
 		gasLimit,
 		callData,
 	)

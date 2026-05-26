@@ -118,7 +118,7 @@ func (mr *MockDestinationClientMockRecorder) GetRPCEndpointURL() *gomock.Call {
 }
 
 // SendTx mocks base method.
-func (m *MockDestinationClient) SendTx(signedMessage *warp.Message, deliverers set.Set[common.Address], toAddress string, gasLimit uint64, callData []byte) (*types.Receipt, error) {
+func (m *MockDestinationClient) SendTx(signedMessage *warp.Message, deliverers set.Set[common.Address], toAddress common.Address, gasLimit uint64, callData []byte) (*types.Receipt, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendTx", signedMessage, deliverers, toAddress, gasLimit, callData)
 	ret0, _ := ret[0].(*types.Receipt)

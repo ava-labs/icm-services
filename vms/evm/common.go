@@ -291,7 +291,7 @@ func SendTx(
 	c CommonDestinationClient,
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
-	toAddress string,
+	toAddress common.Address,
 	gasLimit uint64,
 	callData []byte,
 	txInclusionTimeout time.Duration,
@@ -303,9 +303,8 @@ func SendTx(
 	}
 
 	resultChan := make(chan txResult)
-	to := common.HexToAddress(toAddress)
 	messageData := txData{
-		to:            to,
+		to:            toAddress,
 		gasLimit:      gasLimit,
 		gasFeeCap:     gasFeeCap,
 		gasTipCap:     gasTipCap,

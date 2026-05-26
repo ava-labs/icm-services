@@ -252,7 +252,7 @@ func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 func (c *destinationClient) SendTx(
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
-	toAddress string,
+	toAddress common.Address,
 	gasLimit uint64,
 	callData []byte,
 ) (*types.Receipt, error) {

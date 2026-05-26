@@ -32,7 +32,7 @@ type DestinationClient interface {
 	SendTx(
 		signedMessage *warp.Message,
 		deliverers set.Set[common.Address],
-		toAddress string,
+		toAddress common.Address,
 		gasLimit uint64,
 		callData []byte,
 	) (*types.Receipt, error)

@@ -18,6 +18,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -239,7 +240,7 @@ func TestSendTx(t *testing.T) {
 				txInclusionTimeout: 30 * time.Second,
 			}
 			warpMsg := &avalancheWarp.Message{}
-			toAddress := "0x27aE10273D17Cd7e80de8580A51f476960626e5f"
+			toAddress := common.HexToAddress("0x27aE10273D17Cd7e80de8580A51f476960626e5f")
 
 			gomock.InOrder(
 				mockClient.EXPECT().EstimateBaseFee(gomock.Any()).Return(
