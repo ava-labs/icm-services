@@ -209,10 +209,6 @@ func (c *destinationClient) EVMChainID() *big.Int {
 	return c.evmChainID
 }
 
-func (c *destinationClient) Logger() logging.Logger {
-	return c.logger
-}
-
 func (c *destinationClient) GasFeeConfig() *GasFeeConfig {
 	return c.gasFeeConfig
 }
@@ -250,13 +246,23 @@ func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 // SendTx constructs, signs, and broadcast a transaction to deliver the given {signedMessage}
 // to this chain with the provided {callData}.
 func (c *destinationClient) SendTx(
+	logger logging.Logger,
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
 	toAddress common.Address,
 	gasLimit uint64,
 	callData []byte,
 ) (*types.Receipt, error) {
-	return SendTx(c, signedMessage, deliverers, toAddress, gasLimit, callData, c.txInclusionTimeout)
+	return SendTx(
+		logger,
+		c,
+		signedMessage,
+		deliverers,
+		toAddress,
+		gasLimit,
+		callData,
+		c.txInclusionTimeout,
+	)
 }
 
 func (c *destinationClient) SenderAddresses() []common.Address {

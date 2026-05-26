@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	logging "github.com/ava-labs/avalanchego/utils/logging"
 	ids "github.com/ava-labs/avalanchego/ids"
 	set "github.com/ava-labs/avalanchego/utils/set"
 	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -118,7 +119,7 @@ func (mr *MockDestinationClientMockRecorder) GetRPCEndpointURL() *gomock.Call {
 }
 
 // SendTx mocks base method.
-func (m *MockDestinationClient) SendTx(signedMessage *warp.Message, deliverers set.Set[common.Address], toAddress common.Address, gasLimit uint64, callData []byte) (*types.Receipt, error) {
+func (m *MockDestinationClient) SendTx(logger logging.Logger, signedMessage *warp.Message, deliverers set.Set[common.Address], toAddress common.Address, gasLimit uint64, callData []byte) (*types.Receipt, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendTx", signedMessage, deliverers, toAddress, gasLimit, callData)
 	ret0, _ := ret[0].(*types.Receipt)

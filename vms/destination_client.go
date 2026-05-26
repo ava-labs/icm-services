@@ -30,6 +30,7 @@ type DestinationClient interface {
 	// Returns the hash of the sent transaction.
 	// TODO: Make generic for any VM.
 	SendTx(
+		logger logging.Logger,
 		signedMessage *warp.Message,
 		deliverers set.Set[common.Address],
 		toAddress common.Address,

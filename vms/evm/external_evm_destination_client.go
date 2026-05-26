@@ -51,7 +51,6 @@ func (p *PrivateKeySigner) SignTx(tx *types.Transaction, evmChainID *big.Int) (*
 // Implements vms.DestinationClient interface.
 type ExternalEVMDestinationClient struct {
 	ethClient       EthClient
-	logger          logging.Logger
 	chainID         string
 	evmChainID      *big.Int
 	registryAddress common.Address
@@ -114,7 +113,6 @@ func NewExternalEVMDestinationClient(
 	}
 	destClient := &ExternalEVMDestinationClient{
 		ethClient:          wrappedClient,
-		logger:             logger,
 		chainID:            chainID,
 		evmChainID:         evmChainID,
 		registryAddress:    registryAddress,
@@ -177,10 +175,6 @@ func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
 	return c.ethClient
 }
 
-func (c *ExternalEVMDestinationClient) Logger() logging.Logger {
-	return c.logger
-}
-
 func (c *ExternalEVMDestinationClient) GasFeeConfig() *GasFeeConfig {
 	return c.gasFeeConfig
 }
@@ -210,13 +204,23 @@ func (c *ExternalEVMDestinationClient) getFeePerGas() (*big.Int, *big.Int, error
 // SendTx sends a transaction to an external EVM chain.
 // Uses channel-based concurrency for nonce management.
 func (c *ExternalEVMDestinationClient) SendTx(
+	logger logging.Logger,
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
 	toAddress common.Address,
 	gasLimit uint64,
 	callData []byte,
 ) (*types.Receipt, error) {
-	return SendTx(c, signedMessage, deliverers, toAddress, gasLimit, callData, c.txInclusionTimeout)
+	return SendTx(
+		logger,
+		c,
+		signedMessage,
+		deliverers,
+		toAddress,
+		gasLimit,
+		callData,
+		c.txInclusionTimeout,
+	)
 }
 
 // SenderAddresses returns the addresses of all senders.
@@ -255,9 +259,6 @@ func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
 func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
 ) (uint64, error) {
-	c.logger.Debug("Querying registry for P-chain height",
-		zap.String("registryAddress", c.registryAddress.Hex()))
-
 	// Get the current validator set to find its P-chain height
 	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
 	if err != nil {
@@ -408,15 +409,7 @@ func (c *ExternalEVMDestinationClient) SimulateCall(
 		Data: callData,
 	}
 
-	result, err := c.ethClient.CallContract(ctx, callMsg, nil) // nil = latest block
-	if err != nil {
-		// Try to extract revert reason from error
-		c.logger.Debug("SimulateCall error details",
-			zap.Error(err),
-			zap.String("errorType", fmt.Sprintf("%T", err)),
-		)
-	}
-	return result, err
+	return c.ethClient.CallContract(ctx, callMsg, nil) // nil = latest block
 }
 
 // SimulateCallAtBlock simulates a contract call at a specific block number.

@@ -29,7 +29,6 @@ import (
 type CommonDestinationClient interface {
 	EVMChainID() *big.Int
 	RPCClient() DestinationRPCClient
-	Logger() logging.Logger
 	GasFeeConfig() *GasFeeConfig
 	FeeFactor() int64
 	ConcurrentSigners() []*readonlyConcurrentSigner
@@ -242,7 +241,6 @@ func getFeePerGas(
 	c CommonDestinationClient,
 ) (*big.Int, *big.Int, error) {
 	rpcClient := c.RPCClient()
-	logger := c.Logger()
 	gasFeeConfig := c.GasFeeConfig()
 	feeFactor := c.FeeFactor()
 	// If the max base fee isn't explicitly set, then default to fetching the
@@ -257,11 +255,7 @@ func getFeePerGas(
 		defer baseFeeCtxCancel()
 		baseFee, err := rpcClient.EstimateBaseFee(baseFeeCtx)
 		if err != nil {
-			logger.Error(
-				"Failed to get base fee",
-				zap.Error(err),
-			)
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("failed to get base fee: %w", err)
 		}
 		maxBaseFee = new(big.Int).Mul(baseFee, big.NewInt(feeFactor))
 	}
@@ -271,11 +265,7 @@ func getFeePerGas(
 	defer gasTipCapCtxCancel()
 	gasTipCap, err := rpcClient.SuggestGasTipCap(gasTipCapCtx)
 	if err != nil {
-		logger.Error(
-			"Failed to get gas tip cap",
-			zap.Error(err),
-		)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to get gas tip cap: %w", err)
 	}
 	gasTipCap = new(big.Int).Add(gasTipCap, gasFeeConfig.suggestedPriorityFeeBuffer)
 	if gasTipCap.Cmp(gasFeeConfig.maxPriorityFeePerGas) > 0 {
@@ -288,6 +278,7 @@ func getFeePerGas(
 }
 
 func SendTx(
+	logger logging.Logger,
 	c CommonDestinationClient,
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
@@ -296,9 +287,9 @@ func SendTx(
 	callData []byte,
 	txInclusionTimeout time.Duration,
 ) (*types.Receipt, error) {
-	logger := c.Logger()
 	gasFeeCap, gasTipCap, err := getFeePerGas(c)
 	if err != nil {
+		logger.Error("Failed to calculate gas fee", zap.Error(err))
 		return nil, err
 	}
 

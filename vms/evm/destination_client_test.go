@@ -264,7 +264,7 @@ func TestSendTx(t *testing.T) {
 					).Times(test.txReceiptTimes),
 			)
 
-			_, err := destClient.SendTx(warpMsg, nil, toAddress, 0, []byte{})
+			_, err := destClient.SendTx(logging.NoLog{}, warpMsg, nil, toAddress, 0, []byte{})
 			if test.expectError {
 				require.Error(t, err)
 			} else {

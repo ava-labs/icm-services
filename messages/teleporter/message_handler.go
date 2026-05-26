@@ -273,6 +273,7 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	}
 
 	receipt, err := m.destinationClient.SendTx(
+		m.logger,
 		signedMessage,
 		set.Of(m.teleporterMessage.AllowedRelayerAddresses...),
 		m.protocolAddress,
