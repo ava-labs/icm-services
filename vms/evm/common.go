@@ -22,13 +22,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// CommonDestinationClient represents the minimal interface needed to implement
-// the `DestinationClient` interface for existing clients. This is an internal
-// abstraction.
-type CommonDestinationClient interface {
-	RPCClient() DestinationRPCClient
-}
-
 // DestionationRPCClient interface represents the minimal interface needed for querying RPC endpoints.
 type DestinationRPCClient interface {
 	BlockByNumber(ctx context.Context, blockNumber *big.Int) (*types.Block, error)
@@ -39,7 +32,6 @@ type DestinationRPCClient interface {
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	BlockNumber(ctx context.Context) (uint64, error)
 	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
-
 	EstimateBaseFee(ctx context.Context) (*big.Int, error)
 }
 
@@ -79,7 +71,7 @@ type concurrentSigner struct {
 	// each account, otherwise they may be dropped.
 	queuedTxSemaphore  chan struct{}
 	txInclusionTimeout time.Duration
-	destinationClient  CommonDestinationClient
+	destinationClient  DestinationRPCClient
 }
 
 // processIncomingTransactions is a worker that issues transactions from a given concurrentSigner.
@@ -162,7 +154,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	log.Info("Sending transaction")
 
-	if err := s.destinationClient.RPCClient().SendTransaction(sendTxCtx, signedTx); err != nil {
+	if err := s.destinationClient.SendTransaction(sendTxCtx, signedTx); err != nil {
 		log.Error(
 			"Failed to send transaction",
 			zap.Error(err),
@@ -194,7 +186,7 @@ func (s *concurrentSigner) waitForReceipt(
 	operation := func() (err error) {
 		callCtx, callCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer callCtxCancel()
-		receipt, err = s.destinationClient.RPCClient().TransactionReceipt(callCtx, txHash)
+		receipt, err = s.destinationClient.TransactionReceipt(callCtx, txHash)
 		return err
 	}
 	notify := func(err error, duration time.Duration) {
@@ -233,10 +225,9 @@ func (s *concurrentSigner) waitForReceipt(
 // maximum priority fee per gas. The max fee per gas is set to the sum of the max base fee and the
 // max priority fee per gas.
 func getFeePerGas(
-	c CommonDestinationClient,
+	client DestinationRPCClient,
 	gasFeeConfig *GasFeeConfig,
 ) (*big.Int, *big.Int, error) {
-	rpcClient := c.RPCClient()
 	// If the max base fee isn't explicitly set, then default to fetching the
 	// current base fee estimate and multiply it by `defaultMaxBaseFee` to allow for
 	// an increase prior to the transaction being included in a block.
@@ -247,7 +238,7 @@ func getFeePerGas(
 		// Get the current base fee estimation for the chain.
 		baseFeeCtx, baseFeeCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer baseFeeCtxCancel()
-		baseFee, err := rpcClient.EstimateBaseFee(baseFeeCtx)
+		baseFee, err := client.EstimateBaseFee(baseFeeCtx)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get base fee: %w", err)
 		}
@@ -257,7 +248,7 @@ func getFeePerGas(
 	// Get the suggested gas tip cap of the network
 	gasTipCapCtx, gasTipCapCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer gasTipCapCtxCancel()
-	gasTipCap, err := rpcClient.SuggestGasTipCap(gasTipCapCtx)
+	gasTipCap, err := client.SuggestGasTipCap(gasTipCapCtx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get gas tip cap: %w", err)
 	}
@@ -273,7 +264,7 @@ func getFeePerGas(
 
 func SendTx(
 	logger logging.Logger,
-	c CommonDestinationClient,
+	client DestinationRPCClient,
 	gasFeeConfig *GasFeeConfig,
 	concurrentSigners []*readonlyConcurrentSigner,
 	accessList types.AccessList,
@@ -284,7 +275,7 @@ func SendTx(
 	callData []byte,
 	txInclusionTimeout time.Duration,
 ) (*types.Receipt, error) {
-	gasFeeCap, gasTipCap, err := getFeePerGas(c, gasFeeConfig)
+	gasFeeCap, gasTipCap, err := getFeePerGas(client, gasFeeConfig)
 	if err != nil {
 		logger.Error("Failed to calculate gas fee", zap.Error(err))
 		return nil, err

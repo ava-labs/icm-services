@@ -157,7 +157,7 @@ func TestSendTx(t *testing.T) {
 		messageChan:        make(chan txData),
 		queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
 		txInclusionTimeout: destClient.txInclusionTimeout,
-		destinationClient:  &destClient,
+		destinationClient:  destClient.avaRPCClient,
 	}
 	go signer.processIncomingTransactions()
 

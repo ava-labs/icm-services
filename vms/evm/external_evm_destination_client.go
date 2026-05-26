@@ -143,7 +143,7 @@ func NewExternalEVMDestinationClient(
 			messageChan:        make(chan txData),
 			queuedTxSemaphore:  make(chan struct{}, externalEVMPoolTxsPerAccount),
 			txInclusionTimeout: destClient.txInclusionTimeout,
-			destinationClient:  destClient,
+			destinationClient:  destClient.ethClient,
 		}
 
 		// Start the transaction processing goroutine
@@ -165,14 +165,10 @@ func NewExternalEVMDestinationClient(
 	return destClient, nil
 }
 
-func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
-	return c.ethClient
-}
-
 // getFeePerGas calculates the gas fee cap and gas tip cap for transactions.
 // nolint:unused
 func (c *ExternalEVMDestinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c, c.gasFeeConfig)
+	return getFeePerGas(c.ethClient, c.gasFeeConfig)
 }
 
 // SendTx sends a transaction to an external EVM chain.
@@ -187,7 +183,7 @@ func (c *ExternalEVMDestinationClient) SendTx(
 ) (*types.Receipt, error) {
 	return SendTx(
 		logger,
-		c,
+		c.ethClient,
 		c.gasFeeConfig,
 		c.concurrentSenders,
 		accessList,

@@ -150,7 +150,7 @@ func NewDestinationClient(
 				messageChan:        make(chan txData),
 				queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
 				txInclusionTimeout: destClient.txInclusionTimeout,
-				destinationClient:  &destClient,
+				destinationClient:  destClient.avaRPCClient,
 			}
 
 			go concurrentSigner.processIncomingTransactions()
@@ -203,7 +203,7 @@ func (c *destinationClient) RPCClient() DestinationRPCClient {
 }
 
 func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c, c.gasFeeConfig)
+	return getFeePerGas(c.avaRPCClient, c.gasFeeConfig)
 }
 
 // SendTx constructs, signs, and broadcast a transaction to deliver the given {signedMessage}
@@ -218,7 +218,7 @@ func (c *destinationClient) SendTx(
 ) (*types.Receipt, error) {
 	return SendTx(
 		logger,
-		c,
+		c.avaRPCClient,
 		c.gasFeeConfig,
 		c.readonlyConcurrentSigners,
 		accessList,
