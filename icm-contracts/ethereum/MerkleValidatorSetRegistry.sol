@@ -66,38 +66,26 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
      * @notice Registers or updates the Merkle commitment for a validator set keyed by Avalanche
      * blockchain ID.
      */
-    function registerValidatorSet(
-        ICMMessage calldata message
-    ) external {
+    function registerValidatorSet(ICMMessage calldata message, bytes32 signingChainID) external {
         require(pChainInitialized(), "No P-chain validator set registered.");
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
 
-        // Parse the new commitment
         ValidatorSetMerkleCommitment memory newCommitment =
             ValidatorSets.parseMerkleCommitment(message.rawMessage);
         bytes32 payloadBlockchainID = newCommitment.avalancheBlockchainID;
 
-        // Verify the message under the appropriate validator set
-        bytes32 signingChainID = isRegistered(payloadBlockchainID) ? payloadBlockchainID : pChainID;
+        // The signing authority must be either the target chain itself if already registered
+        // or the P-Chain, which is the source of truth and can always sign off.
+        require(
+            signingChainID == pChainID
+                || (signingChainID == payloadBlockchainID && isRegistered(payloadBlockchainID)),
+            "Invalid signing chain"
+        );
+
         verifyICMMessage(message, signingChainID);
+
         _valSetCommitments[payloadBlockchainID] = newCommitment;
         emit ValidatorSetRegistered(payloadBlockchainID);
-    }
-
-    /**
-     * @notice Updates the registered Merkle commitment for a validator set with a new one
-     * signed by that set's current validators.
-     */
-    function updateValidatorSet(
-        ICMMessage calldata message
-    ) external {
-        ValidatorSetMerkleCommitment memory newCommitment =
-            ValidatorSets.parseMerkleCommitment(message.rawMessage);
-        bytes32 payloadBlockchainID = newCommitment.avalancheBlockchainID;
-        require(isRegistered(payloadBlockchainID), "Chain not registered.");
-        verifyICMMessage(message, payloadBlockchainID);
-        _valSetCommitments[payloadBlockchainID] = newCommitment;
-        emit ValidatorSetUpdated(payloadBlockchainID);
     }
 
     /**
