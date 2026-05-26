@@ -43,6 +43,19 @@
 //! `#[unpack(default)]`: Skip this field; the struct is returned with a zero value for it.
 //! Intended for use alongside `#[pack(ignore)]`.
 //!
+//! `#[unpack(length=...)]`: Specify the solidity type used to serialize the length of a dynamically
+//! sized type. This must be an unsigned integer solidity type. If unspecified, the default is
+//! `uint256`.
+//!
+//! _Arrays_
+//! Arrays are supported by the macro. The macro will walk the array's elements and call the unpack
+//! method for each element. The result of all these calls is then passed to `mcopy`, concatenating
+//! their bytes in order of their definition.
+//!
+//! _Mappings_
+//!
+//! _Algorithm_
+//!
 //! _Algorithm and buffer handling_
 //! The generated code is **zero-copy on the input buffer**: rather than maintaining a separate
 //! read cursor, `data`'s memory pointer and length word are updated in place via assembly after
@@ -187,10 +200,13 @@ mod tests {
     use super::*;
     #[test]
     fn test_suite() {
+        let mismatched = "testing/unpack/mismatched";
+        let _ = std::fs::remove_dir_all(mismatched);
+        std::fs::create_dir_all(mismatched).expect("Failed to create mismatched dir");
         reforge::testing::test_macros(
             "testing/unpack/source",
             "testing/unpack/expected",
-            "testing/unpack/mismatched",
+            mismatched,
             &[derive_unpack],
         )
         .expect("Test suite failed");
@@ -218,6 +234,10 @@ mod tests {
             (
                 "testing/unpack/errors/BadContract.sol",
                 "contract `NonExistent` specified in #[unpack(contract=...)] was not found",
+            ),
+            (
+                "testing/unpack/errors/BadLengthType.sol",
+                "length type `int32` for field `data` of `HasBadLength` must be an unsigned integer type (uint8 to uint256)",
             ),
         ];
         for (path, expected) in cases {
