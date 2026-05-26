@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"math/big"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
+	"github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils"
@@ -102,48 +105,72 @@ func (v validatorInfo) Compare(o validatorInfo) int {
 }
 
 func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []*localsigner.LocalSigner) {
-	validatorValues := make([]validatorInfo, validatorCount)
-	for i := 0; i < validatorCount; i++ {
+	weights := make([]uint64, validatorCount)
+	for i := range weights {
+		weights[i] = 1
+	}
+	return makeConnectedValidatorsWithWeights(weights)
+}
+
+// makeConnectedValidatorsWithWeights builds a canonical validator set where
+// each validator has the corresponding weight from the provided slice. All
+// validators are marked as connected. The returned slice of signers is
+// indexed in canonical (public-key sorted) order, matching the order of the
+// validators in ValidatorSet.Validators.
+func makeConnectedValidatorsWithWeights(weights []uint64) (*peers.CanonicalValidators, []*localsigner.LocalSigner) {
+	type weightedValidator struct {
+		info   validatorInfo
+		weight uint64
+	}
+
+	validatorValues := make([]weightedValidator, len(weights))
+	for i, w := range weights {
 		localSigner, err := localsigner.New()
 		if err != nil {
 			panic(err)
 		}
 		pubKey := localSigner.PublicKey()
 		nodeID := ids.GenerateTestNodeID()
-		validatorValues[i] = validatorInfo{
-			nodeID:            nodeID,
-			blsSigner:         localSigner,
-			blsPublicKey:      pubKey,
-			blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
+		validatorValues[i] = weightedValidator{
+			info: validatorInfo{
+				nodeID:            nodeID,
+				blsSigner:         localSigner,
+				blsPublicKey:      pubKey,
+				blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
+			},
+			weight: w,
 		}
 	}
 
-	// Sort the validators by public key to construct the NodeValidatorIndexMap
-	utils.Sort(validatorValues)
+	// Sort by public key to match canonical ordering used in the aggregator.
+	slices.SortFunc(validatorValues, func(a, b weightedValidator) int {
+		return a.info.Compare(b.info)
+	})
 
-	// Placeholder for results
-	validatorSet := make([]*validators.Warp, validatorCount)
-	validatorSigners := make([]*localsigner.LocalSigner, validatorCount)
+	totalWeight := uint64(0)
+	validatorSet := make([]*validators.Warp, len(weights))
+	validatorSigners := make([]*localsigner.LocalSigner, len(weights))
 	nodeValidatorIndexMap := make(map[ids.NodeID]int)
-	connectedNodes := set.NewSet[ids.NodeID](validatorCount)
+	connectedNodes := set.NewSet[ids.NodeID](len(weights))
 	for i, validator := range validatorValues {
-		validatorSigners[i] = validator.blsSigner
+		validatorSigners[i] = validator.info.blsSigner
 		validatorSet[i] = &validators.Warp{
-			PublicKey:      validator.blsPublicKey,
-			PublicKeyBytes: validator.blsPublicKeyBytes,
-			Weight:         1,
-			NodeIDs:        []ids.NodeID{validator.nodeID},
+			PublicKey:      validator.info.blsPublicKey,
+			PublicKeyBytes: validator.info.blsPublicKeyBytes,
+			Weight:         validator.weight,
+			NodeIDs:        []ids.NodeID{validator.info.nodeID},
 		}
-		nodeValidatorIndexMap[validator.nodeID] = i
-		connectedNodes.Add(validator.nodeID)
+		nodeValidatorIndexMap[validator.info.nodeID] = i
+		connectedNodes.Add(validator.info.nodeID)
+		totalWeight += validator.weight
 	}
 
 	return &peers.CanonicalValidators{
-		ConnectedWeight: uint64(validatorCount),
+		ConnectedWeight: totalWeight,
 		ConnectedNodes:  connectedNodes,
 		ValidatorSet: validators.WarpSet{
 			Validators:  validatorSet,
-			TotalWeight: uint64(validatorCount),
+			TotalWeight: totalWeight,
 		},
 		NodeValidatorIndexMap: nodeValidatorIndexMap,
 	}, validatorSigners
@@ -871,4 +898,365 @@ func TestPopulateSignatureMapFromCache(t *testing.T) {
 	require.Len(t, sigMap, 1)
 	// The expected weight is the weight of the first validator
 	require.Equal(t, connectedValidators.ValidatorSet.Validators[0].Weight, accWeight.Uint64())
+}
+
+func TestSortedCandidateValidators(t *testing.T) {
+	// Build a validator set with weights at canonical indices [10, 50, 30, 20, 40].
+	// We will:
+	//   - drop the only nodeID of index 2 from ConnectedNodes (unreachable),
+	//   - mark index 4 as excluded (insufficient L1 balance),
+	//   - pretend index 1 already has a cached signature.
+	// Expected candidates ordered by weight desc: [3 (w=20), 0 (w=10)].
+	weights := []uint64{10, 50, 30, 20, 40}
+	nodeIDs := make([]ids.NodeID, len(weights))
+	validatorSet := make([]*validators.Warp, len(weights))
+	connectedNodes := set.NewSet[ids.NodeID](len(weights))
+	for i, w := range weights {
+		nodeIDs[i] = ids.GenerateTestNodeID()
+		validatorSet[i] = &validators.Warp{
+			Weight:  w,
+			NodeIDs: []ids.NodeID{nodeIDs[i]},
+		}
+		if i != 2 {
+			connectedNodes.Add(nodeIDs[i])
+		}
+	}
+
+	vdrs := &peers.CanonicalValidators{
+		ConnectedNodes: connectedNodes,
+		ValidatorSet: validators.WarpSet{
+			Validators:  validatorSet,
+			TotalWeight: 150,
+		},
+	}
+
+	signatureMap := map[int][bls.SignatureLen]byte{1: {}}
+	excluded := set.NewSet[int](0)
+	excluded.Add(4)
+
+	got := sortedCandidateValidators(vdrs, signatureMap, excluded)
+	require.Equal(t, []int{3, 0}, got)
+}
+
+func TestSortedCandidateValidatorsStableForEqualWeight(t *testing.T) {
+	weights := []uint64{5, 5, 5}
+	nodeIDs := make([]ids.NodeID, len(weights))
+	validatorSet := make([]*validators.Warp, len(weights))
+	connectedNodes := set.NewSet[ids.NodeID](len(weights))
+	for i, w := range weights {
+		nodeIDs[i] = ids.GenerateTestNodeID()
+		validatorSet[i] = &validators.Warp{Weight: w, NodeIDs: []ids.NodeID{nodeIDs[i]}}
+		connectedNodes.Add(nodeIDs[i])
+	}
+	vdrs := &peers.CanonicalValidators{
+		ConnectedNodes: connectedNodes,
+		ValidatorSet: validators.WarpSet{
+			Validators:  validatorSet,
+			TotalWeight: 15,
+		},
+	}
+	got := sortedCandidateValidators(vdrs, nil, set.NewSet[int](0))
+	// Stable sort preserves canonical order when weights are equal.
+	require.Equal(t, []int{0, 1, 2}, got)
+}
+
+func TestPickNextBatch(t *testing.T) {
+	// Validators already in priority order (highest weight first).
+	vdrs := &peers.CanonicalValidators{
+		ValidatorSet: validators.WarpSet{
+			Validators: []*validators.Warp{
+				{Weight: 40}, {Weight: 30}, {Weight: 20}, {Weight: 10}, {Weight: 5},
+			},
+			TotalWeight: 105,
+		},
+	}
+	candidates := []int{0, 1, 2, 3, 4}
+
+	// Need projected weight to exceed 50% of 105 (= 52.5). 40 alone is not
+	// enough; 40+30=70 crosses the threshold. Expect a 2-element batch.
+	batch, newOffset := pickNextBatch(vdrs, candidates, 0, big.NewInt(0), 50)
+	require.Equal(t, []int{0, 1}, batch)
+	require.Equal(t, 2, newOffset)
+
+	// Starting with 70 already accumulated and aiming for 80% (= 84), we need
+	// 14 more. Index 2 alone (weight 20) brings projected to 90 which exceeds
+	// the threshold. Expect a 1-element batch.
+	batch, newOffset = pickNextBatch(vdrs, candidates, 2, big.NewInt(70), 80)
+	require.Equal(t, []int{2}, batch)
+	require.Equal(t, 3, newOffset)
+
+	// No remaining candidates returns an empty batch.
+	batch, newOffset = pickNextBatch(vdrs, candidates, 5, big.NewInt(0), 80)
+	require.Empty(t, batch)
+	require.Equal(t, 5, newOffset)
+
+	// If candidates can't cover the target, return everything left.
+	batch, newOffset = pickNextBatch(vdrs, candidates, 0, big.NewInt(0), 100)
+	require.Equal(t, []int{0, 1, 2, 3, 4}, batch)
+	require.Equal(t, 5, newOffset)
+}
+
+func TestCreateSignedMessageSendsOnlyToTopWeightedValidators(t *testing.T) {
+	// Build 5 validators with weights [1, 2, 3, 4, 5]. Total weight = 15.
+	// Required quorum = 67%, no buffer => target weight = 11.
+	// Top-weighted picks: 5 + 4 + 3 = 12, which is the smallest prefix that
+	// crosses the threshold. We expect the aggregator to send to the top 3
+	// validators in a single batch and not query the remaining 2.
+	msg, err := warp.NewUnsignedMessage(
+		constants.UnitTestID,
+		ids.GenerateTestID(),
+		utils.RandomBytes(64),
+	)
+	require.NoError(t, err)
+
+	connectedValidators, validatorSigners := makeConnectedValidatorsWithWeights([]uint64{1, 2, 3, 4, 5})
+
+	// Identify the nodeIDs corresponding to the top 3 validators by weight.
+	type vdrEntry struct {
+		index  int
+		weight uint64
+		nodeID ids.NodeID
+	}
+	entries := make([]vdrEntry, len(connectedValidators.ValidatorSet.Validators))
+	for i, v := range connectedValidators.ValidatorSet.Validators {
+		entries[i] = vdrEntry{i, v.Weight, v.NodeIDs[0]}
+	}
+	slices.SortFunc(entries, func(a, b vdrEntry) int {
+		switch {
+		case a.weight > b.weight:
+			return -1
+		case a.weight < b.weight:
+			return 1
+		default:
+			return 0
+		}
+	})
+	expectedTopNodes := set.NewSet[ids.NodeID](3)
+	for i := 0; i < 3; i++ {
+		expectedTopNodes.Add(entries[i].nodeID)
+	}
+
+	aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateAggregator(t)
+	subnetID := ids.GenerateTestID()
+	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), msg.SourceChainID).Return(subnetID, nil).AnyTimes()
+	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), subnetID).Return(
+		connectedValidators.ValidatorSet, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{subnetID: connectedValidators.ValidatorSet}, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+		platformvm.GetSubnetClientResponse{}, nil,
+	).Times(1)
+
+	peerInfos := make([]peer.Info, 0, connectedValidators.ConnectedNodes.Len())
+	for nodeID := range connectedValidators.ConnectedNodes {
+		peerInfos = append(peerInfos, peer.Info{ID: nodeID})
+	}
+	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfos).AnyTimes()
+
+	requestID := aggregator.currentRequestID.Load() + 2
+
+	// Expect exactly one Send call and assert it targets only the top
+	// 3 validators (not all 5).
+	mockNetwork.EXPECT().Send(
+		gomock.Any(),
+		gomock.Any(),
+		subnetID,
+		subnets.NoOpAllower,
+	).Times(1).DoAndReturn(
+		func(
+			_ *message.OutboundMessage,
+			config common.SendConfig,
+			_ ids.ID,
+			_ interface{},
+		) set.Set[ids.NodeID] {
+			require.Equal(t, expectedTopNodes.Len(), config.NodeIDs.Len(),
+				"expected Send to target exactly the top 3 weighted validators")
+			for nodeID := range config.NodeIDs {
+				require.True(t, expectedTopNodes.Contains(nodeID),
+					"unexpected non-top-weighted validator %s in batch", nodeID)
+			}
+
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				for nodeID := range config.NodeIDs {
+					vdrIdx := connectedValidators.NodeValidatorIndexMap[nodeID]
+					sig, signErr := validatorSigners[vdrIdx].Sign(msg.Bytes())
+					if signErr != nil {
+						t.Logf("Failed to sign: %v", signErr)
+						continue
+					}
+					respBytes, mErr := proto.Marshal(&sdk.SignatureResponse{
+						Signature: bls.SignatureToBytes(sig),
+					})
+					if mErr != nil {
+						t.Logf("Failed to marshal: %v", mErr)
+						continue
+					}
+					inboundMsg := message.InboundAppResponse(
+						msg.SourceChainID, requestID, respBytes, nodeID,
+					)
+					handler.HandleInbound(t.Context(), inboundMsg)
+				}
+			}()
+			return config.NodeIDs
+		},
+	)
+
+	signedMessage, err := aggregator.CreateSignedMessage(
+		t.Context(),
+		logging.NoLog{},
+		msg,
+		nil,
+		subnetID,
+		67, // required
+		0,  // buffer
+		pchainapi.ProposedHeight,
+	)
+	require.NoError(t, err)
+	require.NoError(t, signedMessage.Signature.Verify(
+		msg,
+		constants.UnitTestID,
+		connectedValidators.ValidatorSet,
+		67,
+		100,
+	))
+}
+
+func TestCreateSignedMessageDispatchesAdditionalBatchAfterShortfall(t *testing.T) {
+	// 5 equal-weight validators. Required quorum = 80%, no buffer => target
+	// weight = 4. First batch is the top 4 by canonical order. The test
+	// returns an invalid signature from one of those validators so the first
+	// batch only contributes 3 weight (60%), forcing the aggregator to
+	// dispatch a second batch that picks the remaining validator and
+	// reaches quorum.
+	msg, err := warp.NewUnsignedMessage(
+		constants.UnitTestID,
+		ids.GenerateTestID(),
+		utils.RandomBytes(64),
+	)
+	require.NoError(t, err)
+
+	connectedValidators, validatorSigners := makeConnectedValidators(5)
+
+	aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateAggregator(t)
+	subnetID := ids.GenerateTestID()
+	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), msg.SourceChainID).Return(subnetID, nil).AnyTimes()
+	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), subnetID).Return(
+		connectedValidators.ValidatorSet, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{subnetID: connectedValidators.ValidatorSet}, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+		platformvm.GetSubnetClientResponse{}, nil,
+	).Times(1)
+	peerInfos := make([]peer.Info, 0, connectedValidators.ConnectedNodes.Len())
+	for nodeID := range connectedValidators.ConnectedNodes {
+		peerInfos = append(peerInfos, peer.Info{ID: nodeID})
+	}
+	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfos).AnyTimes()
+
+	// Map canonical index -> nodeID for response injection convenience.
+	indexToNodeID := make(map[int]ids.NodeID)
+	for nodeID, idx := range connectedValidators.NodeValidatorIndexMap {
+		indexToNodeID[idx] = nodeID
+	}
+
+	var (
+		sendsMu  sync.Mutex
+		sendsSeq []set.Set[ids.NodeID]
+	)
+
+	mockNetwork.EXPECT().Send(
+		gomock.Any(),
+		gomock.Any(),
+		subnetID,
+		subnets.NoOpAllower,
+	).MinTimes(2).DoAndReturn(
+		func(
+			_ *message.OutboundMessage,
+			config common.SendConfig,
+			_ ids.ID,
+			_ interface{},
+		) set.Set[ids.NodeID] {
+			sendsMu.Lock()
+			batchIdx := len(sendsSeq)
+			sendsSeq = append(sendsSeq, config.NodeIDs)
+			sendsMu.Unlock()
+
+			// requestID for the Nth batch is the initial request ID + 2*N.
+			batchReqID := aggregator.currentRequestID.Load()
+
+			go func(batchReqID uint32, batchIdx int, batchNodes set.Set[ids.NodeID]) {
+				time.Sleep(10 * time.Millisecond)
+				for nodeID := range batchNodes {
+					var sigBytes []byte
+					vdrIdx := connectedValidators.NodeValidatorIndexMap[nodeID]
+					// On the first batch (which should have 4 nodes), return
+					// an invalid (empty) signature from the lowest canonical
+					// index so that only 3 valid signatures are collected
+					// and the aggregator must dispatch a second batch.
+					if batchIdx == 0 && vdrIdx == 0 {
+						sigBytes = []byte{}
+					} else {
+						sig, signErr := validatorSigners[vdrIdx].Sign(msg.Bytes())
+						if signErr != nil {
+							t.Logf("Failed to sign: %v", signErr)
+							continue
+						}
+						sigBytes = bls.SignatureToBytes(sig)
+					}
+					respBytes, mErr := proto.Marshal(&sdk.SignatureResponse{
+						Signature: sigBytes,
+					})
+					if mErr != nil {
+						t.Logf("Failed to marshal: %v", mErr)
+						continue
+					}
+					inboundMsg := message.InboundAppResponse(
+						msg.SourceChainID, batchReqID, respBytes, nodeID,
+					)
+					handler.HandleInbound(t.Context(), inboundMsg)
+				}
+			}(batchReqID, batchIdx, config.NodeIDs)
+			return config.NodeIDs
+		},
+	)
+
+	signedMessage, err := aggregator.CreateSignedMessage(
+		t.Context(),
+		logging.NoLog{},
+		msg,
+		nil,
+		subnetID,
+		80,
+		0,
+		pchainapi.ProposedHeight,
+	)
+	require.NoError(t, err)
+	require.NoError(t, signedMessage.Signature.Verify(
+		msg,
+		constants.UnitTestID,
+		connectedValidators.ValidatorSet,
+		80,
+		100,
+	))
+
+	sendsMu.Lock()
+	defer sendsMu.Unlock()
+	require.GreaterOrEqual(t, len(sendsSeq), 2,
+		"expected at least 2 Send invocations after first batch shortfall")
+	// First batch should target only the top 4 by canonical order (not all 5).
+	require.Equal(t, 4, sendsSeq[0].Len(),
+		"first batch should target the 4-validator prefix needed for 80%")
+	// Second batch should only target the remaining 1 validator needed to
+	// fill the deficit, not the validators we already asked.
+	require.Equal(t, 1, sendsSeq[1].Len(),
+		"second batch should query just the additional validator needed")
+	for nodeID := range sendsSeq[1] {
+		require.False(t, sendsSeq[0].Contains(nodeID),
+			"second batch should not re-query a validator from the first batch")
+	}
 }
