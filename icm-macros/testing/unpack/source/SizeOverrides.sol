@@ -9,6 +9,8 @@ library PackMethods {
         string String;
         // #[unpack(length=uint32)]
         address[] Addresses;
+        // #[unpack(length=32)]
+        bytes Hash;
     }
 
     // #[unpack(calldata)]
@@ -19,5 +21,15 @@ library PackMethods {
         string String;
         // #[unpack(length=uint32)]
         address[] Addresses;
+        // #[unpack(length=32, method="parseHash")]
+        bytes Hash;
+    }
+
+    function parseHash(bytes calldata hashBytes) internal pure returns (bytes memory) {
+        if (hashBytes.length == 32) {
+            return hashBytes;
+        } else {
+            return new bytes(32);
+        }
     }
 }

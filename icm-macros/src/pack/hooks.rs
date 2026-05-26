@@ -14,11 +14,19 @@ pub struct PackArgs {
     pub visibility: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum LengthSpec {
+    /// Encode the length/count using the given Solidity unsigned integer type.
+    Type(String),
+    /// Omit the length/count prefix entirely.
+    Drop,
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FieldArgs {
     pub method: Option<String>,
     pub ignore: bool,
-    pub length: Option<String>,
+    pub length: Option<LengthSpec>,
 }
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
@@ -169,7 +177,14 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
         if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
-                "length" => length = Some(val.trim().to_string()),
+                "length" => {
+                    let v = val.trim();
+                    length = Some(if v == "drop" {
+                        LengthSpec::Drop
+                    } else {
+                        LengthSpec::Type(v.to_string())
+                    });
+                }
                 _ => {}
             }
         } else if arg.trim() == "ignore" {
@@ -231,6 +246,7 @@ mod tests {
                 Some("#[pack(ignore, method=\"Foo.bar\")]".to_string()),
                 Some("#[pack(length = uint32)]".to_string()),
                 Some("#[pack(method=\"Foo.bar\", length = uint64)]".to_string()),
+                Some("#[pack(length = drop)]".to_string()),
             ],
         )
         .unwrap();
@@ -265,7 +281,7 @@ mod tests {
             FieldArgs {
                 method: None,
                 ignore: false,
-                length: Some("uint32".to_string()),
+                length: Some(LengthSpec::Type("uint32".to_string())),
             }
         );
         assert_eq!(
@@ -273,7 +289,15 @@ mod tests {
             FieldArgs {
                 method: Some("Foo.bar".to_string()),
                 ignore: false,
-                length: Some("uint64".to_string()),
+                length: Some(LengthSpec::Type("uint64".to_string())),
+            }
+        );
+        assert_eq!(
+            raw.fields[5],
+            FieldArgs {
+                method: None,
+                ignore: false,
+                length: Some(LengthSpec::Drop),
             }
         );
     }
