@@ -13,7 +13,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
@@ -166,16 +165,8 @@ func NewExternalEVMDestinationClient(
 	return destClient, nil
 }
 
-func (c *ExternalEVMDestinationClient) EVMChainID() *big.Int {
-	return c.evmChainID
-}
-
 func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
 	return c.ethClient
-}
-
-func (c *ExternalEVMDestinationClient) AccessList(_ txData) types.AccessList {
-	return types.AccessList{}
 }
 
 // getFeePerGas calculates the gas fee cap and gas tip cap for transactions.
@@ -188,7 +179,7 @@ func (c *ExternalEVMDestinationClient) getFeePerGas() (*big.Int, *big.Int, error
 // Uses channel-based concurrency for nonce management.
 func (c *ExternalEVMDestinationClient) SendTx(
 	logger logging.Logger,
-	signedMessage *avalancheWarp.Message,
+	accessList types.AccessList,
 	deliverers set.Set[common.Address],
 	toAddress common.Address,
 	gasLimit uint64,
@@ -199,7 +190,8 @@ func (c *ExternalEVMDestinationClient) SendTx(
 		c,
 		c.gasFeeConfig,
 		c.concurrentSenders,
-		signedMessage,
+		accessList,
+		c.evmChainID,
 		deliverers,
 		toAddress,
 		gasLimit,

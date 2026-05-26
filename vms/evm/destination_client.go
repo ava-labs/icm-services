@@ -12,13 +12,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	predicateutils "github.com/ava-labs/avalanchego/vms/evm/predicate"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
@@ -205,24 +202,6 @@ func (c *destinationClient) RPCClient() DestinationRPCClient {
 	return c.avaRPCClient
 }
 
-func (c *destinationClient) EVMChainID() *big.Int {
-	return c.evmChainID
-}
-
-func (c *destinationClient) AccessList(data txData) types.AccessList {
-	// Construct the actual transaction to broadcast on the destination chain
-	// Create predicate from the signed warp message
-	predicate := predicateutils.New(data.signedMessage.Bytes())
-
-	// Create access list with the predicate for the warp precompile
-	return types.AccessList{
-		{
-			Address:     warp.ContractAddress,
-			StorageKeys: predicate,
-		},
-	}
-}
-
 func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 	return getFeePerGas(c, c.gasFeeConfig)
 }
@@ -231,7 +210,7 @@ func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
 // to this chain with the provided {callData}.
 func (c *destinationClient) SendTx(
 	logger logging.Logger,
-	signedMessage *avalancheWarp.Message,
+	accessList types.AccessList,
 	deliverers set.Set[common.Address],
 	toAddress common.Address,
 	gasLimit uint64,
@@ -242,7 +221,8 @@ func (c *destinationClient) SendTx(
 		c,
 		c.gasFeeConfig,
 		c.readonlyConcurrentSigners,
-		signedMessage,
+		accessList,
+		c.evmChainID,
 		deliverers,
 		toAddress,
 		gasLimit,

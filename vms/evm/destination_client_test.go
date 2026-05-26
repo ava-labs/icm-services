@@ -16,6 +16,7 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/utils"
 	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
 	"github.com/ava-labs/libevm/common"
@@ -265,7 +266,9 @@ func TestSendTx(t *testing.T) {
 					).Times(test.txReceiptTimes),
 			)
 
-			_, err := destClient.SendTx(logging.NoLog{}, warpMsg, nil, toAddress, 0, []byte{})
+			accessList := utils.SignedWarpMessageToAccessList(warpMsg)
+
+			_, err := destClient.SendTx(logging.NoLog{}, accessList, nil, toAddress, 0, []byte{})
 			if test.expectError {
 				require.Error(t, err)
 			} else {

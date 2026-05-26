@@ -13,7 +13,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/vms/evm"
@@ -31,7 +30,7 @@ type DestinationClient interface {
 	// TODO: Make generic for any VM.
 	SendTx(
 		logger logging.Logger,
-		signedMessage *warp.Message,
+		accessList types.AccessList,
 		deliverers set.Set[common.Address],
 		toAddress common.Address,
 		gasLimit uint64,

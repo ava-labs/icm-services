@@ -14,7 +14,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
 	ethereum "github.com/ava-labs/libevm"
@@ -27,9 +26,7 @@ import (
 // the `DestinationClient` interface for existing clients. This is an internal
 // abstraction.
 type CommonDestinationClient interface {
-	EVMChainID() *big.Int
 	RPCClient() DestinationRPCClient
-	AccessList(data txData) types.AccessList
 }
 
 // DestionationRPCClient interface represents the minimal interface needed for querying RPC endpoints.
@@ -47,13 +44,14 @@ type DestinationRPCClient interface {
 }
 
 type txData struct {
-	to            common.Address
-	gasLimit      uint64
-	gasFeeCap     *big.Int
-	gasTipCap     *big.Int
-	callData      []byte
-	signedMessage *avalancheWarp.Message
-	resultChan    chan txResult
+	to         common.Address
+	gasLimit   uint64
+	gasFeeCap  *big.Int
+	gasTipCap  *big.Int
+	chainID    *big.Int
+	callData   []byte
+	accessList types.AccessList
+	resultChan chan txResult
 }
 
 type txResult struct {
@@ -128,7 +126,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	// Create a standard EIP-1559 transaction with the predicate access list
 	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:    s.destinationClient.EVMChainID(),
+		ChainID:    data.chainID,
 		Nonce:      s.currentNonce,
 		To:         &data.to,
 		Gas:        data.gasLimit,
@@ -136,11 +134,11 @@ func (s *concurrentSigner) issueTransaction(
 		GasTipCap:  data.gasTipCap,
 		Value:      big.NewInt(0),
 		Data:       data.callData,
-		AccessList: s.destinationClient.AccessList(data),
+		AccessList: data.accessList,
 	})
 
 	// Sign and send the transaction on the destination chain
-	signedTx, err := s.signer.SignTx(tx, s.destinationClient.EVMChainID())
+	signedTx, err := s.signer.SignTx(tx, data.chainID)
 	if err != nil {
 		s.logger.Error(
 			"Failed to sign transaction",
@@ -278,7 +276,8 @@ func SendTx(
 	c CommonDestinationClient,
 	gasFeeConfig *GasFeeConfig,
 	concurrentSigners []*readonlyConcurrentSigner,
-	signedMessage *avalancheWarp.Message,
+	accessList types.AccessList,
+	chainID *big.Int,
 	deliverers set.Set[common.Address],
 	toAddress common.Address,
 	gasLimit uint64,
@@ -293,13 +292,14 @@ func SendTx(
 
 	resultChan := make(chan txResult)
 	messageData := txData{
-		to:            toAddress,
-		gasLimit:      gasLimit,
-		gasFeeCap:     gasFeeCap,
-		gasTipCap:     gasTipCap,
-		callData:      callData,
-		signedMessage: signedMessage,
-		resultChan:    resultChan,
+		to:         toAddress,
+		gasLimit:   gasLimit,
+		gasFeeCap:  gasFeeCap,
+		gasTipCap:  gasTipCap,
+		chainID:    chainID,
+		callData:   callData,
+		accessList: accessList,
+		resultChan: resultChan,
 	}
 
 	var cases []reflect.SelectCase
