@@ -175,10 +175,6 @@ func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
 	return c.ethClient
 }
 
-func (c *ExternalEVMDestinationClient) GasFeeConfig() *GasFeeConfig {
-	return c.gasFeeConfig
-}
-
 func (c *ExternalEVMDestinationClient) FeeFactor() int64 {
 	return externalEVMDefaultBaseFeeFactor
 }
@@ -198,7 +194,7 @@ func (c *ExternalEVMDestinationClient) TxInclusionTimeout() time.Duration {
 // getFeePerGas calculates the gas fee cap and gas tip cap for transactions.
 // nolint:unused
 func (c *ExternalEVMDestinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c)
+	return getFeePerGas(c, c.gasFeeConfig)
 }
 
 // SendTx sends a transaction to an external EVM chain.
@@ -214,6 +210,7 @@ func (c *ExternalEVMDestinationClient) SendTx(
 	return SendTx(
 		logger,
 		c,
+		c.gasFeeConfig,
 		signedMessage,
 		deliverers,
 		toAddress,

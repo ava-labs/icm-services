@@ -209,10 +209,6 @@ func (c *destinationClient) EVMChainID() *big.Int {
 	return c.evmChainID
 }
 
-func (c *destinationClient) GasFeeConfig() *GasFeeConfig {
-	return c.gasFeeConfig
-}
-
 func (c *destinationClient) FeeFactor() int64 {
 	return defaultBaseFeeFactor
 }
@@ -240,7 +236,7 @@ func (c *destinationClient) TxInclusionTimeout() time.Duration {
 }
 
 func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c)
+	return getFeePerGas(c, c.gasFeeConfig)
 }
 
 // SendTx constructs, signs, and broadcast a transaction to deliver the given {signedMessage}
@@ -256,6 +252,7 @@ func (c *destinationClient) SendTx(
 	return SendTx(
 		logger,
 		c,
+		c.gasFeeConfig,
 		signedMessage,
 		deliverers,
 		toAddress,

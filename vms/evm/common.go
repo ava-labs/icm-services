@@ -29,7 +29,6 @@ import (
 type CommonDestinationClient interface {
 	EVMChainID() *big.Int
 	RPCClient() DestinationRPCClient
-	GasFeeConfig() *GasFeeConfig
 	FeeFactor() int64
 	ConcurrentSigners() []*readonlyConcurrentSigner
 	AccessList(data txData) types.AccessList
@@ -239,9 +238,9 @@ func (s *concurrentSigner) waitForReceipt(
 // max priority fee per gas.
 func getFeePerGas(
 	c CommonDestinationClient,
+	gasFeeConfig *GasFeeConfig,
 ) (*big.Int, *big.Int, error) {
 	rpcClient := c.RPCClient()
-	gasFeeConfig := c.GasFeeConfig()
 	feeFactor := c.FeeFactor()
 	// If the max base fee isn't explicitly set, then default to fetching the
 	// current base fee estimate and multiply it by `defaultMaxBaseFee` to allow for
@@ -280,6 +279,7 @@ func getFeePerGas(
 func SendTx(
 	logger logging.Logger,
 	c CommonDestinationClient,
+	gasFeeConfig *GasFeeConfig,
 	signedMessage *avalancheWarp.Message,
 	deliverers set.Set[common.Address],
 	toAddress common.Address,
@@ -287,7 +287,7 @@ func SendTx(
 	callData []byte,
 	txInclusionTimeout time.Duration,
 ) (*types.Receipt, error) {
-	gasFeeCap, gasTipCap, err := getFeePerGas(c)
+	gasFeeCap, gasTipCap, err := getFeePerGas(c, gasFeeConfig)
 	if err != nil {
 		logger.Error("Failed to calculate gas fee", zap.Error(err))
 		return nil, err
