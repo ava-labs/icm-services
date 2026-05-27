@@ -32,6 +32,11 @@ type CanonicalValidatorState interface {
 	GetAllValidatorSets(ctx context.Context, pchainHeight uint64) (map[ids.ID]validators.WarpSet, error)
 	GetProposedValidators(ctx context.Context, subnetID ids.ID) (validators.WarpSet, error)
 	GetCurrentValidators(ctx context.Context, subnetID ids.ID) ([]platformvm.ClientPermissionlessValidator, error)
+	GetValidatorsAt(
+		ctx context.Context,
+		subnetID ids.ID,
+		pchainHeight uint64,
+	) (map[ids.NodeID]*validators.GetValidatorOutput, error)
 }
 
 // CanonicalValidatorClient wraps [platformvm.Client] and implements [CanonicalValidatorState]
@@ -103,6 +108,14 @@ func (v *CanonicalValidatorClient) GetProposedValidators(
 		return validators.WarpSet{}, fmt.Errorf("failed to get proposed validators: %w", err)
 	}
 	return validators.FlattenValidatorSet(res)
+}
+
+func (v *CanonicalValidatorClient) GetValidatorsAt(
+	ctx context.Context,
+	subnetID ids.ID,
+	pchainHeight uint64,
+) (map[ids.NodeID]*validators.GetValidatorOutput, error) {
+	return v.client.GetValidatorsAt(ctx, subnetID, pchainapi.Height(pchainHeight), v.options...)
 }
 
 // Gets the validator set of the given subnet at the given P-chain block height.
