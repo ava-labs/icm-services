@@ -81,14 +81,13 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         // Initial registration must always be signed by the P-Chain.
         // For subsequent updates, the signing authority must be either the target chain itself if already registered
         // or the P-Chain if allowPChainFalback is enabled
+        bool selfSigned = (signingChainID == payloadBlockchainID);
+        bool pChainSigned = (signingChainID == pChainID);
+
         if (!isRegistered(payloadBlockchainID)) {
-            require(
-                signingChainID == pChainID, "Initial registration must be signed by the P-Chain"
-            );
+            require(pChainSigned, "Initial registration must be signed by the P-Chain");
         } else {
-            bool selfSigned = signingChainID == payloadBlockchainID;
-            bool pChainFallback = signingChainID == pChainID && allowPChainFallback;
-            require(selfSigned || pChainFallback, "Invalid signing chain");
+            require(selfSigned || (pChainSigned && allowPChainFallback), "Invalid signing chain");
         }
 
         verifyICMMessage(message, signingChainID);
