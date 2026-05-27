@@ -6,6 +6,7 @@ package validatorupdater
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"sort"
 	"time"
@@ -28,7 +29,7 @@ import (
 )
 
 const (
-	defaultPollInterval               = 10 * time.Second
+	DefaultPollInterval               = 10 * time.Second
 	defaultQuorumPercentage           = 67
 	defaultQuorumPercentageBuf        = 5
 	defaultShardSize           uint32 = 10
@@ -79,7 +80,7 @@ func NewSubsetSetUpdater(
 		shardSize = defaultShardSize
 	}
 	if pollInterval == 0 {
-		pollInterval = defaultPollInterval
+		pollInterval = DefaultPollInterval
 	}
 	return &SubsetSetUpdater{
 		logger:                   logger,
@@ -282,11 +283,14 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		zap.Stringer("signingSubnet", signingSubnet),
 	)
 
+	justification := make([]byte, 8)
+	binary.BigEndian.PutUint64(justification, uint64(s.shardSize))
+
 	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
 		ctx,
 		s.logger,
 		subsetUpdateMsg,
-		nil,
+		justification,
 		signingSubnet,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,

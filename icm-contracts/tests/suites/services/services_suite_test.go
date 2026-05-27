@@ -114,10 +114,18 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				TeleporterDeployerAddress:    teleporterDeployerAddress,
 				NodeCount:                    2,
 				RequirePrimaryNetworkSigners: true,
+			}, {
+				Name:                         "C",
+				EVMChainID:                   11223,
+				TeleporterContractAddress:    teleporterContractAddress,
+				TeleporterDeployedBytecode:   teleporterDeployedByteCode,
+				TeleporterDeployerAddress:    teleporterDeployerAddress,
+				NodeCount:                    2,
+				RequirePrimaryNetworkSigners: true,
 			},
 		},
 		6,
-		8,
+		17,
 		e2eFlags,
 	)
 
@@ -140,8 +148,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		teleporterInfo.DeployTeleporterRegistry(ctx, &subnet, fundedKey)
 	}
 
-	// Convert the subnets to sovereign L1s
-	for _, subnet := range localNetworkInstance.GetL1Infos() {
+	// Convert L1s A and B to sovereign L1s with 4 validators each
+	for _, subnet := range localNetworkInstance.GetL1Infos()[:2] {
 		localNetworkInstance.ConvertSubnet(
 			networkStartCtx,
 			subnet,
@@ -152,6 +160,22 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			false,
 		)
 	}
+	// Convert L1 C with 10 validators for MerkleUpdater
+	localNetworkInstance.ConvertSubnet(
+		networkStartCtx,
+		localNetworkInstance.GetL1Infos()[2],
+		utils.PoAValidatorManager,
+		[]uint64{
+			units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle,
+			units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle, units.Schmeckle,
+		},
+		[]uint64{
+			defaultBalance, defaultBalance, defaultBalance, defaultBalance, defaultBalance,
+			defaultBalance, defaultBalance, defaultBalance, defaultBalance, defaultBalance,
+		},
+		fundedKey,
+		false,
+	)
 
 	// Restart the network to attempt to refresh TLS connections
 	networkRestartCtx, cancel := context.WithTimeout(ctx, time.Duration(60*len(localNetworkInstance.Nodes))*time.Second)
@@ -251,6 +275,11 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		ginkgo.Label(servicesLabel),
 		func(ctx context.Context) {
 			servicesFlows.DiffUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
+		})
+	ginkgo.It("MerkleUpdater",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.MerkleUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
 	// ValidatorsOnlyNetwork runs last: it puts a subnet in validator-only mode, so any following
 	// test that dials all L1s (e.g. GetL1Infos) would fail until nodes are restarted with the
