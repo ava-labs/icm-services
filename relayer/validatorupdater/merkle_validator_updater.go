@@ -137,6 +137,15 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get P-chain timestamp: %w", err)
 	}
+
+	ok, err := s.shouldSubmit(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
 	newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to fetch validators at height %d: %w", pChainHeight, err)
@@ -157,16 +166,6 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.String("newCommitmentRoot", fmt.Sprintf("0x%x", validatorSetUpdate.RootHash[:])),
 		zap.Bool("stale", s.isStale()),
 	)
-
-	ok, err := s.shouldSubmit(ctx)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		// Local state intentionally not advanced so the same update is
-		// retried on the next poll once gas drops below the threshold.
-		return nil
-	}
 
 	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false); err != nil {
 		s.logger.Warn("Merkle root update failed, re-syncing from contract on next tick", zap.Error(err))
@@ -198,6 +197,15 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to get P-chain timestamp: %w", err)
 		}
+
+		ok, err := s.shouldSubmit(ctx)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+
 		newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
 		if err != nil {
 			return fmt.Errorf("failed to fetch validators after first registration: %w", err)
@@ -210,15 +218,6 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
 		)
-		ok, err := s.shouldSubmit(ctx)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			// initialized stays false so the first registration is retried on
-			// the next poll once gas drops below the threshold.
-			return nil
-		}
 		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true); err != nil {
 			return err
 		}
