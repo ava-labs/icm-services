@@ -92,16 +92,30 @@ func MerkleValidatorSetRegistry(
 
 	// Deploy MerkleValidatorSetRegistry on Ethereum
 	merkleRegistryAddr := utils.DeployMerkleValidatorSetRegistry(
-		ctx, ethInfo, ethFundedKey,
-		networkID, constants.PlatformChainID,
-		pChainRoot, pChainTotalWeight, pChainHeight, pChainTimestamp,
+		ctx, 
+		ethInfo, 
+		ethFundedKey,
+		networkID, 
+		constants.PlatformChainID,
+		pChainRoot, 
+		pChainTotalWeight, 
+		pChainHeight, 
+		pChainTimestamp, 
+		false,
 	)
 
 	// Deploy MerkleValidatorSetRegistry on the Avalanche L1
 	merkleRegistryAddrL1 := utils.DeployMerkleValidatorSetRegistry(
-		ctx, &l1Info, fundedAvalancheKey,
-		networkID, constants.PlatformChainID,
-		pChainRoot, pChainTotalWeight, pChainHeight, pChainTimestamp,
+		ctx, 
+		&l1Info, 
+		fundedAvalancheKey,
+		networkID, 
+		constants.PlatformChainID,
+		pChainRoot, 
+		pChainTotalWeight, 
+		pChainHeight, 
+		pChainTimestamp, 
+		false,
 	)
 	Expect(merkleRegistryAddrL1).Should(Equal(merkleRegistryAddr))
 
@@ -166,6 +180,13 @@ func MerkleValidatorSetRegistry(
 	Expect(err).Should(BeNil())
 	Expect(ethEvent.Message.Message).Should(Equal(ethMessage.Message))
 
+	teleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, ethTeleporter.ParseSendCrossChainMessage)
+	Expect(err).Should(BeNil())
+	Expect(teleporterEvent.Message.Message).Should(Equal(ethMessage.Message))
+	Expect(teleporterEvent.DestinationBlockchainID).Should(Equal(ethMessage.DestinationBlockchainID))
+	Expect(teleporterEvent.Message.DestinationAddress).Should(Equal(ethMessage.DestinationAddress))
+	Expect(teleporterEvent.Message.RequiredGasLimit).Should(Equal(ethMessage.RequiredGasLimit))
+
 	// Step 3: Manually relay message from Ethereum -> Avalanche
 	attestation := signMessageEcdsa(ethEvent.Message, ethereumBlockchainID, ecdsaVerifierContractAddress, ecdsaSigner)
 	ethMsg := teleportermessengerv2.TeleporterICMMessage{
@@ -192,6 +213,11 @@ func MerkleValidatorSetRegistry(
 	receiptEvent, err := utils.GetEventFromLogs(receipt.Logs, l1Teleporter.ParseReceiveCrossChainMessage)
 	Expect(err).Should(BeNil())
 	Expect(receiptEvent.Message.Message).Should(Equal(ethMsg.Message.Message))
+
+	executedEvent, err := utils.GetEventFromLogs(receipt.Logs, l1Teleporter.ParseMessageExecuted)
+	Expect(err).Should(BeNil())
+	Expect(executedEvent.MessageID).Should(Equal(receiptEvent.MessageID))
+	Expect(executedEvent.SourceBlockchainID).Should(Equal(ethMsg.SourceBlockchainID))
 
 	// Step 4: Send cross-chain message from the Avalanche L1 -> Ethereum verifying against MerkleValidatorSetRegistry
 	avalancheMessage := teleportermessengerv2.TeleporterMessageInput{
@@ -232,6 +258,11 @@ func MerkleValidatorSetRegistry(
 	ethReceiptEvent, err := utils.GetEventFromLogs(receipt.Logs, ethTeleporter.ParseReceiveCrossChainMessage)
 	Expect(err).Should(BeNil())
 	Expect(ethReceiptEvent.Message.Message).Should(Equal(avalancheMsg.Message.Message))
+
+	ethExecutedEvent, err := utils.GetEventFromLogs(receipt.Logs, ethTeleporter.ParseMessageExecuted)
+	Expect(err).Should(BeNil())
+	Expect(ethExecutedEvent.MessageID).Should(Equal(receiptEvent.MessageID))
+	Expect(ethExecutedEvent.SourceBlockchainID).Should(Equal(avalancheMsg.SourceBlockchainID))
 }
 
 // registerL1ValidatorSet builds a synthetic P-Chain emitted warp message carrying

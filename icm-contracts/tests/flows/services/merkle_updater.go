@@ -119,6 +119,7 @@ func MerkleUpdater(
 		pChainTotalWeight,
 		pChainHeight,
 		pChainTimestamp,
+		false,
 	)
 	contract, err := merkleregistry.NewMerkleValidatorSetRegistry(contractAddr, ethClient)
 	Expect(err).Should(BeNil())
