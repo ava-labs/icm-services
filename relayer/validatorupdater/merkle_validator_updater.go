@@ -296,10 +296,7 @@ func (s *MerkleSetUpdater) sendUpdate(
 	onChainPChainHeight uint64,
 	isFirstRegistration bool,
 ) error {
-	var (
-		attestationValidators []*Validator
-		signingWarpSet        warpvdrs.WarpSet
-	)
+	var attestationValidators []*Validator
 	if isFirstRegistration {
 		// First registration is verified against the P-chain Merkle root stored in the
 		// contract constructor. Fetch the primary network validators used to build that
@@ -313,24 +310,12 @@ func (s *MerkleSetUpdater) sendUpdate(
 		if !ok {
 			return fmt.Errorf("primary network not found in validator sets at height %d", onChainPChainHeight)
 		}
-		signingWarpSet = pChainWarpSet
-		attestationValidators = make([]*Validator, len(pChainWarpSet.Validators))
-		for i, vdr := range pChainWarpSet.Validators {
-			attestationValidators[i] = &Validator{
-				UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
-				Weight:                     vdr.Weight,
-			}
-		}
-		sort.Slice(attestationValidators, func(i, j int) bool {
-			return string(attestationValidators[i].UncompressedPublicKeyBytes[:]) <
-				string(attestationValidators[j].UncompressedPublicKeyBytes[:])
-		})
+		attestationValidators = warpSetToLocalValidators(pChainWarpSet)
 	} else {
 		attestationValidators = s.localValidatorSet
-		signingWarpSet = localValidatorsToWarpSet(s.localValidatorSet, s.localTotalWeight)
 	}
 
-	icmMessage, err := s.buildICMMessage(signedMsg, attestationValidators, signingWarpSet)
+	icmMessage, err := s.buildICMMessage(signedMsg, attestationValidators)
 	if err != nil {
 		return err
 	}
@@ -397,7 +382,6 @@ func (s *MerkleSetUpdater) fetchSortedValidators(
 func (s *MerkleSetUpdater) buildICMMessage(
 	signedMsg *avalancheWarp.Message,
 	validators []*Validator,
-	signingWarpSet warpvdrs.WarpSet,
 ) (merklevalidatorsetregistry.ICMMessage, error) {
 	addressedCall, err := warppayload.ParseAddressedCall(signedMsg.UnsignedMessage.Payload)
 	if err != nil {
@@ -408,15 +392,6 @@ func (s *MerkleSetUpdater) buildICMMessage(
 	bitSetSig, ok := signedMsg.Signature.(*avalancheWarp.BitSetSignature)
 	if !ok {
 		return merklevalidatorsetregistry.ICMMessage{}, fmt.Errorf("expected BitSetSignature, got %T", signedMsg.Signature)
-	}
-
-	// Prune to the minimum signers needed for quorum to reduce calldata.
-	bitSetSig, err = s.signatureAggregator.PruneBitSetSignatureToQuorum(
-		s.logger, &signedMsg.UnsignedMessage, bitSetSig, signingWarpSet, defaultQuorumPercentage,
-	)
-	if err != nil {
-		return merklevalidatorsetregistry.ICMMessage{},
-			fmt.Errorf("failed to prune attestation to quorum: %w", err)
 	}
 
 	attestation, err := NewValidatorSetMerkleAttestation(validators, bitSetSig)
@@ -432,20 +407,20 @@ func (s *MerkleSetUpdater) buildICMMessage(
 	}, nil
 }
 
-// localValidatorsToWarpSet builds the minimum WarpSet used by the prune path.
-// Only PublicKeyBytes and Weight are populated.
-func localValidatorsToWarpSet(vs []*Validator, totalWeight uint64) warpvdrs.WarpSet {
-	warps := make([]*warpvdrs.Warp, len(vs))
-	for i, v := range vs {
-		pkBytes := make([]byte, len(v.UncompressedPublicKeyBytes))
-		copy(pkBytes, v.UncompressedPublicKeyBytes[:])
-		warps[i] = &warpvdrs.Warp{
-			PublicKeyBytes: pkBytes,
-			Weight:         v.Weight,
+// warpSetToLocalValidators converts a canonical WarpSet to the []*Validator form
+// expected by the merkle attestation builder. The returned slice is sorted by
+// uncompressed public key bytes to match the canonical ordering used to build
+// the on-chain merkle root.
+func warpSetToLocalValidators(warpSet warpvdrs.WarpSet) []*Validator {
+	out := make([]*Validator, len(warpSet.Validators))
+	for i, vdr := range warpSet.Validators {
+		out[i] = &Validator{
+			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+			Weight:                     vdr.Weight,
 		}
 	}
-	return warpvdrs.WarpSet{
-		Validators:  warps,
-		TotalWeight: totalWeight,
-	}
+	sort.Slice(out, func(i, j int) bool {
+		return string(out[i].UncompressedPublicKeyBytes[:]) < string(out[j].UncompressedPublicKeyBytes[:])
+	})
+	return out
 }

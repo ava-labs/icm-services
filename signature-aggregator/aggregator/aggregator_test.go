@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"math/big"
 	"slices"
 	"testing"
 	"time"
@@ -95,6 +96,7 @@ type validatorInfo struct {
 	blsSigner         *localsigner.LocalSigner
 	blsPublicKey      *bls.PublicKey
 	blsPublicKeyBytes []byte
+	weight            uint64
 }
 
 func (v validatorInfo) Compare(o validatorInfo) int {
@@ -115,6 +117,7 @@ func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []
 			blsSigner:         localSigner,
 			blsPublicKey:      pubKey,
 			blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
+			weight:            1,
 		}
 	}
 
@@ -131,7 +134,7 @@ func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []
 		validatorSet[i] = &validators.Warp{
 			PublicKey:      validator.blsPublicKey,
 			PublicKeyBytes: validator.blsPublicKeyBytes,
-			Weight:         1,
+			Weight:         validator.weight,
 			NodeIDs:        []ids.NodeID{validator.nodeID},
 		}
 		nodeValidatorIndexMap[validator.nodeID] = i
@@ -892,24 +895,13 @@ func makeConnectedValidatorsWithWeights(
 			blsSigner:         localSigner,
 			blsPublicKey:      pubKey,
 			blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
+			weight:            weights[i],
 		}
 	}
 
-	// Canonical order is by uncompressed public-key bytes; preserve the input
-	// weight alongside each info by tagging the index before sort.
-	type tagged struct {
-		info   validatorInfo
-		weight uint64
-	}
-	tagged_ := make([]tagged, count)
-	for i := 0; i < count; i++ {
-		tagged_[i] = tagged{info: infos[i], weight: weights[i]}
-	}
+	// Canonical order is by uncompressed public-key bytes. Sort moves weights
+	// alongside their owning validatorInfo, so post-sort indices stay aligned.
 	utils.Sort(infos)
-	weightByPubKey := make(map[string]uint64, count)
-	for _, t := range tagged_ {
-		weightByPubKey[string(t.info.blsPublicKeyBytes)] = t.weight
-	}
 
 	validatorSet := make([]*validators.Warp, count)
 	validatorSigners := make([]*localsigner.LocalSigner, count)
@@ -917,17 +909,16 @@ func makeConnectedValidatorsWithWeights(
 	connectedNodes := set.NewSet[ids.NodeID](count)
 	var totalWeight uint64
 	for i, info := range infos {
-		w := weightByPubKey[string(info.blsPublicKeyBytes)]
 		validatorSigners[i] = info.blsSigner
 		validatorSet[i] = &validators.Warp{
 			PublicKey:      info.blsPublicKey,
 			PublicKeyBytes: info.blsPublicKeyBytes,
-			Weight:         w,
+			Weight:         info.weight,
 			NodeIDs:        []ids.NodeID{info.nodeID},
 		}
 		nodeValidatorIndexMap[info.nodeID] = i
 		connectedNodes.Add(info.nodeID)
-		totalWeight += w
+		totalWeight += info.weight
 	}
 
 	return &peers.CanonicalValidators{
@@ -941,44 +932,27 @@ func makeConnectedValidatorsWithWeights(
 	}, validatorSigners
 }
 
-// buildFullySignedMessage signs unsignedMessage with every signer, BLS-aggregates
-// the result, and populates aggregator.signatureCache so PruneBitSetSignatureToQuorum
-// can find each per-signer signature.
-func buildFullySignedMessage(
+// buildFullSignatureMap signs unsignedMessage with every signer and returns the
+// resulting map keyed by canonical validator index along with the cumulative
+// signed weight.
+func buildFullSignatureMap(
 	t *testing.T,
-	aggregator *SignatureAggregator,
 	unsignedMessage *warp.UnsignedMessage,
 	vdrs *peers.CanonicalValidators,
 	signers []*localsigner.LocalSigner,
-) *warp.Message {
+) (map[int][bls.SignatureLen]byte, *big.Int) {
 	t.Helper()
 	require.Len(t, signers, len(vdrs.ValidatorSet.Validators))
 
-	sigs := make([]*bls.Signature, len(signers))
-	bitSet := set.NewBits()
+	sigMap := make(map[int][bls.SignatureLen]byte, len(signers))
+	totalSigned := big.NewInt(0)
 	for i, signer := range signers {
 		sig, err := signer.Sign(unsignedMessage.Bytes())
 		require.NoError(t, err)
-		sigs[i] = sig
-		bitSet.Add(i)
-		aggregator.signatureCache.Add(
-			unsignedMessage.ID(),
-			PublicKeyBytes(bls.PublicKeyToUncompressedBytes(signer.PublicKey())),
-			SignatureBytes(bls.SignatureToBytes(sig)),
-		)
+		sigMap[i] = [bls.SignatureLen]byte(bls.SignatureToBytes(sig))
+		totalSigned.Add(totalSigned, new(big.Int).SetUint64(vdrs.ValidatorSet.Validators[i].Weight))
 	}
-	aggSig, err := bls.AggregateSignatures(sigs)
-	require.NoError(t, err)
-
-	signedMsg, err := warp.NewMessage(
-		unsignedMessage,
-		&warp.BitSetSignature{
-			Signers:   bitSet.Bytes(),
-			Signature: *(*[bls.SignatureLen]byte)(bls.SignatureToBytes(aggSig)),
-		},
-	)
-	require.NoError(t, err)
-	return signedMsg
+	return sigMap, totalSigned
 }
 
 // signerIndices returns the sorted list of signer indices encoded in a BitSetSignature.
@@ -996,35 +970,35 @@ func signerIndices(t *testing.T, msg *warp.Message) []int {
 	return out
 }
 
-func TestPruneBitSetSignatureToQuorum_GreedyByWeight(t *testing.T) {
+func TestAggregateIfSufficientWeight_PrunesGreedyByWeight(t *testing.T) {
 	const networkID = constants.UnitTestID
 	// Weights chosen so that greedy-by-weight-desc is unambiguous:
 	// total = 28; 67% threshold = 18.76 → need >=19.
 	// Largest-first: 10 → 10 (insufficient), 10+8 → 18 (insufficient), 10+8+5 → 23 (ok).
 	// Any subset of size 2 has weight at most 10+8 = 18 < 19. Greedy selection of
 	// size 3 is the unique minimum-cardinality subset that meets quorum.
-	weights := []uint64{10, 8, 5, 4, 1}
-	vdrs, signers := makeConnectedValidatorsWithWeights(weights)
+	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{10, 8, 5, 4, 1})
 
 	aggregator, _, _, _, _ := instantiateAggregator(t)
 	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("greedy"))
 	require.NoError(t, err)
-	signed := buildFullySignedMessage(t, aggregator, unsigned, vdrs, signers)
-	bitSetSig := signed.Signature.(*warp.BitSetSignature)
+	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
 
-	pruned, err := aggregator.PruneBitSetSignatureToQuorum(
-		logging.NoLog{}, unsigned, bitSetSig, vdrs.ValidatorSet, 67,
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		sigMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		67,
 	)
 	require.NoError(t, err)
-
-	prunedMsg, err := warp.NewMessage(unsigned, pruned)
-	require.NoError(t, err)
+	require.NotNil(t, signed)
 
 	// Pruned set must consist of the 3 heaviest validators by weight (10, 8, 5).
-	got := signerIndices(t, prunedMsg)
+	got := signerIndices(t, signed)
 	require.Len(t, got, 3)
-
-	// Map indices back to weights and confirm they're the top 3.
 	gotWeights := make([]uint64, 0, len(got))
 	for _, i := range got {
 		gotWeights = append(gotWeights, vdrs.ValidatorSet.Validators[i].Weight)
@@ -1032,7 +1006,7 @@ func TestPruneBitSetSignatureToQuorum_GreedyByWeight(t *testing.T) {
 	slices.Sort(gotWeights)
 	require.Equal(t, []uint64{5, 8, 10}, gotWeights)
 
-	require.NoError(t, prunedMsg.Signature.Verify(
+	require.NoError(t, signed.Signature.Verify(
 		unsigned,
 		networkID,
 		vdrs.ValidatorSet,
@@ -1041,7 +1015,7 @@ func TestPruneBitSetSignatureToQuorum_GreedyByWeight(t *testing.T) {
 	))
 }
 
-func TestPruneBitSetSignatureToQuorum_SingleHeavySigner(t *testing.T) {
+func TestAggregateIfSufficientWeight_SingleHeavySigner(t *testing.T) {
 	const networkID = constants.UnitTestID
 	// Validator 0 alone exceeds 67% of total weight; pruning must keep only that signer.
 	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{70, 10, 10, 10})
@@ -1049,22 +1023,25 @@ func TestPruneBitSetSignatureToQuorum_SingleHeavySigner(t *testing.T) {
 	aggregator, _, _, _, _ := instantiateAggregator(t)
 	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("heavy"))
 	require.NoError(t, err)
-	signed := buildFullySignedMessage(t, aggregator, unsigned, vdrs, signers)
-	bitSetSig := signed.Signature.(*warp.BitSetSignature)
+	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
 
-	pruned, err := aggregator.PruneBitSetSignatureToQuorum(
-		logging.NoLog{}, unsigned, bitSetSig, vdrs.ValidatorSet, 67,
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		sigMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		67,
 	)
 	require.NoError(t, err)
+	require.NotNil(t, signed)
 
-	prunedMsg, err := warp.NewMessage(unsigned, pruned)
-	require.NoError(t, err)
-
-	got := signerIndices(t, prunedMsg)
+	got := signerIndices(t, signed)
 	require.Len(t, got, 1)
 	require.Equal(t, uint64(70), vdrs.ValidatorSet.Validators[got[0]].Weight)
 
-	require.NoError(t, prunedMsg.Signature.Verify(
+	require.NoError(t, signed.Signature.Verify(
 		unsigned,
 		networkID,
 		vdrs.ValidatorSet,
@@ -1073,7 +1050,7 @@ func TestPruneBitSetSignatureToQuorum_SingleHeavySigner(t *testing.T) {
 	))
 }
 
-func TestPruneBitSetSignatureToQuorum_NoPruningWhenAllSignersNeeded(t *testing.T) {
+func TestAggregateIfSufficientWeight_NoPruningWhenAllSignersNeeded(t *testing.T) {
 	const networkID = constants.UnitTestID
 	// 3 equally-weighted validators at 67% quorum: 2/3 = 66.67% < 67%, so all 3 are needed.
 	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1})
@@ -1081,36 +1058,48 @@ func TestPruneBitSetSignatureToQuorum_NoPruningWhenAllSignersNeeded(t *testing.T
 	aggregator, _, _, _, _ := instantiateAggregator(t)
 	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("tight"))
 	require.NoError(t, err)
-	signed := buildFullySignedMessage(t, aggregator, unsigned, vdrs, signers)
-	bitSetSig := signed.Signature.(*warp.BitSetSignature)
+	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
 
-	pruned, err := aggregator.PruneBitSetSignatureToQuorum(
-		logging.NoLog{}, unsigned, bitSetSig, vdrs.ValidatorSet, 67,
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		sigMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		67,
 	)
 	require.NoError(t, err)
-
-	// Same bitset returned (no signers could be dropped).
-	require.Same(t, bitSetSig, pruned)
+	require.NotNil(t, signed)
+	require.Len(t, signerIndices(t, signed), 3)
 }
 
-func TestPruneBitSetSignatureToQuorum_CacheMissReturnsOriginal(t *testing.T) {
-	const networkID = constants.UnitTestID
+func TestAggregateIfSufficientWeight_BelowQuorumReturnsNil(t *testing.T) {
 	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1, 1, 1})
 
 	aggregator, _, _, _, _ := instantiateAggregator(t)
-	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("cache-miss"))
+	unsigned, err := warp.NewUnsignedMessage(constants.UnitTestID, ids.GenerateTestID(), []byte("low"))
 	require.NoError(t, err)
-	signed := buildFullySignedMessage(t, aggregator, unsigned, vdrs, signers)
-	bitSetSig := signed.Signature.(*warp.BitSetSignature)
 
-	// Drop the cached signatures so pruning can't safely re-aggregate.
-	freshCache, err := NewSignatureCache(1024)
-	require.NoError(t, err)
-	aggregator.signatureCache = freshCache
+	// Only 2/5 = 40% signed; 60% quorum is not met.
+	partialMap := make(map[int][bls.SignatureLen]byte, 2)
+	signedWeight := big.NewInt(0)
+	for i := 0; i < 2; i++ {
+		sig, err := signers[i].Sign(unsigned.Bytes())
+		require.NoError(t, err)
+		partialMap[i] = [bls.SignatureLen]byte(bls.SignatureToBytes(sig))
+		signedWeight.Add(signedWeight, new(big.Int).SetUint64(vdrs.ValidatorSet.Validators[i].Weight))
+	}
 
-	pruned, err := aggregator.PruneBitSetSignatureToQuorum(
-		logging.NoLog{}, unsigned, bitSetSig, vdrs.ValidatorSet, 60,
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		partialMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		60,
 	)
 	require.NoError(t, err)
-	require.Same(t, bitSetSig, pruned)
+	require.Nil(t, signed)
 }
