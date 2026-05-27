@@ -389,16 +389,16 @@ func (s *MerkleSetUpdater) sendUpdate(
 
 	var tx *types.Transaction
 	if isFirstRegistration {
-		s.logger.Info("Sending registerValidatorSet")
-		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage)
+		s.logger.Info("Sending registerValidatorSet (initial)")
+		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(ids.Empty))
 		if err != nil {
 			return fmt.Errorf("registerValidatorSet failed: %w", err)
 		}
 	} else {
-		s.logger.Info("Sending updateValidatorSet")
-		tx, err = s.contract.UpdateValidatorSet(s.txOpts, icmMessage)
+		s.logger.Info("Sending registerValidatorSet (update)")
+		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(s.blockchainID))
 		if err != nil {
-			return fmt.Errorf("updateValidatorSet failed: %w", err)
+			return fmt.Errorf("registerValidatorSet (update) failed: %w", err)
 		}
 	}
 
