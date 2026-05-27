@@ -138,7 +138,7 @@ func TestGetFeePerGas(t *testing.T) {
 			)
 
 			gasFeeCap, gasTipCap, err := destClient.getFeePerGas()
-			require.ErrorIs(t, test.expectedError, err)
+			require.ErrorIs(t, err, test.expectedError)
 			require.Equal(t, test.expectedGasFeeCap, gasFeeCap)
 			require.Equal(t, test.expectedGasTipCap, gasTipCap)
 		})
@@ -146,7 +146,8 @@ func TestGetFeePerGas(t *testing.T) {
 }
 
 func TestSendTx(t *testing.T) {
-	var destClient destinationClient
+	ctrl := gomock.NewController(t)
+	mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 	txSigners, err := signer.NewTxSigners(destinationSubnet.AccountPrivateKeys)
 	require.NoError(t, err)
 
@@ -156,8 +157,8 @@ func TestSendTx(t *testing.T) {
 		currentNonce:       0,
 		messageChan:        make(chan txData),
 		queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
-		txInclusionTimeout: destClient.txInclusionTimeout,
-		destinationClient:  destClient.avaRPCClient,
+		txInclusionTimeout: 30 * time.Second,
+		destinationClient:  mockClient,
 	}
 	go signer.processIncomingTransactions()
 
@@ -223,14 +224,12 @@ func TestSendTx(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			gasFeeConfig := GasFeeConfig{
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: big.NewInt(0),
 				maxPriorityFeePerGas:       big.NewInt(0),
 			}
-			destClient = destinationClient{
+			destClient := destinationClient{
 				readonlyConcurrentSigners: []*readonlyConcurrentSigner{
 					(*readonlyConcurrentSigner)(signer),
 				},
