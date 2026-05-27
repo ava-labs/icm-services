@@ -86,7 +86,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
         uint256 n = validators.length;
         bytes32[] memory layer = new bytes32[](n);
         for (uint256 i = 0; i < n; i++) {
-            layer[i] = ValidatorSets.sha256Validator(validators[i]);
+            layer[i] = ValidatorSets.hashValidator(validators[i]);
         }
         while (layer.length > 1) {
             uint256 nextLen = (layer.length + 1) / 2;
@@ -263,7 +263,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
 
         // Build the proof
         bytes32[] memory proof = new bytes32[](1);
-        proof[0] = ValidatorSets.sha256Validator(_validators[1]);
+        proof[0] = ValidatorSets.hashValidator(_validators[1]);
 
         // Flags per combination step, see comment above
         bool[] memory proofFlags = new bool[](3);

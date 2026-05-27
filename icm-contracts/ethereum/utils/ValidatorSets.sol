@@ -255,7 +255,7 @@ library ValidatorSets {
         // Reconstruct leaves
         bytes32[] memory leaves = new bytes32[](numSigners);
         for (uint256 i = 0; i < numSigners;) {
-            leaves[i] = sha256Validator(att.signers[i]);
+            leaves[i] = hashValidator(att.signers[i]);
             unchecked {
                 ++i;
             }
@@ -930,7 +930,12 @@ library ValidatorSets {
             : sha256(abi.encodePacked(uint256(0), b, a));
     }
 
-    function sha256Validator(
+    /*
+     * @notice Prepends a one to the hash of a validator to avoid second pre-image attacks on
+     * the merkle trees. This is a convenience function that should be used to hash validators
+     * rather than calling sha256 on them directly
+     */
+    function hashValidator(
         Validator memory val
     ) internal pure returns (bytes32) {
         return sha256(abi.encodePacked(uint256(1), val.blsPublicKey, val.weight));
