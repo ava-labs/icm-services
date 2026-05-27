@@ -820,7 +820,7 @@ func (s *SignatureAggregator) aggregateIfSufficientWeight(
 	)
 	if pruned, original := len(prunedSigMap), len(signatureMap); pruned < original {
 		log.Debug(
-			"Pruned signature map to minimum quorum",
+			"Pruned signature map",
 			zap.Stringer("messageID", unsignedMessage.ID()),
 			zap.Int("originalSigners", original),
 			zap.Int("prunedSigners", pruned),
@@ -877,10 +877,11 @@ func pruneSignatureMapToQuorum(
 	})
 
 	pruned := make(map[int][bls.SignatureLen]byte, len(signers))
-	accumulated := big.NewInt(0)
+	accumulated := new(big.Int)
+	weightBuf := new(big.Int)
 	for _, sgn := range signers {
 		pruned[sgn.idx] = signatureMap[sgn.idx]
-		accumulated.Add(accumulated, new(big.Int).SetUint64(sgn.weight))
+		accumulated.Add(accumulated, weightBuf.SetUint64(sgn.weight))
 		if utils.CheckStakeWeightExceedsThreshold(accumulated, totalWeight, quorumPercentage) {
 			break
 		}
