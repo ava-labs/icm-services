@@ -232,7 +232,6 @@ func MerkleUpdater(
 		},
 	)
 
-	firstRegistrationTime := time.Now()
 	log.Info("Initial registration complete",
 		zap.Uint64("firstTotalWeight", firstCmt.TotalWeight),
 		zap.Uint64("firstPChainHeight", firstCmt.PChainHeight),
@@ -339,12 +338,12 @@ func MerkleUpdater(
 	// =========================================================================
 	log.Info("Phase 2: Waiting for staleness-forced update (no validator changes)...")
 
-	// Issue a transaction toAdvance the P-chain by one block so the relayer has
+	// Issue a transaction to advance the P-chain by one block so the relayer has
 	// a new height to commit to when its staleness timer fires.
 	_, err = avalancheNetwork.GetPChainWallet().IssueBaseTx(nil)
 	Expect(err).Should(BeNil())
 
-	elapsed := time.Since(firstRegistrationTime)
+	elapsed := time.Since(secondUpdateTime)
 	stalenessTimeout := time.Duration(merkleMaxUpdateIntervalSeconds)*time.Second + 90*time.Second
 	remainingWait := stalenessTimeout - elapsed
 	if remainingWait < 30*time.Second {
