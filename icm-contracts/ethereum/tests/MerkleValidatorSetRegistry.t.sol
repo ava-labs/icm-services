@@ -120,9 +120,6 @@ contract MerkleValidatorSetRegistryCommon is Test {
  * @dev Tests for the MerkleValidatorSetRegistry.verifyMessage pipeline.
  * The registry is bootstrapped at construction with a single validator set committed
  * under pChainID and these tests verify messages against that set.
- *
- * TODO: Tests covering verification against L1-registered sets require the ability to register
- * validator set commitments under arbitrary blockchain IDs, which is currently not implemented.
  */
 contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegistryCommon {
     MerkleValidatorSetRegistry private _registry;
@@ -292,8 +289,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
 }
 
 /**
- * @dev Tests for registerValidatorSet and updateValidatorSet. Reuses the bootstrapped
- * P-chain validator set from the common setUp. Register tests prove new chains can be
+ * @dev Reuses the bootstrapped P-chain validator set from the common setUp. Register tests prove new chains can be
  * added under P-chain signatures, update tests prove an existing chain's commitment
  * can be replaced under its own validators' signatures.
  */
@@ -324,7 +320,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
             dummyPChainValidatorSetSecretKeys()
         );
 
-        _registry.registerValidatorSet(message);
+        _registry.registerValidatorSet(message, PCHAIN_BLOCKCHAIN_ID);
 
         ValidatorSetMerkleCommitment memory stored =
             _registry.getValidatorSetCommitment(_NEW_CHAIN_ID);
@@ -352,7 +348,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         });
 
         vm.expectRevert(bytes("Network ID mismatch"));
-        _registry.registerValidatorSet(message);
+        _registry.registerValidatorSet(message, PCHAIN_BLOCKCHAIN_ID);
     }
 
     /// @dev Update of P-chain validator set, signed by the currently stored P-chain validators.
@@ -371,7 +367,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
             dummyPChainValidatorSetSecretKeys()
         );
 
-        _registry.updateValidatorSet(message);
+        _registry.registerValidatorSet(message, PCHAIN_BLOCKCHAIN_ID);
 
         ValidatorSetMerkleCommitment memory stored =
             _registry.getValidatorSetCommitment(PCHAIN_BLOCKCHAIN_ID);
@@ -380,7 +376,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         assertEq(stored.pChainHeight, newCommitment.pChainHeight);
     }
 
-    /// @dev updateValidatorSet reverts when the payload chain isn't yet registered.
+    /// @dev regValidatorSet reverts when the payload chain isn't yet registered.
     function testUpdateRevertsOnUnregisteredChain() public {
         ValidatorSetMerkleCommitment memory newCommitment = ValidatorSetMerkleCommitment({
             avalancheBlockchainID: UNREGISTERED_BLOCKCHAIN_ID,
@@ -396,11 +392,50 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
             attestation: new bytes(0)
         });
 
-        vm.expectRevert(bytes("Chain not registered."));
-        _registry.updateValidatorSet(message);
+        vm.expectRevert(bytes("Invalid signing chain"));
+        _registry.registerValidatorSet(message, UNREGISTERED_BLOCKCHAIN_ID);
     }
 
-    /// @dev updateValidatorSet reverts when the attestation's signers are not included
+    /// @dev Reverts when signing chain is neither the P-Chain nor the target chain.
+    function testRegisterRevertsOnInvalidSigningChain() public {
+        ValidatorSetMerkleCommitment memory newCommitment = ValidatorSetMerkleCommitment({
+            avalancheBlockchainID: _NEW_CHAIN_ID,
+            root: bytes32(uint256(0xababa)),
+            totalWeight: 10,
+            pChainHeight: 2,
+            pChainTimestamp: 2
+        });
+        ICMMessage memory message = _signedRegistrationMessage(
+            PCHAIN_BLOCKCHAIN_ID,
+            ValidatorSets.serializeMerkleCommitment(newCommitment),
+            dummyPChainValidatorSetSecretKeys()
+        );
+
+        vm.expectRevert(bytes("Invalid signing chain"));
+        _registry.registerValidatorSet(message, UNREGISTERED_BLOCKCHAIN_ID);
+    }
+
+    /// @dev Reverts when caller specifies the target chain as signer but the target isn't registered yet.
+    function testRegisterRevertsOnSelfSignedFirstTimeRegistration() public {
+        ValidatorSetMerkleCommitment memory newCommitment = ValidatorSetMerkleCommitment({
+            avalancheBlockchainID: _NEW_CHAIN_ID,
+            root: bytes32(uint256(0xababa)),
+            totalWeight: 10,
+            pChainHeight: 2,
+            pChainTimestamp: 2
+        });
+        ICMMessage memory message = _signedRegistrationMessage(
+            _NEW_CHAIN_ID, // source is the new chain itself
+            ValidatorSets.serializeMerkleCommitment(newCommitment),
+            dummyPChainValidatorSetSecretKeys()
+        );
+
+        // Can't self-sign before being registered
+        vm.expectRevert(bytes("Invalid signing chain"));
+        _registry.registerValidatorSet(message, _NEW_CHAIN_ID);
+    }
+
+    /// @dev registerValidatorSet reverts when the attestation's signers are not included
     /// against the registered chain's stored Merkle root. Here we attempt to update P-chain's
     /// commitment but sign with an unregistered set of validators. The multi-proof
     /// can't reconstruct the stored P-chain root from these leaves.
@@ -456,11 +491,11 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
 
         // Test
         vm.expectRevert(bytes("Failed to verify attestation"));
-        _registry.updateValidatorSet(message);
+        _registry.registerValidatorSet(message, PCHAIN_BLOCKCHAIN_ID);
     }
 
     /**
-     * @dev updateValidatorSet reverts when the signing validators are correct, but
+     * @dev registerValidatorSet reverts when the signing validators are correct, but
      * quorum threshold is not reached.
      *
      * Signers are validators 0 and 1 with weights 1 and 2 respectively against total weight 10.
@@ -528,13 +563,57 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
 
         // Test
         vm.expectRevert(bytes("Failed to verify attestation"));
-        _registry.updateValidatorSet(message);
+        _registry.registerValidatorSet(message, PCHAIN_BLOCKCHAIN_ID);
+    }
+
+    /**
+     * @dev The fallback path: an L1's validator set commitment is updated via P-Chain
+     * signatures rather than the L1's own validators. This covers the scenario where
+     * an intermediate update was missed and the L1's previous validators can no longer
+     * form a quorum.
+     */
+    function testUpdateRegisteredChainViaPChainSignature() public {
+        // First, register a new L1 (signed by P-Chain — initial registration)
+        ValidatorSetMerkleCommitment memory initial = ValidatorSetMerkleCommitment({
+            avalancheBlockchainID: _NEW_CHAIN_ID,
+            root: bytes32(uint256(0xababa)),
+            totalWeight: 10,
+            pChainHeight: 2,
+            pChainTimestamp: 2
+        });
+        ICMMessage memory firstMessage = _signedRegistrationMessage(
+            PCHAIN_BLOCKCHAIN_ID,
+            ValidatorSets.serializeMerkleCommitment(initial),
+            dummyPChainValidatorSetSecretKeys()
+        );
+        _registry.registerValidatorSet(firstMessage, PCHAIN_BLOCKCHAIN_ID);
+
+        // Now update that L1's commitment, signed by P-Chain rather than the L1's validators
+        ValidatorSetMerkleCommitment memory updated = ValidatorSetMerkleCommitment({
+            avalancheBlockchainID: _NEW_CHAIN_ID,
+            root: bytes32(uint256(0xcafe)),
+            totalWeight: 20,
+            pChainHeight: 5,
+            pChainTimestamp: 5
+        });
+        ICMMessage memory secondMessage = _signedRegistrationMessage(
+            PCHAIN_BLOCKCHAIN_ID,
+            ValidatorSets.serializeMerkleCommitment(updated),
+            dummyPChainValidatorSetSecretKeys()
+        );
+        _registry.registerValidatorSet(secondMessage, PCHAIN_BLOCKCHAIN_ID);
+
+        ValidatorSetMerkleCommitment memory stored =
+            _registry.getValidatorSetCommitment(_NEW_CHAIN_ID);
+        assertEq(stored.root, updated.root);
+        assertEq(stored.totalWeight, updated.totalWeight);
+        assertEq(stored.pChainHeight, updated.pChainHeight);
     }
 
     /**
      * @dev Builds an ICMMessage signed by all 4 P-chain validators, suitable for register/update
-     * calls. This uses address(0) as origin sender which matches what registerValidatorSet and updateValidatorSet
-     * reconstruct in their warp preimage.
+     * calls. This uses address(0) as origin sender which matches what registerValidatorSet
+     * reconstructs in its warp preimage.
      */
     function _signedRegistrationMessage(
         bytes32 sourceBlockchainID,
