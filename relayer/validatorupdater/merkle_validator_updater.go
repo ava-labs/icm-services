@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	warpvdrs "github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -295,7 +296,10 @@ func (s *MerkleSetUpdater) sendUpdate(
 	onChainPChainHeight uint64,
 	isFirstRegistration bool,
 ) error {
-	var attestationValidators []*Validator
+	var (
+		attestationValidators []*Validator
+		signingWarpSet        warpvdrs.WarpSet
+	)
 	if isFirstRegistration {
 		// First registration is verified against the P-chain Merkle root stored in the
 		// contract constructor. Fetch the primary network validators used to build that
@@ -309,6 +313,7 @@ func (s *MerkleSetUpdater) sendUpdate(
 		if !ok {
 			return fmt.Errorf("primary network not found in validator sets at height %d", onChainPChainHeight)
 		}
+		signingWarpSet = pChainWarpSet
 		attestationValidators = make([]*Validator, len(pChainWarpSet.Validators))
 		for i, vdr := range pChainWarpSet.Validators {
 			attestationValidators[i] = &Validator{
@@ -322,9 +327,10 @@ func (s *MerkleSetUpdater) sendUpdate(
 		})
 	} else {
 		attestationValidators = s.localValidatorSet
+		signingWarpSet = localValidatorsToWarpSet(s.localValidatorSet, s.localTotalWeight)
 	}
 
-	icmMessage, err := s.buildICMMessage(signedMsg, attestationValidators)
+	icmMessage, err := s.buildICMMessage(signedMsg, attestationValidators, signingWarpSet)
 	if err != nil {
 		return err
 	}
@@ -391,6 +397,7 @@ func (s *MerkleSetUpdater) fetchSortedValidators(
 func (s *MerkleSetUpdater) buildICMMessage(
 	signedMsg *avalancheWarp.Message,
 	validators []*Validator,
+	signingWarpSet warpvdrs.WarpSet,
 ) (merklevalidatorsetregistry.ICMMessage, error) {
 	addressedCall, err := warppayload.ParseAddressedCall(signedMsg.UnsignedMessage.Payload)
 	if err != nil {
@@ -401,6 +408,15 @@ func (s *MerkleSetUpdater) buildICMMessage(
 	bitSetSig, ok := signedMsg.Signature.(*avalancheWarp.BitSetSignature)
 	if !ok {
 		return merklevalidatorsetregistry.ICMMessage{}, fmt.Errorf("expected BitSetSignature, got %T", signedMsg.Signature)
+	}
+
+	// Prune to the minimum signers needed for quorum to reduce calldata.
+	bitSetSig, err = s.signatureAggregator.PruneBitSetSignatureToQuorum(
+		s.logger, &signedMsg.UnsignedMessage, bitSetSig, signingWarpSet, defaultQuorumPercentage,
+	)
+	if err != nil {
+		return merklevalidatorsetregistry.ICMMessage{},
+			fmt.Errorf("failed to prune attestation to quorum: %w", err)
 	}
 
 	attestation, err := NewValidatorSetMerkleAttestation(validators, bitSetSig)
@@ -414,4 +430,22 @@ func (s *MerkleSetUpdater) buildICMMessage(
 		SourceBlockchainID: signedMsg.UnsignedMessage.SourceChainID,
 		Attestation:        attestation.Bytes(),
 	}, nil
+}
+
+// localValidatorsToWarpSet builds the minimum WarpSet used by the prune path.
+// Only PublicKeyBytes and Weight are populated.
+func localValidatorsToWarpSet(vs []*Validator, totalWeight uint64) warpvdrs.WarpSet {
+	warps := make([]*warpvdrs.Warp, len(vs))
+	for i, v := range vs {
+		pkBytes := make([]byte, len(v.UncompressedPublicKeyBytes))
+		copy(pkBytes, v.UncompressedPublicKeyBytes[:])
+		warps[i] = &warpvdrs.Warp{
+			PublicKeyBytes: pkBytes,
+			Weight:         v.Weight,
+		}
+	}
+	return warpvdrs.WarpSet{
+		Validators:  warps,
+		TotalWeight: totalWeight,
+	}
 }

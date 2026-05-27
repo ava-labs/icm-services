@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ import (
 	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/proto/pb/p2p"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
+	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
@@ -905,6 +907,109 @@ func (s *SignatureAggregator) aggregateSignatures(
 		return nil, set.Bits{}, fmt.Errorf("%s: %w", msg, err)
 	}
 	return aggSig, vdrBitSet, nil
+}
+
+// PruneBitSetSignatureToQuorum returns a BitSetSignature containing the smallest
+// subset of signers whose combined weight meets quorumPercentage, with the BLS
+// aggregate re-signed over the retained signers. validatorSet must be the
+// canonical set the bit indices refer to.
+// Returns bitSetSig unchanged if pruning is not possible (cache miss, missing
+// individual signature) or yields no reduction.
+func (s *SignatureAggregator) PruneBitSetSignatureToQuorum(
+	log logging.Logger,
+	unsignedMessage *avalancheWarp.UnsignedMessage,
+	bitSetSig *avalancheWarp.BitSetSignature,
+	validatorSet validators.WarpSet,
+	quorumPercentage uint64,
+) (*avalancheWarp.BitSetSignature, error) {
+	signerBits := set.BitsFromBytes(bitSetSig.Signers)
+	if len(signerBits.Bytes()) != len(bitSetSig.Signers) {
+		return nil, fmt.Errorf("invalid signer bitset")
+	}
+
+	type signerInfo struct {
+		idx      int
+		weight   uint64
+		pubKeyBz PublicKeyBytes
+	}
+	signers := make([]signerInfo, 0, signerBits.Len())
+	for i, v := range validatorSet.Validators {
+		if !signerBits.Contains(i) {
+			continue
+		}
+		signers = append(signers, signerInfo{
+			idx:      i,
+			weight:   v.Weight,
+			pubKeyBz: PublicKeyBytes(v.PublicKeyBytes),
+		})
+	}
+
+	sort.SliceStable(signers, func(a, b int) bool {
+		if signers[a].weight != signers[b].weight {
+			return signers[a].weight > signers[b].weight
+		}
+		return signers[a].idx < signers[b].idx
+	})
+
+	cachedSigs, ok := s.signatureCache.Get(unsignedMessage.ID())
+	if !ok {
+		log.Debug(
+			"Skipping attestation prune: no cached signatures for message",
+			zap.Stringer("messageID", unsignedMessage.ID()),
+		)
+		return bitSetSig, nil
+	}
+
+	totalWeight := validatorSet.TotalWeight
+	pruned := make(map[int][bls.SignatureLen]byte, len(signers))
+	accumulated := big.NewInt(0)
+	for _, sgn := range signers {
+		sig, found := cachedSigs[sgn.pubKeyBz]
+		if !found {
+			log.Debug(
+				"Skipping attestation prune: missing cached signature for signer",
+				zap.Stringer("messageID", unsignedMessage.ID()),
+				zap.Int("validatorIndex", sgn.idx),
+			)
+			return bitSetSig, nil
+		}
+		pruned[sgn.idx] = sig
+		accumulated.Add(accumulated, new(big.Int).SetUint64(sgn.weight))
+		if utils.CheckStakeWeightExceedsThreshold(accumulated, totalWeight, quorumPercentage) {
+			break
+		}
+	}
+
+	if !utils.CheckStakeWeightExceedsThreshold(accumulated, totalWeight, quorumPercentage) {
+		return nil, fmt.Errorf(
+			"existing signer weight %d does not meet quorum %d%% of total %d",
+			accumulated.Uint64(), quorumPercentage, totalWeight,
+		)
+	}
+
+	if len(pruned) == len(signers) {
+		return bitSetSig, nil
+	}
+
+	aggSig, vdrBitSet, err := s.aggregateSignatures(log, pruned)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-aggregate signatures after attestation prune: %w", err)
+	}
+
+	log.Info(
+		"Pruned attestation signers to quorum",
+		zap.Stringer("messageID", unsignedMessage.ID()),
+		zap.Int("originalSigners", len(signers)),
+		zap.Int("prunedSigners", len(pruned)),
+		zap.Uint64("prunedWeight", accumulated.Uint64()),
+		zap.Uint64("totalWeight", totalWeight),
+		zap.Uint64("quorumPercentage", quorumPercentage),
+	)
+
+	return &avalancheWarp.BitSetSignature{
+		Signers:   vdrBitSet.Bytes(),
+		Signature: *(*[bls.SignatureLen]byte)(bls.SignatureToBytes(aggSig)),
+	}, nil
 }
 
 func (s *SignatureAggregator) marshalRequest(
