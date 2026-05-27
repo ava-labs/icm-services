@@ -138,7 +138,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		return fmt.Errorf("failed to get P-chain timestamp: %w", err)
 	}
 
-	ok, err := s.shouldSubmit(ctx)
+	ok, err := s.gasPriceWithinBounds(ctx)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 			return fmt.Errorf("failed to get P-chain timestamp: %w", err)
 		}
 
-		ok, err := s.shouldSubmit(ctx)
+		ok, err := s.gasPriceWithinBounds(ctx)
 		if err != nil {
 			return err
 		}
@@ -257,12 +257,10 @@ func (s *MerkleSetUpdater) isStale() bool {
 	return time.Since(s.lastUpdateTime) >= s.maxUpdateInterval
 }
 
-// shouldSubmit returns true when an update transaction may be submitted to
-// the destination chain. When a max-gas-price threshold is configured, this
-// queries the network's suggested gas price and returns false if it exceeds
-// the threshold. Callers should treat a false result as "defer until the
-// next poll" and must not advance local state.
-func (s *MerkleSetUpdater) shouldSubmit(ctx context.Context) (bool, error) {
+// gasPriceWithinBounds reports whether the destination's suggested gas price
+// is at or below the configured threshold. A zero threshold disables the
+// check. A false result means "defer until the next poll".
+func (s *MerkleSetUpdater) gasPriceWithinBounds(ctx context.Context) (bool, error) {
 	if s.maxGasPriceWei.Sign() == 0 {
 		return true, nil
 	}
