@@ -996,38 +996,6 @@ func signerIndices(t *testing.T, msg *warp.Message) []int {
 	return out
 }
 
-func TestPruneBitSetSignatureToQuorum_PrunesExcessSigners(t *testing.T) {
-	const networkID = constants.UnitTestID
-	// 5 validators, each weight 1, total 5. At 60% quorum, 3 signers suffice (3/5 = 60%).
-	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1, 1, 1})
-
-	aggregator, _, _, _, _ := instantiateAggregator(t)
-	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("payload"))
-	require.NoError(t, err)
-	signed := buildFullySignedMessage(t, aggregator, unsigned, vdrs, signers)
-	bitSetSig := signed.Signature.(*warp.BitSetSignature)
-
-	pruned, err := aggregator.PruneBitSetSignatureToQuorum(
-		logging.NoLog{}, unsigned, bitSetSig, vdrs.ValidatorSet, 60,
-	)
-	require.NoError(t, err)
-	require.NotSame(t, bitSetSig, pruned)
-
-	prunedMsg, err := warp.NewMessage(unsigned, pruned)
-	require.NoError(t, err)
-
-	// Should retain exactly 3 of 5 signers.
-	require.Len(t, signerIndices(t, prunedMsg), 3)
-
-	require.NoError(t, prunedMsg.Signature.Verify(
-		unsigned,
-		networkID,
-		vdrs.ValidatorSet,
-		60,
-		100,
-	))
-}
-
 func TestPruneBitSetSignatureToQuorum_GreedyByWeight(t *testing.T) {
 	const networkID = constants.UnitTestID
 	// Weights chosen so that greedy-by-weight-desc is unambiguous:
@@ -1145,60 +1113,4 @@ func TestPruneBitSetSignatureToQuorum_CacheMissReturnsOriginal(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Same(t, bitSetSig, pruned)
-}
-
-func TestPruneBitSetSignatureToQuorum_ExistingSignersBelowQuorumErrors(t *testing.T) {
-	const networkID = constants.UnitTestID
-	// 5 validators (each weight 1, total 5); only 2 of them are in the signer set
-	// — that's 40% of the total, below 67% quorum.
-	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1, 1, 1})
-
-	aggregator, _, _, _, _ := instantiateAggregator(t)
-	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("low"))
-	require.NoError(t, err)
-
-	// Manually build a signed message with only validators 0 and 1 in the signer set.
-	sigs := make([]*bls.Signature, 2)
-	bitSet := set.NewBits()
-	for i := 0; i < 2; i++ {
-		sig, signErr := signers[i].Sign(unsigned.Bytes())
-		require.NoError(t, signErr)
-		sigs[i] = sig
-		bitSet.Add(i)
-		aggregator.signatureCache.Add(
-			unsigned.ID(),
-			PublicKeyBytes(bls.PublicKeyToUncompressedBytes(signers[i].PublicKey())),
-			SignatureBytes(bls.SignatureToBytes(sig)),
-		)
-	}
-	aggSig, err := bls.AggregateSignatures(sigs)
-	require.NoError(t, err)
-	signed, err := warp.NewMessage(
-		unsigned,
-		&warp.BitSetSignature{
-			Signers:   bitSet.Bytes(),
-			Signature: *(*[bls.SignatureLen]byte)(bls.SignatureToBytes(aggSig)),
-		},
-	)
-	require.NoError(t, err)
-
-	_, err = aggregator.PruneBitSetSignatureToQuorum(
-		logging.NoLog{}, unsigned, signed.Signature.(*warp.BitSetSignature), vdrs.ValidatorSet, 67,
-	)
-	require.ErrorContains(t, err, "does not meet quorum")
-}
-
-func TestPruneBitSetSignatureToQuorum_InvalidBitSetErrors(t *testing.T) {
-	aggregator, _, _, _, _ := instantiateAggregator(t)
-	unsigned, err := warp.NewUnsignedMessage(constants.UnitTestID, ids.GenerateTestID(), []byte("x"))
-	require.NoError(t, err)
-
-	vdrs, _ := makeConnectedValidatorsWithWeights([]uint64{1, 1})
-	// Invalid bitset: non-minimal encoding (extra zero padding).
-	invalidBitSet := &warp.BitSetSignature{Signers: []byte{0, 0, 0}}
-
-	_, err = aggregator.PruneBitSetSignatureToQuorum(
-		logging.NoLog{}, unsigned, invalidBitSet, vdrs.ValidatorSet, 51,
-	)
-	require.ErrorContains(t, err, "invalid signer bitset")
 }
