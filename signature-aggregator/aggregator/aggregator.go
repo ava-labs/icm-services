@@ -427,44 +427,53 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 
 		responseCount := 0
 		if responsesExpected > 0 {
-			for response := range responseChan {
-				log.Debug(
-					"Processing response from node",
-					zap.Stringer("nodeID", response.NodeID),
-				)
-				var relevant bool
-				signedMsg, relevant, err = s.handleResponse(
-					log,
-					response,
-					sentTo,
-					requestID,
-					vdrs,
-					unsignedMessage,
-					signatureMap,
-					excludedValidators,
-					accumulatedSignatureWeight,
-					requiredQuorumPercentage+quorumPercentageBuffer,
-				)
-				if err != nil {
-					// don't increase node failures metric here, because we did
-					// it in handleResponse
-					return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
-				}
-				if relevant {
-					responseCount++
-				}
-				// If we have sufficient signatures, return here.
-				if signedMsg != nil {
-					log.Info(
-						"Created signed message.",
-						zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-						zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
+		responseLoop:
+			for {
+				select {
+				case <-ctx.Done():
+					return backoff.Permanent(ctx.Err())
+				case response, ok := <-responseChan:
+					if !ok {
+						break responseLoop
+					}
+					log.Debug(
+						"Processing response from node",
+						zap.Stringer("nodeID", response.NodeID),
 					)
-					return nil
-				}
-				// Break once we've had successful or unsuccessful responses from each requested node
-				if responseCount == responsesExpected {
-					break
+					var relevant bool
+					signedMsg, relevant, err = s.handleResponse(
+						log,
+						response,
+						sentTo,
+						requestID,
+						vdrs,
+						unsignedMessage,
+						signatureMap,
+						excludedValidators,
+						accumulatedSignatureWeight,
+						requiredQuorumPercentage+quorumPercentageBuffer,
+					)
+					if err != nil {
+						// don't increase node failures metric here, because we did
+						// it in handleResponse
+						return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
+					}
+					if relevant {
+						responseCount++
+					}
+					// If we have sufficient signatures, return here.
+					if signedMsg != nil {
+						log.Info(
+							"Created signed message.",
+							zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+							zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
+						)
+						return nil
+					}
+					// Break once we've had successful or unsuccessful responses from each requested node
+					if responseCount == responsesExpected {
+						break responseLoop
+					}
 				}
 			}
 		}
