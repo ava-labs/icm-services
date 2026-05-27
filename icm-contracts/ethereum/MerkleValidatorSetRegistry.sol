@@ -31,20 +31,24 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
     uint32 public immutable avalancheNetworkID;
     // The Avalanche blockchain ID of the P-chain
     bytes32 public immutable pChainID;
+    // Whether the P-Chain may sign off on updates to already registered L1s
+    bool public immutable allowPChainFallback;
     // Mapping of Avalanche blockchain IDs to their validator set commitments.
     mapping(bytes32 => ValidatorSetMerkleCommitment) internal _valSetCommitments;
-    // Constructs a new registry instance with the initial validator set commitment registered on the P-chain.
 
+    // Constructs a new registry instance with the initial validator set commitment registered on the P-chain.
     constructor(
         uint32 avalancheNetworkID_,
         bytes32 pChainID_,
         bytes32 pChainGenesisRoot,
         uint64 pChainTotalWeight,
         uint64 pChainHeight,
-        uint64 pChainTimestamp
+        uint64 pChainTimestamp,
+        bool allowPChainFallback_
     ) {
         avalancheNetworkID = avalancheNetworkID_;
         pChainID = pChainID_;
+        allowPChainFallback = allowPChainFallback_;
         _valSetCommitments[pChainID_] = ValidatorSetMerkleCommitment({
             avalancheBlockchainID: pChainID_,
             root: pChainGenesisRoot,
@@ -74,13 +78,17 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             ValidatorSets.parseMerkleCommitment(message.rawMessage);
         bytes32 payloadBlockchainID = newCommitment.avalancheBlockchainID;
 
-        // The signing authority must be either the target chain itself if already registered
-        // or the P-Chain, which is the source of truth and can always sign off.
-        require(
-            signingChainID == pChainID
-                || (signingChainID == payloadBlockchainID && isRegistered(payloadBlockchainID)),
-            "Invalid signing chain"
-        );
+        // Initial registration must always be signed by the P-Chain.
+        // For subsequent updates, the signing authority must be either the target chain itself if already registered
+        // or the P-Chain if allowPChainFalback is enabled
+        bool selfSigned = (signingChainID == payloadBlockchainID);
+        bool pChainSigned = (signingChainID == pChainID);
+
+        if (!isRegistered(payloadBlockchainID)) {
+            require(pChainSigned, "Initial registration must be signed by the P-Chain");
+        } else {
+            require(selfSigned || (pChainSigned && allowPChainFallback), "Invalid signing chain");
+        }
 
         verifyICMMessage(message, signingChainID);
 
