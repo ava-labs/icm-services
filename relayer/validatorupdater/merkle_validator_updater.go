@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
-	warpvdrs "github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -310,7 +309,17 @@ func (s *MerkleSetUpdater) sendUpdate(
 		if !ok {
 			return fmt.Errorf("primary network not found in validator sets at height %d", onChainPChainHeight)
 		}
-		attestationValidators = warpSetToLocalValidators(pChainWarpSet)
+		attestationValidators = make([]*Validator, len(pChainWarpSet.Validators))
+		for i, vdr := range pChainWarpSet.Validators {
+			attestationValidators[i] = &Validator{
+				UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+				Weight:                     vdr.Weight,
+			}
+		}
+		sort.Slice(attestationValidators, func(i, j int) bool {
+			return string(attestationValidators[i].UncompressedPublicKeyBytes[:]) <
+				string(attestationValidators[j].UncompressedPublicKeyBytes[:])
+		})
 	} else {
 		attestationValidators = s.localValidatorSet
 	}
@@ -405,22 +414,4 @@ func (s *MerkleSetUpdater) buildICMMessage(
 		SourceBlockchainID: signedMsg.UnsignedMessage.SourceChainID,
 		Attestation:        attestation.Bytes(),
 	}, nil
-}
-
-// warpSetToLocalValidators converts a canonical WarpSet to the []*Validator form
-// expected by the merkle attestation builder. The returned slice is sorted by
-// uncompressed public key bytes to match the canonical ordering used to build
-// the on-chain merkle root.
-func warpSetToLocalValidators(warpSet warpvdrs.WarpSet) []*Validator {
-	out := make([]*Validator, len(warpSet.Validators))
-	for i, vdr := range warpSet.Validators {
-		out[i] = &Validator{
-			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
-			Weight:                     vdr.Weight,
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return string(out[i].UncompressedPublicKeyBytes[:]) < string(out[j].UncompressedPublicKeyBytes[:])
-	})
-	return out
 }
