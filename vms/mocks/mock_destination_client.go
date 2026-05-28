@@ -14,8 +14,8 @@ import (
 	reflect "reflect"
 
 	ids "github.com/ava-labs/avalanchego/ids"
+	logging "github.com/ava-labs/avalanchego/utils/logging"
 	set "github.com/ava-labs/avalanchego/utils/set"
-	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	evm "github.com/ava-labs/icm-services/vms/evm"
 	common "github.com/ava-labs/libevm/common"
 	types "github.com/ava-labs/libevm/core/types"
@@ -118,18 +118,18 @@ func (mr *MockDestinationClientMockRecorder) GetRPCEndpointURL() *gomock.Call {
 }
 
 // SendTx mocks base method.
-func (m *MockDestinationClient) SendTx(signedMessage *warp.Message, deliverers set.Set[common.Address], toAddress string, gasLimit uint64, callData []byte) (*types.Receipt, error) {
+func (m *MockDestinationClient) SendTx(logger logging.Logger, accessList types.AccessList, deliverers set.Set[common.Address], toAddress common.Address, gasLimit uint64, callData []byte) (*types.Receipt, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendTx", signedMessage, deliverers, toAddress, gasLimit, callData)
+	ret := m.ctrl.Call(m, "SendTx", logger, accessList, deliverers, toAddress, gasLimit, callData)
 	ret0, _ := ret[0].(*types.Receipt)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SendTx indicates an expected call of SendTx.
-func (mr *MockDestinationClientMockRecorder) SendTx(signedMessage, deliverers, toAddress, gasLimit, callData any) *gomock.Call {
+func (mr *MockDestinationClientMockRecorder) SendTx(logger, accessList, deliverers, toAddress, gasLimit, callData any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendTx", reflect.TypeOf((*MockDestinationClient)(nil).SendTx), signedMessage, deliverers, toAddress, gasLimit, callData)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendTx", reflect.TypeOf((*MockDestinationClient)(nil).SendTx), logger, accessList, deliverers, toAddress, gasLimit, callData)
 }
 
 // SenderAddresses mocks base method.
