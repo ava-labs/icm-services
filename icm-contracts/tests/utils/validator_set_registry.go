@@ -14,7 +14,6 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
 	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
-	merklevalidatorsetregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
@@ -24,9 +23,8 @@ import (
 )
 
 const (
-	diffUpdaterByteCodeFile                = "./out/DiffUpdater.sol/DiffUpdater.json"
-	subsetUpdaterByteCodeFile              = "./out/SubsetUpdater.sol/SubsetUpdater.json"
-	merkleValidatorSetRegistryByteCodeFile = "./out/MerkleValidatorSetRegistry.sol/MerkleValidatorSetRegistry.json"
+	diffUpdaterByteCodeFile   = "./out/DiffUpdater.sol/DiffUpdater.json"
+	subsetUpdaterByteCodeFile = "./out/SubsetUpdater.sol/SubsetUpdater.json"
 )
 
 // DeployDiffUpdater Deploys an instance of the `DiffUpdater` contract using
@@ -139,60 +137,6 @@ func DeploySubsetUpdater(
 	Expect(err).Should(BeNil())
 
 	gasLimit := uint64(16_000_000)
-	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
-		byteCode,
-		nil,
-		deploymentUtils.GetDefaultContractCreationGasPrice(),
-		&gasLimit,
-	)
-	Expect(err).Should(BeNil())
-
-	DeployWithNicksMethod(
-		ctx,
-		testInfo,
-		transactionBytes,
-		deployerAddress,
-		contractAddress,
-		fundedKey,
-	)
-
-	return contractAddress
-}
-
-// DeployMerkleValidatorSetRegistry deploys a MerkleValidatorSetRegistry contract using Nick's method,
-// bootstrapping the P-chain with the provided genesis merkle root, total weight, height, and timestamp.
-func DeployMerkleValidatorSetRegistry(
-	ctx context.Context,
-	testInfo testinfo.NetworkTestInfo,
-	fundedKey *ecdsa.PrivateKey,
-	avalancheNetworkID uint32,
-	pChainID ids.ID,
-	pChainGenesisRoot [32]byte,
-	pChainTotalWeight uint64,
-	pChainHeight uint64,
-	pChainTimestamp uint64,
-	allowPChainFallack bool,
-) common.Address {
-	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(merkleValidatorSetRegistryByteCodeFile)
-	Expect(err).Should(BeNil())
-
-	merkleRegistryABI, err := merklevalidatorsetregistry.MerkleValidatorSetRegistryMetaData.GetAbi()
-	Expect(err).Should(BeNil())
-
-	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
-		merkleRegistryABI,
-		byteCode,
-		avalancheNetworkID,
-		pChainID,
-		pChainGenesisRoot,
-		pChainTotalWeight,
-		pChainHeight,
-		pChainTimestamp,
-		true,
-	)
-	Expect(err).Should(BeNil())
-
-	gasLimit := uint64(10_000_000)
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
 		byteCode,
 		nil,
