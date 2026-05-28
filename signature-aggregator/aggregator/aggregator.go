@@ -45,7 +45,7 @@ const (
 	signatureRequestTimeout = 2 * utils.DefaultAppRequestTimeout
 	// Maximum amount of time to spend waiting for a connection to a quorum of validators for
 	// a given subnetID
-	connectToValidatorsTimeout = 5 * time.Second
+	connectToValidatorsTimeout = 30 * time.Second
 
 	// The minimum balance that an L1 validator must maintain in order to participate
 	// in the aggregate signature.
