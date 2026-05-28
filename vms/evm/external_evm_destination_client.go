@@ -13,7 +13,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
@@ -24,8 +23,6 @@ import (
 )
 
 const (
-	// externalEVMDefaultBaseFeeFactor is the multiplier for base fee when not explicitly set
-	externalEVMDefaultBaseFeeFactor = 3
 	// externalEVMPoolTxsPerAccount limits pending txs per account in mempool
 	externalEVMPoolTxsPerAccount = 16
 	// gasLimitForSimulation is the gas limit used when simulating calls
@@ -51,7 +48,6 @@ func (p *PrivateKeySigner) SignTx(tx *types.Transaction, evmChainID *big.Int) (*
 // Implements vms.DestinationClient interface.
 type ExternalEVMDestinationClient struct {
 	ethClient       EthClient
-	logger          logging.Logger
 	chainID         string
 	evmChainID      *big.Int
 	registryAddress common.Address
@@ -114,7 +110,6 @@ func NewExternalEVMDestinationClient(
 	}
 	destClient := &ExternalEVMDestinationClient{
 		ethClient:          wrappedClient,
-		logger:             logger,
 		chainID:            chainID,
 		evmChainID:         evmChainID,
 		registryAddress:    registryAddress,
@@ -142,12 +137,13 @@ func NewExternalEVMDestinationClient(
 		}
 
 		cs := &concurrentSigner{
-			logger:            senderLogger,
-			signer:            &PrivateKeySigner{privateKey: privateKey},
-			currentNonce:      nonce,
-			messageChan:       make(chan txData),
-			queuedTxSemaphore: make(chan struct{}, externalEVMPoolTxsPerAccount),
-			destinationClient: destClient,
+			logger:             senderLogger,
+			signer:             &PrivateKeySigner{privateKey: privateKey},
+			currentNonce:       nonce,
+			messageChan:        make(chan txData),
+			queuedTxSemaphore:  make(chan struct{}, externalEVMPoolTxsPerAccount),
+			txInclusionTimeout: destClient.txInclusionTimeout,
+			destinationClient:  destClient.ethClient,
 		}
 
 		// Start the transaction processing goroutine
@@ -169,59 +165,40 @@ func NewExternalEVMDestinationClient(
 	return destClient, nil
 }
 
-func (c *ExternalEVMDestinationClient) EVMChainID() *big.Int {
-	return c.evmChainID
-}
-
-func (c *ExternalEVMDestinationClient) RPCClient() DestinationRPCClient {
-	return c.ethClient
-}
-
-func (c *ExternalEVMDestinationClient) Logger() logging.Logger {
-	return c.logger
-}
-
-func (c *ExternalEVMDestinationClient) GasFeeConfig() *GasFeeConfig {
-	return c.gasFeeConfig
-}
-
-func (c *ExternalEVMDestinationClient) FeeFactor() int64 {
-	return externalEVMDefaultBaseFeeFactor
-}
-
-func (c *ExternalEVMDestinationClient) ConcurrentSigners() []*readonlyConcurrentSigner {
-	return c.concurrentSenders
-}
-
-func (c *ExternalEVMDestinationClient) AccessList(_ txData) types.AccessList {
-	return types.AccessList{}
-}
-
-func (c *ExternalEVMDestinationClient) TxInclusionTimeout() time.Duration {
-	return c.txInclusionTimeout
-}
-
 // getFeePerGas calculates the gas fee cap and gas tip cap for transactions.
 // nolint:unused
 func (c *ExternalEVMDestinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c)
+	return getFeePerGas(c.ethClient, c.gasFeeConfig)
 }
 
 // SendTx sends a transaction to an external EVM chain.
 // Uses channel-based concurrency for nonce management.
 func (c *ExternalEVMDestinationClient) SendTx(
-	signedMessage *avalancheWarp.Message,
+	logger logging.Logger,
+	accessList types.AccessList,
 	deliverers set.Set[common.Address],
-	toAddress string,
+	toAddress common.Address,
 	gasLimit uint64,
 	callData []byte,
 ) (*types.Receipt, error) {
-	return SendTx(c, signedMessage, deliverers, toAddress, gasLimit, callData, c.txInclusionTimeout)
+	return SendTx(
+		logger,
+		c.ethClient,
+		c.gasFeeConfig,
+		c.concurrentSenders,
+		accessList,
+		c.evmChainID,
+		deliverers,
+		toAddress,
+		gasLimit,
+		callData,
+		c.txInclusionTimeout,
+	)
 }
 
 // SenderAddresses returns the addresses of all senders.
 func (c *ExternalEVMDestinationClient) SenderAddresses() []common.Address {
-	return SenderAddresses(c)
+	return SenderAddresses(c.concurrentSenders)
 }
 
 // Client returns the underlying ethclient.
@@ -255,9 +232,6 @@ func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
 func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
 ) (uint64, error) {
-	c.logger.Debug("Querying registry for P-chain height",
-		zap.String("registryAddress", c.registryAddress.Hex()))
-
 	// Get the current validator set to find its P-chain height
 	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
 	if err != nil {
@@ -408,15 +382,7 @@ func (c *ExternalEVMDestinationClient) SimulateCall(
 		Data: callData,
 	}
 
-	result, err := c.ethClient.CallContract(ctx, callMsg, nil) // nil = latest block
-	if err != nil {
-		// Try to extract revert reason from error
-		c.logger.Debug("SimulateCall error details",
-			zap.Error(err),
-			zap.String("errorType", fmt.Sprintf("%T", err)),
-		)
-	}
-	return result, err
+	return c.ethClient.CallContract(ctx, callMsg, nil) // nil = latest block
 }
 
 // SimulateCallAtBlock simulates a contract call at a specific block number.
