@@ -331,7 +331,7 @@ func (s *MerkleSetUpdater) performUpdate(
 ) error {
 	if signingChain != constants.PrimaryNetworkID && signingChain != s.subnetID {
 		return fmt.Errorf("invalid signing chain %s: must be P-Chain or this subnet (%s)",
-				signingChain, s.subnetID)
+			signingChain, s.subnetID)
 	}
 	addressedCall, err := warppayload.NewAddressedCall(nil, validatorSetUpdate.Bytes())
 	if err != nil {
@@ -346,6 +346,10 @@ func (s *MerkleSetUpdater) performUpdate(
 	if err != nil {
 		return fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
+
+	s.logger.Info("Signing new merkle root",
+		zap.Stringer("signingSubnet", signingSubnet),
+	)
 
 	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
 		ctx,
