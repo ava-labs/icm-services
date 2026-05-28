@@ -40,11 +40,12 @@ type MerkleSetUpdater struct {
 
 	maxUpdateInterval time.Duration
 
-	localValidatorSet []*Validator
-	localPChainHeight uint64
-	localTotalWeight  uint64
-	lastUpdateTime    time.Time
-	initialized       bool
+	localValidatorSet   []*Validator
+	localPChainHeight   uint64
+	localTotalWeight    uint64
+	lastUpdateTime      time.Time
+	initialized         bool
+	allowPChainFallback bool
 }
 
 func NewMerkleSetUpdater(
@@ -146,21 +147,27 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
-	// Try signing with the L1 first but fallback to the P-chain on failure
 	err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false, s.subnetID)
 	if err != nil {
-		s.logger.Warn("Self-signed update failed, retrying with P-Chain signature",
+		// Does not retry if the update is for the P-chain itself, or if fallback to P-Chain signing is disabled.
+		if s.subnetID == constants.PrimaryNetworkID || !s.allowPChainFallback {
+			s.logger.Warn("Merkle root update failed, retrying on next tick",
+				zap.Error(err),
+				zap.Bool("isPChain", s.subnetID == constants.PrimaryNetworkID),
+				zap.Bool("allowPChainFallback", s.allowPChainFallback),
+			)
+			return nil
+		}
+		s.logger.Warn("Merkle root self-signed update failed, retrying with P-Chain fallback",
 			zap.Error(err))
 		err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false, constants.PrimaryNetworkID)
 		if err != nil {
-			s.logger.Warn("P-Chain fallback update also failed, re-syncing from contract on next tick",
+			s.logger.Warn("Merkle root P-Chain fallback failed, retrying on next tick",
 				zap.Error(err))
-			s.initialized = false
 			return nil
 		}
 		s.logger.Info("P-Chain fallback succeeded")
 	}
-
 	s.localValidatorSet = newValidators
 	s.localPChainHeight = pChainHeight
 	s.localTotalWeight = sumWeights(newValidators)
@@ -170,6 +177,12 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 }
 
 func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
+	allowPChainFallback, err := s.contract.AllowPChainFallback(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to read allowPChainFallback: %w", err)
+	}
+	s.allowPChainFallback = allowPChainFallback
+
 	onChainVS, err := s.contract.GetValidatorSetCommitment(&bind.CallOpts{Context: ctx}, s.blockchainID)
 	if err != nil {
 		return fmt.Errorf("failed to get on-chain validator set: %w", err)
