@@ -33,7 +33,22 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func instantiateAggregator(t *testing.T) (
+const defaultSignatureRequestTimeout = 20 * time.Second
+
+func instantiateDefaultAggregator(t *testing.T) (
+	*SignatureAggregator,
+	*peers.AppRequestNetwork,
+	*peers.RelayerExternalHandler,
+	*avago_mocks.MockNetwork,
+	*client_mocks.MockCanonicalValidatorState,
+) {
+	return instantiateAggregator(t, defaultSignatureRequestTimeout)
+}
+
+func instantiateAggregator(
+	t *testing.T,
+	signatureRequestTimeout time.Duration,
+) (
 	*SignatureAggregator,
 	*peers.AppRequestNetwork,
 	*peers.RelayerExternalHandler, // handler for test access
@@ -82,6 +97,7 @@ func instantiateAggregator(t *testing.T) (
 		1024,
 		testSigAggMetrics,
 		mockValidatorClient,
+		signatureRequestTimeout,
 	)
 	require.NoError(t, err)
 
@@ -168,7 +184,7 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			aggregator, _, _, _, _ := instantiateAggregator(t)
+			aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 			signedMsg, err := aggregator.CreateSignedMessage(
 				t.Context(),
 				logging.NoLog{},
@@ -186,7 +202,7 @@ func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
 }
 
 func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
-	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateAggregator(t)
+	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
 	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil).AnyTimes()
@@ -214,7 +230,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 }
 
 func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
-	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateAggregator(t)
+	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
 	require.NoError(t, err)
 	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), ids.Empty).Return(ids.Empty, nil)
@@ -270,7 +286,7 @@ func makeAppRequests(
 }
 
 func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
-	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateAggregator(t)
+	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateAggregator(t, 100*time.Millisecond)
 
 	var (
 		connectedValidators, _ = makeConnectedValidators(2)
@@ -373,7 +389,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 
 			// prime the aggregator:
 
-			aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateAggregator(t)
+			aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
 
 			subnetID := ids.GenerateTestID()
 			mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(
@@ -505,7 +521,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 }
 
 func TestUnmarshalResponse(t *testing.T) {
-	aggregator, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 
 	emptySignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: []byte{}})
 	require.NoError(t, err)
@@ -758,7 +774,7 @@ func TestGetExcludedValidators(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			aggregator, _, _, _, mockValidatorClient := instantiateAggregator(t)
+			aggregator, _, _, _, mockValidatorClient := instantiateDefaultAggregator(t)
 			ctx := t.Context()
 			log := logging.NoLog{}
 			signingSubnet := ids.GenerateTestID()
@@ -823,7 +839,7 @@ func TestValidateQuorumPercentages(t *testing.T) {
 }
 
 func TestSelectSigningSubnet(t *testing.T) {
-	aggregator, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 	ctx := t.Context()
 	log := logging.NoLog{}
 	chainID := ids.GenerateTestID()
@@ -849,7 +865,7 @@ func TestSelectSigningSubnet(t *testing.T) {
 }
 
 func TestPopulateSignatureMapFromCache(t *testing.T) {
-	aggregator, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 	connectedValidators, signers := makeConnectedValidators(2)
 	msg, err := warp.NewUnsignedMessage(0, ids.GenerateTestID(), []byte("test"))
 	require.NoError(t, err)
