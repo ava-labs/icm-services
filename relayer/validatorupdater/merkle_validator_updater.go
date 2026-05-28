@@ -365,9 +365,8 @@ func (s *MerkleSetUpdater) sendUpdate(
 	// If the P-Chain signed the message in either initial registration or as a fallback,
 	// fetch the primary network validators used to build that root so the attestation
 	// proof is computed against the correct ordered set.
-	signedByPChain := (signingChain == constants.PrimaryNetworkID)
 	var attestationValidators []*Validator
-	if signedByPChain {
+	if signingChain == constants.PrimaryNetworkID {
 		allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, onChainPChainHeight)
 		if err != nil {
 			return fmt.Errorf("failed to get P-chain validator sets at height %d for attestation: %w",
