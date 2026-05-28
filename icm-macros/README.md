@@ -115,8 +115,20 @@ struct MyStruct {
 | `contract` | key-value | Name of the contract/library to inject the generated function into. | *(none — free-standing)* |
 | `name` | key-value | Override the generated function name. | `unpack{TypeName}` |
 | `visibility` | key-value | Visibility of the generated function. | `public` |
+| `assert = "\|var\| { expr }"` | key-value | Emit `require(expr)` before the function returns, with `var` replaced by `result` (the decoded struct). May appear multiple times. Not valid on enums. | *(none)* |
 | `calldata` | flag | Accept `bytes calldata data` instead of `bytes memory data`. | *(off)* |
 | `solhint-disable` | flag | Wrap the generated function with `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly`. | *(off)* |
+
+The closure value must be a quoted string so that commas and `=` signs inside the expression are not misinterpreted as argument separators. Example:
+
+```solidity
+// #[unpack(
+//    calldata,
+//    assert = "|s| { s.length > 0 }",
+//    assert = "|s| { s.field == s.other }",
+//  )]
+struct MyStruct { ... }
+```
 
 #### Field-level annotations
 
@@ -127,6 +139,8 @@ struct MyStruct {
 | `#[unpack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must match the type used by the corresponding `#[pack(length = uintN)]`. Defaults to `uint256`. |
 | `#[unpack(length = constant)]` | No prefix is read; instead `constant` is used as the field length/element count. Pairs with `#[pack(length = drop)]`. `constant` can be any Solidity expression (e.g. `32`, `BLST.SIG_LENGTH`). |
 | `#[unpack(method = "expr", length = constant)]` | Pass a pre-sliced buffer of exactly `constant` bytes to `expr`. The method returns just the field value (no bytes-consumed count); the macro advances `data` by `constant` bytes. Use for fixed-size fields decoded by a helper that does not follow the `(uint256, T)` unpack convention. |
+| `#[unpack(assert = "\|var\| { expr }")]` | Emit `require(expr)` immediately after the field is assigned to `result`, with `var` replaced by the field's local variable name. May appear multiple times. |
+| `#[unpack(assert = "\|each var\| { expr }")]` | Assert a condition on each element of a container field. For **arrays**, `var` is replaced by the per-element local inside the decode loop. For **`bytes`/`string`/`bytesN`**, a post-decode loop iterates the bytes and binds `bytes1 _elem`; `var` is replaced by `_elem`. Not valid on non-container types. |
 
 #### Primitive field decoding
 
