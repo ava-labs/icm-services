@@ -364,20 +364,19 @@ func main() {
 	}
 
 	// Handle os signal
-	errGroup.Go(func() error {
+	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-		sig := <-sigChan
-		logger.Info("Receive os signal", zap.Stringer("signal", sig))
-
-		// Cancel the parent context
-		// This will cascade to errgroup context
-		cancel()
-
-		// No error for graceful shutdown
-		return nil
-	})
+		select {
+		case sig := <-sigChan:
+			logger.Info("Received os signal", zap.Stringer("signal", sig))
+			// Cancel the parent context
+			// This will cascade to errgroup context
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 
 	logger.Info("Initialization complete")
 	if err := errGroup.Wait(); err != nil {
@@ -865,6 +864,7 @@ func startMerkleSetUpdater(
 		subnetID,
 		pollInterval,
 		maxUpdateInterval,
+		extDest.MaxGasPriceGwei,
 	)
 
 	return updater.Start(ctx)

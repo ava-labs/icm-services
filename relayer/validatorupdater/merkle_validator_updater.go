@@ -6,6 +6,7 @@ package validatorupdater
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"sort"
 	"time"
 
@@ -24,6 +25,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// weiPerGwei is the conversion factor between gwei and wei.
+var weiPerGwei = big.NewInt(1_000_000_000)
+
 type MerkleSetUpdater struct {
 	logger              logging.Logger
 	pChainClient        clients.CanonicalValidatorState
@@ -39,6 +43,11 @@ type MerkleSetUpdater struct {
 	pollInterval time.Duration
 
 	maxUpdateInterval time.Duration
+	// maxGasPriceWei is the maximum suggested gas price (in wei) at which
+	// an update transaction will be submitted. If the destination network's
+	// suggested gas price exceeds this value, the update is deferred until
+	// the next poll. A zero value disables gas gating.
+	maxGasPriceWei *big.Int
 
 	localValidatorSet   []*Validator
 	localPChainHeight   uint64
@@ -61,7 +70,9 @@ func NewMerkleSetUpdater(
 	subnetID ids.ID,
 	pollInterval time.Duration,
 	maxUpdateInterval time.Duration,
+	maxGasPriceGwei uint64,
 ) *MerkleSetUpdater {
+	maxGasPriceWei := new(big.Int).Mul(new(big.Int).SetUint64(maxGasPriceGwei), weiPerGwei)
 	return &MerkleSetUpdater{
 		logger:              logger,
 		pChainClient:        pChainClient,
@@ -75,6 +86,7 @@ func NewMerkleSetUpdater(
 		subnetID:            subnetID,
 		pollInterval:        pollInterval,
 		maxUpdateInterval:   maxUpdateInterval,
+		maxGasPriceWei:      maxGasPriceWei,
 	}
 }
 
@@ -126,6 +138,15 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get P-chain timestamp: %w", err)
 	}
+
+	ok, err := s.gasPriceWithinBounds(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
 	newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to fetch validators at height %d: %w", pChainHeight, err)
@@ -198,6 +219,15 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to get P-chain timestamp: %w", err)
 		}
+
+		ok, err := s.gasPriceWithinBounds(ctx)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+
 		newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
 		if err != nil {
 			return fmt.Errorf("failed to fetch validators after first registration: %w", err)
@@ -247,6 +277,31 @@ func (s *MerkleSetUpdater) isStale() bool {
 		return false
 	}
 	return time.Since(s.lastUpdateTime) >= s.maxUpdateInterval
+}
+
+// gasPriceWithinBounds reports whether the destination's suggested gas price
+// is at or below the configured threshold. A zero threshold disables the
+// check. A false result means "defer until the next poll".
+func (s *MerkleSetUpdater) gasPriceWithinBounds(ctx context.Context) (bool, error) {
+	if s.maxGasPriceWei.Sign() == 0 {
+		return true, nil
+	}
+	suggested, err := s.ethClient.SuggestGasPrice(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get suggested gas price: %w", err)
+	}
+	if suggested.Cmp(s.maxGasPriceWei) > 0 {
+		s.logger.Info("Skipping validator set update: suggested gas price above threshold",
+			zap.String("suggestedGasPriceWei", suggested.String()),
+			zap.String("maxGasPriceWei", s.maxGasPriceWei.String()),
+		)
+		return false, nil
+	}
+	s.logger.Debug("Suggested gas price within threshold",
+		zap.String("suggestedGasPriceWei", suggested.String()),
+		zap.String("maxGasPriceWei", s.maxGasPriceWei.String()),
+	)
+	return true, nil
 }
 
 func (s *MerkleSetUpdater) nextUpdate(
