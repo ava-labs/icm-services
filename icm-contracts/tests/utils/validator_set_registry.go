@@ -188,7 +188,7 @@ func DeployMerkleValidatorSetRegistry(
 		pChainTotalWeight,
 		pChainHeight,
 		pChainTimestamp,
-		allowPChainFallack,
+		true,
 	)
 	Expect(err).Should(BeNil())
 
