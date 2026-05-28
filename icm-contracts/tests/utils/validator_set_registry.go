@@ -171,7 +171,7 @@ func DeployMerkleValidatorSetRegistry(
 	pChainTotalWeight uint64,
 	pChainHeight uint64,
 	pChainTimestamp uint64,
-	allowPChainFallback bool,
+	allowPChainFallack bool,
 ) common.Address {
 	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(merkleValidatorSetRegistryByteCodeFile)
 	Expect(err).Should(BeNil())
@@ -188,6 +188,7 @@ func DeployMerkleValidatorSetRegistry(
 		pChainTotalWeight,
 		pChainHeight,
 		pChainTimestamp,
+		allowPChainFallack,
 	)
 	Expect(err).Should(BeNil())
 

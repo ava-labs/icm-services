@@ -119,7 +119,7 @@ func MerkleUpdater(
 		pChainTotalWeight,
 		pChainHeight,
 		pChainTimestamp,
-		false,
+		true, // allowPChainFallback
 	)
 	contract, err := merkleregistry.NewMerkleValidatorSetRegistry(contractAddr, ethClient)
 	Expect(err).Should(BeNil())
