@@ -4,7 +4,7 @@
 //! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
 //! name unconditionally — callers must not rename it.
 
-use crate::unpack::hooks::{LengthSpec, UnpackArgs};
+use crate::unpack::hooks::{AssertDef, CaptureType, LengthSpec, UnpackArgs};
 use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
@@ -127,7 +127,17 @@ pub fn unpack_elementary(
     }
 }
 
-pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> String {
+pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::Result<String> {
+    if args
+        .assert
+        .iter()
+        .any(|a| a.captured == CaptureType::Element)
+    {
+        eyre::bail!(
+            "`each` assert on `{}` is not valid: enums are not container types",
+            enum_def.name,
+        );
+    }
     let fn_name = args
         .name
         .unwrap_or_else(|| format!("unpack{}", enum_def.name));
@@ -137,16 +147,39 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> String
         "bytes memory data"
     };
     let vis = vis_prefix(&args.visibility);
-    let body = format!(
-        "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\n    return (1, {type_name}(uint8(data[0])));\n}}"
-    );
-    if args.solhint_disable {
+    let field_asserts: Vec<_> = args
+        .assert
+        .iter()
+        .filter(|a| a.captured == CaptureType::Field)
+        .collect();
+    let body = if field_asserts.is_empty() {
+        format!(
+            "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
+            \n    return (1, {type_name}(uint8(data[0])));\
+            \n}}"
+        )
+    } else {
+        let assert_lines: String = field_asserts
+            .iter()
+            .map(|a| {
+                let expr = substitute_var(&a.expr, &a.var, "result");
+                format!("\n    require({expr});")
+            })
+            .collect();
+        format!(
+            "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
+            \n    {type_name} result = {type_name}(uint8(data[0]));{assert_lines}\
+            \n    return (1, result);\
+            \n}}"
+        )
+    };
+    Ok(if args.solhint_disable {
         format!(
             "// solhint-disable no-inline-assembly\n{body}\n// solhint-enable no-inline-assembly"
         )
     } else {
         body
-    }
+    })
 }
 
 pub fn unpack_struct(
@@ -251,11 +284,43 @@ pub fn unpack_struct(
                 output: local_name.clone(),
                 ty: &field.ty.kind,
                 length: field_args.length.clone(),
+                element_asserts: field_args
+                    .assert
+                    .iter()
+                    .filter(|a| a.captured == CaptureType::Element)
+                    .cloned()
+                    .collect(),
             };
             inline_unpack(ctx, args.calldata, target_contract, node)?
         };
         body.push_str(&deserialize_field_code);
         body.push_str(&format!("\nresult.{field_name} = {local_name};"));
+        for assert_def in field_args
+            .assert
+            .iter()
+            .filter(|a| a.captured == CaptureType::Field)
+        {
+            let expr = substitute_var(&assert_def.expr, &assert_def.var, &local_name);
+            body.push_str(&format!("\nrequire({expr});"));
+        }
+    }
+    let mut epilogue = pre_return;
+    for assert_def in &args.assert {
+        match assert_def.captured {
+            CaptureType::Field => {
+                let expr = substitute_var(&assert_def.expr, &assert_def.var, "result");
+                if !epilogue.is_empty() {
+                    epilogue.push('\n');
+                }
+                epilogue.push_str(&format!("require({expr});"));
+            }
+            CaptureType::Element => {
+                eyre::bail!(
+                    "`each` assert on `{}` is not valid at the type level: structs are not container types",
+                    struct_def.name,
+                );
+            }
+        }
     }
     let vis = vis_prefix(&args.visibility);
     let func = format!(
@@ -263,7 +328,7 @@ pub fn unpack_struct(
         \n    {length_tracking}\
         \n    {type_name} memory result;\
         \n    {body}\
-        \n    {pre_return}\
+        \n    {epilogue}\
         \n    return ({bytes_read}, result);\
         \n}}"
     );
@@ -288,6 +353,10 @@ struct UnpackingTreeNode<'a> {
     ty: &'a TypeKind<'a>,
     /// Length/count spec for this node. `None` keeps the default `uint256` prefix.
     length: Option<LengthSpec>,
+    /// `CaptureType::Element` asserts to inject into this node's array loop body,
+    /// substituting the capture variable with the per-element local. Only consulted
+    /// when `ty` is an array; never propagated to the recursive element node.
+    element_asserts: Vec<AssertDef>,
 }
 
 fn inline_unpack(
@@ -298,7 +367,15 @@ fn inline_unpack(
 ) -> eyre::Result<String> {
     Ok(match node.ty {
         TypeKind::Elementary(ty) => {
-            unpack_elementary(&node.output, *ty, calldata, node.length.as_ref())
+            let mut code = unpack_elementary(&node.output, *ty, calldata, node.length.as_ref());
+            if !node.element_asserts.is_empty() {
+                code.push_str(&element_assert_loop(
+                    *ty,
+                    &node.output,
+                    &node.element_asserts,
+                )?);
+            }
+            code
         }
         TypeKind::Array(arr) => {
             let type_name = get_type_name(ctx, &arr.element.kind, target_contract)?;
@@ -308,9 +385,18 @@ fn inline_unpack(
                 output: next_output.clone(),
                 ty: &arr.element.kind,
                 length: None,
+                element_asserts: vec![],
             };
             let output = sanitize_local(&node.output);
             let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
+            let element_assert_code: String = node
+                .element_asserts
+                .iter()
+                .map(|a| {
+                    let expr = substitute_var(&a.expr, &a.var, &next_output);
+                    format!("\n        require({expr});")
+                })
+                .collect();
             let (read_length, advance_past_count) = match node.length.as_ref() {
                 Some(LengthSpec::Constant(expr)) => {
                     (format!("uint256 length = {expr};"), String::new())
@@ -345,13 +431,20 @@ fn inline_unpack(
                 \n    {output} = new {type_name}[](length);\
                 \n    for (uint256 i = 0; i < length;){{\
                 \n        {inner}\
-                \n        {output}[i] = {next_output};\
+                \n        {output}[i] = {next_output};{element_assert_code}\
                 \n        unchecked {{ ++i;}}\
                 \n    }}\
                 \n}}"
             )
         }
         TypeKind::Custom(item_id) => {
+            if !node.element_asserts.is_empty() {
+                let type_name = custom_type_name(ctx, *item_id);
+                eyre::bail!(
+                    "`each` assert on `{}` requires a container type (array, bytes, string, or bytesN), not `{type_name}`",
+                    node.output,
+                );
+            }
             let type_name = custom_type_name(ctx, *item_id);
             let output = sanitize_local(&node.output);
             let is_enum = matches!(item_id, ItemId::Enum(_));
@@ -646,4 +739,66 @@ fn vis_prefix(visibility: &str) -> String {
     } else {
         format!("{visibility} ")
     }
+}
+
+/// Generates a post-decode element-assertion loop for container elementary types
+/// (`bytes`, `string`, `bytesN`). Each iteration binds `bytes1 _elem` to the current
+/// element and evaluates the assert expressions with the capture variable substituted
+/// by `_elem`. Returns an empty string for non-container types.
+fn element_assert_loop(
+    ty: ElementaryType,
+    output: &str,
+    asserts: &[AssertDef],
+) -> eyre::Result<String> {
+    let (length_expr, access_expr) = match ty {
+        ElementaryType::Bytes => (format!("{output}.length"), format!("{output}[_j]")),
+        ElementaryType::String => (
+            format!("bytes({output}).length"),
+            format!("bytes({output})[_j]"),
+        ),
+        ElementaryType::FixedBytes(s) => (s.bytes().to_string(), format!("{output}[_j]")),
+        _ => eyre::bail!(
+            "`each` assert on `{output}` requires a container type (array, bytes, string, or bytesN), \
+             not `{}`",
+            elementary_type_name(ty),
+        ),
+    };
+    let assert_lines: String = asserts
+        .iter()
+        .map(|a| {
+            let expr = substitute_var(&a.expr, &a.var, "_elem");
+            format!("\n    require({expr});")
+        })
+        .collect();
+    Ok(format!(
+        "\nfor (uint256 _j = 0; _j < {length_expr}; _j++){{\
+        \n    bytes1 _elem = {access_expr};{assert_lines}\
+        \n}}"
+    ))
+}
+
+/// Replaces whole-word occurrences of `var` in `expr` with `replacement`.
+/// A word boundary is any position adjacent to a non-identifier character
+/// (`[^a-zA-Z0-9_]`) or the start/end of the string.
+fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
+    fn is_ident(c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
+    }
+    let mut result = String::new();
+    let mut remaining = expr;
+    while let Some(pos) = remaining.find(var) {
+        let before = &remaining[..pos];
+        let after = &remaining[pos + var.len()..];
+        let left_ok = before.chars().last().is_none_or(|c| !is_ident(c));
+        let right_ok = after.chars().next().is_none_or(|c| !is_ident(c));
+        result.push_str(before);
+        if left_ok && right_ok {
+            result.push_str(replacement);
+        } else {
+            result.push_str(var);
+        }
+        remaining = after;
+    }
+    result.push_str(remaining);
+    result
 }
