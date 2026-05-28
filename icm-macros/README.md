@@ -51,6 +51,7 @@ Place a `#[pack(...)]` annotation in the NatSpec comment above a struct field to
 |---|---|
 | `#[pack(ignore)]` | Skip this field entirely. |
 | `#[pack(method = "expr")]` | Use `expr(obj.field)` instead of the default pack call. |
+| `#[pack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must be a valid Solidity unsigned integer type (`uint8`–`uint256`). Defaults to `uint256`. |
 
 ```solidity
 /// #[pack()]
@@ -60,6 +61,10 @@ struct Example {
     uint256 ignored;
     /// #[pack(method = "MyLib.encodeB")]
     MyType b;
+    /// #[pack(length = uint32)]
+    bytes payload;
+    /// #[pack(length = uint32)]
+    address[] allowList;
 }
 ```
 
@@ -68,9 +73,9 @@ struct Example {
 | Type | Encoding |
 |---|---|
 | Fixed-size elementary (`uint*`, `int*`, `address`, `bool`, `bytes1`–`bytes32`, …) | `abi.encodePacked(field)` |
-| `bytes` | `abi.encodePacked(field.length, field)` |
-| `string` | `abi.encodePacked(bytes(field).length, field)` |
-| Array | Loop over elements, recursively packed, concatenated with `abi.encodePacked` |
+| `bytes` | `abi.encodePacked(field.length, field)` — length prefix type overridable via `#[pack(length = uintN)]` |
+| `string` | `abi.encodePacked(bytes(field).length, field)` — length prefix type overridable via `#[pack(length = uintN)]` |
+| Array | Element count prefix (`uint256` by default) followed by recursively packed elements — count type overridable via `#[pack(length = uintN)]` |
 | Custom struct/enum/UDVT | `pack{TypeName}(field)` (must be in scope) |
 | Mapping / function | **Error** — must provide `#[pack(method = "...")]` or `#[pack(ignore)]` |
 
@@ -116,14 +121,15 @@ struct MyStruct {
 |---|---|
 | `#[unpack(default)]` | Skip this field; the struct is returned with its default (zero) value for this field. Useful alongside `#[pack(ignore)]`. |
 | `#[unpack(method = "expr")]` | Use `(uint256 read, field) = expr(data)` instead of the inline decoder. The method must have the same signature as a generated unpack function. |
+| `#[unpack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must match the type used by the corresponding `#[pack(length = uintN)]`. Defaults to `uint256`. |
 
 #### Primitive field decoding
 
 | Type | Decoding |
 |---|---|
 | Fixed-size elementary (`uint*`, `int*`, `address`, `bool`, `bytes1`–`bytes32`, …) | Read exact packed byte width; shift/mask as needed |
-| `bytes` / `string` | Read 32-byte length prefix, then copy payload |
-| Array | Read 32-byte element count, then decode each element in a loop |
+| `bytes` / `string` | Read length prefix then copy payload — prefix width overridable via `#[unpack(length = uintN)]`, defaults to 32 bytes |
+| Array | Read element count then decode each element in a loop — count width overridable via `#[unpack(length = uintN)]`, defaults to 32 bytes |
 | Custom struct/enum/UDVT | `unpack{TypeName}(data)` (must be in scope) |
 | Mapping / function | **Error** — must provide `#[unpack(method = "...")]` or `#[unpack(default)]` |
 
@@ -172,7 +178,7 @@ testing/{macro}/
 Run the unit tests with:
 
 ```sh
-cargo test -- --skip tests::test_e2e
+cargo test
 ```
 
 When a snapshot test fails, the actual output is written to `mismatched/`. Inspect the diff, and if the new output is correct copy it to `expected/`:

@@ -16,18 +16,25 @@ use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
 ///
 /// Only the bytes consumed by this type are removed from `data`; the rest remains available
 /// for subsequent unpacking calls.
-pub fn unpack_elementary(output: &str, ty: ElementaryType, calldata: bool) -> String {
+pub fn unpack_elementary(
+    output: &str,
+    ty: ElementaryType,
+    calldata: bool,
+    length_type: Option<&str>,
+) -> String {
     let output = sanitize_local(output);
     match ty {
         ElementaryType::Bytes | ElementaryType::String => {
             let type_name = elementary_type_name(ty);
+            let prefix_size = length_prefix_size(length_type);
             if calldata {
+                let read_len = read_length_calldata(prefix_size);
                 format!(
                     "\n{type_name} memory {output};\
                 \n{{\
-                \n    uint256 length = uint256(bytes32(data[0:32]));\
-                \n    {output} = {type_name}(data[32:length + 32]);\
-                \n    data = data[32 + length:];\
+                \n    uint256 length = {read_len};\
+                \n    {output} = {type_name}(data[{prefix_size}:length + {prefix_size}]);\
+                \n    data = data[{prefix_size} + length:];\
                 \n}}"
                 )
             } else {
@@ -35,17 +42,19 @@ pub fn unpack_elementary(output: &str, ty: ElementaryType, calldata: bool) -> St
                     ElementaryType::Bytes => "new bytes(data_length)".to_string(),
                     _ => "string(new bytes(data_length))".to_string(),
                 };
+                let read_len = read_length_memory(prefix_size);
+                let payload_offset = 32 + prefix_size;
                 format!(
                     "\n{type_name} memory {output};\
                 \n{{\
                 \n    uint256 data_length;\
-                \n    assembly {{ data_length := mload(add(data, 32)) }}\
+                \n    assembly {{ data_length := {read_len} }}\
                 \n    {output} = {alloc};\
                 \n    assembly {{\
-                \n        mcopy(add({output}, 32), add(data, 64), data_length)\
+                \n        mcopy(add({output}, 32), add(data, {payload_offset}), data_length)\
                 \n        let _data_orig_len := mload(data)\
-                \n        data := add(data, add(32, data_length))\
-                \n        mstore(data, sub(_data_orig_len, add(32, data_length)))\
+                \n        data := add(data, add({prefix_size}, data_length))\
+                \n        mstore(data, sub(_data_orig_len, add({prefix_size}, data_length)))\
                 \n    }}\
                 \n}}"
                 )
@@ -178,10 +187,14 @@ pub fn unpack_struct(
                 )
             }
         } else {
+            if let Some(ty) = &field_args.length {
+                validate_length_type(ty, field_name.as_str(), struct_def.name.as_str())?;
+            }
             let node = UnpackingTreeNode {
                 depth: 0,
                 output: local_name.clone(),
                 ty: &field.ty.kind,
+                length: field_args.length.clone(),
             };
             inline_unpack(ctx, args.calldata, target_contract, node)?
         };
@@ -217,6 +230,9 @@ struct UnpackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
+    /// The Solidity uint type to use for this node's length/count prefix,
+    /// e.g. `"uint32"`. `None` keeps the default `uint256` encoding.
+    length: Option<String>,
 }
 
 fn inline_unpack(
@@ -226,7 +242,9 @@ fn inline_unpack(
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
-        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata),
+        TypeKind::Elementary(ty) => {
+            unpack_elementary(&node.output, *ty, calldata, node.length.as_deref())
+        }
         TypeKind::Array(arr) => {
             let type_name = get_type_name(ctx, &arr.element.kind, target_contract)?;
             let next_output = format!("{}_{}", node.output, node.depth + 1);
@@ -234,18 +252,27 @@ fn inline_unpack(
                 depth: node.depth + 1,
                 output: next_output.clone(),
                 ty: &arr.element.kind,
+                length: None,
             };
             let output = sanitize_local(&node.output);
             let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
+            let prefix_size = length_prefix_size(node.length.as_deref());
             let (read_length, advance_past_count) = if calldata {
                 (
-                    "uint256 length = uint256(bytes32(data[0:32]));".to_string(),
-                    "data = data[32:];".to_string(),
+                    format!("uint256 length = {};", read_length_calldata(prefix_size)),
+                    format!("data = data[{prefix_size}:];"),
                 )
             } else {
                 (
-                    "uint256 length; assembly { length := mload(add(data, 32)) }".to_string(),
-                    slice_memory("data", "32", "sub(mload(data), 32)"),
+                    format!(
+                        "uint256 length; assembly {{ length := {} }}",
+                        read_length_memory(prefix_size)
+                    ),
+                    slice_memory(
+                        "data",
+                        &prefix_size.to_string(),
+                        &format!("sub(mload(data), {prefix_size})"),
+                    ),
                 )
             };
             format!(
@@ -498,6 +525,49 @@ fn sanitize_local(name: &str) -> String {
         out.push('_');
     }
     out
+}
+
+/// Returns the byte width of the length/count prefix for the given type string.
+/// Defaults to 32 (uint256) when no override is specified.
+fn length_prefix_size(length_type: Option<&str>) -> usize {
+    match length_type {
+        None => 32,
+        Some(ty) => ty.strip_prefix("uint").unwrap().parse::<usize>().unwrap() / 8,
+    }
+}
+
+/// Generates a calldata expression that reads a length/count prefix of `size` bytes.
+fn read_length_calldata(size: usize) -> String {
+    if size == 32 {
+        "uint256(bytes32(data[0:32]))".to_string()
+    } else {
+        let bits = size * 8;
+        format!("uint256(uint{bits}(bytes{size}(data[0:{size}])))")
+    }
+}
+
+/// Generates an assembly expression that reads a length/count prefix of `size` bytes
+/// from the front of a memory `bytes` buffer (after the EVM length word).
+fn read_length_memory(size: usize) -> String {
+    if size == 32 {
+        "mload(add(data, 32))".to_string()
+    } else {
+        let shift = (32 - size) * 8;
+        format!("shr({shift}, mload(add(data, 32)))")
+    }
+}
+
+/// Validates that `ty` is a Solidity unsigned integer type (uint8 through uint256, in steps of 8).
+fn validate_length_type(ty: &str, field_name: &str, struct_name: &str) -> eyre::Result<()> {
+    let bits: Option<u16> = ty.strip_prefix("uint").and_then(|s| s.parse().ok());
+    let valid = bits.is_some_and(|n| (8..=256).contains(&n) && n % 8 == 0);
+    if !valid {
+        return Err(eyre::eyre!(
+            "length type `{ty}` for field `{field_name}` of `{struct_name}` \
+             must be an unsigned integer type (uint8 to uint256)"
+        ));
+    }
+    Ok(())
 }
 
 /// Returns the visibility keyword with a trailing space, or an empty string when

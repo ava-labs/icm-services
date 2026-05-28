@@ -76,7 +76,7 @@ jobs:
 
       - name: Test
         working-directory: icm-macros
-        run: cargo test -- --skip tests::test_e2e
+        run: cargo test
 
   icm-macros-test-e2e:
     name: ICM Macros E2E Tests

@@ -1,7 +1,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from  "forge-std/Test.sol";
-import {Primitives, Choice, RoundTrip} from "../RoundTrip.sol";
+import {Primitives, Sizes, packSizes, unpackSizes, Choice, RoundTrip} from "../RoundTrip.sol";
 
 contract TestRoundTrip is Test {
 
@@ -65,6 +65,62 @@ contract TestRoundTrip is Test {
             assertEq(bytes32(deserialized.primitives[i].e), bytes32(original.primitives[i].e));
             assertEq(deserialized.primitives[i].f, original.primitives[i].f);
             assertEq(deserialized.primitives[i].g, original.primitives[i].g);
+        }
+    }
+
+    function testRoundTripSizes(
+        bytes memory b,
+        string memory s,
+        address addr,
+        uint8 numAddresses
+    ) public pure {
+        vm.assume(b.length <= 255);
+        vm.assume(bytes(s).length <= 65535);
+        vm.assume(numAddresses <= 10);
+
+        address[] memory addrs = new address[](numAddresses);
+        for (uint256 i = 0; i < numAddresses; i++) {
+            addrs[i] = addr;
+        }
+
+        Sizes memory original = Sizes({Bytes: b, String: s, Addresses: addrs});
+
+        bytes memory data = packSizes(original);
+        (, Sizes memory deserialized) = unpackSizes(data);
+
+        assertEq(deserialized.Bytes, original.Bytes);
+        assertEq(deserialized.String, original.String);
+        assertEq(deserialized.Addresses.length, original.Addresses.length);
+        for (uint256 i = 0; i < original.Addresses.length; i++) {
+            assertEq(deserialized.Addresses[i], original.Addresses[i]);
+        }
+    }
+
+    function testRoundTripSizesCalldata(
+        bytes memory b,
+        string memory s,
+        address addr,
+        uint8 numAddresses
+    ) public pure {
+        vm.assume(b.length <= 255);
+        vm.assume(bytes(s).length <= 65535);
+        vm.assume(numAddresses <= 10);
+
+        address[] memory addrs = new address[](numAddresses);
+        for (uint256 i = 0; i < numAddresses; i++) {
+            addrs[i] = addr;
+        }
+
+        RoundTrip.Sizes memory original = RoundTrip.Sizes({Bytes: b, String: s, Addresses: addrs});
+
+        bytes memory data = RoundTrip.packSizes(original);
+        (, RoundTrip.Sizes memory deserialized) = RoundTrip.unpackSizes(data);
+
+        assertEq(deserialized.Bytes, original.Bytes);
+        assertEq(deserialized.String, original.String);
+        assertEq(deserialized.Addresses.length, original.Addresses.length);
+        for (uint256 i = 0; i < original.Addresses.length; i++) {
+            assertEq(deserialized.Addresses[i], original.Addresses[i]);
         }
     }
 }

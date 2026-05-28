@@ -35,6 +35,17 @@
 //! It is also possible to annotate a field with `#[pack(ignore)]` and its serialization will be
 //! skipped by the macro-generated code.
 //!
+//! If a field is a dynamically sized type, by default its length will be encoded using a uint256.
+//! This can be changed by annotating the field with `#[pack(length = ...)]`, which should provide
+//! an unsigned integer solidity type.
+//!
+//! _Arrays_
+//! Arrays are supported by the macro. The macro will walk the array's elements and call the pack
+//! method for each element. The result of all these calls is then passed to encodePacked,
+//! concatenating their bytes in order of their definition.
+//!
+//! _Mappings_
+//!
 //! _Algorithm_
 //! For structs, the macro will walk the fields and call the pack method for each field. There is a
 //! default method for primitive types: For fixed size types, encodedPacked is used. For dynamically
@@ -171,10 +182,13 @@ mod tests {
 
     #[test]
     fn test_suite() {
+        let mismatched = "testing/pack/mismatched";
+        let _ = std::fs::remove_dir_all(mismatched);
+        std::fs::create_dir_all(mismatched).expect("Failed to create mismatched dir");
         reforge::testing::test_macros(
             "testing/pack/source",
             "testing/pack/expected",
-            "testing/pack/mismatched",
+            mismatched,
             &[derive_pack],
         )
         .expect("Test suite failed");
@@ -202,6 +216,10 @@ mod tests {
             (
                 "testing/pack/errors/BadContract.sol",
                 "contract `NonExistent` specified in #[pack(contract=...)] was not found",
+            ),
+            (
+                "testing/pack/errors/BadLengthType.sol",
+                "length type `int32` for field `data` of `HasBadLength` must be an unsigned integer type (uint8 to uint256)",
             ),
         ];
         for (path, expected) in cases {
