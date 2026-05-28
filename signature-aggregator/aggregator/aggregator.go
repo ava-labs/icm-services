@@ -40,12 +40,9 @@ import (
 type blsSignatureBuf [bls.SignatureLen]byte
 
 const (
-	// Maximum amount of time to spend waiting (in addition to network round trip time per attempt)
-	// during relayer signature query routine
-	signatureRequestTimeout = 2 * utils.DefaultAppRequestTimeout
 	// Maximum amount of time to spend waiting for a connection to a quorum of validators for
 	// a given subnetID
-	connectToValidatorsTimeout = 5 * time.Second
+	connectToValidatorsTimeout = 30 * time.Second
 
 	// The minimum balance that an L1 validator must maintain in order to participate
 	// in the aggregate signature.
@@ -63,13 +60,14 @@ var (
 )
 
 type SignatureAggregator struct {
-	network                *peers.AppRequestNetwork
-	messageCreator         message.Creator
-	currentRequestID       atomic.Uint32
-	metrics                *metrics.SignatureAggregatorMetrics
-	signatureCache         *SignatureCache
-	validatorClient        clients.CanonicalValidatorState
-	underfundedL1NodeCache *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
+	network                 *peers.AppRequestNetwork
+	messageCreator          message.Creator
+	currentRequestID        atomic.Uint32
+	metrics                 *metrics.SignatureAggregatorMetrics
+	signatureCache          *SignatureCache
+	validatorClient         clients.CanonicalValidatorState
+	underfundedL1NodeCache  *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
+	signatureRequestTimeout time.Duration
 
 	subnetMapsLock sync.Mutex
 
@@ -84,6 +82,7 @@ func NewSignatureAggregator(
 	signatureCacheSize uint64,
 	metrics *metrics.SignatureAggregatorMetrics,
 	validatorClient clients.CanonicalValidatorState,
+	signatureRequestTimeout time.Duration,
 ) (*SignatureAggregator, error) {
 	signatureCache, err := NewSignatureCache(signatureCacheSize)
 	if err != nil {
@@ -99,6 +98,7 @@ func NewSignatureAggregator(
 		messageCreator:          messageCreator,
 		validatorClient:         validatorClient,
 		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
+		signatureRequestTimeout: signatureRequestTimeout,
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
 	sa.currentRequestID.Store(rand.Uint32() | 1)
@@ -509,7 +509,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		)
 	}
 
-	err := utils.WithRetriesTimeout(operation, notify, signatureRequestTimeout)
+	err := utils.WithRetriesTimeout(operation, notify, s.signatureRequestTimeout)
 	if err != nil {
 		logger.Warn(
 			"Failed to collect a threshold of signatures",

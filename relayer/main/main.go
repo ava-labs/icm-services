@@ -263,6 +263,7 @@ func main() {
 			relayerMetricsRegistry,
 		),
 		clients.NewCanonicalValidatorClient(cfg.PChainAPI),
+		2*utils.DefaultAppRequestTimeout,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
