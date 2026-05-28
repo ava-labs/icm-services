@@ -319,22 +319,12 @@ func (s *MerkleSetUpdater) performUpdate(
 	ctx context.Context,
 	onChainPChainHeight uint64,
 	validatorSetUpdate *ValidatorSetMerkleCommitment,
-	isFirstRegistration bool,
 	signingChain ids.ID,
 ) error {
-	var signingSubnet ids.ID
-	if isFirstRegistration {
-		// Contract verifies with the P-chain validator set; warp source is the P-chain.
-		signingSubnet = constants.PrimaryNetworkID
-	} else {
-		// Contract verifies with the L1's registered set; preimage must use this chain ID.
-		if signingChain != constants.PrimaryNetworkID && signingChain != s.subnetID {
-			return fmt.Errorf("invalid signing chain %s: must be P-Chain or this subnet (%s)",
+	if signingChain != constants.PrimaryNetworkID && signingChain != s.subnetID {
+		return fmt.Errorf("invalid signing chain %s: must be P-Chain or this subnet (%s)",
 				signingChain, s.subnetID)
-		}
-		signingSubnet = signingChain
 	}
-
 	addressedCall, err := warppayload.NewAddressedCall(nil, validatorSetUpdate.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to create addressed call: %w", err)
@@ -349,17 +339,12 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("failed to create unsigned warp message: %w", err)
 	}
 
-	s.logger.Info("Signing new merkle root",
-		zap.Bool("isFirstRegistration", isFirstRegistration),
-		zap.Stringer("signingSubnet", signingSubnet),
-	)
-
 	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
 		ctx,
 		s.logger,
 		unsignedMsg,
 		nil,
-		signingSubnet,
+		signingChain,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
 		onChainPChainHeight,
@@ -368,21 +353,19 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, isFirstRegistration, signingChain)
+	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, signingChain)
 }
 
 func (s *MerkleSetUpdater) sendUpdate(
 	ctx context.Context,
 	signedMsg *avalancheWarp.Message,
 	onChainPChainHeight uint64,
-	isFirstRegistration bool,
 	signingChain ids.ID,
 ) error {
 	// If the P-Chain signed the message in either initial registration or as a fallback,
 	// fetch the primary network validators used to build that root so the attestation
 	// proof is computed against the correct ordered set.
-	signedByPChain := isFirstRegistration || signingChain == constants.PrimaryNetworkID
-
+	signedByPChain := (signingChain == constants.PrimaryNetworkID)
 	var attestationValidators []*Validator
 	if signedByPChain {
 		allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, onChainPChainHeight)
@@ -414,19 +397,10 @@ func (s *MerkleSetUpdater) sendUpdate(
 		return err
 	}
 
-	var tx *types.Transaction
-	if isFirstRegistration {
-		s.logger.Info("Sending registerValidatorSet (initial)")
-		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(ids.Empty))
-		if err != nil {
-			return fmt.Errorf("registerValidatorSet failed: %w", err)
-		}
-	} else {
-		s.logger.Info("Sending registerValidatorSet (update)")
-		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(signingChain))
-		if err != nil {
-			return fmt.Errorf("registerValidatorSet (update) failed: %w", err)
-		}
+	s.logger.Info("Sending registerValidatorSet")
+	tx, err := s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(signingChain))
+	if err != nil {
+		return fmt.Errorf("registerValidatorSet failed: %w", err)
 	}
 
 	receipt, err := bind.WaitMined(ctx, s.ethClient, tx)
@@ -439,7 +413,6 @@ func (s *MerkleSetUpdater) sendUpdate(
 	s.logger.Info("validator set tx confirmed",
 		zap.String("txHash", tx.Hash().Hex()),
 		zap.Uint64("blockNumber", receipt.BlockNumber.Uint64()),
-		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 	return nil
 }
