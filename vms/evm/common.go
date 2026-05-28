@@ -14,7 +14,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
 	ethereum "github.com/ava-labs/libevm"
@@ -22,20 +21,6 @@ import (
 	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
 )
-
-// CommonDestinationClient represents the minimal interface needed to implement
-// the `DestinationClient` interface for existing clients. This is an internal
-// abstraction.
-type CommonDestinationClient interface {
-	EVMChainID() *big.Int
-	RPCClient() DestinationRPCClient
-	Logger() logging.Logger
-	GasFeeConfig() *GasFeeConfig
-	FeeFactor() int64
-	ConcurrentSigners() []*readonlyConcurrentSigner
-	AccessList(data txData) types.AccessList
-	TxInclusionTimeout() time.Duration
-}
 
 // DestionationRPCClient interface represents the minimal interface needed for querying RPC endpoints.
 type DestinationRPCClient interface {
@@ -47,18 +32,18 @@ type DestinationRPCClient interface {
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	BlockNumber(ctx context.Context) (uint64, error)
 	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
-
 	EstimateBaseFee(ctx context.Context) (*big.Int, error)
 }
 
 type txData struct {
-	to            common.Address
-	gasLimit      uint64
-	gasFeeCap     *big.Int
-	gasTipCap     *big.Int
-	callData      []byte
-	signedMessage *avalancheWarp.Message
-	resultChan    chan txResult
+	to         common.Address
+	gasLimit   uint64
+	gasFeeCap  *big.Int
+	gasTipCap  *big.Int
+	chainID    *big.Int
+	callData   []byte
+	accessList types.AccessList
+	resultChan chan txResult
 }
 
 type txResult struct {
@@ -84,8 +69,9 @@ type concurrentSigner struct {
 	messageChan chan txData
 	// Semaphore to limit the number of transactions in the mempool for
 	// each account, otherwise they may be dropped.
-	queuedTxSemaphore chan struct{}
-	destinationClient CommonDestinationClient
+	queuedTxSemaphore  chan struct{}
+	txInclusionTimeout time.Duration
+	destinationClient  DestinationRPCClient
 }
 
 // processIncomingTransactions is a worker that issues transactions from a given concurrentSigner.
@@ -132,7 +118,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	// Create a standard EIP-1559 transaction with the predicate access list
 	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:    s.destinationClient.EVMChainID(),
+		ChainID:    data.chainID,
 		Nonce:      s.currentNonce,
 		To:         &data.to,
 		Gas:        data.gasLimit,
@@ -140,11 +126,11 @@ func (s *concurrentSigner) issueTransaction(
 		GasTipCap:  data.gasTipCap,
 		Value:      big.NewInt(0),
 		Data:       data.callData,
-		AccessList: s.destinationClient.AccessList(data),
+		AccessList: data.accessList,
 	})
 
 	// Sign and send the transaction on the destination chain
-	signedTx, err := s.signer.SignTx(tx, s.destinationClient.EVMChainID())
+	signedTx, err := s.signer.SignTx(tx, data.chainID)
 	if err != nil {
 		s.logger.Error(
 			"Failed to sign transaction",
@@ -168,7 +154,7 @@ func (s *concurrentSigner) issueTransaction(
 
 	log.Info("Sending transaction")
 
-	if err := s.destinationClient.RPCClient().SendTransaction(sendTxCtx, signedTx); err != nil {
+	if err := s.destinationClient.SendTransaction(sendTxCtx, signedTx); err != nil {
 		log.Error(
 			"Failed to send transaction",
 			zap.Error(err),
@@ -200,7 +186,7 @@ func (s *concurrentSigner) waitForReceipt(
 	operation := func() (err error) {
 		callCtx, callCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer callCtxCancel()
-		receipt, err = s.destinationClient.RPCClient().TransactionReceipt(callCtx, txHash)
+		receipt, err = s.destinationClient.TransactionReceipt(callCtx, txHash)
 		return err
 	}
 	notify := func(err error, duration time.Duration) {
@@ -212,7 +198,7 @@ func (s *concurrentSigner) waitForReceipt(
 		)
 	}
 
-	err := utils.WithRetriesTimeout(operation, notify, s.destinationClient.TxInclusionTimeout())
+	err := utils.WithRetriesTimeout(operation, notify, s.txInclusionTimeout)
 	if err != nil {
 		resultChan <- txResult{
 			receipt: nil,
@@ -239,12 +225,9 @@ func (s *concurrentSigner) waitForReceipt(
 // maximum priority fee per gas. The max fee per gas is set to the sum of the max base fee and the
 // max priority fee per gas.
 func getFeePerGas(
-	c CommonDestinationClient,
+	client DestinationRPCClient,
+	gasFeeConfig *GasFeeConfig,
 ) (*big.Int, *big.Int, error) {
-	rpcClient := c.RPCClient()
-	logger := c.Logger()
-	gasFeeConfig := c.GasFeeConfig()
-	feeFactor := c.FeeFactor()
 	// If the max base fee isn't explicitly set, then default to fetching the
 	// current base fee estimate and multiply it by `defaultMaxBaseFee` to allow for
 	// an increase prior to the transaction being included in a block.
@@ -255,27 +238,19 @@ func getFeePerGas(
 		// Get the current base fee estimation for the chain.
 		baseFeeCtx, baseFeeCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer baseFeeCtxCancel()
-		baseFee, err := rpcClient.EstimateBaseFee(baseFeeCtx)
+		baseFee, err := client.EstimateBaseFee(baseFeeCtx)
 		if err != nil {
-			logger.Error(
-				"Failed to get base fee",
-				zap.Error(err),
-			)
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("failed to get base fee: %w", err)
 		}
-		maxBaseFee = new(big.Int).Mul(baseFee, big.NewInt(feeFactor))
+		maxBaseFee = new(big.Int).Mul(baseFee, big.NewInt(defaultBaseFeeFactor))
 	}
 
 	// Get the suggested gas tip cap of the network
 	gasTipCapCtx, gasTipCapCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer gasTipCapCtxCancel()
-	gasTipCap, err := rpcClient.SuggestGasTipCap(gasTipCapCtx)
+	gasTipCap, err := client.SuggestGasTipCap(gasTipCapCtx)
 	if err != nil {
-		logger.Error(
-			"Failed to get gas tip cap",
-			zap.Error(err),
-		)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to get gas tip cap: %w", err)
 	}
 	gasTipCap = new(big.Int).Add(gasTipCap, gasFeeConfig.suggestedPriorityFeeBuffer)
 	if gasTipCap.Cmp(gasFeeConfig.maxPriorityFeePerGas) > 0 {
@@ -288,34 +263,38 @@ func getFeePerGas(
 }
 
 func SendTx(
-	c CommonDestinationClient,
-	signedMessage *avalancheWarp.Message,
+	logger logging.Logger,
+	client DestinationRPCClient,
+	gasFeeConfig *GasFeeConfig,
+	concurrentSigners []*readonlyConcurrentSigner,
+	accessList types.AccessList,
+	chainID *big.Int,
 	deliverers set.Set[common.Address],
-	toAddress string,
+	toAddress common.Address,
 	gasLimit uint64,
 	callData []byte,
 	txInclusionTimeout time.Duration,
 ) (*types.Receipt, error) {
-	logger := c.Logger()
-	gasFeeCap, gasTipCap, err := getFeePerGas(c)
+	gasFeeCap, gasTipCap, err := getFeePerGas(client, gasFeeConfig)
 	if err != nil {
+		logger.Error("Failed to calculate gas fee", zap.Error(err))
 		return nil, err
 	}
 
 	resultChan := make(chan txResult)
-	to := common.HexToAddress(toAddress)
 	messageData := txData{
-		to:            to,
-		gasLimit:      gasLimit,
-		gasFeeCap:     gasFeeCap,
-		gasTipCap:     gasTipCap,
-		callData:      callData,
-		signedMessage: signedMessage,
-		resultChan:    resultChan,
+		to:         toAddress,
+		gasLimit:   gasLimit,
+		gasFeeCap:  gasFeeCap,
+		gasTipCap:  gasTipCap,
+		chainID:    chainID,
+		callData:   callData,
+		accessList: accessList,
+		resultChan: resultChan,
 	}
 
 	var cases []reflect.SelectCase
-	for _, concurrentSigner := range c.ConcurrentSigners() {
+	for _, concurrentSigner := range concurrentSigners {
 		signerAddress := concurrentSigner.signer.Address()
 		if deliverers.Len() != 0 && !deliverers.Contains(signerAddress) {
 			logger.Debug(
@@ -366,9 +345,9 @@ func SendTx(
 	return result.receipt, nil
 }
 
-func SenderAddresses(c CommonDestinationClient) []common.Address {
-	addresses := make([]common.Address, len(c.ConcurrentSigners()))
-	for i, concurrentSigner := range c.ConcurrentSigners() {
+func SenderAddresses(concurrentSigners []*readonlyConcurrentSigner) []common.Address {
+	addresses := make([]common.Address, len(concurrentSigners))
+	for i, concurrentSigner := range concurrentSigners {
 		addresses[i] = concurrentSigner.signer.Address()
 	}
 	return addresses

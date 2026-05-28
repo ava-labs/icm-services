@@ -14,7 +14,10 @@ import (
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
+	predicateutils "github.com/ava-labs/avalanchego/vms/evm/predicate"
+	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 )
 
 var (
@@ -55,6 +58,20 @@ func CheckStakeWeightExceedsThreshold(
 	scaledSigWeight := new(big.Int).Mul(accumulatedSignatureWeight, new(big.Int).SetUint64(warp.WarpQuorumDenominator))
 
 	return scaledTotalWeight.Cmp(scaledSigWeight) != 1
+}
+
+func SignedWarpMessageToAccessList(signedMessage *avalancheWarp.Message) types.AccessList {
+	// Construct the actual transaction to broadcast on the destination chain
+	// Create predicate from the signed warp message
+	predicate := predicateutils.New(signedMessage.Bytes())
+
+	// Create access list with the predicate for the warp precompile
+	return types.AccessList{
+		{
+			Address:     warp.ContractAddress,
+			StorageKeys: predicate,
+		},
+	}
 }
 
 // CalculateQuorumPercentageBuffer calculates the quorum percentage buffer based on the required quorum percentage
