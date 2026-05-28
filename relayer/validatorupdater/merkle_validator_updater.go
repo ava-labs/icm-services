@@ -184,7 +184,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 			zap.Error(err),
 			zap.Stringer("subnetID", s.subnetID),
 		)
-		err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false, constants.PrimaryNetworkID)
+		err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, constants.PrimaryNetworkID)
 		if err != nil {
 			s.logger.Warn("Merkle root P-Chain fallback also failed, retrying on next tick",
 				zap.Error(err),
