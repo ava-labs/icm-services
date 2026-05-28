@@ -5,28 +5,35 @@ use solar::ast::ElementaryType;
 use solar::sema::Gcx;
 use solar::sema::hir::{Enum, ItemId, Struct, TypeKind};
 
-use crate::pack::hooks::PackArgs;
+use crate::pack::hooks::{LengthSpec, PackArgs};
 
-pub fn pack_elementary(var: &str, ty: ElementaryType, length_type: Option<&str>) -> String {
+pub fn pack_elementary(var: &str, ty: ElementaryType, length: Option<&LengthSpec>) -> String {
     match ty {
-        ElementaryType::Bytes => {
-            let len = length_cast(&format!("{var}.length"), length_type);
-            format!("abi.encodePacked({len}, {var})")
-        }
-        ElementaryType::String => {
-            let len = length_cast(&format!("bytes({var}).length"), length_type);
-            format!("abi.encodePacked({len}, {var})")
-        }
+        ElementaryType::Bytes => match length {
+            Some(LengthSpec::Drop) => format!("abi.encodePacked({var})"),
+            other => {
+                let len = length_cast(&format!("{var}.length"), other);
+                format!("abi.encodePacked({len}, {var})")
+            }
+        },
+        ElementaryType::String => match length {
+            Some(LengthSpec::Drop) => format!("abi.encodePacked({var})"),
+            other => {
+                let len = length_cast(&format!("bytes({var}).length"), other);
+                format!("abi.encodePacked({len}, {var})")
+            }
+        },
         _ => format!("abi.encodePacked({var})"),
     }
 }
 
 /// Wraps a length expression in a cast to the specified type, or returns it unchanged
 /// when no override is specified (leaving the implicit uint256 encoding in place).
-fn length_cast(len_expr: &str, length_type: Option<&str>) -> String {
-    match length_type {
-        None => len_expr.to_string(),
-        Some(ty) => format!("{ty}({len_expr})"),
+/// `Drop` is treated as no-op here; callers that care about drop must handle it before calling.
+fn length_cast(len_expr: &str, length: Option<&LengthSpec>) -> String {
+    match length {
+        None | Some(LengthSpec::Drop) => len_expr.to_string(),
+        Some(LengthSpec::Type(ty)) => format!("{ty}({len_expr})"),
     }
 }
 
@@ -60,7 +67,7 @@ pub fn pack_struct(
             continue;
         }
         let field = ctx.hir.variable(field_id);
-        if let Some(ty) = &field_args.length {
+        if let Some(LengthSpec::Type(ty)) = &field_args.length {
             validate_length_type(ty, field.name.unwrap().as_str(), struct_def.name.as_str())?;
         }
         let arg = if let Some(method) = &field_args.method {
@@ -70,7 +77,7 @@ pub fn pack_struct(
                 TypeKind::Elementary(ty) => pack_elementary(
                     &format!("obj.{}", field.name.unwrap()),
                     ty,
-                    field_args.length.as_deref(),
+                    field_args.length.as_ref(),
                 ),
                 TypeKind::Array(_) => {
                     let name = field.name.unwrap().to_string();
@@ -143,9 +150,8 @@ struct PackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
-    /// The Solidity uint type to use for this node's length/count prefix,
-    /// e.g. `"uint32"`. `None` keeps the default `uint256` encoding.
-    length: Option<String>,
+    /// Length/count prefix spec for this node. `None` keeps the default `uint256` encoding.
+    length: Option<LengthSpec>,
 }
 
 fn custom_type_name(ctx: &Gcx, item_id: ItemId) -> String {
@@ -163,7 +169,7 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
             format!(
                 "{} = {};",
                 node.output,
-                pack_elementary(&node.accessor, *elem, node.length.as_deref())
+                pack_elementary(&node.accessor, *elem, node.length.as_ref())
             )
         }
         TypeKind::Array(arr) => {
@@ -178,17 +184,22 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
                 length: None,
             };
             let inner = expand_packings_recursively(ctx, next_node)?;
-            let count = length_cast(&format!("{}.length", node.accessor), node.length.as_deref());
+            let init = if matches!(node.length, Some(LengthSpec::Drop)) {
+                format!("{} = abi.encodePacked();", node.output)
+            } else {
+                let count = length_cast(&format!("{}.length", node.accessor), node.length.as_ref());
+                format!("{} = abi.encodePacked({count});", node.output)
+            };
 
             format!(
-                "\n{} = abi.encodePacked({count});\
+                "\n{init}\
                 \nfor (uint256 {loop_var} = 0; {loop_var} < {}.length;){{\
                 \n    bytes memory {next_output};\
                 \n    {inner}\
                 \n    {} = abi.encodePacked({}, {next_output});\
                 \n    unchecked {{ ++{loop_var};}}\
                 \n}}",
-                node.output, node.accessor, node.output, node.output
+                node.accessor, node.output, node.output
             )
         }
         TypeKind::Custom(item_id) => {

@@ -43,9 +43,14 @@
 //! `#[unpack(default)]`: Skip this field; the struct is returned with a zero value for it.
 //! Intended for use alongside `#[pack(ignore)]`.
 //!
-//! `#[unpack(length=...)]`: Specify the solidity type used to serialize the length of a dynamically
-//! sized type. This must be an unsigned integer solidity type. If unspecified, the default is
-//! `uint256`.
+//! `#[unpack(length=type|constant)]`: Specify the solidity type used to serialize the length of a dynamically
+//! sized type. This must be an unsigned integer solidity type or a constant value. If unspecified,
+//! the default is `uint256`.
+//!
+//! `#[unpack(method = "expr", length = constant)]`: Pass a pre-sliced buffer of exactly `constant`
+//! bytes to `expr`. The method returns just the field value (no bytes-consumed count); the macro
+//! advances `data` by `constant` bytes. Use this for fixed-size fields decoded by a helper that
+//! does not implement the `(uint256, T)` unpack convention.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the unpack
@@ -234,10 +239,6 @@ mod tests {
             (
                 "testing/unpack/errors/BadContract.sol",
                 "contract `NonExistent` specified in #[unpack(contract=...)] was not found",
-            ),
-            (
-                "testing/unpack/errors/BadLengthType.sol",
-                "length type `int32` for field `data` of `HasBadLength` must be an unsigned integer type (uint8 to uint256)",
             ),
         ];
         for (path, expected) in cases {

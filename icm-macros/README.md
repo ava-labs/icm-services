@@ -50,8 +50,9 @@ Place a `#[pack(...)]` annotation in the NatSpec comment above a struct field to
 | Annotation | Description |
 |---|---|
 | `#[pack(ignore)]` | Skip this field entirely. |
-| `#[pack(method = "expr")]` | Use `expr(obj.field)` instead of the default pack call. |
+| `#[pack(method = "expr")]` | Use `expr(obj.field)` instead of the default pack call. Must return `bytes`. |
 | `#[pack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must be a valid Solidity unsigned integer type (`uint8`–`uint256`). Defaults to `uint256`. |
+| `#[pack(length = drop)]` | Omit the length/count prefix entirely. Use when the length is a compile-time constant known to the receiver (pairs with `#[unpack(length = constant)]`). |
 
 ```solidity
 /// #[pack()]
@@ -65,6 +66,8 @@ struct Example {
     bytes payload;
     /// #[pack(length = uint32)]
     address[] allowList;
+    /// #[pack(length = drop)]
+    bytes32 fixedHash;
 }
 ```
 
@@ -73,9 +76,9 @@ struct Example {
 | Type | Encoding |
 |---|---|
 | Fixed-size elementary (`uint*`, `int*`, `address`, `bool`, `bytes1`–`bytes32`, …) | `abi.encodePacked(field)` |
-| `bytes` | `abi.encodePacked(field.length, field)` — length prefix type overridable via `#[pack(length = uintN)]` |
-| `string` | `abi.encodePacked(bytes(field).length, field)` — length prefix type overridable via `#[pack(length = uintN)]` |
-| Array | Element count prefix (`uint256` by default) followed by recursively packed elements — count type overridable via `#[pack(length = uintN)]` |
+| `bytes` | `abi.encodePacked(field.length, field)` — prefix type overridable via `length = uintN`; omit prefix via `length = drop` |
+| `string` | `abi.encodePacked(bytes(field).length, field)` — prefix type overridable via `length = uintN`; omit prefix via `length = drop` |
+| Array | Element count prefix (`uint256` by default) followed by recursively packed elements — count type overridable via `length = uintN`; omit count via `length = drop` |
 | Custom struct/enum/UDVT | `pack{TypeName}(field)` (must be in scope) |
 | Mapping / function | **Error** — must provide `#[pack(method = "...")]` or `#[pack(ignore)]` |
 
@@ -120,16 +123,18 @@ struct MyStruct {
 | Annotation | Description |
 |---|---|
 | `#[unpack(default)]` | Skip this field; the struct is returned with its default (zero) value for this field. Useful alongside `#[pack(ignore)]`. |
-| `#[unpack(method = "expr")]` | Use `(uint256 read, field) = expr(data)` instead of the inline decoder. The method must have the same signature as a generated unpack function. |
+| `#[unpack(method = "expr")]` | Use `(uint256 read, field) = expr(data)` instead of the inline decoder. The method must accept `data` and return `(uint256, FieldType)`. |
 | `#[unpack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must match the type used by the corresponding `#[pack(length = uintN)]`. Defaults to `uint256`. |
+| `#[unpack(length = constant)]` | No prefix is read; instead `constant` is used as the field length/element count. Pairs with `#[pack(length = drop)]`. `constant` can be any Solidity expression (e.g. `32`, `BLST.SIG_LENGTH`). |
+| `#[unpack(method = "expr", length = constant)]` | Pass a pre-sliced buffer of exactly `constant` bytes to `expr`. The method returns just the field value (no bytes-consumed count); the macro advances `data` by `constant` bytes. Use for fixed-size fields decoded by a helper that does not follow the `(uint256, T)` unpack convention. |
 
 #### Primitive field decoding
 
 | Type | Decoding |
 |---|---|
 | Fixed-size elementary (`uint*`, `int*`, `address`, `bool`, `bytes1`–`bytes32`, …) | Read exact packed byte width; shift/mask as needed |
-| `bytes` / `string` | Read length prefix then copy payload — prefix width overridable via `#[unpack(length = uintN)]`, defaults to 32 bytes |
-| Array | Read element count then decode each element in a loop — count width overridable via `#[unpack(length = uintN)]`, defaults to 32 bytes |
+| `bytes` / `string` | Read length prefix then copy payload — prefix width overridable via `length = uintN`; no prefix via `length = constant` |
+| Array | Read element count then decode each element in a loop — count width overridable via `length = uintN`; no prefix via `length = constant` |
 | Custom struct/enum/UDVT | `unpack{TypeName}(data)` (must be in scope) |
 | Mapping / function | **Error** — must provide `#[unpack(method = "...")]` or `#[unpack(default)]` |
 
