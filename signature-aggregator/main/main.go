@@ -25,6 +25,7 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/healthcheck"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
+	"github.com/ava-labs/icm-services/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -166,6 +167,7 @@ func main() {
 		cfg.SignatureCacheSize,
 		metricsInstance,
 		clients.NewCanonicalValidatorClient(cfg.PChainAPI),
+		2*utils.DefaultAppRequestTimeout,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
