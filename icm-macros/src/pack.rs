@@ -26,6 +26,13 @@
 //! `visibility`: If provided, the visibility of the function will be set to this value. The default
 //! is `public`.
 //!
+//! `assert`: Provide a closure of the form `|b| {...} -> bool` to assert some post-condition on the
+//! serialized data.
+//!
+//! `solhint-disable` (flag): Wrap the generated function with
+//! `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly` comments.
+//! Use this when the project enforces the solhint `no-inline-assembly` rule.
+//!
 //! _Fields_
 //! As mentioned above, each non-primitive field is assumed to also possess a pack method. This is
 //! assumed to be in the scope in which the macro-expanded code will be placed. To override this
