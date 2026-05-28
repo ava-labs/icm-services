@@ -168,27 +168,35 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
-	err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false, s.subnetID)
+	err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, s.subnetID)
 	if err != nil {
 		// Does not retry if the update is for the P-chain itself, or if fallback to P-Chain signing is disabled.
 		if s.subnetID == constants.PrimaryNetworkID || !s.allowPChainFallback {
 			s.logger.Warn("Merkle root update failed, retrying on next tick",
 				zap.Error(err),
+				zap.Stringer("subnetID", s.subnetID),
 				zap.Bool("isPChain", s.subnetID == constants.PrimaryNetworkID),
 				zap.Bool("allowPChainFallback", s.allowPChainFallback),
 			)
 			return nil
 		}
 		s.logger.Warn("Merkle root self-signed update failed, retrying with P-Chain fallback",
-			zap.Error(err))
+			zap.Error(err),
+			zap.Stringer("subnetID", s.subnetID),
+		)
 		err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false, constants.PrimaryNetworkID)
 		if err != nil {
-			s.logger.Warn("Merkle root P-Chain fallback failed, retrying on next tick",
-				zap.Error(err))
+			s.logger.Warn("Merkle root P-Chain fallback also failed, retrying on next tick",
+				zap.Error(err),
+				zap.Stringer("subnetID", s.subnetID),
+			)
 			return nil
 		}
-		s.logger.Info("P-Chain fallback succeeded")
+		s.logger.Info("P-Chain fallback succeeded",
+			zap.Stringer("subnetID", s.subnetID),
+		)
 	}
+
 	s.localValidatorSet = newValidators
 	s.localPChainHeight = pChainHeight
 	s.localTotalWeight = sumWeights(newValidators)
@@ -240,7 +248,7 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
 		)
-		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true, ids.Empty); err != nil {
+		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, ids.Empty); err != nil {
 			return err
 		}
 		s.localValidatorSet = newValidators
