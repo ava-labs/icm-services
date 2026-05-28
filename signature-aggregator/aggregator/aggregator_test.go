@@ -995,7 +995,7 @@ func TestAggregateIfSufficientWeight_PrunesGreedyByWeight(t *testing.T) {
 	// size 3 is the unique minimum-cardinality subset that meets quorum.
 	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{10, 8, 5, 4, 1})
 
-	aggregator, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("greedy"))
 	require.NoError(t, err)
 	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
@@ -1036,7 +1036,7 @@ func TestAggregateIfSufficientWeight_SingleHeavySigner(t *testing.T) {
 	// Validator 0 alone exceeds 67% of total weight; pruning must keep only that signer.
 	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{70, 10, 10, 10})
 
-	aggregator, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("heavy"))
 	require.NoError(t, err)
 	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
@@ -1071,7 +1071,7 @@ func TestAggregateIfSufficientWeight_NoPruningWhenAllSignersNeeded(t *testing.T)
 	// 3 equally-weighted validators at 67% quorum: 2/3 = 66.67% < 67%, so all 3 are needed.
 	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1})
 
-	aggregator, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("tight"))
 	require.NoError(t, err)
 	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
@@ -1093,7 +1093,7 @@ func TestAggregateIfSufficientWeight_NoPruningWhenAllSignersNeeded(t *testing.T)
 func TestAggregateIfSufficientWeight_BelowQuorumReturnsNil(t *testing.T) {
 	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1, 1, 1})
 
-	aggregator, _, _, _, _ := instantiateAggregator(t)
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 	unsigned, err := warp.NewUnsignedMessage(constants.UnitTestID, ids.GenerateTestID(), []byte("low"))
 	require.NoError(t, err)
 
