@@ -17,7 +17,7 @@
 //! _Optional arguments_
 //! This macro takes several optional arguments. Key-value arguments use `key = "value"` syntax;
 //! flags are bare identifiers. All are comma-separated, e.g.
-//! `#[unpack(contract = "MyContract", calldata, solhint-disable)]`.
+//! `#[unpack(contract = "MyContract", calldata)]`.
 //!
 //! `contract`: Place the generated function inside the named contract or library. Required for
 //! free-standing types; otherwise the function is emitted adjacent to the type definition.
@@ -34,9 +34,8 @@
 //! `calldata` (flag): Accept `bytes calldata data` instead of `bytes memory data`. The generated
 //! code uses calldata array slices throughout, avoiding any memory allocation for the buffer itself.
 //!
-//! `solhint-disable` (flag): Wrap the generated function with
-//! `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly` comments.
-//! Use this when the project enforces the solhint `no-inline-assembly` rule.
+//! All generated function bodies are automatically wrapped with `/* solhint-disable */` /
+//! `/* solhint-enable */`, so no annotation is needed to suppress lint warnings inside generated code.
 //!
 //! _Fields_
 //! Each non-primitive field is decoded by calling its own unpack function, which must be in scope

@@ -406,7 +406,7 @@ library BLST {
     /**
      * @notice Turns the 128-byte format expected by the BLS12381_G1_ADD_PRECOMPILE into
      * a 96-byte uncompressed BLS public key
-     * @param publicKey The the 128-byte padded format.
+     * @param publicKey The 128-byte padded format.
      * @return The 96-byte uncompressed BLS public key.
      */
     function unPadUncompressedBlsPublicKey(
