@@ -162,8 +162,14 @@ function generate_bindings() {
     echo "Additional flags: $additional_flags"
 
     # When compiling from the expanded dir, redirect project-source remappings
-    # (those whose RHS does not start with lib/) to point into source_root so
-    # that all imports resolve to the same absolute path and types are compatible.
+    # (those whose RHS does not start with lib/ or /) to paths inside source_root,
+    # expressed as paths RELATIVE to $REPO_PATH (the solc CWD).  Keeping both the
+    # input file and all remapping targets as relative paths ensures solc uses a
+    # single consistent key for every file in its internal map, preventing the
+    # "IWrappedNativeToken to IWrappedNativeToken" type-conflict that arises when
+    # the same physical file is reached once via a relative path and once via an
+    # absolute path derived from a remapping target.
+    local source_root_rel="${source_root#$REPO_PATH/}"
     local effective_remappings="$remappings"
     if [[ -n "$source_root" ]]; then
         effective_remappings=""
@@ -172,7 +178,7 @@ function generate_bindings() {
             if [[ "$rhs" == lib/* || "$rhs" == /* ]]; then
                 effective_remappings+=" $remap"
             else
-                effective_remappings+=" ${remap%%=*}=$source_root/$rhs"
+                effective_remappings+=" ${remap%%=*}=$source_root_rel/$rhs"
             fi
         done
     fi
@@ -191,16 +197,17 @@ function generate_bindings() {
         cwd=$(pwd)
         cd $REPO_PATH
 
-        # When a source_root is provided (macro-expanded dir), redirect solc to
-        # the expanded file. --allow-paths grants solc access to the temp dir.
+        # Express the input file as a path relative to $REPO_PATH so that solc
+        # records it under the same relative key it uses for all other project
+        # files reached via the redirected remappings above.
         local sol_file
         if [[ -n "$source_root" ]]; then
-            sol_file="$source_root/${cwd#$REPO_PATH/}/$dir/$contract_name.sol"
+            sol_file="$source_root_rel/${cwd#$REPO_PATH/}/$dir/$contract_name.sol"
         else
             sol_file="$cwd/$dir/$contract_name.sol"
         fi
 
-        solc --optimize --evm-version $evm_version $additional_flags --metadata-hash none --combined-json abi,bin,metadata,ast,devdoc,userdoc --pretty-json ${source_root:+--allow-paths "$source_root"} $sol_file $effective_remappings > $combined_json
+        solc --optimize --evm-version $evm_version $additional_flags --metadata-hash none --combined-json abi,bin,metadata,ast,devdoc,userdoc --pretty-json $sol_file $effective_remappings > $combined_json
         cd $cwd
 
         # construct the exclude list
@@ -252,9 +259,14 @@ if [[ -z "${ETHEREUM_CONTRACT_LIST}" ]]; then
     ETHEREUM_CONTRACT_LIST=($DEFAULT_ETHEREUM_CONTRACT_LIST)
 fi
 
-# Expand macros for all profiles into a single temp dir so that cross-profile
-# relative imports (e.g. DiffUpdater -> ../common/ICM.sol) resolve correctly.
-EXPANDED_DIR=$(mktemp -d)
+# Expand macros into a fixed directory so that the absolute paths embedded by
+# solc in its metadata output are stable across runs, keeping generated Go
+# bindings deterministic.  A random mktemp path would change every invocation
+# and propagate into the metadata field of the combined JSON that abigen embeds
+# in the generated file.
+EXPANDED_DIR="$REPO_PATH/out/macro-expanded"
+rm -rf "$EXPANDED_DIR"
+mkdir -p "$EXPANDED_DIR"
 trap "rm -rf '$EXPANDED_DIR'" EXIT
 cd $REPO_PATH
 for profile in default common ethereum; do
