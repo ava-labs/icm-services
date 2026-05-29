@@ -25,6 +25,7 @@ library PackMethods {
     }
 
     function packDynamicStruct(DynamicStruct memory obj) public pure returns (bytes memory) {
+        /* solhint-disable */
         bytes memory Addresses_bytes;
         require(obj.Hash.length == (Lengths.HASH_LENGTH), "packDynamicStruct: invalid Hash length");
         require(bytes(obj.Tag).length == (3), "packDynamicStruct: invalid Tag length");
@@ -64,5 +65,6 @@ library PackMethods {
             Pair_bytes,
             ParsedHash_bytes
         );
+        /* solhint-enable */
     }
 }

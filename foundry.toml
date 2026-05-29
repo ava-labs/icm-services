@@ -8,6 +8,7 @@ test = 'tests'
 bytecode_hash = "none"
 optimizer = true
 optimizer_runs = 200
+via_ir = true
 
 [profile.common]
 src = 'icm-contracts/common/'
