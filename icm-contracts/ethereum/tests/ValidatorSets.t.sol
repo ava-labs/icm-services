@@ -7,12 +7,57 @@ import {Test} from "@forge-std/Test.sol";
 import {BLST} from "../utils/BLST.sol";
 import {
     Validator,
+    ValidatorChange,
+    ValidatorSet,
     ValidatorSets,
+    ValidatorSetDiff,
+    ValidatorSetSignature,
+    ValidatorSetMetadata,
+    ValidatorSetShard,
     ValidatorSetMerkleAttestation,
     ValidatorSetMerkleCommitment
 } from "../utils/ValidatorSets.sol";
 
 contract ValidatorSetsTestHarness {
+    function parseValidatorSetDiff(
+        bytes calldata data,
+        uint256 currentValidatorCount
+    ) public pure returns (ValidatorSetDiff memory) {
+        return ValidatorSets.parseValidatorSetDiff(data, currentValidatorCount);
+    }
+
+    function parseValidatorChange(
+        bytes calldata data,
+        uint256 offset
+    ) public pure returns (ValidatorChange memory, uint256) {
+        return ValidatorSets.parseValidatorChange(data, offset);
+    }
+
+    function parseValidators(
+        bytes calldata data
+    ) public pure returns (Validator[] memory, uint64) {
+        return ValidatorSets.parseValidators(data);
+    }
+
+    function parseValidatorSetMetadata(
+        bytes calldata data
+    ) public pure returns (ValidatorSetMetadata memory) {
+        return ValidatorSets.parseValidatorSetMetadata(data);
+    }
+
+    function parseValidatorSetSignature(
+        bytes calldata signatureBytes
+    ) public pure returns (ValidatorSetSignature memory) {
+        return ValidatorSets.parseValidatorSetSignature(signatureBytes);
+    }
+
+    function parseValidatorSetShard(
+        bytes calldata shardBytes
+    ) public pure returns (ValidatorSetShard memory) {
+        (, ValidatorSetShard memory res) = ValidatorSets.parseValidatorSetShard(shardBytes);
+        return res;
+    }
+
     function parseMerkleAttestation(
         bytes calldata attestationBytes
     ) public pure returns (ValidatorSetMerkleAttestation memory) {
@@ -194,7 +239,7 @@ contract ValidatorSetsTest is Test {
     ) public view {
         ValidatorChange memory valChange =
             ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(secretKey), weight: weight});
-        bytes memory serialized = ValidatorSets.serializeValidatorChange(valChange);
+        bytes memory serialized = ValidatorSets.packValidatorChange(valChange);
         /* solhint-disable-next-line no-unused-vars */
         (ValidatorChange memory deserialized, uint256 offset) =
             _harness.parseValidatorChange(serialized, 0);
@@ -300,9 +345,8 @@ contract ValidatorSetsTest is Test {
         // Build signers
         Validator[] memory signers = new Validator[](numSigners);
         for (uint256 i; i < numSigners; i++) {
-            signers[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(i + 1), weight: uint64((i + 1) % 2)
-            });
+            (, ValidatorChange memory change) = _createValidatorChange(i + 1);
+            signers[i] = Validator({blsPublicKey: change.blsPublicKey, weight: change.weight});
         }
         // Build dummy proof hashes
         bytes32[] memory proof = new bytes32[](numProofHashes);
@@ -363,5 +407,55 @@ contract ValidatorSetsTest is Test {
         assertEq(parsed.totalWeight, original.totalWeight);
         assertEq(parsed.pChainHeight, original.pChainHeight);
         assertEq(parsed.pChainTimestamp, original.pChainTimestamp);
+    }
+
+    /*
+     * @dev Test util to generate a set of validators. Returns validators and total staking weight
+     * N.B. These validators are not sorted by key, so any test requiring that should not use this
+     * function
+     */
+    function _createValidatorSet(
+        uint256 numValidators
+    ) private view returns (Validator[] memory, uint64) {
+        Validator[] memory validators = new Validator[](numValidators);
+        uint64 totalWeight = 0;
+        for (uint256 i = 1; i <= numValidators; i++) {
+            validators[i - 1] =
+                Validator({blsPublicKey: BLST.getPublicKeyFromSecret(i), weight: uint64(i)});
+            totalWeight += uint64(i);
+        }
+        return (validators, totalWeight);
+    }
+
+    /*
+     * @dev Create a validator change from an index
+     */
+    function _createValidatorChange(
+        uint256 i
+    ) private view returns (bool, ValidatorChange memory) {
+        return (
+            i % 2 != 0,
+            ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(i), weight: uint64(i % 2)})
+        );
+    }
+
+    /*
+     * @dev Create 96 bytes from three 32 bytes words
+     * N.B. These are for testing serialization and key-ordering. They are not real public keys
+     * and should not be used as such.
+     */
+    function _createPublicKeyFromWords(
+        uint256 x,
+        uint256 y,
+        uint256 z
+    ) private pure returns (bytes memory) {
+        bytes memory pk = new bytes(96);
+        /* solhint-disable-next-line no-inline-assembly */
+        assembly {
+            mstore(add(pk, 0x20), x)
+            mstore(add(pk, 0x40), y)
+            mstore(add(pk, 0x60), z)
+        }
+        return pk;
     }
 }
