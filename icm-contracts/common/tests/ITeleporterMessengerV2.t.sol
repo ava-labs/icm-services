@@ -122,7 +122,7 @@ contract ICMTest is Test {
         });
 
         bytes memory serialized = ICMTeleporterV2.packTeleporterICMMessage(icmMessage);
-        (,TeleporterICMMessage memory deserializedICM) =
+        (, TeleporterICMMessage memory deserializedICM) =
             ICMTeleporterV2.unpackTeleporterICMMessage(serialized);
         assertEq(icmMessage.sourceNetworkID, deserializedICM.sourceNetworkID);
         assertEq(icmMessage.sourceBlockchainID, deserializedICM.sourceBlockchainID);
