@@ -34,32 +34,34 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
-      - name: Cache reforge binary
-        id: cache-reforge
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
 
-      - name: Cache Cargo (icm-macros)
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+      - name: Expand macros and compile
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+          reforge build --build-info
+          FOUNDRY_PROFILE=common reforge build --build-info
+          FOUNDRY_PROFILE=ethereum reforge build --build-info
 
-      - name: Build reforge
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        run: ./scripts/build_reforge.sh
+      - name: Sync expanded sources from build artifacts
+        run: |
+          python3 - <<'EOF'
+          import json, glob, os
+          for f in glob.glob("out/build-info/*.json"):
+              d = json.load(open(f))
+              for path, info in d.get("input", {}).get("sources", {}).items():
+                  content = info.get("content", "")
+                  if content and os.path.exists(path):
+                      if open(path).read() != content:
+                          open(path, "w").write(content)
+                          print(f"Updated: {path}")
+          EOF
 
       - name: Run Slither
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          slither ./ --fail-none --sarif ./results.sarif
+          slither ./ --foundry-ignore-compile --fail-none --sarif ./results.sarif
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v4
