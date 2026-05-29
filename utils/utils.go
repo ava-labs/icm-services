@@ -51,13 +51,21 @@ func CheckStakeWeightExceedsThreshold(
 	if accumulatedSignatureWeight == nil {
 		return false
 	}
+	return accumulatedSignatureWeight.Cmp(RequiredSignatureWeight(totalWeight, quorumNumerator)) >= 0
+}
 
-	// Verifies that quorumNum * totalWeight <= quorumDen * sigWeight
-	totalWeightBI := new(big.Int).SetUint64(totalWeight)
-	scaledTotalWeight := new(big.Int).Mul(totalWeightBI, new(big.Int).SetUint64(quorumNumerator))
-	scaledSigWeight := new(big.Int).Mul(accumulatedSignatureWeight, new(big.Int).SetUint64(warp.WarpQuorumDenominator))
-
-	return scaledTotalWeight.Cmp(scaledSigWeight) != 1
+// RequiredSignatureWeight returns the minimum signature weight that meets the
+// [quorumNumerator]/WarpQuorumDenominator threshold of [totalWeight], i.e.
+// ceil(totalWeight * quorumNumerator / WarpQuorumDenominator).
+func RequiredSignatureWeight(totalWeight, quorumNumerator uint64) *big.Int {
+	quorumDen := new(big.Int).SetUint64(warp.WarpQuorumDenominator)
+	required := new(big.Int).Mul(
+		new(big.Int).SetUint64(totalWeight),
+		new(big.Int).SetUint64(quorumNumerator),
+	)
+	// ceil(required / quorumDen) == (required + quorumDen - 1) / quorumDen
+	required.Add(required, new(big.Int).Sub(quorumDen, big.NewInt(1)))
+	return required.Quo(required, quorumDen)
 }
 
 func SignedWarpMessageToAccessList(signedMessage *avalancheWarp.Message) types.AccessList {

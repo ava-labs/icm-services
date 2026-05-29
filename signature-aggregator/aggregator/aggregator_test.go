@@ -120,52 +120,11 @@ func (v validatorInfo) Compare(o validatorInfo) int {
 }
 
 func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []*localsigner.LocalSigner) {
-	validatorValues := make([]validatorInfo, validatorCount)
-	for i := 0; i < validatorCount; i++ {
-		localSigner, err := localsigner.New()
-		if err != nil {
-			panic(err)
-		}
-		pubKey := localSigner.PublicKey()
-		nodeID := ids.GenerateTestNodeID()
-		validatorValues[i] = validatorInfo{
-			nodeID:            nodeID,
-			blsSigner:         localSigner,
-			blsPublicKey:      pubKey,
-			blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
-			weight:            1,
-		}
+	weights := make([]uint64, validatorCount)
+	for i := range weights {
+		weights[i] = 1
 	}
-
-	// Sort the validators by public key to construct the NodeValidatorIndexMap
-	utils.Sort(validatorValues)
-
-	// Placeholder for results
-	validatorSet := make([]*validators.Warp, validatorCount)
-	validatorSigners := make([]*localsigner.LocalSigner, validatorCount)
-	nodeValidatorIndexMap := make(map[ids.NodeID]int)
-	connectedNodes := set.NewSet[ids.NodeID](validatorCount)
-	for i, validator := range validatorValues {
-		validatorSigners[i] = validator.blsSigner
-		validatorSet[i] = &validators.Warp{
-			PublicKey:      validator.blsPublicKey,
-			PublicKeyBytes: validator.blsPublicKeyBytes,
-			Weight:         validator.weight,
-			NodeIDs:        []ids.NodeID{validator.nodeID},
-		}
-		nodeValidatorIndexMap[validator.nodeID] = i
-		connectedNodes.Add(validator.nodeID)
-	}
-
-	return &peers.CanonicalValidators{
-		ConnectedWeight: uint64(validatorCount),
-		ConnectedNodes:  connectedNodes,
-		ValidatorSet: validators.WarpSet{
-			Validators:  validatorSet,
-			TotalWeight: uint64(validatorCount),
-		},
-		NodeValidatorIndexMap: nodeValidatorIndexMap,
-	}, validatorSigners
+	return makeConnectedValidatorsWithWeights(weights)
 }
 
 func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
@@ -892,9 +851,9 @@ func TestPopulateSignatureMapFromCache(t *testing.T) {
 	require.Equal(t, connectedValidators.ValidatorSet.Validators[0].Weight, accWeight.Uint64())
 }
 
-// makeConnectedValidatorsWithWeights mirrors makeConnectedValidators but lets each
-// validator have its own weight. Validators are returned in canonical (pubkey)
-// order, paired with their signers in the same order.
+// makeConnectedValidatorsWithWeights creates len(weights) connected validators,
+// assigning each its corresponding weight. Validators are returned in canonical
+// (pubkey) order, paired with their signers in the same order.
 func makeConnectedValidatorsWithWeights(
 	weights []uint64,
 ) (*peers.CanonicalValidators, []*localsigner.LocalSigner) {
