@@ -106,8 +106,8 @@ github.com/ashanbrown/forbidigo v1.6.0 h1:D3aewfM37Yb3pxHujIPSpTf6oQk9sc9WZi8ger
 github.com/ashanbrown/forbidigo v1.6.0/go.mod h1:Y8j9jy9ZYAEHXdu723cUlraTqbzjKF1MUyfOKL+AjcU=
 github.com/ashanbrown/makezero v1.2.0 h1:/2Lp1bypdmK9wDIq7uWBlDF1iMUpIIS4A+pF6C9IEUU=
 github.com/ashanbrown/makezero v1.2.0/go.mod h1:dxlPhHbDMC6N6xICzFBSK+4njQDdK8euNO0qjQMtGY4=
-github.com/ava-labs/avalanchego v1.14.3-0.20260513215209-0b97f502fc1b h1:9ygjhyodEsygbR3Mo4lhON5Kupfg+9ExW3+8wG69k4M=
-github.com/ava-labs/avalanchego v1.14.3-0.20260513215209-0b97f502fc1b/go.mod h1:yscKaxEqRep24ZsM+O9ZQ0N7OwkChG3mk5XB02FTeRM=
+github.com/ava-labs/avalanchego v1.14.3-0.20260522103411-a295be69028b h1:U3PdD97VZQOAiWxFk51kXRwww2Hkc+cxDHvas9yKbHM=
+github.com/ava-labs/avalanchego v1.14.3-0.20260522103411-a295be69028b/go.mod h1:yscKaxEqRep24ZsM+O9ZQ0N7OwkChG3mk5XB02FTeRM=
 github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260513215209-0b97f502fc1b h1:OF1+qAO3nCfjBvTXQ/722v3E3k31cmMYpmF1+wdGRK4=
 github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260513215209-0b97f502fc1b/go.mod h1:dp6gM+2b7SdWEqZwxi+4SnfJvgMj0wW9y6WKCHMlmEc=
 github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260513215209-0b97f502fc1b h1:BhDVuAUZJ2v8TVoYjzQEJ7Vl4ZANM7qiJlUG+lMNf2k=
