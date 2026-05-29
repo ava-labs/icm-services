@@ -633,10 +633,13 @@ func runExecutable(
 	go func() { // wait for health check to report healthy
 		for {
 			resp, err := http.Get(healthCheckUrl)
-			if err == nil && resp.StatusCode == 200 {
-				log.Info("Health check passed")
-				close(readyChan)
-				break
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == 200 {
+					log.Info("Health check passed")
+					close(readyChan)
+					break
+				}
 			}
 			log.Info("Health check failed", zap.Error(err))
 			time.Sleep(time.Second * 1)
