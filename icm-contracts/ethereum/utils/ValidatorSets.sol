@@ -260,7 +260,7 @@ library ValidatorSets {
         // Reconstruct leaves
         bytes32[] memory leaves = new bytes32[](numSigners);
         for (uint256 i = 0; i < numSigners;) {
-            leaves[i] = sha256(abi.encodePacked(att.signers[i].blsPublicKey, att.signers[i].weight));
+            leaves[i] = hashValidator(att.signers[i]);
             unchecked {
                 ++i;
             }
@@ -269,7 +269,9 @@ library ValidatorSets {
         // Perform Merkle multi-inclusion proof verification against the stored root
         // TODO: Switch to multiProofVerifyCalldata once parseMerkleAttestation returns calldata slice offsets instead of a memory struct for additional gas savings
         if (
-            !MerkleProof.multiProofVerify(att.proof, att.proofFlags, comm.root, leaves, _sha256Pair)
+            !MerkleProof.multiProofVerify(
+                att.proof, att.proofFlags, comm.root, leaves, sha256InternalPair
+            )
         ) {
             return false;
         }
@@ -923,7 +925,20 @@ library ValidatorSets {
         );
     }
 
-    function _sha256Pair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
-        return a < b ? sha256(abi.encodePacked(a, b)) : sha256(abi.encodePacked(b, a));
+    function sha256InternalPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+        return a < b
+            ? sha256(abi.encodePacked(uint256(0), a, b))
+            : sha256(abi.encodePacked(uint256(0), b, a));
+    }
+
+    /*
+     * @notice Prepends a one to the hash of a validator to avoid second pre-image attacks on
+     * the merkle trees. This is a convenience function that should be used to hash validators
+     * rather than calling sha256 on them directly
+     */
+    function hashValidator(
+        Validator memory val
+    ) internal pure returns (bytes32) {
+        return sha256(abi.encodePacked(uint256(1), val.blsPublicKey, val.weight));
     }
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/sampler"
 	"github.com/ava-labs/avalanchego/utils/set"
+	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/prometheus/client_golang/prometheus"
@@ -428,16 +429,9 @@ func (n *AppRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID
 // GetNetworkHealthFunc returns a health check function for the network
 func (n *AppRequestNetwork) GetNetworkHealthFunc(subnetIDs []ids.ID) func(context.Context) error {
 	return func(ctx context.Context) error {
-		cachedHeight := n.validatorManager.GetLatestSyncedPChainHeight()
-		if cachedHeight == 0 {
-			// This should only happen at startup when the cache is not yet initialized.
-			n.logger.Info("No cached P-Chain height, skipping network health check")
-			return nil
-		}
-
 		allValidatorSets, err := n.validatorManager.GetAllValidatorSets(
 			ctx,
-			cachedHeight,
+			uint64(pchainapi.ProposedHeight),
 		)
 		if err != nil {
 			n.logger.Error("Failed to get all validator sets", zap.Error(err))
