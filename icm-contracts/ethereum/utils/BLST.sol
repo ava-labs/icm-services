@@ -551,7 +551,7 @@ library BLST {
     }
 
     /*
-     * @notice Compare to uncompress (96 bytes) public keys lexicographically
+     * @notice Compare two uncompressed (96 bytes) public keys lexicographically
      * @param key1 first public key
      * @param key2 second public key
      * @return 1 if key1 > key2, 0 if equal, -1 otherwise
