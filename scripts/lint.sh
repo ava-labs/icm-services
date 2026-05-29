@@ -27,9 +27,28 @@ function solLinter() {
     # lint solidity contracts
     echo "Linting Solidity contracts..."
     cd $REPO_PATH
+
+    # Expand macros to a temp dir
+    EXPANDED_DIR=$(mktemp -d)
+    trap "rm -rf '$EXPANDED_DIR'" EXIT
+
+    for profile in default common ethereum; do
+        current_file=""
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^===\ (.+)\ ===$ ]]; then
+                current_file="$EXPANDED_DIR/${BASH_REMATCH[1]}"
+                mkdir -p "$(dirname "$current_file")"
+                : > "$current_file"
+            elif [[ -n "$current_file" ]]; then
+                printf '%s\n' "$line" >> "$current_file"
+            fi
+        done < <(FOUNDRY_PROFILE="$profile" reforge --display '**/*.sol' build 2>/dev/null)
+    done
+
+    # solhint globs are relative to cwd, so cd into the expanded dir.
     # "solhint **/*.sol" runs differently than "solhint '**/*.sol'", where the latter checks sol files
     # in subdirectories. The former only checks sol files in the current directory and directories one level down.
-    solhint '**/*.sol' --config ./.solhint.json --ignore-path ./.solhintignore --max-warnings 0
+    (cd "$EXPANDED_DIR" && solhint '**/*.sol' --config "$REPO_PATH/.solhint.json" --max-warnings 0)
 }
 
 function golangLinter() {

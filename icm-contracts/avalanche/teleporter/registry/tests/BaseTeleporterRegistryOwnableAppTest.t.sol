@@ -47,11 +47,13 @@ contract ExampleRegistryOwnableAppUpgradeable is TeleporterRegistryOwnableAppUpg
         _checkTeleporterRegistryAppAccess();
     }
 
+    // solhint-disable no-empty-blocks
     function _receiveTeleporterMessage(
         bytes32 sourceBlockchainID,
         address originSenderAddress,
-        bytes memory message // solhint-disable-next-line no-empty-blocks
+        bytes memory message
     ) internal override {}
+    // solhint-enable no-empty-blocks
 }
 
 contract ExampleRegistryOwnableApp is TeleporterRegistryOwnableApp {
@@ -81,11 +83,13 @@ contract ExampleRegistryOwnableApp is TeleporterRegistryOwnableApp {
         _checkTeleporterRegistryAppAccess();
     }
 
+    // solhint-disable no-empty-blocks
     function _receiveTeleporterMessage(
         bytes32 sourceBlockchainID,
         address originSenderAddress,
-        bytes memory message // solhint-disable-next-line no-empty-blocks
+        bytes memory message
     ) internal override {}
+    // solhint-enable no-empty-blocks
 }
 
 abstract contract BaseTeleporterRegistryOwnableAppTest is BaseTeleporterRegistryAppTest {
