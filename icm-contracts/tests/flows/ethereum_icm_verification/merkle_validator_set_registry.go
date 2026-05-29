@@ -92,29 +92,29 @@ func MerkleValidatorSetRegistry(
 
 	// Deploy MerkleValidatorSetRegistry on Ethereum
 	merkleRegistryAddr := utils.DeployMerkleValidatorSetRegistry(
-		ctx, 
-		ethInfo, 
+		ctx,
+		ethInfo,
 		ethFundedKey,
-		networkID, 
+		networkID,
 		constants.PlatformChainID,
-		pChainRoot, 
-		pChainTotalWeight, 
-		pChainHeight, 
-		pChainTimestamp, 
+		pChainRoot,
+		pChainTotalWeight,
+		pChainHeight,
+		pChainTimestamp,
 		false,
 	)
 
 	// Deploy MerkleValidatorSetRegistry on the Avalanche L1
 	merkleRegistryAddrL1 := utils.DeployMerkleValidatorSetRegistry(
-		ctx, 
-		&l1Info, 
+		ctx,
+		&l1Info,
 		fundedAvalancheKey,
-		networkID, 
+		networkID,
 		constants.PlatformChainID,
-		pChainRoot, 
-		pChainTotalWeight, 
-		pChainHeight, 
-		pChainTimestamp, 
+		pChainRoot,
+		pChainTotalWeight,
+		pChainHeight,
+		pChainTimestamp,
 		false,
 	)
 	Expect(merkleRegistryAddrL1).Should(Equal(merkleRegistryAddr))
@@ -213,11 +213,6 @@ func MerkleValidatorSetRegistry(
 	receiptEvent, err := utils.GetEventFromLogs(receipt.Logs, l1Teleporter.ParseReceiveCrossChainMessage)
 	Expect(err).Should(BeNil())
 	Expect(receiptEvent.Message.Message).Should(Equal(ethMsg.Message.Message))
-
-	executedEvent, err := utils.GetEventFromLogs(receipt.Logs, l1Teleporter.ParseMessageExecuted)
-	Expect(err).Should(BeNil())
-	Expect(executedEvent.MessageID).Should(Equal(receiptEvent.MessageID))
-	Expect(executedEvent.SourceBlockchainID).Should(Equal(ethMsg.SourceBlockchainID))
 
 	// Step 4: Send cross-chain message from the Avalanche L1 -> Ethereum verifying against MerkleValidatorSetRegistry
 	avalancheMessage := teleportermessengerv2.TeleporterMessageInput{

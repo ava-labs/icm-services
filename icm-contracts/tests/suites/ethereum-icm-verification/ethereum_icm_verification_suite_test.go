@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
-	"math/big"
 	"flag"
+	"math/big"
 	"os"
 	"testing"
 	"time"
@@ -206,7 +206,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	type ecdsaDeployInfo struct {
 		name      string
-		chainInfo testinfo.NetworkTestInfo   
+		chainInfo testinfo.NetworkTestInfo
 		chainID   *big.Int
 		fundedKey *ecdsa.PrivateKey
 		ethClient *ethclient.Client
@@ -228,7 +228,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		},
 		{
 			name:      "Ethereum",
-			chainInfo: ethereumNetworkInfo, 
+			chainInfo: ethereumNetworkInfo,
 			chainID:   localEthereumNetworkInstance.ChainID,
 			fundedKey: fundedEthereumKey,
 			ethClient: localEthereumNetworkInstance.EthClient,
