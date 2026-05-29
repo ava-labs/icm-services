@@ -24,7 +24,7 @@ contract ICMTest is Test {
         });
 
         bytes memory serialized = ICM.serializeICMMessage(message);
-        (,ICMMessage memory deserialized) = ICM.parseICMMessage(serialized);
+        (, ICMMessage memory deserialized) = ICM.parseICMMessage(serialized);
 
         assertEq(uint32(sourceNetworkID), deserialized.sourceNetworkID);
         assertEq(sourceBlockchainID, deserialized.sourceBlockchainID);
