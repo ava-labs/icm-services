@@ -16,8 +16,10 @@ import (
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/utils"
 	mock_ethclient "github.com/ava-labs/icm-services/vms/evm/mocks"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -136,7 +138,7 @@ func TestGetFeePerGas(t *testing.T) {
 			)
 
 			gasFeeCap, gasTipCap, err := destClient.getFeePerGas()
-			require.ErrorIs(t, test.expectedError, err)
+			require.ErrorIs(t, err, test.expectedError)
 			require.Equal(t, test.expectedGasFeeCap, gasFeeCap)
 			require.Equal(t, test.expectedGasTipCap, gasTipCap)
 		})
@@ -144,17 +146,19 @@ func TestGetFeePerGas(t *testing.T) {
 }
 
 func TestSendTx(t *testing.T) {
-	var destClient destinationClient
+	ctrl := gomock.NewController(t)
+	mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 	txSigners, err := signer.NewTxSigners(destinationSubnet.AccountPrivateKeys)
 	require.NoError(t, err)
 
 	signer := &concurrentSigner{
-		logger:            logging.NoLog{},
-		signer:            txSigners[0],
-		currentNonce:      0,
-		messageChan:       make(chan txData),
-		queuedTxSemaphore: make(chan struct{}, poolTxsPerAccount),
-		destinationClient: &destClient,
+		logger:             logging.NoLog{},
+		signer:             txSigners[0],
+		currentNonce:       0,
+		messageChan:        make(chan txData),
+		queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
+		txInclusionTimeout: 30 * time.Second,
+		destinationClient:  mockClient,
 	}
 	go signer.processIncomingTransactions()
 
@@ -220,14 +224,12 @@ func TestSendTx(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
 			gasFeeConfig := GasFeeConfig{
 				maxBaseFee:                 test.maxBaseFee,
 				suggestedPriorityFeeBuffer: big.NewInt(0),
 				maxPriorityFeePerGas:       big.NewInt(0),
 			}
-			destClient = destinationClient{
+			destClient := destinationClient{
 				readonlyConcurrentSigners: []*readonlyConcurrentSigner{
 					(*readonlyConcurrentSigner)(signer),
 				},
@@ -239,7 +241,7 @@ func TestSendTx(t *testing.T) {
 				txInclusionTimeout: 30 * time.Second,
 			}
 			warpMsg := &avalancheWarp.Message{}
-			toAddress := "0x27aE10273D17Cd7e80de8580A51f476960626e5f"
+			toAddress := common.HexToAddress("0x27aE10273D17Cd7e80de8580A51f476960626e5f")
 
 			gomock.InOrder(
 				mockClient.EXPECT().EstimateBaseFee(gomock.Any()).Return(
@@ -263,7 +265,9 @@ func TestSendTx(t *testing.T) {
 					).Times(test.txReceiptTimes),
 			)
 
-			_, err := destClient.SendTx(warpMsg, nil, toAddress, 0, []byte{})
+			accessList := utils.SignedWarpMessageToAccessList(warpMsg)
+
+			_, err := destClient.SendTx(logging.NoLog{}, accessList, nil, toAddress, 0, []byte{})
 			if test.expectError {
 				require.Error(t, err)
 			} else {

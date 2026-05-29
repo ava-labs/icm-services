@@ -12,13 +12,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	predicateutils "github.com/ava-labs/avalanchego/vms/evm/predicate"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/proposervm/block"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
@@ -105,11 +102,37 @@ func NewDestinationClient(
 		return nil, fmt.Errorf("failed to get chain ID from destination chain endpoint: %w", err)
 	}
 
-	var (
-		destClient                 destinationClient
-		pendingNonce, currentNonce uint64
-		readonlyConcurrentSigners  = make([]*readonlyConcurrentSigner, len(signers))
-	)
+	// Create ProposerVM client for the destination chain
+	endpoint, err := url.Parse(destinationBlockchain.RPCEndpoint.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse rpc endpoint for ProposerVM client: %w", err)
+	}
+
+	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
+	blockchainID := destinationBlockchain.BlockchainID
+	proposerClient := clients.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
+	gasFeeConfig := &GasFeeConfig{
+		maxBaseFee:                 new(big.Int).SetUint64(destinationBlockchain.MaxBaseFee),
+		suggestedPriorityFeeBuffer: new(big.Int).SetUint64(destinationBlockchain.SuggestedPriorityFeeBuffer),
+		maxPriorityFeePerGas:       new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
+	}
+
+	destClient := &destinationClient{
+		avaRPCClient:              NewAvaDestinationClient(ethClient, rpcClient),
+		ethClient:                 ethClient,
+		readonlyConcurrentSigners: make([]*readonlyConcurrentSigner, len(signers)),
+		destinationBlockchainID:   destinationID,
+		rpcEndpointURL:            destinationBlockchain.RPCEndpoint.BaseURL,
+		evmChainID:                evmChainID,
+		logger:                    logger,
+		blockGasLimit:             destinationBlockchain.BlockGasLimit,
+		gasFeeConfig:              gasFeeConfig,
+		txInclusionTimeout:        time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
+		proposerClient:            proposerClient,
+		epochDuration:             epochDuration,
+	}
+
+	var pendingNonce, currentNonce uint64
 
 	// Block until all pending txs are accepted
 	ticker := time.NewTicker(pendingTxRefreshInterval)
@@ -147,17 +170,18 @@ func NewDestinationClient(
 			log.Debug("Pending txs accepted")
 
 			concurrentSigner := &concurrentSigner{
-				logger:            log,
-				signer:            signer,
-				currentNonce:      currentNonce,
-				messageChan:       make(chan txData),
-				queuedTxSemaphore: make(chan struct{}, poolTxsPerAccount),
-				destinationClient: &destClient,
+				logger:             log,
+				signer:             signer,
+				currentNonce:       currentNonce,
+				messageChan:        make(chan txData),
+				queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
+				txInclusionTimeout: destClient.txInclusionTimeout,
+				destinationClient:  destClient.avaRPCClient,
 			}
 
 			go concurrentSigner.processIncomingTransactions()
 
-			readonlyConcurrentSigners[i] = (*readonlyConcurrentSigner)(concurrentSigner)
+			destClient.readonlyConcurrentSigners[i] = (*readonlyConcurrentSigner)(concurrentSigner)
 
 			break
 		}
@@ -169,98 +193,44 @@ func NewDestinationClient(
 		zap.Uint64("nonce", pendingNonce),
 	)
 
-	// Create ProposerVM client for the destination chain
-	endpoint, err := url.Parse(destinationBlockchain.RPCEndpoint.BaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse rpc endpoint for ProposerVM client: %w", err)
-	}
-
-	baseURL := fmt.Sprintf("%s://%s", endpoint.Scheme, endpoint.Host)
-	blockchainID := destinationBlockchain.BlockchainID
-	proposerClient := clients.NewProposerVMAPI(baseURL, blockchainID, &destinationBlockchain.RPCEndpoint)
-	gasFeeConfig := &GasFeeConfig{
-		maxBaseFee:                 new(big.Int).SetUint64(destinationBlockchain.MaxBaseFee),
-		suggestedPriorityFeeBuffer: new(big.Int).SetUint64(destinationBlockchain.SuggestedPriorityFeeBuffer),
-		maxPriorityFeePerGas:       new(big.Int).SetUint64(destinationBlockchain.MaxPriorityFeePerGas),
-	}
-	destClient = destinationClient{
-		avaRPCClient:              NewAvaDestinationClient(ethClient, rpcClient),
-		ethClient:                 ethClient,
-		readonlyConcurrentSigners: readonlyConcurrentSigners,
-		destinationBlockchainID:   destinationID,
-		rpcEndpointURL:            destinationBlockchain.RPCEndpoint.BaseURL,
-		evmChainID:                evmChainID,
-		logger:                    logger,
-		blockGasLimit:             destinationBlockchain.BlockGasLimit,
-		gasFeeConfig:              gasFeeConfig,
-		txInclusionTimeout:        time.Duration(destinationBlockchain.TxInclusionTimeoutSeconds) * time.Second,
-		proposerClient:            proposerClient,
-		epochDuration:             epochDuration,
-	}
-
-	return &destClient, nil
+	return destClient, nil
 }
 
 func (c *destinationClient) RPCClient() DestinationRPCClient {
 	return c.avaRPCClient
 }
 
-func (c *destinationClient) EVMChainID() *big.Int {
-	return c.evmChainID
-}
-
-func (c *destinationClient) Logger() logging.Logger {
-	return c.logger
-}
-
-func (c *destinationClient) GasFeeConfig() *GasFeeConfig {
-	return c.gasFeeConfig
-}
-
-func (c *destinationClient) FeeFactor() int64 {
-	return defaultBaseFeeFactor
-}
-
-func (c *destinationClient) ConcurrentSigners() []*readonlyConcurrentSigner {
-	return c.readonlyConcurrentSigners
-}
-
-func (c *destinationClient) AccessList(data txData) types.AccessList {
-	// Construct the actual transaction to broadcast on the destination chain
-	// Create predicate from the signed warp message
-	predicate := predicateutils.New(data.signedMessage.Bytes())
-
-	// Create access list with the predicate for the warp precompile
-	return types.AccessList{
-		{
-			Address:     warp.ContractAddress,
-			StorageKeys: predicate,
-		},
-	}
-}
-
-func (c *destinationClient) TxInclusionTimeout() time.Duration {
-	return c.txInclusionTimeout
-}
-
 func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c)
+	return getFeePerGas(c.avaRPCClient, c.gasFeeConfig)
 }
 
 // SendTx constructs, signs, and broadcast a transaction to deliver the given {signedMessage}
 // to this chain with the provided {callData}.
 func (c *destinationClient) SendTx(
-	signedMessage *avalancheWarp.Message,
+	logger logging.Logger,
+	accessList types.AccessList,
 	deliverers set.Set[common.Address],
-	toAddress string,
+	toAddress common.Address,
 	gasLimit uint64,
 	callData []byte,
 ) (*types.Receipt, error) {
-	return SendTx(c, signedMessage, deliverers, toAddress, gasLimit, callData, c.txInclusionTimeout)
+	return SendTx(
+		logger,
+		c.avaRPCClient,
+		c.gasFeeConfig,
+		c.readonlyConcurrentSigners,
+		accessList,
+		c.evmChainID,
+		deliverers,
+		toAddress,
+		gasLimit,
+		callData,
+		c.txInclusionTimeout,
+	)
 }
 
 func (c *destinationClient) SenderAddresses() []common.Address {
-	return SenderAddresses(c)
+	return SenderAddresses(c.readonlyConcurrentSigners)
 }
 
 func (c *destinationClient) Client() Client {

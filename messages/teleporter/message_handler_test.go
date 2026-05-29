@@ -332,7 +332,7 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 		Times(1)
 
 	mockClient.EXPECT().
-		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			&types.Receipt{
 				Status: types.ReceiptStatusFailed,
