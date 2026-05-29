@@ -32,9 +32,16 @@ var (
 
 const (
 	DefaultRPCTimeout = 5 * time.Second
+
 	// Re-exposing DefaultAppRequestTimeout for use by message creators to set deadlines
-	DefaultAppRequestTimeout          = constants.DefaultNetworkMaximumTimeout
-	DefaultCreateSignedMessageTimeout = DefaultRPCTimeout + DefaultAppRequestTimeout
+	DefaultAppRequestTimeout = constants.DefaultNetworkMaximumTimeout
+
+	// Maximum amount of time to spend waiting for a connection to a quorum of validators for
+	// a given subnetID.
+	ConnectToValidatorsTimeout = 30 * time.Second
+
+	// We make at most 3 RPC calls, one app request, and one round of retries to connect to validators.
+	DefaultCreateSignedMessageTimeout = 3*DefaultRPCTimeout + DefaultAppRequestTimeout + ConnectToValidatorsTimeout
 )
 
 //
