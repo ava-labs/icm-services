@@ -129,6 +129,11 @@ library ValidatorSets {
     uint256 private constant VALIDATOR_WEIGHT_LENGTH = 8;
 
     /*
+     * @dev The (de)serialization codec prefix
+     */
+    bytes2 private constant CODEC = bytes2(0);
+
+    /*
      * @dev The number of bytes in the `Validator` struct
      */
     uint256 private constant VALIDATOR_BYTES =
@@ -396,8 +401,7 @@ library ValidatorSets {
     function serializeMerkleAttestation(
         ValidatorSetMerkleAttestation memory att
     ) internal pure returns (bytes memory) {
-        bytes2 codec = bytes2(0);
-        bytes memory data = abi.encodePacked(codec, uint32(att.signers.length));
+        bytes memory data = abi.encodePacked(CODEC, uint32(att.signers.length));
         // Encode public keys
         for (uint256 i = 0; i < att.signers.length; i++) {
             data = abi.encodePacked(
@@ -430,10 +434,9 @@ library ValidatorSets {
     function serializeMerkleCommitment(
         ValidatorSetMerkleCommitment memory commitment
     ) internal pure returns (bytes memory) {
-        bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000006);
         return abi.encodePacked(
-            codec,
+            CODEC,
             payloadType,
             commitment.avalancheBlockchainID,
             commitment.root,
@@ -750,13 +753,12 @@ library ValidatorSets {
     function serializeValidatorSetMetadata(
         ValidatorSetMetadata memory payload
     ) internal pure returns (bytes memory) {
-        bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000004);
         // Shard list: uint32 count then each bytes32 with no padding — same as
         // abi.encodePacked(uint32(length), ...hashes); static-sized elements in
         // abi.encode would add offset/length words, so we use encodePacked only.
         return abi.encodePacked(
-            codec,
+            CODEC,
             payloadType,
             payload.avalancheBlockchainID,
             payload.pChainHeight,
@@ -772,10 +774,9 @@ library ValidatorSets {
     function serializeValidatorSetDiff(
         ValidatorSetDiff memory diff
     ) internal pure returns (bytes memory) {
-        bytes2 codec = bytes2(0);
         bytes4 payloadType = bytes4(0x00000005);
         bytes memory data = abi.encodePacked(
-            codec,
+            CODEC,
             payloadType,
             diff.avalancheBlockchainID,
             diff.previousHeight,

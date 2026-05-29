@@ -27,7 +27,7 @@ import (
 )
 
 /**
-* Test roundtrip ICM message verification using MerkleValidatorSetRegistry and ECDASAVerifier.
+* Test roundtrip ICM message verification using MerkleValidatorSetRegistry and ECDSAVerifier.
 * - Ethereum -> Avalanche L1: signed with ECDSA and verified by ECDSAVerifier on the Avalanche L1
 * - Avalanche L1 -> Ethereum: signed by the L1 validator set and verified by the MerkleValidatorSetRegistry on Ethereum
 *
@@ -92,16 +92,30 @@ func MerkleValidatorSetRegistry(
 
 	// Deploy MerkleValidatorSetRegistry on Ethereum
 	merkleRegistryAddr := utils.DeployMerkleValidatorSetRegistry(
-		ctx, ethInfo, ethFundedKey,
-		networkID, constants.PlatformChainID,
-		pChainRoot, pChainTotalWeight, pChainHeight, pChainTimestamp,
+		ctx,
+		ethInfo,
+		ethFundedKey,
+		networkID,
+		constants.PlatformChainID,
+		pChainRoot,
+		pChainTotalWeight,
+		pChainHeight,
+		pChainTimestamp,
+		false,
 	)
 
 	// Deploy MerkleValidatorSetRegistry on the Avalanche L1
 	merkleRegistryAddrL1 := utils.DeployMerkleValidatorSetRegistry(
-		ctx, &l1Info, fundedAvalancheKey,
-		networkID, constants.PlatformChainID,
-		pChainRoot, pChainTotalWeight, pChainHeight, pChainTimestamp,
+		ctx,
+		&l1Info,
+		fundedAvalancheKey,
+		networkID,
+		constants.PlatformChainID,
+		pChainRoot,
+		pChainTotalWeight,
+		pChainHeight,
+		pChainTimestamp,
+		false,
 	)
 	Expect(merkleRegistryAddrL1).Should(Equal(merkleRegistryAddr))
 
@@ -165,6 +179,13 @@ func MerkleValidatorSetRegistry(
 	ethEvent, err := utils.GetEventFromLogs(receipt.Logs, l1EcdsaVerifier.ParseECDSAVerifierSendMessage)
 	Expect(err).Should(BeNil())
 	Expect(ethEvent.Message.Message).Should(Equal(ethMessage.Message))
+
+	teleporterEvent, err := utils.GetEventFromLogs(receipt.Logs, ethTeleporter.ParseSendCrossChainMessage)
+	Expect(err).Should(BeNil())
+	Expect(teleporterEvent.Message.Message).Should(Equal(ethMessage.Message))
+	Expect(teleporterEvent.DestinationBlockchainID).Should(Equal(ethMessage.DestinationBlockchainID))
+	Expect(teleporterEvent.Message.DestinationAddress).Should(Equal(ethMessage.DestinationAddress))
+	Expect(teleporterEvent.Message.RequiredGasLimit).Should(Equal(ethMessage.RequiredGasLimit))
 
 	// Step 3: Manually relay message from Ethereum -> Avalanche
 	attestation := signMessageEcdsa(ethEvent.Message, ethereumBlockchainID, ecdsaVerifierContractAddress, ecdsaSigner)

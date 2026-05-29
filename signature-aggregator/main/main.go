@@ -25,6 +25,7 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/healthcheck"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
+	"github.com/ava-labs/icm-services/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -166,6 +167,7 @@ func main() {
 		cfg.SignatureCacheSize,
 		metricsInstance,
 		clients.NewCanonicalValidatorClient(cfg.PChainAPI),
+		2*utils.DefaultAppRequestTimeout,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
@@ -203,20 +205,19 @@ func main() {
 	})
 
 	// Handle os signal
-	errGroup.Go(func() error {
+	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-		sig := <-sigChan
-		logger.Info("Receive os signal", zap.Stringer("signal", sig))
-
-		// Cancel the parent context
-		// This will cascade to errgroup context
-		cancel()
-
-		// No error for graceful shutdown
-		return nil
-	})
+		select {
+		case sig := <-sigChan:
+			logger.Info("Received os signal", zap.Stringer("signal", sig))
+			// Cancel the parent context
+			// This will cascade to errgroup context
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 
 	logger.Info("Initialization complete")
 

@@ -40,12 +40,9 @@ import (
 type blsSignatureBuf [bls.SignatureLen]byte
 
 const (
-	// Maximum amount of time to spend waiting (in addition to network round trip time per attempt)
-	// during relayer signature query routine
-	signatureRequestTimeout = 2 * utils.DefaultAppRequestTimeout
 	// Maximum amount of time to spend waiting for a connection to a quorum of validators for
 	// a given subnetID
-	connectToValidatorsTimeout = 5 * time.Second
+	connectToValidatorsTimeout = 30 * time.Second
 
 	// The minimum balance that an L1 validator must maintain in order to participate
 	// in the aggregate signature.
@@ -63,13 +60,14 @@ var (
 )
 
 type SignatureAggregator struct {
-	network                *peers.AppRequestNetwork
-	messageCreator         message.Creator
-	currentRequestID       atomic.Uint32
-	metrics                *metrics.SignatureAggregatorMetrics
-	signatureCache         *SignatureCache
-	validatorClient        clients.CanonicalValidatorState
-	underfundedL1NodeCache *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
+	network                 *peers.AppRequestNetwork
+	messageCreator          message.Creator
+	currentRequestID        atomic.Uint32
+	metrics                 *metrics.SignatureAggregatorMetrics
+	signatureCache          *SignatureCache
+	validatorClient         clients.CanonicalValidatorState
+	underfundedL1NodeCache  *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
+	signatureRequestTimeout time.Duration
 
 	subnetMapsLock sync.Mutex
 
@@ -84,6 +82,7 @@ func NewSignatureAggregator(
 	signatureCacheSize uint64,
 	metrics *metrics.SignatureAggregatorMetrics,
 	validatorClient clients.CanonicalValidatorState,
+	signatureRequestTimeout time.Duration,
 ) (*SignatureAggregator, error) {
 	signatureCache, err := NewSignatureCache(signatureCacheSize)
 	if err != nil {
@@ -99,6 +98,7 @@ func NewSignatureAggregator(
 		messageCreator:          messageCreator,
 		validatorClient:         validatorClient,
 		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
+		signatureRequestTimeout: signatureRequestTimeout,
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
 	sa.currentRequestID.Store(rand.Uint32() | 1)
@@ -425,44 +425,53 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 
 		responseCount := 0
 		if responsesExpected > 0 {
-			for response := range responseChan {
-				log.Debug(
-					"Processing response from node",
-					zap.Stringer("nodeID", response.NodeID),
-				)
-				var relevant bool
-				signedMsg, relevant, err = s.handleResponse(
-					log,
-					response,
-					sentTo,
-					requestID,
-					vdrs,
-					unsignedMessage,
-					signatureMap,
-					excludedValidators,
-					accumulatedSignatureWeight,
-					requiredQuorumPercentage+quorumPercentageBuffer,
-				)
-				if err != nil {
-					// don't increase node failures metric here, because we did
-					// it in handleResponse
-					return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
-				}
-				if relevant {
-					responseCount++
-				}
-				// If we have sufficient signatures, return here.
-				if signedMsg != nil {
-					log.Info(
-						"Created signed message.",
-						zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-						zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
+		responseLoop:
+			for {
+				select {
+				case <-ctx.Done():
+					return backoff.Permanent(ctx.Err())
+				case response, ok := <-responseChan:
+					if !ok {
+						break responseLoop
+					}
+					log.Debug(
+						"Processing response from node",
+						zap.Stringer("nodeID", response.NodeID),
 					)
-					return nil
-				}
-				// Break once we've had successful or unsuccessful responses from each requested node
-				if responseCount == responsesExpected {
-					break
+					var relevant bool
+					signedMsg, relevant, err = s.handleResponse(
+						log,
+						response,
+						sentTo,
+						requestID,
+						vdrs,
+						unsignedMessage,
+						signatureMap,
+						excludedValidators,
+						accumulatedSignatureWeight,
+						requiredQuorumPercentage+quorumPercentageBuffer,
+					)
+					if err != nil {
+						// don't increase node failures metric here, because we did
+						// it in handleResponse
+						return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
+					}
+					if relevant {
+						responseCount++
+					}
+					// If we have sufficient signatures, return here.
+					if signedMsg != nil {
+						log.Info(
+							"Created signed message.",
+							zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+							zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
+						)
+						return nil
+					}
+					// Break once we've had successful or unsuccessful responses from each requested node
+					if responseCount == responsesExpected {
+						break responseLoop
+					}
 				}
 			}
 		}
@@ -500,7 +509,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 		)
 	}
 
-	err := utils.WithRetriesTimeout(operation, notify, signatureRequestTimeout)
+	err := utils.WithRetriesTimeout(operation, notify, s.signatureRequestTimeout)
 	if err != nil {
 		logger.Warn(
 			"Failed to collect a threshold of signatures",

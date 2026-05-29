@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"flag"
+	"math/big"
 	"os"
 	"testing"
 	"time"
@@ -17,12 +18,14 @@ import (
 	ecdsaverifier "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ECDSAVerifier"
 	ethereumIcmVerification "github.com/ava-labs/icm-services/icm-contracts/tests/flows/ethereum_icm_verification"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
+	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/crypto"
+	"github.com/ava-labs/libevm/ethclient"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -178,7 +181,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	Expect(registered).Should(BeTrue())
 
 	// =========================================================================
-	// Step 3: Deploy the ECDSA verifier contract on both chains
+	// Step 3: Deploy the ECDSA verifier contract on all chains (Ethereum, Avalanche L1, Avalanche C-Chain)
 	// =========================================================================
 	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(ecdsaVerifierByteCodeFile)
 	Expect(err).Should(BeNil())
@@ -198,72 +201,61 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		nil,
 	)
 	Expect(err).Should(BeNil())
-	// Deploy the ECDSAVerifier contract on the C-Chain
-	utils.DeployWithNicksMethod(
-		ctx,
-		&primaryNetworkInfo,
-		ecdsaVerifierContractTransaction,
-		ecdsaVerifierDeployerAddress,
-		ecdsaVerifierContractAddress,
-		fundedAvalancheKey,
-	)
 
-	// Initialize the ECDSAVerifier contract on the C-Chain with the `ecdsaSigner` address
-	avalancheEcdsaVerifier, err := ecdsaverifier.NewECDSAVerifier(
-		ecdsaVerifierContractAddress,
-		primaryNetworkInfo.EthClient,
-	)
-	Expect(err).Should(BeNil())
-	opts, err = bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, primaryNetworkInfo.EVMChainID)
-	Expect(err).Should(BeNil())
-	tx, err := avalancheEcdsaVerifier.Initialize(opts, crypto.PubkeyToAddress(ecdsaSigner.PublicKey))
-	Expect(err).Should(BeNil())
-	// Wait for the transaction to be accepted
-	utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
-
-	// Deploy the ECDSAVerifier contract on the Avalanche L1
 	l1Info := localAvalancheNetworkInstance.GetL1Infos()[0]
-	utils.DeployWithNicksMethod(
-		ctx,
-		&l1Info,
-		ecdsaVerifierContractTransaction,
-		ecdsaVerifierDeployerAddress,
-		ecdsaVerifierContractAddress,
-		fundedAvalancheKey,
-	)
-	// Initialize the ECDSAVerifier contract on the L1 with the `ecdsaSigner` address
-	l1EcdsaVerifier, err := ecdsaverifier.NewECDSAVerifier(
-		ecdsaVerifierContractAddress,
-		l1Info.EthClient,
-	)
-	Expect(err).Should(BeNil())
-	opts, err = bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, l1Info.EVMChainID)
-	Expect(err).Should(BeNil())
-	tx, err = l1EcdsaVerifier.Initialize(opts, crypto.PubkeyToAddress(ecdsaSigner.PublicKey))
-	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, tx.Hash())
 
-	// Deploy the ECDSAVerifier contract on the Ethereum chain
-	utils.DeployWithNicksMethod(
-		ctx,
-		ethereumNetworkInfo,
-		ecdsaVerifierContractTransaction,
-		ecdsaVerifierDeployerAddress,
-		ecdsaVerifierContractAddress,
-		fundedEthereumKey,
-	)
-	// Initialize the ECDSAVerifier contract on Ethereum with the `ecdsaSigner` address
-	ethereumEcdsaVerifier, err := ecdsaverifier.NewECDSAVerifier(
-		ecdsaVerifierContractAddress,
-		localEthereumNetworkInstance.EthClient,
-	)
-	Expect(err).Should(BeNil())
-	opts, err = bind.NewKeyedTransactorWithChainID(fundedEthereumKey, localEthereumNetworkInstance.ChainID)
-	Expect(err).Should(BeNil())
-	tx, err = ethereumEcdsaVerifier.Initialize(opts, crypto.PubkeyToAddress(ecdsaSigner.PublicKey))
-	Expect(err).Should(BeNil())
-	// Wait for the transaction to be accepted
-	utils.WaitForTransactionSuccess(ctx, localEthereumNetworkInstance.EthClient, tx.Hash())
+	type ecdsaDeployInfo struct {
+		name      string
+		chainInfo testinfo.NetworkTestInfo
+		chainID   *big.Int
+		fundedKey *ecdsa.PrivateKey
+		ethClient *ethclient.Client
+	}
+	deployInfo := []ecdsaDeployInfo{
+		{
+			name:      "C-Chain",
+			chainInfo: &primaryNetworkInfo,
+			chainID:   primaryNetworkInfo.EVMChainID,
+			fundedKey: fundedAvalancheKey,
+			ethClient: primaryNetworkInfo.EthClient,
+		},
+		{
+			name:      "L1",
+			chainInfo: &l1Info,
+			chainID:   l1Info.EVMChainID,
+			fundedKey: fundedAvalancheKey,
+			ethClient: l1Info.EthClient,
+		},
+		{
+			name:      "Ethereum",
+			chainInfo: ethereumNetworkInfo,
+			chainID:   localEthereumNetworkInstance.ChainID,
+			fundedKey: fundedEthereumKey,
+			ethClient: localEthereumNetworkInstance.EthClient,
+		},
+	}
+
+	for _, t := range deployInfo {
+		// Deploy the ECDSAVerifier contract
+		utils.DeployWithNicksMethod(
+			ctx,
+			t.chainInfo,
+			ecdsaVerifierContractTransaction,
+			ecdsaVerifierDeployerAddress,
+			ecdsaVerifierContractAddress,
+			t.fundedKey,
+		)
+
+		// Bind and initialize
+		verifier, err := ecdsaverifier.NewECDSAVerifier(ecdsaVerifierContractAddress, t.ethClient)
+		Expect(err).Should(BeNil())
+		opts, err := bind.NewKeyedTransactorWithChainID(t.fundedKey, t.chainID)
+		Expect(err).Should(BeNil())
+		tx, err := verifier.Initialize(opts, crypto.PubkeyToAddress(ecdsaSigner.PublicKey))
+		Expect(err).Should(BeNil())
+		// Wait for the transaction to be accepted
+		utils.WaitForTransactionSuccess(ctx, t.ethClient, tx.Hash())
+	}
 
 	// =========================================================================
 	// Step 4: Deploy the Adapter contract on both chains

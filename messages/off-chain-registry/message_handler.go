@@ -14,6 +14,7 @@ import (
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -169,10 +170,13 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		return common.Hash{}, err
 	}
 
+	accessList := utils.SignedWarpMessageToAccessList(signedMessage)
+
 	receipt, err := m.destinationClient.SendTx(
-		signedMessage,
+		m.logger,
+		accessList,
 		nil,
-		m.registryAddress.Hex(),
+		m.registryAddress,
 		addProtocolVersionGasLimit,
 		callData,
 	)
