@@ -42,10 +42,6 @@ import (
 type blsSignatureBuf [bls.SignatureLen]byte
 
 const (
-	// Maximum amount of time to spend waiting for a connection to a quorum of validators for
-	// a given subnetID
-	connectToValidatorsTimeout = 30 * time.Second
-
 	// The minimum balance that an L1 validator must maintain in order to participate
 	// in the aggregate signature.
 	minimumL1ValidatorBalance = 2048 * units.NanoAvax
@@ -169,7 +165,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 			zap.Error(err),
 		)
 	}
-	err = utils.WithRetriesTimeout(connectOp, notify, connectToValidatorsTimeout)
+	err = utils.WithRetriesTimeout(connectOp, notify, utils.ConnectToValidatorsTimeout)
 	if err != nil {
 		return nil, err
 	}
