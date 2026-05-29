@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 pragma solidity 0.8.30;
 
-import {ICM, ICMMessage} from "./ICM.sol";
 import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
 
 /**
@@ -25,8 +24,8 @@ struct TeleporterMessageV2 {
     address destinationAddress;
     uint256 requiredGasLimit;
     address[] allowedRelayerAddresses;
-    // #[pack(method="serializeTeleporterReceipts")]
-    // #[unpack(method="parseTeleporterReceipts")]
+    // #[pack(method="_serializeTeleporterReceipts")]
+    // #[unpack(method="_parseTeleporterReceipts")]
     TeleporterMessageReceipt[] receipts;
     bytes message;
 }
@@ -46,63 +45,59 @@ struct TeleporterICMMessage {
 }
 
 /**
- * @title ICMTeleportV2
- * @notice Utility library for making TeleporterV2 work with ICM messages. Mainly (de)serialization
- */
-library ICMTeleporterV2 {
-
-}
-
-
-/**
  * @notice serialize an array of `TeleporterMessageReceipt` instances
  */
-function serializeTeleporterReceipts(
-        TeleporterMessageReceipt[] memory receipts
-    ) pure returns (bytes memory) {
-        bytes memory serialized = new bytes(receipts.length * 52);
-        uint256 length = receipts.length;
+function _serializeTeleporterReceipts(
+    TeleporterMessageReceipt[] memory receipts
+) pure returns (bytes memory) {
+    bytes memory serialized = new bytes(receipts.length * 52);
+    uint256 length = receipts.length;
 
-        /* solhint-disable no-inline-assembly */
-        assembly ("memory-safe") {
-            let s := add(serialized, 0x20)
-            let r := add(receipts, 0x20)
-            for { let i := 0 } lt(i, length) { i := add(i, 1) } {
-                // get the value at index number i
-                let value := mload(r)
-                mstore(s, mload(value))
-                s := add(s, 32)
-                // shift the address left 12 bytes
-                mstore(s, shl(96, mload(add(value, 0x20))))
-                s := add(s, 20)
-                r := add(r, 32)
-            }
+    /* solhint-disable no-inline-assembly */
+    assembly ("memory-safe") {
+        let s := add(serialized, 0x20)
+        let r := add(receipts, 0x20)
+        for { let i := 0 } lt(i, length) { i := add(i, 1) } {
+            // get the value at index number i
+            let value := mload(r)
+            mstore(s, mload(value))
+            s := add(s, 32)
+            // shift the address left 12 bytes
+            mstore(s, shl(96, mload(add(value, 0x20))))
+            s := add(s, 20)
+            r := add(r, 32)
         }
-        /* solhint-enable no-inline-assembly */
-        return abi.encodePacked(uint32(receipts.length), serialized);
     }
+    /* solhint-enable no-inline-assembly */
+    return abi.encodePacked(uint32(receipts.length), serialized);
+}
 
 /**
  * @notice Parse a serialized array  of `TeleporterMessageReceipt` instances
  */
-function parseTeleporterReceipts(bytes calldata data) pure returns (uint256, TeleporterMessageReceipt[] memory) {
-        // get the number of receipts
-        uint32 numReceipts = uint32(bytes4(data[:4]));
-        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
-        uint256 offsetReceipts = 4;
-        // parse the receipts
-        for (uint256 i = 0; i < numReceipts;) {
-            receipts[i] = TeleporterMessageReceipt({
-                receivedMessageNonce: uint256(
-                    bytes32(data[offsetReceipts:offsetReceipts + 32])
-                ),
-                relayerRewardAddress: address(
-                    bytes20(data[offsetReceipts + 32:offsetReceipts + 52])
-                )
-            });
-            offsetReceipts += 52;
-            unchecked { i++; }
+function _parseTeleporterReceipts(
+    bytes calldata data
+) pure returns (uint256, TeleporterMessageReceipt[] memory) {
+    // get the number of receipts
+    uint32 numReceipts = uint32(bytes4(data[:4]));
+    TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
+    uint256 offsetReceipts = 4;
+    // parse the receipts
+    for (uint256 i = 0; i < numReceipts;) {
+        receipts[i] = TeleporterMessageReceipt({
+            receivedMessageNonce: uint256(bytes32(data[offsetReceipts:offsetReceipts + 32])),
+            relayerRewardAddress: address(bytes20(data[offsetReceipts + 32:offsetReceipts + 52]))
+        });
+        offsetReceipts += 52;
+        unchecked {
+            i++;
         }
-        return (offsetReceipts, receipts);
     }
+    return (offsetReceipts, receipts);
+}
 
+/**
+ * @title ICMTeleporterV2
+ * @notice Utility library for making TeleporterV2 work with ICM messages. Mainly (de)serialization
+ */
+library ICMTeleporterV2 {}
