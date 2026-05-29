@@ -11,7 +11,10 @@ import {MerkleProof} from "@openzeppelin/contracts@5.1.0/utils/cryptography/Merk
  * THIS IS LIBRARY IS UN-AUDITED CODE.
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
+
+// #[pack(contract="ValidatorSets")]
 struct Validator {
+    // #[pack(method="BLST.unPadUncompressedBlsPublicKey")]
     bytes blsPublicKey;
     uint64 weight;
 }
@@ -102,10 +105,20 @@ struct ValidatorSetMerkleCommitment {
 /// signing validators for a specific chain, a Merkle multi-inclusion proof binding
 /// them to the registry's stored root, and the aggregate BLS signature.
 /// @dev The signers must be stored in increasing lexicographic order by their BLS public key.
+// #[pack(contract="ValidatorSets")]
+// #[unpack(contract="ValidatorSets", calldata)]
 struct ValidatorSetMerkleAttestation {
+    // #[pack(length=uint32)]
+    // #[unpack(length=uint32)]
     Validator[] signers;
+    // #[pack(length=uint32)]
+    // #[unpack(length=uint32)]
     bytes32[] proof;
+    // #[pack(method="packProofFlags")]
+    // #[unpack(method="unpackProofFlags")]
     bool[] proofFlags;
+    // #[pack(method="abi.encodePacked")]
+    // #[unpack(default)]
     bytes aggregateBlsSig;
 }
 
@@ -401,31 +414,44 @@ library ValidatorSets {
     function serializeMerkleAttestation(
         ValidatorSetMerkleAttestation memory att
     ) internal pure returns (bytes memory) {
-        bytes memory data = abi.encodePacked(CODEC, uint32(att.signers.length));
-        // Encode public keys
-        for (uint256 i = 0; i < att.signers.length; i++) {
-            data = abi.encodePacked(
-                data,
-                BLST.unPadUncompressedBlsPublicKey(att.signers[i].blsPublicKey),
-                att.signers[i].weight
-            );
+        return abi.encodePacked(bytes2(0), packValidatorSetMerkleAttestation(att));
+    }
+
+    /**
+     * @notice Deserialize a bit set back into an array of bools.
+     * @dev Inverse of packProofFlags. Reads a uint32 count then ceil(count/8) packed bytes.
+     * @return consumed Number of bytes read from data.
+     * @return flags The decoded bool array.
+     */
+    function unpackProofFlags(
+        bytes calldata data
+    ) internal pure returns (uint256, bool[] memory) {
+        uint32 numFlags = uint32(bytes4(data[0:4]));
+        uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
+        bool[] memory flags = new bool[](numFlags);
+        for (uint256 i = 0; i < numFlags;) {
+            uint8 byteVal = uint8(data[4 + (i >> 3)]);
+            flags[i] = (byteVal >> uint8(i & 7)) & 1 == 1;
+            unchecked {
+                ++i;
+            }
         }
-        // Encode proof
-        data = abi.encodePacked(data, uint32(att.proof.length));
-        for (uint256 i = 0; i < att.proof.length; i++) {
-            data = abi.encodePacked(data, att.proof[i]);
-        }
-        // Encode proof flags
-        uint32 numFlags = uint32(att.proofFlags.length);
+        return (4 + flagBytesLen, flags);
+    }
+
+    /**
+     * @notice serialize an array of bools to a bit set
+     */
+    function packProofFlags(bool[] memory flags) internal pure returns (bytes memory) {
+        uint32 numFlags = uint32(flags.length);
         uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
         bytes memory packedFlags = new bytes(flagBytesLen);
         for (uint256 i = 0; i < numFlags; i++) {
-            if (att.proofFlags[i]) {
+            if (flags[i]) {
                 packedFlags[i >> 3] |= bytes1(uint8(1) << uint8(i & 7));
             }
         }
-        data = abi.encodePacked(data, numFlags, packedFlags);
-        return abi.encodePacked(data, att.aggregateBlsSig);
+        return abi.encodePacked(numFlags, packedFlags);
     }
 
     /**
@@ -583,60 +609,10 @@ library ValidatorSets {
         bytes calldata data
     ) internal pure returns (ValidatorSetMerkleAttestation memory att) {
         require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
-        uint256 offset = 2;
-
-        // Parse the signers
-        {
-            uint32 numSigners = uint32(bytes4(data[offset:offset + NUM_VALIDATOR_LENGTH]));
-            offset += NUM_VALIDATOR_LENGTH;
-            att.signers = new Validator[](numSigners);
-            for (uint32 i = 0; i < numSigners;) {
-                bytes memory unformattedPublicKey =
-                    data[offset:offset + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH];
-                offset += BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH;
-                uint64 weight = uint64(bytes8(data[offset:offset + VALIDATOR_WEIGHT_LENGTH]));
-                offset += VALIDATOR_WEIGHT_LENGTH;
-                att.signers[i] = Validator({
-                    blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey),
-                    weight: weight
-                });
-                unchecked {
-                    ++i;
-                }
-            }
-        }
-        // Parse the proof
-        {
-            uint32 numProofHashes = uint32(bytes4(data[offset:offset + 4]));
-            offset += 4;
-            att.proof = new bytes32[](numProofHashes);
-            for (uint32 i = 0; i < numProofHashes;) {
-                att.proof[i] = bytes32(data[offset:offset + 32]);
-                offset += 32;
-                unchecked {
-                    ++i;
-                }
-            }
-            uint32 numFlags = uint32(bytes4(data[offset:offset + 4]));
-            offset += 4;
-            uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
-
-            // Parse the proof flags
-            att.proofFlags = new bool[](numFlags);
-            for (uint256 i = 0; i < numFlags;) {
-                uint8 byteVal = uint8(data[offset + (i >> 3)]);
-                att.proofFlags[i] = (byteVal >> uint8(i & 7)) & 1 == 1;
-                unchecked {
-                    ++i;
-                }
-            }
-
-            offset += flagBytesLen;
-        }
-        // Parse the signature
-        att.aggregateBlsSig = data[offset:offset + BLST.BLS_SIGNATURE_LENGTH];
-        offset += BLST.BLS_SIGNATURE_LENGTH;
-        require(offset == data.length, "Trailing bytes in attestation");
+        uint256 consumed;
+        (consumed, att) = unpackValidatorSetMerkleAttestation(data[2:]);
+        att.aggregateBlsSig = data[2 + consumed:2 + consumed + BLST.BLS_SIGNATURE_LENGTH];
+        require(2 + consumed + BLST.BLS_SIGNATURE_LENGTH == data.length, "Trailing bytes in attestation");
         return att;
     }
 

@@ -43,6 +43,8 @@ struct MyStruct {
 struct MyStruct { ... }
 ```
 
+> **Solhint:** All generated function bodies are automatically wrapped with `/* solhint-disable */` / `/* solhint-enable */`. No annotation is needed to suppress lint warnings inside generated code.
+
 #### Field-level annotations
 
 Place a `#[pack(...)]` annotation in the NatSpec comment above a struct field to control how it is serialised.
@@ -117,7 +119,8 @@ struct MyStruct {
 | `visibility` | key-value | Visibility of the generated function. | `public` |
 | `assert = "\|var\| { expr }"` | key-value | Emit `require(expr)` before the function returns, with `var` replaced by `result` (the decoded struct). May appear multiple times. Not valid on enums. | *(none)* |
 | `calldata` | flag | Accept `bytes calldata data` instead of `bytes memory data`. | *(off)* |
-| `solhint-disable` | flag | Wrap the generated function with `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly`. | *(off)* |
+
+> **Solhint:** All generated function bodies are automatically wrapped with `/* solhint-disable */` / `/* solhint-enable */`. No annotation is needed to suppress lint warnings inside generated code.
 
 The closure value must be a quoted string so that commas and `=` signs inside the expression are not misinterpreted as argument separators. Example:
 

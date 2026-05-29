@@ -13,7 +13,6 @@ pub struct UnpackArgs {
     pub fields: Vec<FieldArgs>,
     pub visibility: String,
     pub calldata: bool,
-    pub solhint_disable: bool,
     /// Type-level post-condition. The capture name is replaced with `result`
     /// (the decoded struct) in the assertion body.
     pub assert: Vec<AssertDef>,
@@ -59,7 +58,6 @@ pub(crate) struct RawUnpackArgs {
     pub fields: Vec<FieldArgs>,
     pub visibility: String,
     pub calldata: bool,
-    pub solhint_disable: bool,
     pub assert: Vec<AssertDef>,
 }
 
@@ -120,7 +118,6 @@ pub fn parse_args(
         fields: raw.fields,
         visibility: raw.visibility,
         calldata: raw.calldata,
-        solhint_disable: raw.solhint_disable,
         assert: raw.assert,
     }))
 }
@@ -141,7 +138,6 @@ pub(crate) fn parse_comment(
     let mut name = None;
     let mut visibility = "public".to_string();
     let mut calldata = false;
-    let mut solhint_disable = false;
     let mut asserts: Vec<AssertDef> = Vec::new();
 
     for pair in split_args(&args_str) {
@@ -163,12 +159,8 @@ pub(crate) fn parse_comment(
                 }
                 _ => {}
             }
-        } else {
-            match pair {
-                "calldata" => calldata = true,
-                "solhint-disable" => solhint_disable = true,
-                _ => {}
-            }
+        } else if pair == "calldata" {
+            calldata = true;
         }
     }
 
@@ -183,7 +175,6 @@ pub(crate) fn parse_comment(
         fields,
         visibility,
         calldata,
-        solhint_disable,
         assert: asserts,
     })
 }
@@ -436,7 +427,6 @@ mod tests {
         assert_eq!(raw.name, None);
         assert_eq!(raw.visibility, "public".to_string());
         assert!(!raw.calldata);
-        assert!(!raw.solhint_disable);
         assert!(raw.assert.is_empty());
         let mut expected = vec![FieldArgs::default(); 4];
         expected[1].memory = true;
@@ -454,7 +444,6 @@ mod tests {
         assert_eq!(raw.name, Some("Bar".to_string()));
         assert_eq!(raw.visibility, "private".to_string());
         assert!(raw.calldata);
-        assert!(!raw.solhint_disable);
         assert!(raw.assert.is_empty());
         let expected = vec![FieldArgs::default(); 4];
         assert_eq!(raw.fields, expected);
@@ -462,17 +451,8 @@ mod tests {
 
     #[test]
     fn test_flags() {
-        let raw = parse_comment("#[unpack(solhint-disable)]", &vec![(None, false); 2]).unwrap();
-        assert!(raw.solhint_disable);
-        assert!(!raw.calldata);
-
-        let raw = parse_comment(
-            "#[unpack(calldata, solhint-disable)]",
-            &vec![(None, false); 2],
-        )
-        .unwrap();
+        let raw = parse_comment("#[unpack(calldata)]", &vec![(None, false); 2]).unwrap();
         assert!(raw.calldata);
-        assert!(raw.solhint_disable);
     }
 
     #[test]

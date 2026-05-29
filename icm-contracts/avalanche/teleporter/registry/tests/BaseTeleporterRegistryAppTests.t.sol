@@ -36,11 +36,13 @@ contract ExampleRegistryAppUpgradeable is TeleporterRegistryAppUpgradeable {
         return _getTeleporterMessenger();
     }
 
+    // solhint-disable no-empty-blocks
     function _receiveTeleporterMessage(
         bytes32 sourceBlockchainID,
         address originSenderAddress,
-        bytes memory message // solhint-disable-next-line no-empty-blocks
+        bytes memory message
     ) internal override {}
+    // solhint-enable no-empty-blocks
 
     // solhint-disable-next-line no-empty-blocks
     function _checkTeleporterRegistryAppAccess() internal override {}
@@ -68,11 +70,13 @@ contract ExampleRegistryApp is TeleporterRegistryApp {
         return _getTeleporterMessenger();
     }
 
+    // solhint-disable no-empty-blocks
     function _receiveTeleporterMessage(
         bytes32 sourceBlockchainID,
         address originSenderAddress,
-        bytes memory message // solhint-disable-next-line no-empty-blocks
+        bytes memory message
     ) internal override {}
+    // solhint-enable no-empty-blocks
 
     // solhint-disable-next-line no-empty-blocks
     function _checkTeleporterRegistryAppAccess() internal virtual override {}

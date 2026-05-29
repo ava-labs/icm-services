@@ -45,7 +45,7 @@ pub fn pack_enum(enum_def: &Enum, args: PackArgs, type_name: &str) -> String {
         .unwrap_or_else(|| format!("pack{}", enum_def.name));
     let vis = vis_prefix(&args.visibility);
     format!(
-        "function {fn_name}({type_name} obj) {vis}pure returns (bytes memory) {{\n    return abi.encodePacked(obj);\n}}"
+        "function {fn_name}({type_name} obj) {vis}pure returns (bytes memory) {{\n    /* solhint-disable */\n    return abi.encodePacked(obj);\n    /* solhint-enable */\n}}"
     )
 }
 
@@ -131,7 +131,7 @@ pub fn pack_struct(
     let vis = vis_prefix(&args.visibility);
     Ok(format!(
         "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
-        {{\n    {body}\n    return abi.encodePacked({encode_packed_args});\n}}"
+        {{\n    /* solhint-disable */\n    {body}\n    return abi.encodePacked({encode_packed_args});\n    /* solhint-enable */\n}}"
     ))
 }
 

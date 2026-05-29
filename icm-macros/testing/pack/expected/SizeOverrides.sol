@@ -14,6 +14,7 @@ library PackMethods {
     }
 
     function packDynamicStruct(DynamicStruct memory obj) public pure returns (bytes memory) {
+        /* solhint-disable */
         bytes memory Addresses_bytes;
         Addresses_bytes = abi.encodePacked(uint32(obj.Addresses.length));
         for (uint256 i_0 = 0; i_0 < obj.Addresses.length;) {
@@ -30,5 +31,6 @@ library PackMethods {
             Addresses_bytes,
             abi.encodePacked(obj.Hash)
         );
+        /* solhint-enable */
     }
 }

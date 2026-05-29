@@ -155,7 +155,9 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::
     let body = if field_asserts.is_empty() {
         format!(
             "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
+            \n    /* solhint-disable */\
             \n    return (1, {type_name}(uint8(data[0])));\
+            \n    /* solhint-enable */\
             \n}}"
         )
     } else {
@@ -168,18 +170,14 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::
             .collect();
         format!(
             "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
+            \n    /* solhint-disable */\
             \n    {type_name} result = {type_name}(uint8(data[0]));{assert_lines}\
             \n    return (1, result);\
+            \n    /* solhint-enable */\
             \n}}"
         )
     };
-    Ok(if args.solhint_disable {
-        format!(
-            "// solhint-disable no-inline-assembly\n{body}\n// solhint-enable no-inline-assembly"
-        )
-    } else {
-        body
-    })
+    Ok(body)
 }
 
 pub fn unpack_struct(
@@ -323,22 +321,17 @@ pub fn unpack_struct(
         }
     }
     let vis = vis_prefix(&args.visibility);
-    let func = format!(
+    Ok(format!(
         "function {fn_name}({input}) {vis}pure returns (uint256, {type_name} memory) {{\
+        \n    /* solhint-disable */\
         \n    {length_tracking}\
         \n    {type_name} memory result;\
         \n    {body}\
         \n    {epilogue}\
         \n    return ({bytes_read}, result);\
+        \n    /* solhint-enable */\
         \n}}"
-    );
-    Ok(if args.solhint_disable {
-        format!(
-            "// solhint-disable no-inline-assembly\n{func}\n// solhint-enable no-inline-assembly"
-        )
-    } else {
-        func
-    })
+    ))
 }
 
 /// A struct that tracks a recursive enumeration through a type to fully
