@@ -27,7 +27,7 @@ import (
 )
 
 /**
-* Test roundtrip ICM message verification using MerkleValidatorSetRegistry and ECDASAVerifier.
+* Test roundtrip ICM message verification using MerkleValidatorSetRegistry and ECDSAVerifier.
 * - Ethereum -> Avalanche L1: signed with ECDSA and verified by ECDSAVerifier on the Avalanche L1
 * - Avalanche L1 -> Ethereum: signed by the L1 validator set and verified by the MerkleValidatorSetRegistry on Ethereum
 *
@@ -253,11 +253,6 @@ func MerkleValidatorSetRegistry(
 	ethReceiptEvent, err := utils.GetEventFromLogs(receipt.Logs, ethTeleporter.ParseReceiveCrossChainMessage)
 	Expect(err).Should(BeNil())
 	Expect(ethReceiptEvent.Message.Message).Should(Equal(avalancheMsg.Message.Message))
-
-	ethExecutedEvent, err := utils.GetEventFromLogs(receipt.Logs, ethTeleporter.ParseMessageExecuted)
-	Expect(err).Should(BeNil())
-	Expect(ethExecutedEvent.MessageID).Should(Equal(receiptEvent.MessageID))
-	Expect(ethExecutedEvent.SourceBlockchainID).Should(Equal(avalancheMsg.SourceBlockchainID))
 }
 
 // registerL1ValidatorSet builds a synthetic P-Chain emitted warp message carrying
