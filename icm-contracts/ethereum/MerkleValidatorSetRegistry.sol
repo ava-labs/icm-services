@@ -7,7 +7,7 @@ import {IMerkleValidatorSetRegistry} from "./interfaces/IMerkleValidatorSetRegis
 import {ICMMessage} from "@common/ICM.sol";
 import {ValidatorSetMerkleCommitment, ValidatorSets} from "./utils/ValidatorSets.sol";
 import {
-    TeleporterMessageV2Parsing,
+    ICMTeleporterV2,
     TeleporterICMMessage,
     TeleporterMessageV2
 } from "@common/TeleporterMessageV2.sol";
@@ -77,7 +77,7 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             "unauthorized sender"
         );
         IWarpMessenger(_WARP_PRECOMPILE_ADDRESS)
-            .sendWarpMessage(TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message));
+            .sendWarpMessage(ICMTeleporterV2.packTeleporterMessageV2(message));
     }
 
     /**
@@ -132,7 +132,7 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             message.sourceNetworkID,
             message.sourceBlockchainID,
             address(this),
-            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message.message)
+            ICMTeleporterV2.packTeleporterMessageV2(message.message)
         );
         return ValidatorSets.verifyMerkleAttestation(
             message.attestation, signedData, _valSetCommitments[message.sourceBlockchainID]
