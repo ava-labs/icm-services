@@ -54,7 +54,8 @@ contract ValidatorSetsTestHarness {
     function parseValidatorSetShard(
         bytes calldata shardBytes
     ) public pure returns (ValidatorSetShard memory) {
-        return ValidatorSets.parseValidatorSetShard(shardBytes);
+        (, ValidatorSetShard memory res) = ValidatorSets.parseValidatorSetShard(shardBytes);
+        return res;
     }
 
     function parseMerkleAttestation(
@@ -238,7 +239,7 @@ contract ValidatorSetsTest is Test {
     ) public view {
         ValidatorChange memory valChange =
             ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(secretKey), weight: weight});
-        bytes memory serialized = ValidatorSets.serializeValidatorChange(valChange);
+        bytes memory serialized = ValidatorSets.packValidatorChange(valChange);
         /* solhint-disable-next-line no-unused-vars */
         (ValidatorChange memory deserialized, uint256 offset) =
             _harness.parseValidatorChange(serialized, 0);
