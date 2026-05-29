@@ -98,6 +98,24 @@ while read -r filepath; do
     remappings+=" $transformed_lines "
 done < <(find "$REPO_PATH/lib" -type f -name "remappings.txt" )
 
+# Expand macros for a foundry profile into a target directory, maintaining the
+# same relative path structure as the project root. All three profiles are
+# written into the same dir so that cross-profile relative imports resolve.
+function expand_profile_to_dir() {
+    local profile="$1"
+    local outdir="$2"
+    local current_file=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^===\ (.+)\ ===$ ]]; then
+            current_file="$outdir/${BASH_REMATCH[1]}"
+            mkdir -p "$(dirname "$current_file")"
+            : > "$current_file"
+        elif [[ -n "$current_file" ]]; then
+            printf '%s\n' "$line" >> "$current_file"
+        fi
+    done < <(FOUNDRY_PROFILE="$profile" reforge --display '**/*.sol' build 2>/dev/null)
+}
+
 function convertToLower() {
     if [ "$(uname -m)" = 'arm64' ]; then
         echo $1 | perl -ne 'print lc'
@@ -132,12 +150,32 @@ remove_matching_string() {
 function generate_bindings() {
     local evm_version="$1"
     local additional_flags="$2"
-    shift 2
+    # When non-empty, compile macro-expanded files from this root instead of
+    # the original source tree.  Pass empty string for external libraries that
+    # have no macro annotations.
+    local source_root="$3"
+    shift 3
     local contract_names=("$@")
 
     echo "EVM Version: $evm_version"
     echo "Solidity Version: $AVALANCHE_SOLIDITY_VERSION"
     echo "Additional flags: $additional_flags"
+
+    # When compiling from the expanded dir, redirect project-source remappings
+    # (those whose RHS does not start with lib/) to point into source_root so
+    # that all imports resolve to the same absolute path and types are compatible.
+    local effective_remappings="$remappings"
+    if [[ -n "$source_root" ]]; then
+        effective_remappings=""
+        for remap in $remappings; do
+            local rhs="${remap#*=}"
+            if [[ "$rhs" == lib/* || "$rhs" == /* ]]; then
+                effective_remappings+=" $remap"
+            else
+                effective_remappings+=" ${remap%%=*}=$source_root/$rhs"
+            fi
+        done
+    fi
 
     for contract_name in "${contract_names[@]}"
     do
@@ -152,7 +190,17 @@ function generate_bindings() {
 
         cwd=$(pwd)
         cd $REPO_PATH
-        solc --optimize --evm-version $evm_version $additional_flags --combined-json abi,bin,metadata,ast,devdoc,userdoc --pretty-json $cwd/$dir/$contract_name.sol $remappings > $combined_json
+
+        # When a source_root is provided (macro-expanded dir), redirect solc to
+        # the expanded file. --allow-paths grants solc access to the temp dir.
+        local sol_file
+        if [[ -n "$source_root" ]]; then
+            sol_file="$source_root/${cwd#$REPO_PATH/}/$dir/$contract_name.sol"
+        else
+            sol_file="$cwd/$dir/$contract_name.sol"
+        fi
+
+        solc --optimize --evm-version $evm_version $additional_flags --metadata-hash none --combined-json abi,bin,metadata,ast,devdoc,userdoc --pretty-json ${source_root:+--allow-paths "$source_root"} $sol_file $effective_remappings > $combined_json
         cd $cwd
 
         # construct the exclude list
@@ -204,24 +252,33 @@ if [[ -z "${ETHEREUM_CONTRACT_LIST}" ]]; then
     ETHEREUM_CONTRACT_LIST=($DEFAULT_ETHEREUM_CONTRACT_LIST)
 fi
 
+# Expand macros for all profiles into a single temp dir so that cross-profile
+# relative imports (e.g. DiffUpdater -> ../common/ICM.sol) resolve correctly.
+EXPANDED_DIR=$(mktemp -d)
+trap "rm -rf '$EXPANDED_DIR'" EXIT
+cd $REPO_PATH
+for profile in default common ethereum; do
+    expand_profile_to_dir "$profile" "$EXPANDED_DIR"
+done
+
 contract_names=(${AVALANCHE_CONTRACT_LIST[@]})
 cd $AVALANCHE_ICM_PATH
-generate_bindings "$AVALANCHE_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$AVALANCHE_EVM_VERSION" "" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=(${COMMON_CONTRACT_LIST[@]})
 cd $COMMON_ICM_PATH
-generate_bindings "$COMMON_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$COMMON_EVM_VERSION" "" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=(${ETHEREUM_CONTRACT_LIST[@]})
 cd $ETHEREUM_ICM_PATH
-generate_bindings "$ETHEREUM_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$ETHEREUM_EVM_VERSION" "--via-ir" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=($PROXY_LIST)
 cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/transparent
-generate_bindings "$AVALANCHE_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$AVALANCHE_EVM_VERSION" "" "" "${contract_names[@]}"
 
 contract_names=($ACCESS_LIST)
 cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/contracts/access
-generate_bindings "$AVALANCHE_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$AVALANCHE_EVM_VERSION" "" "" "${contract_names[@]}"
 
 exit 0
