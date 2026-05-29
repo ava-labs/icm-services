@@ -49,11 +49,12 @@ type MerkleSetUpdater struct {
 	// the next poll. A zero value disables gas gating.
 	maxGasPriceWei *big.Int
 
-	localValidatorSet []*Validator
-	localPChainHeight uint64
-	localTotalWeight  uint64
-	lastUpdateTime    time.Time
-	initialized       bool
+	localValidatorSet   []*Validator
+	localPChainHeight   uint64
+	localTotalWeight    uint64
+	lastUpdateTime      time.Time
+	initialized         bool
+	allowPChainFallback bool
 }
 
 func NewMerkleSetUpdater(
@@ -167,10 +168,33 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
-	if err := s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, false); err != nil {
-		s.logger.Warn("Merkle root update failed, re-syncing from contract on next tick", zap.Error(err))
-		s.initialized = false
-		return nil
+	err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, s.subnetID)
+	if err != nil {
+		// Does not retry if the update is for the P-chain itself, or if fallback to P-Chain signing is disabled.
+		if s.subnetID == constants.PrimaryNetworkID || !s.allowPChainFallback {
+			s.logger.Warn("Merkle root update failed, retrying on next tick",
+				zap.Error(err),
+				zap.Stringer("subnetID", s.subnetID),
+				zap.Bool("isPChain", s.subnetID == constants.PrimaryNetworkID),
+				zap.Bool("allowPChainFallback", s.allowPChainFallback),
+			)
+			return nil
+		}
+		s.logger.Warn("Merkle root self-signed update failed, retrying with P-Chain fallback",
+			zap.Error(err),
+			zap.Stringer("subnetID", s.subnetID),
+		)
+		err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, constants.PrimaryNetworkID)
+		if err != nil {
+			s.logger.Warn("Merkle root P-Chain fallback also failed, retrying on next tick",
+				zap.Error(err),
+				zap.Stringer("subnetID", s.subnetID),
+			)
+			return nil
+		}
+		s.logger.Info("P-Chain fallback succeeded",
+			zap.Stringer("subnetID", s.subnetID),
+		)
 	}
 
 	s.localValidatorSet = newValidators
@@ -182,6 +206,12 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 }
 
 func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
+	allowPChainFallback, err := s.contract.AllowPChainFallback(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to read allowPChainFallback: %w", err)
+	}
+	s.allowPChainFallback = allowPChainFallback
+
 	onChainVS, err := s.contract.GetValidatorSetCommitment(&bind.CallOpts{Context: ctx}, s.blockchainID)
 	if err != nil {
 		return fmt.Errorf("failed to get on-chain validator set: %w", err)
@@ -218,7 +248,7 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
 		)
-		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, true); err != nil {
+		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, ids.Empty); err != nil {
 			return err
 		}
 		s.localValidatorSet = newValidators
@@ -297,17 +327,12 @@ func (s *MerkleSetUpdater) performUpdate(
 	ctx context.Context,
 	onChainPChainHeight uint64,
 	validatorSetUpdate *ValidatorSetMerkleCommitment,
-	isFirstRegistration bool,
+	signingChain ids.ID,
 ) error {
-	var signingSubnet ids.ID
-	if isFirstRegistration {
-		// Contract verifies with the P-chain validator set; warp source is the P-chain.
-		signingSubnet = constants.PrimaryNetworkID
-	} else {
-		// Contract verifies with the L1's registered set; preimage must use this chain ID.
-		signingSubnet = s.subnetID
+	if signingChain != constants.PrimaryNetworkID && signingChain != s.subnetID {
+		return fmt.Errorf("invalid signing chain %s: must be P-Chain or this subnet (%s)",
+			signingChain, s.subnetID)
 	}
-
 	addressedCall, err := warppayload.NewAddressedCall(nil, validatorSetUpdate.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to create addressed call: %w", err)
@@ -323,8 +348,7 @@ func (s *MerkleSetUpdater) performUpdate(
 	}
 
 	s.logger.Info("Signing new merkle root",
-		zap.Bool("isFirstRegistration", isFirstRegistration),
-		zap.Stringer("signingSubnet", signingSubnet),
+		zap.Stringer("signingChain", signingChain),
 	)
 
 	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
@@ -332,7 +356,7 @@ func (s *MerkleSetUpdater) performUpdate(
 		s.logger,
 		unsignedMsg,
 		nil,
-		signingSubnet,
+		signingChain,
 		defaultQuorumPercentage,
 		defaultQuorumPercentageBuf,
 		onChainPChainHeight,
@@ -341,20 +365,20 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, isFirstRegistration)
+	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, signingChain)
 }
 
 func (s *MerkleSetUpdater) sendUpdate(
 	ctx context.Context,
 	signedMsg *avalancheWarp.Message,
 	onChainPChainHeight uint64,
-	isFirstRegistration bool,
+	signingChain ids.ID,
 ) error {
+	// If the P-Chain signed the message in either initial registration or as a fallback,
+	// fetch the primary network validators used to build that root so the attestation
+	// proof is computed against the correct ordered set.
 	var attestationValidators []*Validator
-	if isFirstRegistration {
-		// First registration is verified against the P-chain Merkle root stored in the
-		// contract constructor. Fetch the primary network validators used to build that
-		// root so the attestation proof is computed against the correct ordered set.
+	if signingChain == constants.PrimaryNetworkID {
 		allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, onChainPChainHeight)
 		if err != nil {
 			return fmt.Errorf("failed to get P-chain validator sets at height %d for attestation: %w",
@@ -384,19 +408,10 @@ func (s *MerkleSetUpdater) sendUpdate(
 		return err
 	}
 
-	var tx *types.Transaction
-	if isFirstRegistration {
-		s.logger.Info("Sending registerValidatorSet (initial)")
-		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(ids.Empty))
-		if err != nil {
-			return fmt.Errorf("registerValidatorSet failed: %w", err)
-		}
-	} else {
-		s.logger.Info("Sending registerValidatorSet (update)")
-		tx, err = s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(s.blockchainID))
-		if err != nil {
-			return fmt.Errorf("registerValidatorSet (update) failed: %w", err)
-		}
+	s.logger.Info("Sending registerValidatorSet")
+	tx, err := s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(signingChain))
+	if err != nil {
+		return fmt.Errorf("registerValidatorSet failed: %w", err)
 	}
 
 	receipt, err := bind.WaitMined(ctx, s.ethClient, tx)
@@ -409,7 +424,6 @@ func (s *MerkleSetUpdater) sendUpdate(
 	s.logger.Info("validator set tx confirmed",
 		zap.String("txHash", tx.Hash().Hex()),
 		zap.Uint64("blockNumber", receipt.BlockNumber.Uint64()),
-		zap.Bool("isFirstRegistration", isFirstRegistration),
 	)
 	return nil
 }
