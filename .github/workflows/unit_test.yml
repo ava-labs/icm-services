@@ -31,7 +31,7 @@ jobs:
       - name: Run Avalanche unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          forge test -vvv
+          reforge test -vvv
 
       - name: Run Ethereum unit tests
         run: |

@@ -11,8 +11,8 @@ import {TeleporterMessageReceipt} from "@teleporter/ITeleporterMessenger.sol";
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 
-// #[pack(contract="ICMTeleporterV2")]
-// #[unpack(contract="ICMTeleporterV2", calldata)]
+// #[pack(contract="TeleporterV2Parsing", visibility="internal")]
+// #[unpack(contract="TeleporterV2Parsing", visibility="internal", calldata)]
 struct TeleporterMessageV2 {
     uint256 messageNonce;
     address originSenderAddress;
@@ -24,15 +24,15 @@ struct TeleporterMessageV2 {
     address destinationAddress;
     uint256 requiredGasLimit;
     address[] allowedRelayerAddresses;
-    // #[pack(method="_serializeTeleporterReceipts")]
-    // #[unpack(method="_parseTeleporterReceipts")]
+    // #[pack(method="serializeTeleporterReceipts")]
+    // #[unpack(method="parseTeleporterReceipts")]
     TeleporterMessageReceipt[] receipts;
     bytes message;
 }
 
 // A domain type for the specific kind of ICM message TeleporterV2 expects
-// #[pack(contract="ICMTeleporterV2")]
-// #[unpack(contract="ICMTeleporterV2", calldata)]
+// #[pack(contract="TeleporterV2Parsing", visibility="internal")]
+// #[unpack(contract="TeleporterV2Parsing", visibility="internal", calldata)]
 struct TeleporterICMMessage {
     TeleporterMessageV2 message;
     // used to distinguish between mainnet and testnets
@@ -45,59 +45,78 @@ struct TeleporterICMMessage {
 }
 
 /**
- * @notice serialize an array of `TeleporterMessageReceipt` instances
- */
-function _serializeTeleporterReceipts(
-    TeleporterMessageReceipt[] memory receipts
-) pure returns (bytes memory) {
-    bytes memory serialized = new bytes(receipts.length * 52);
-    uint256 length = receipts.length;
-
-    /* solhint-disable no-inline-assembly */
-    assembly ("memory-safe") {
-        let s := add(serialized, 0x20)
-        let r := add(receipts, 0x20)
-        for { let i := 0 } lt(i, length) { i := add(i, 1) } {
-            // get the value at index number i
-            let value := mload(r)
-            mstore(s, mload(value))
-            s := add(s, 32)
-            // shift the address left 12 bytes
-            mstore(s, shl(96, mload(add(value, 0x20))))
-            s := add(s, 20)
-            r := add(r, 32)
-        }
-    }
-    /* solhint-enable no-inline-assembly */
-    return abi.encodePacked(uint32(receipts.length), serialized);
-}
-
-/**
- * @notice Parse a serialized array  of `TeleporterMessageReceipt` instances
- */
-function _parseTeleporterReceipts(
-    bytes calldata data
-) pure returns (uint256, TeleporterMessageReceipt[] memory) {
-    // get the number of receipts
-    uint32 numReceipts = uint32(bytes4(data[:4]));
-    TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
-    uint256 offsetReceipts = 4;
-    // parse the receipts
-    for (uint256 i = 0; i < numReceipts;) {
-        receipts[i] = TeleporterMessageReceipt({
-            receivedMessageNonce: uint256(bytes32(data[offsetReceipts:offsetReceipts + 32])),
-            relayerRewardAddress: address(bytes20(data[offsetReceipts + 32:offsetReceipts + 52]))
-        });
-        offsetReceipts += 52;
-        unchecked {
-            i++;
-        }
-    }
-    return (offsetReceipts, receipts);
-}
-
-/**
  * @title ICMTeleporterV2
  * @notice Utility library for making TeleporterV2 work with ICM messages. Mainly (de)serialization
  */
-library ICMTeleporterV2 {}
+library ICMTeleporterV2 {
+    function parseTeleporterMessageV2(
+        bytes calldata data
+    ) public pure returns (TeleporterMessageV2 memory) {
+        (, TeleporterMessageV2 memory result) = TeleporterV2Parsing.unpackTeleporterMessageV2(data);
+        return result;
+    }
+
+    function parseTeleporterICMMessage(
+        bytes calldata message
+    ) public pure returns (TeleporterICMMessage memory) {
+        (, TeleporterICMMessage memory result) =
+            TeleporterV2Parsing.unpackTeleporterICMMessage(message);
+        return result;
+    }
+}
+
+library TeleporterV2Parsing {
+    /**
+     * @notice Parse a serialized array  of `TeleporterMessageReceipt` instances
+     */
+    function parseTeleporterReceipts(
+        bytes calldata data
+    ) public pure returns (uint256, TeleporterMessageReceipt[] memory) {
+        // get the number of receipts
+        uint32 numReceipts = uint32(bytes4(data[:4]));
+        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
+        uint256 offsetReceipts = 4;
+        // parse the receipts
+        for (uint256 i = 0; i < numReceipts;) {
+            receipts[i] = TeleporterMessageReceipt({
+                receivedMessageNonce: uint256(bytes32(data[offsetReceipts:offsetReceipts + 32])),
+                relayerRewardAddress: address(
+                    bytes20(data[offsetReceipts + 32:offsetReceipts + 52])
+                )
+            });
+            offsetReceipts += 52;
+            unchecked {
+                i++;
+            }
+        }
+        return (offsetReceipts, receipts);
+    }
+
+    /**
+     * @notice serialize an array of `TeleporterMessageReceipt` instances
+     */
+    function serializeTeleporterReceipts(
+        TeleporterMessageReceipt[] memory receipts
+    ) public pure returns (bytes memory) {
+        bytes memory serialized = new bytes(receipts.length * 52);
+        uint256 length = receipts.length;
+
+        /* solhint-disable no-inline-assembly */
+        assembly ("memory-safe") {
+            let s := add(serialized, 0x20)
+            let r := add(receipts, 0x20)
+            for { let i := 0 } lt(i, length) { i := add(i, 1) } {
+                // get the value at index number i
+                let value := mload(r)
+                mstore(s, mload(value))
+                s := add(s, 32)
+                // shift the address left 12 bytes
+                mstore(s, shl(96, mload(add(value, 0x20))))
+                s := add(s, 20)
+                r := add(r, 32)
+            }
+        }
+        /* solhint-enable no-inline-assembly */
+        return abi.encodePacked(uint32(receipts.length), serialized);
+    }
+}

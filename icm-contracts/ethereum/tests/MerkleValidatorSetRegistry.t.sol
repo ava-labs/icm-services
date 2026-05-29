@@ -15,7 +15,7 @@ import {
 import {ICMMessage} from "../../common/ICM.sol";
 import {
     TeleporterMessageV2,
-    ICMTeleporterV2,
+    TeleporterV2Parsing,
     TeleporterICMMessage
 } from "../../common/TeleporterMessageV2.sol";
 
@@ -188,7 +188,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
     function testVerifyMessageSuccessAllSignersBalancedTree() public view {
         // Construct unsigned warp message
         TeleporterMessageV2 memory inner;
-        bytes memory innerSerialized = ICMTeleporterV2.packTeleporterMessageV2(inner);
+        bytes memory innerSerialized = TeleporterV2Parsing.packTeleporterMessageV2(inner);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
             NETWORK_ID, PCHAIN_BLOCKCHAIN_ID, address(_registry), innerSerialized
         );
@@ -242,7 +242,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
     function testVerifyMessageSuccessPartialSignersBalancedTree() public view {
         // Reconstruct the unsigned warp message
         TeleporterMessageV2 memory inner;
-        bytes memory innerSerialized = ICMTeleporterV2.packTeleporterMessageV2(inner);
+        bytes memory innerSerialized = TeleporterV2Parsing.packTeleporterMessageV2(inner);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
             NETWORK_ID, PCHAIN_BLOCKCHAIN_ID, address(_registry), innerSerialized
         );

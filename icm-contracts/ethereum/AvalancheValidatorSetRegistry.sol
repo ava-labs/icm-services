@@ -15,7 +15,7 @@ import {
     ValidatorSets
 } from "./utils/ValidatorSets.sol";
 import {
-    ICMTeleporterV2,
+    TeleporterV2Parsing,
     TeleporterICMMessage,
     TeleporterMessageV2
 } from "../common/TeleporterMessageV2.sol";
@@ -73,7 +73,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
         TeleporterMessageV2 calldata message
     ) external {
         IWarpMessenger(_WARP_PRECOMPILE_ADDRESS)
-            .sendWarpMessage(ICMTeleporterV2.packTeleporterMessageV2(message));
+            .sendWarpMessage(TeleporterV2Parsing.packTeleporterMessageV2(message));
     }
 
     function verifyMessage(
@@ -88,7 +88,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
             message.sourceNetworkID,
             message.sourceBlockchainID,
             address(this),
-            ICMTeleporterV2.packTeleporterMessageV2(message.message)
+            TeleporterV2Parsing.packTeleporterMessageV2(message.message)
         );
         return ValidatorSets.verifyValidatorSetSignature(
             sig, signedData, _validatorSets[message.sourceBlockchainID]

@@ -275,11 +275,11 @@ done
 
 contract_names=(${AVALANCHE_CONTRACT_LIST[@]})
 cd $AVALANCHE_ICM_PATH
-generate_bindings "$AVALANCHE_EVM_VERSION" "" "$EXPANDED_DIR" "${contract_names[@]}"
+generate_bindings "$AVALANCHE_EVM_VERSION" "--via-ir" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=(${COMMON_CONTRACT_LIST[@]})
 cd $COMMON_ICM_PATH
-generate_bindings "$COMMON_EVM_VERSION" "" "$EXPANDED_DIR" "${contract_names[@]}"
+generate_bindings "$COMMON_EVM_VERSION" "--via-ir" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=(${ETHEREUM_CONTRACT_LIST[@]})
 cd $ETHEREUM_ICM_PATH
