@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"math/big"
 	"slices"
 	"testing"
 	"time"
@@ -111,6 +112,7 @@ type validatorInfo struct {
 	blsSigner         *localsigner.LocalSigner
 	blsPublicKey      *bls.PublicKey
 	blsPublicKeyBytes []byte
+	weight            uint64
 }
 
 func (v validatorInfo) Compare(o validatorInfo) int {
@@ -118,51 +120,11 @@ func (v validatorInfo) Compare(o validatorInfo) int {
 }
 
 func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []*localsigner.LocalSigner) {
-	validatorValues := make([]validatorInfo, validatorCount)
-	for i := 0; i < validatorCount; i++ {
-		localSigner, err := localsigner.New()
-		if err != nil {
-			panic(err)
-		}
-		pubKey := localSigner.PublicKey()
-		nodeID := ids.GenerateTestNodeID()
-		validatorValues[i] = validatorInfo{
-			nodeID:            nodeID,
-			blsSigner:         localSigner,
-			blsPublicKey:      pubKey,
-			blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
-		}
+	weights := make([]uint64, validatorCount)
+	for i := range weights {
+		weights[i] = 1
 	}
-
-	// Sort the validators by public key to construct the NodeValidatorIndexMap
-	utils.Sort(validatorValues)
-
-	// Placeholder for results
-	validatorSet := make([]*validators.Warp, validatorCount)
-	validatorSigners := make([]*localsigner.LocalSigner, validatorCount)
-	nodeValidatorIndexMap := make(map[ids.NodeID]int)
-	connectedNodes := set.NewSet[ids.NodeID](validatorCount)
-	for i, validator := range validatorValues {
-		validatorSigners[i] = validator.blsSigner
-		validatorSet[i] = &validators.Warp{
-			PublicKey:      validator.blsPublicKey,
-			PublicKeyBytes: validator.blsPublicKeyBytes,
-			Weight:         1,
-			NodeIDs:        []ids.NodeID{validator.nodeID},
-		}
-		nodeValidatorIndexMap[validator.nodeID] = i
-		connectedNodes.Add(validator.nodeID)
-	}
-
-	return &peers.CanonicalValidators{
-		ConnectedWeight: uint64(validatorCount),
-		ConnectedNodes:  connectedNodes,
-		ValidatorSet: validators.WarpSet{
-			Validators:  validatorSet,
-			TotalWeight: uint64(validatorCount),
-		},
-		NodeValidatorIndexMap: nodeValidatorIndexMap,
-	}, validatorSigners
+	return makeConnectedValidatorsWithWeights(weights)
 }
 
 func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
@@ -887,4 +849,232 @@ func TestPopulateSignatureMapFromCache(t *testing.T) {
 	require.Len(t, sigMap, 1)
 	// The expected weight is the weight of the first validator
 	require.Equal(t, connectedValidators.ValidatorSet.Validators[0].Weight, accWeight.Uint64())
+}
+
+// makeConnectedValidatorsWithWeights creates len(weights) connected validators,
+// assigning each its corresponding weight. Validators are returned in canonical
+// (pubkey) order, paired with their signers in the same order.
+func makeConnectedValidatorsWithWeights(
+	weights []uint64,
+) (*peers.CanonicalValidators, []*localsigner.LocalSigner) {
+	count := len(weights)
+	infos := make([]validatorInfo, count)
+	for i := 0; i < count; i++ {
+		localSigner, err := localsigner.New()
+		if err != nil {
+			panic(err)
+		}
+		pubKey := localSigner.PublicKey()
+		infos[i] = validatorInfo{
+			nodeID:            ids.GenerateTestNodeID(),
+			blsSigner:         localSigner,
+			blsPublicKey:      pubKey,
+			blsPublicKeyBytes: bls.PublicKeyToUncompressedBytes(pubKey),
+			weight:            weights[i],
+		}
+	}
+
+	// Canonical order is by uncompressed public-key bytes. Sort moves weights
+	// alongside their owning validatorInfo, so post-sort indices stay aligned.
+	utils.Sort(infos)
+
+	validatorSet := make([]*validators.Warp, count)
+	validatorSigners := make([]*localsigner.LocalSigner, count)
+	nodeValidatorIndexMap := make(map[ids.NodeID]int, count)
+	connectedNodes := set.NewSet[ids.NodeID](count)
+	var totalWeight uint64
+	for i, info := range infos {
+		validatorSigners[i] = info.blsSigner
+		validatorSet[i] = &validators.Warp{
+			PublicKey:      info.blsPublicKey,
+			PublicKeyBytes: info.blsPublicKeyBytes,
+			Weight:         info.weight,
+			NodeIDs:        []ids.NodeID{info.nodeID},
+		}
+		nodeValidatorIndexMap[info.nodeID] = i
+		connectedNodes.Add(info.nodeID)
+		totalWeight += info.weight
+	}
+
+	return &peers.CanonicalValidators{
+		ConnectedWeight: totalWeight,
+		ConnectedNodes:  connectedNodes,
+		ValidatorSet: validators.WarpSet{
+			Validators:  validatorSet,
+			TotalWeight: totalWeight,
+		},
+		NodeValidatorIndexMap: nodeValidatorIndexMap,
+	}, validatorSigners
+}
+
+// buildFullSignatureMap signs unsignedMessage with every signer and returns the
+// resulting map keyed by canonical validator index along with the cumulative
+// signed weight.
+func buildFullSignatureMap(
+	t *testing.T,
+	unsignedMessage *warp.UnsignedMessage,
+	vdrs *peers.CanonicalValidators,
+	signers []*localsigner.LocalSigner,
+) (map[int][bls.SignatureLen]byte, *big.Int) {
+	t.Helper()
+	require.Len(t, signers, len(vdrs.ValidatorSet.Validators))
+
+	sigMap := make(map[int][bls.SignatureLen]byte, len(signers))
+	totalSigned := big.NewInt(0)
+	for i, signer := range signers {
+		sig, err := signer.Sign(unsignedMessage.Bytes())
+		require.NoError(t, err)
+		sigMap[i] = [bls.SignatureLen]byte(bls.SignatureToBytes(sig))
+		totalSigned.Add(totalSigned, new(big.Int).SetUint64(vdrs.ValidatorSet.Validators[i].Weight))
+	}
+	return sigMap, totalSigned
+}
+
+// signerIndices returns the sorted list of signer indices encoded in a BitSetSignature.
+func signerIndices(t *testing.T, msg *warp.Message) []int {
+	t.Helper()
+	bitSetSig, ok := msg.Signature.(*warp.BitSetSignature)
+	require.True(t, ok)
+	bits := set.BitsFromBytes(bitSetSig.Signers)
+	out := make([]int, 0, bits.Len())
+	for i := 0; i < bits.BitLen(); i++ {
+		if bits.Contains(i) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+func TestAggregateIfSufficientWeight_PrunesGreedyByWeight(t *testing.T) {
+	const networkID = constants.UnitTestID
+	// Weights chosen so that greedy-by-weight-desc is unambiguous:
+	// total = 28; 67% threshold = 18.76 → need >=19.
+	// Largest-first: 10 → 10 (insufficient), 10+8 → 18 (insufficient), 10+8+5 → 23 (ok).
+	// Any subset of size 2 has weight at most 10+8 = 18 < 19. Greedy selection of
+	// size 3 is the unique minimum-cardinality subset that meets quorum.
+	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{10, 8, 5, 4, 1})
+
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
+	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("greedy"))
+	require.NoError(t, err)
+	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
+
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		sigMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		67,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, signed)
+
+	// Pruned set must consist of the 3 heaviest validators by weight (10, 8, 5).
+	got := signerIndices(t, signed)
+	require.Len(t, got, 3)
+	gotWeights := make([]uint64, 0, len(got))
+	for _, i := range got {
+		gotWeights = append(gotWeights, vdrs.ValidatorSet.Validators[i].Weight)
+	}
+	slices.Sort(gotWeights)
+	require.Equal(t, []uint64{5, 8, 10}, gotWeights)
+
+	require.NoError(t, signed.Signature.Verify(
+		unsigned,
+		networkID,
+		vdrs.ValidatorSet,
+		67,
+		100,
+	))
+}
+
+func TestAggregateIfSufficientWeight_SingleHeavySigner(t *testing.T) {
+	const networkID = constants.UnitTestID
+	// Validator 0 alone exceeds 67% of total weight; pruning must keep only that signer.
+	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{70, 10, 10, 10})
+
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
+	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("heavy"))
+	require.NoError(t, err)
+	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
+
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		sigMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		67,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, signed)
+
+	got := signerIndices(t, signed)
+	require.Len(t, got, 1)
+	require.Equal(t, uint64(70), vdrs.ValidatorSet.Validators[got[0]].Weight)
+
+	require.NoError(t, signed.Signature.Verify(
+		unsigned,
+		networkID,
+		vdrs.ValidatorSet,
+		67,
+		100,
+	))
+}
+
+func TestAggregateIfSufficientWeight_NoPruningWhenAllSignersNeeded(t *testing.T) {
+	const networkID = constants.UnitTestID
+	// 3 equally-weighted validators at 67% quorum: 2/3 = 66.67% < 67%, so all 3 are needed.
+	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1})
+
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
+	unsigned, err := warp.NewUnsignedMessage(networkID, ids.GenerateTestID(), []byte("tight"))
+	require.NoError(t, err)
+	sigMap, signedWeight := buildFullSignatureMap(t, unsigned, vdrs, signers)
+
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		sigMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		67,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, signed)
+	require.Len(t, signerIndices(t, signed), 3)
+}
+
+func TestAggregateIfSufficientWeight_BelowQuorumReturnsNil(t *testing.T) {
+	vdrs, signers := makeConnectedValidatorsWithWeights([]uint64{1, 1, 1, 1, 1})
+
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
+	unsigned, err := warp.NewUnsignedMessage(constants.UnitTestID, ids.GenerateTestID(), []byte("low"))
+	require.NoError(t, err)
+
+	// Only 2/5 = 40% signed; 60% quorum is not met.
+	partialMap := make(map[int][bls.SignatureLen]byte, 2)
+	signedWeight := big.NewInt(0)
+	for i := 0; i < 2; i++ {
+		sig, err := signers[i].Sign(unsigned.Bytes())
+		require.NoError(t, err)
+		partialMap[i] = [bls.SignatureLen]byte(bls.SignatureToBytes(sig))
+		signedWeight.Add(signedWeight, new(big.Int).SetUint64(vdrs.ValidatorSet.Validators[i].Weight))
+	}
+
+	signed, err := aggregator.aggregateIfSufficientWeight(
+		logging.NoLog{},
+		unsigned,
+		partialMap,
+		signedWeight,
+		vdrs.ValidatorSet.Validators,
+		vdrs.ValidatorSet.TotalWeight,
+		60,
+	)
+	require.NoError(t, err)
+	require.Nil(t, signed)
 }
