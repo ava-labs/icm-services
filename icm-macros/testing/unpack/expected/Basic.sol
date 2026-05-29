@@ -12,6 +12,7 @@ struct Primitives {
 }
 
 function unpackPrimitives(bytes memory data) pure returns (uint256, Primitives memory) {
+    /* solhint-disable */
     uint256 _initial_length;
     assembly { _initial_length := mload(data) }
     Primitives memory result;
@@ -95,6 +96,7 @@ function unpackPrimitives(bytes memory data) pure returns (uint256, Primitives m
     uint256 _final_length;
     assembly { _final_length := mload(data) }
     return (_initial_length - _final_length, result);
+    /* solhint-enable */
 }
 
 library TestUnpack {
@@ -114,6 +116,7 @@ library TestUnpack {
     }
 
     function unpackInner(bytes memory data) public pure returns (uint256, Inner memory) {
+        /* solhint-disable */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         Inner memory result;
@@ -153,9 +156,11 @@ library TestUnpack {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
+        /* solhint-enable */
     }
 
     function unpackOtherInner(bytes memory data) public pure returns (uint256, OtherInner memory) {
+        /* solhint-disable */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         OtherInner memory result;
@@ -195,6 +200,7 @@ library TestUnpack {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
+        /* solhint-enable */
     }
 }
 
@@ -212,6 +218,7 @@ library OtherTestUnpack {
     }
 
     function unpackOtherPrimitives(bytes calldata data) public pure returns (uint256, OtherPrimitives memory) {
+        /* solhint-disable */
         uint256 _initial_length = data.length;
         OtherPrimitives memory result;
 
@@ -253,5 +260,6 @@ library OtherTestUnpack {
         result.primitives = primitives;
 
         return (_initial_length - data.length, result);
+        /* solhint-enable */
     }
 }

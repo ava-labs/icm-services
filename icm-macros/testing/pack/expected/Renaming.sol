@@ -22,8 +22,11 @@ library PackMethods {
     }
 
     function serializeStruct(Struct memory obj) internal pure returns (bytes memory) {
+        /* solhint-disable */
+
         return abi.encodePacked(
             abi.encodePacked(obj.inner.length, obj.inner), abi.encodePacked(obj.flag), abi.encodePacked(obj.choice)
         );
+        /* solhint-enable */
     }
 }

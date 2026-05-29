@@ -7,6 +7,7 @@ struct FreeStanding {
 }
 
 function unpackFreeStanding(bytes memory data) pure returns (uint256, FreeStanding memory) {
+    /* solhint-disable */
     uint256 _initial_length;
     assembly { _initial_length := mload(data) }
     FreeStanding memory result;
@@ -37,6 +38,7 @@ function unpackFreeStanding(bytes memory data) pure returns (uint256, FreeStandi
     uint256 _final_length;
     assembly { _final_length := mload(data) }
     return (_initial_length - _final_length, result);
+    /* solhint-enable */
 }
 
 // #[unpack(calldata)]
@@ -46,6 +48,7 @@ struct FreeStandingCalldata {
 }
 
 function unpackFreeStandingCalldata(bytes calldata data) pure returns (uint256, FreeStandingCalldata memory) {
+    /* solhint-disable */
     uint256 _initial_length = data.length;
     FreeStandingCalldata memory result;
 
@@ -61,6 +64,7 @@ function unpackFreeStandingCalldata(bytes calldata data) pure returns (uint256, 
     result.flag = flag;
 
     return (_initial_length - data.length, result);
+    /* solhint-enable */
 }
 
 library UnpackMethods {
@@ -77,6 +81,7 @@ library UnpackMethods {
     }
 
     function unpackStruct(bytes memory data) public pure returns (uint256, Struct memory) {
+        /* solhint-disable */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         Struct memory result;
@@ -191,9 +196,11 @@ library UnpackMethods {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
+        /* solhint-enable */
     }
 
     function unpackStructCalldata(bytes calldata data) public pure returns (uint256, StructCalldata memory) {
+        /* solhint-disable */
         uint256 _initial_length = data.length;
         StructCalldata memory result;
 
@@ -269,5 +276,6 @@ library UnpackMethods {
         result.flags = flags;
 
         return (_initial_length - data.length, result);
+        /* solhint-enable */
     }
 }
