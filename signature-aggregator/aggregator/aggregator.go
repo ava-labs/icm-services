@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ import (
 	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/proto/pb/p2p"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
+	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
@@ -484,6 +486,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 			unsignedMessage,
 			signatureMap,
 			accumulatedSignatureWeight,
+			vdrs.ValidatorSet.Validators,
 			vdrs.ValidatorSet.TotalWeight,
 			requiredQuorumPercentage,
 		)
@@ -608,6 +611,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		unsignedMessage,
 		signatureMap,
 		accumulatedSignatureWeight,
+		vdrs.ValidatorSet.Validators,
 		vdrs.ValidatorSet.TotalWeight,
 		requiredQuorumPercentage+quorumPercentageBuffer,
 	); err != nil {
@@ -774,6 +778,7 @@ func (s *SignatureAggregator) handleResponse(
 		unsignedMessage,
 		signatureMap,
 		accumulatedSignatureWeight,
+		connectedValidators.ValidatorSet.Validators,
 		connectedValidators.ValidatorSet.TotalWeight,
 		quorumPercentage,
 	); err != nil {
@@ -791,6 +796,7 @@ func (s *SignatureAggregator) aggregateIfSufficientWeight(
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	signatureMap map[int][bls.SignatureLen]byte,
 	accumulatedSignatureWeight *big.Int,
+	canonicalValidators []*validators.Warp,
 	totalWeight uint64,
 	quorumPercentage uint64,
 ) (*avalancheWarp.Message, error) {
@@ -803,7 +809,17 @@ func (s *SignatureAggregator) aggregateIfSufficientWeight(
 		// Not enough signatures, continue processing messages
 		return nil, nil
 	}
-	aggSig, vdrBitSet, err := s.aggregateSignatures(log, signatureMap)
+
+	// Prune the signature map to the smallest subset whose combined weight still
+	// meets quorum. Fewer signers means smaller calldata on destination chains.
+	prunedSigMap := pruneSignatureMapToQuorum(
+		signatureMap,
+		canonicalValidators,
+		totalWeight,
+		quorumPercentage,
+	)
+
+	aggSig, vdrBitSet, err := s.aggregateSignatures(log, prunedSigMap)
 	if err != nil {
 		msg := "Failed to aggregate signature."
 		log.Error(msg, zap.Error(err))
@@ -823,6 +839,47 @@ func (s *SignatureAggregator) aggregateIfSufficientWeight(
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 	return signedMsg, nil
+}
+
+// pruneSignatureMapToQuorum returns the subset of signatureMap with the
+// heaviest validators (greedy by weight desc) whose combined weight is the
+// minimum that still meets quorumPercentage. canonicalValidators must be the
+// canonical set the signatureMap indices refer to.
+func pruneSignatureMapToQuorum(
+	signatureMap map[int][bls.SignatureLen]byte,
+	canonicalValidators []*validators.Warp,
+	totalWeight uint64,
+	quorumPercentage uint64,
+) map[int][bls.SignatureLen]byte {
+	type signerEntry struct {
+		idx    int
+		weight uint64
+	}
+	// Build in canonical index order so SliceStable yields a deterministic
+	// ordering for validators of equal weight.
+	signers := make([]signerEntry, 0, len(signatureMap))
+	for i, v := range canonicalValidators {
+		if _, ok := signatureMap[i]; !ok {
+			continue
+		}
+		signers = append(signers, signerEntry{idx: i, weight: v.Weight})
+	}
+	sort.SliceStable(signers, func(a, b int) bool {
+		return signers[a].weight > signers[b].weight
+	})
+
+	requiredWeight := utils.RequiredSignatureWeight(totalWeight, quorumPercentage)
+	pruned := make(map[int][bls.SignatureLen]byte, len(signers))
+	accumulated := new(big.Int)
+	weightBuf := new(big.Int)
+	for _, sgn := range signers {
+		pruned[sgn.idx] = signatureMap[sgn.idx]
+		accumulated.Add(accumulated, weightBuf.SetUint64(sgn.weight))
+		if accumulated.Cmp(requiredWeight) >= 0 {
+			break
+		}
+	}
+	return pruned
 }
 
 // isValidSignatureResponse tries to generate a signature from the peer.AsyncResponse, then verifies
