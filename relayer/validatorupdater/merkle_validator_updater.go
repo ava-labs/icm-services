@@ -348,7 +348,7 @@ func (s *MerkleSetUpdater) performUpdate(
 	}
 
 	s.logger.Info("Signing new merkle root",
-		zap.Stringer("signingSubnet", signingSubnet),
+		zap.Stringer("signingChain", signingChain),
 	)
 
 	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
