@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"math/big"
+	"sort"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/validators"
@@ -19,6 +20,7 @@ import (
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
+	"github.com/ava-labs/icm-services/relayer/validatorupdater"
 	"github.com/ava-labs/libevm/common"
 	. "github.com/onsi/gomega"
 )
@@ -362,4 +364,16 @@ func SerializeTeleporterMessageV2(message teleportermessengerv2.TeleporterMessag
 	result = append(result, message.Message...)
 
 	return result
+}
+
+// SortValidators sorts validators in ascending lexicographic order of their
+// uncompressed BLS public key bytes. This matches the canonical order required
+// by both the contracts and the signature aggregator.
+func SortValidators(validators []*validatorupdater.Validator) {
+	sort.Slice(validators, func(i, j int) bool {
+		return bytes.Compare(
+			validators[i].UncompressedPublicKeyBytes[:],
+			validators[j].UncompressedPublicKeyBytes[:],
+		) < 0
+	})
 }

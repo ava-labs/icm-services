@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"sort"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -395,10 +394,7 @@ func (s *MerkleSetUpdater) sendUpdate(
 				Weight:                     vdr.Weight,
 			}
 		}
-		sort.Slice(attestationValidators, func(i, j int) bool {
-			return string(attestationValidators[i].UncompressedPublicKeyBytes[:]) <
-				string(attestationValidators[j].UncompressedPublicKeyBytes[:])
-		})
+		SortValidators(attestationValidators)
 	} else {
 		attestationValidators = s.localValidatorSet
 	}
@@ -450,9 +446,7 @@ func (s *MerkleSetUpdater) fetchSortedValidators(
 		}
 		ix++
 	}
-	sort.Slice(validators, func(i, j int) bool {
-		return string(validators[i].UncompressedPublicKeyBytes[:]) < string(validators[j].UncompressedPublicKeyBytes[:])
-	})
+	SortValidators(validators)
 
 	return validators, nil
 }
