@@ -163,7 +163,7 @@ func TestShouldSendMessage(t *testing.T) {
 					test.destinationBlockchainID,
 				)
 			}
-			messageHandler, err := factory.NewMessageHandler(
+			handler, err := factory.NewMessageHandler(
 				logging.NoLog{},
 				unsignedMessage,
 				mockClient,
@@ -171,7 +171,7 @@ func TestShouldSendMessage(t *testing.T) {
 				mocks.NewMockMetrics(ctrl),
 			)
 			require.NoError(t, err)
-			result, err := messageHandler.ShouldSendMessage()
+			result, err := handler.(*messageHandler).ShouldSendMessage()
 			if test.expectedError {
 				require.Error(t, err)
 			} else {

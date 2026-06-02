@@ -220,7 +220,7 @@ func TestShouldSendMessage(t *testing.T) {
 			)
 			require.NoError(t, err)
 			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-			messageHandler, err := factory.NewMessageHandler(
+			handler, err := factory.NewMessageHandler(
 				logging.NoLog{},
 				test.warpUnsignedMessage,
 				mockClient,
@@ -257,7 +257,7 @@ func TestShouldSendMessage(t *testing.T) {
 			}
 
 			// Call the method under test
-			result, err := messageHandler.ShouldSendMessage()
+			result, err := handler.(*messageHandler).ShouldSendMessage()
 			require.NoError(t, err)
 			require.Equal(t, test.expectedResult, result)
 		})
@@ -321,7 +321,7 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	)
 	require.NoError(t, err)
 	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-	messageHandler, err := factory.NewMessageHandler(
+	handler, err := factory.NewMessageHandler(
 		logging.NoLog{},
 		warpUnsignedMessage,
 		mockClient,
@@ -351,6 +351,6 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 		Times(1)
 
 	// Call the method under test
-	_, err = messageHandler.SendMessage(signedMessage)
+	_, err = handler.(*messageHandler).SendMessage(signedMessage)
 	require.NoError(t, err)
 }

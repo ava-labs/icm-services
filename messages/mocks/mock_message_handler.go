@@ -172,20 +172,6 @@ func (m *MockMessageHandler) EXPECT() *MockMessageHandlerMockRecorder {
 	return m.recorder
 }
 
-// GetUnsignedMessage mocks base method.
-func (m *MockMessageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUnsignedMessage")
-	ret0, _ := ret[0].(*warp.UnsignedMessage)
-	return ret0
-}
-
-// GetUnsignedMessage indicates an expected call of GetUnsignedMessage.
-func (mr *MockMessageHandlerMockRecorder) GetUnsignedMessage() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnsignedMessage", reflect.TypeOf((*MockMessageHandler)(nil).GetUnsignedMessage))
-}
-
 // ProcessMessage mocks base method.
 func (m *MockMessageHandler) ProcessMessage(signingSubnetID ids.ID, quorumNumerator uint64) (common.Hash, error) {
 	m.ctrl.T.Helper()
@@ -201,32 +187,3 @@ func (mr *MockMessageHandlerMockRecorder) ProcessMessage(signingSubnetID, quorum
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessMessage", reflect.TypeOf((*MockMessageHandler)(nil).ProcessMessage), signingSubnetID, quorumNumerator)
 }
 
-// SendMessage mocks base method.
-func (m *MockMessageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendMessage", signedMessage)
-	ret0, _ := ret[0].(common.Hash)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SendMessage indicates an expected call of SendMessage.
-func (mr *MockMessageHandlerMockRecorder) SendMessage(signedMessage any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockMessageHandler)(nil).SendMessage), signedMessage)
-}
-
-// ShouldSendMessage mocks base method.
-func (m *MockMessageHandler) ShouldSendMessage() (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ShouldSendMessage")
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ShouldSendMessage indicates an expected call of ShouldSendMessage.
-func (mr *MockMessageHandlerMockRecorder) ShouldSendMessage() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldSendMessage", reflect.TypeOf((*MockMessageHandler)(nil).ShouldSendMessage))
-}

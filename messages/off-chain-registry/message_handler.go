@@ -99,10 +99,6 @@ func (f *factory) GetMessageRoutingInfo(
 		nil
 }
 
-func (m *messageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
-	return m.unsignedMessage
-}
-
 // ShouldSendMessage returns false if any contract is already registered as the specified version
 // in the TeleporterRegistry contract. This is because a single contract address can be registered
 // to multiple versions, but each version may only map to a single contract address.
@@ -211,7 +207,7 @@ func (m *messageHandler) ProcessMessage(
 		m.logger.Info("Message should not be sent")
 		return common.Hash{}, nil
 	}
-	unsignedMessage := m.GetUnsignedMessage()
+	unsignedMessage := m.unsignedMessage
 
 	startCreateSignedMessageTime := time.Now()
 

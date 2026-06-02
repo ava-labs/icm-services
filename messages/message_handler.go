@@ -50,15 +50,6 @@ type Metrics interface {
 
 // MessageHandlers relay a single Warp message. A new instance should be created for each Warp message.
 type MessageHandler interface {
-	// ShouldSendMessage returns true if the message should be sent to the destination chain
-	// If an error is returned, the boolean should be ignored by the caller.
-	ShouldSendMessage() (bool, error)
-
-	// SendMessage sends the signed message to the destination chain. The payload parsed according to
-	// the VM rules is also passed in, since MessageManager does not assume any particular VM
-	// returns the transaction hash if the transaction is successful.
-	SendMessage(signedMessage *warp.Message) (common.Hash, error)
-
 	// ProcessMessage relays the message to the destination chain by aggregating a signature for it
 	// and sending it via SendMessage. It does not retry on failure or checkpoint the height.
 	// Returns the transaction hash if the message is successfully relayed.
@@ -66,7 +57,4 @@ type MessageHandler interface {
 		signingSubnetID ids.ID,
 		quorumNumerator uint64,
 	) (common.Hash, error)
-
-	// GetUnsignedMessage returns the unsigned message
-	GetUnsignedMessage() *warp.UnsignedMessage
 }

@@ -167,10 +167,6 @@ func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Addr
 	return false
 }
 
-func (m *messageHandler) GetUnsignedMessage() *warp.UnsignedMessage {
-	return m.unsignedMessage
-}
-
 // ShouldSendMessage returns true if the message should be sent to the destination chain
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
@@ -335,7 +331,7 @@ func (m *messageHandler) ProcessMessage(
 		m.logger.Info("Message should not be sent")
 		return common.Hash{}, nil
 	}
-	unsignedMessage := m.GetUnsignedMessage()
+	unsignedMessage := m.unsignedMessage
 
 	startCreateSignedMessageTime := time.Now()
 
