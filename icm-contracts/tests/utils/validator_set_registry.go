@@ -369,5 +369,5 @@ func SerializeTeleporterMessageV2(message teleportermessengerv2.TeleporterMessag
 // uncompressed BLS public key bytes. This matches the canonical order required
 // by both the contracts and the signature aggregator.
 func SortValidators(validators []*validatorupdater.Validator) {
-	validatorupdater.SortValidators(validators)	
+	validatorupdater.SortValidators(validators)
 }
