@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"math/big"
-	"sort"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/validators"
@@ -370,10 +369,5 @@ func SerializeTeleporterMessageV2(message teleportermessengerv2.TeleporterMessag
 // uncompressed BLS public key bytes. This matches the canonical order required
 // by both the contracts and the signature aggregator.
 func SortValidators(validators []*validatorupdater.Validator) {
-	sort.Slice(validators, func(i, j int) bool {
-		return bytes.Compare(
-			validators[i].UncompressedPublicKeyBytes[:],
-			validators[j].UncompressedPublicKeyBytes[:],
-		) < 0
-	})
+	validatorupdater.SortValidators(validators)	
 }
