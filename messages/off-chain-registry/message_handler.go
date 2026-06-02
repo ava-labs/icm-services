@@ -43,6 +43,8 @@ type messageHandler struct {
 	signatureAggregator *aggregator.SignatureAggregator
 	metrics             messages.Metrics
 	registryAddress     common.Address
+	signingSubnetID     ids.ID
+	quorumNumerator     uint64
 }
 
 func NewMessageHandlerFactory(
@@ -72,6 +74,8 @@ func (f *factory) NewMessageHandler(
 	destinationClient vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
 	metrics messages.Metrics,
+	signingSubnetID ids.ID,
+	quorumNumerator uint64,
 ) (messages.MessageHandler, error) {
 	logFields := []zap.Field{
 		zap.Stringer("warpMessageID", unsignedMessage.ID()),
@@ -84,6 +88,8 @@ func (f *factory) NewMessageHandler(
 		signatureAggregator: signatureAggregator,
 		metrics:             metrics,
 		registryAddress:     f.registryAddress,
+		signingSubnetID:     signingSubnetID,
+		quorumNumerator:     quorumNumerator,
 	}, nil
 }
 
@@ -193,10 +199,7 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 // ProcessMessage relays the message to the destination chain by aggregating a signature for it
 // and sending it via SendMessage. It does not retry on failure or checkpoint the height.
 // Returns the transaction hash if the message is successfully relayed.
-func (m *messageHandler) ProcessMessage(
-	signingSubnetID ids.ID,
-	quorumNumerator uint64,
-) (common.Hash, error) {
+func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	m.logger.Info("Relaying message")
 	shouldSend, err := m.ShouldSendMessage()
 	if err != nil {
@@ -214,7 +217,7 @@ func (m *messageHandler) ProcessMessage(
 	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
 	defer cancel()
 
-	quorumPercentageBuffer := utils.DefaultQuorumPercentageBuffer(quorumNumerator)
+	quorumPercentageBuffer := utils.DefaultQuorumPercentageBuffer(m.quorumNumerator)
 	// Determine the appropriate P-Chain height for validator set selection
 	pchainHeight, err := m.destinationClient.GetPChainHeightForDestination(ctx)
 	if err != nil {
@@ -227,8 +230,8 @@ func (m *messageHandler) ProcessMessage(
 		m.logger,
 		unsignedMessage,
 		nil,
-		signingSubnetID,
-		quorumNumerator,
+		m.signingSubnetID,
+		m.quorumNumerator,
 		quorumPercentageBuffer,
 		pchainHeight,
 	)
