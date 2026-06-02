@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
-	"sort"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -92,10 +91,7 @@ func SubsetUpdater(
 			Weight:                     vdr.Weight,
 		}
 	}
-	sort.Slice(pChainValidators, func(i, j int) bool {
-		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) <
-			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
-	})
+	utils.SortValidators(pChainValidators)
 
 	pChainShardBytesList, pChainShardHashes, err := validatorupdater.ShardValidators(pChainValidators, int(testShardSize))
 	Expect(err).Should(BeNil())
@@ -589,9 +585,7 @@ func fetchSortedL1ValidatorsAtHeight(
 			Weight:                     vdr.Weight,
 		}
 	}
-	sort.Slice(validators, func(i, j int) bool {
-		return string(validators[i].UncompressedPublicKeyBytes[:]) < string(validators[j].UncompressedPublicKeyBytes[:])
-	})
+	utils.SortValidators(validators)
 	return validators
 }
 
