@@ -21,6 +21,7 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	pbDecider "github.com/ava-labs/icm-services/proto/pb/decider"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
@@ -42,10 +43,11 @@ type messageHandler struct {
 	unsignedMessage     *warp.UnsignedMessage
 	deciderClient       pbDecider.DeciderServiceClient
 	destinationClient   vms.DestinationClient
+	signatureAggregator *aggregator.SignatureAggregator
+	metrics             messages.Metrics
 	teleporterMessageID ids.ID
 	messageConfig       *Config
 	protocolAddress     common.Address
-	logFields           []zap.Field
 }
 
 // define an "empty" decider client to use when a connection isn't provided:
@@ -87,6 +89,8 @@ func (f *factory) NewMessageHandler(
 	logger logging.Logger,
 	unsignedMessage *warp.UnsignedMessage,
 	destinationClient vms.DestinationClient,
+	signatureAggregator *aggregator.SignatureAggregator,
+	metrics messages.Metrics,
 ) (messages.MessageHandler, error) {
 	teleporterMessage, err := parseTeleporterMessage(unsignedMessage)
 	if err != nil {
@@ -124,11 +128,11 @@ func (f *factory) NewMessageHandler(
 		unsignedMessage:     unsignedMessage,
 		deciderClient:       f.deciderClient,
 		destinationClient:   destinationClient,
+		signatureAggregator: signatureAggregator,
+		metrics:             metrics,
 		teleporterMessageID: teleporterMessageID,
 		messageConfig:       f.messageConfig,
 		protocolAddress:     f.protocolAddress,
-
-		logFields: logFields,
 	}, nil
 }
 
@@ -314,8 +318,69 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	return txHash, nil
 }
 
-func (m *messageHandler) LoggerWithContext(logger logging.Logger) logging.Logger {
-	return logger.With(m.logFields...)
+// ProcessMessage relays the message to the destination chain by aggregating a signature for it
+// and sending it via SendMessage. It does not retry on failure or checkpoint the height.
+// Returns the transaction hash if the message is successfully relayed.
+func (m *messageHandler) ProcessMessage(
+	signingSubnetID ids.ID,
+	quorumNumerator uint64,
+) (common.Hash, error) {
+	m.logger.Info("Relaying message")
+	shouldSend, err := m.ShouldSendMessage()
+	if err != nil {
+		m.metrics.IncFailedRelayMessageCount("failed to check if message should be sent")
+		return common.Hash{}, fmt.Errorf("failed to check if message should be sent: %w", err)
+	}
+	if !shouldSend {
+		m.logger.Info("Message should not be sent")
+		return common.Hash{}, nil
+	}
+	unsignedMessage := m.GetUnsignedMessage()
+
+	startCreateSignedMessageTime := time.Now()
+
+	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
+	defer cancel()
+
+	quorumPercentageBuffer := utils.DefaultQuorumPercentageBuffer(quorumNumerator)
+	// Determine the appropriate P-Chain height for validator set selection
+	pchainHeight, err := m.destinationClient.GetPChainHeightForDestination(ctx)
+	if err != nil {
+		m.metrics.IncFailedRelayMessageCount("failed to determine P-Chain height")
+		return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)
+	}
+
+	signedMessage, err := m.signatureAggregator.CreateSignedMessage(
+		ctx,
+		m.logger,
+		unsignedMessage,
+		nil,
+		signingSubnetID,
+		quorumNumerator,
+		quorumPercentageBuffer,
+		pchainHeight,
+	)
+	m.metrics.IncFetchSignatureAppRequestCount()
+	if err != nil {
+		m.metrics.IncFailedRelayMessageCount("failed to create signed warp message via AppRequest network")
+		return common.Hash{}, fmt.Errorf("failed to create signed warp messsage via AppRequest network: %w", err)
+	}
+
+	// create signed message latency (ms)
+	m.metrics.SetCreateSignedMessageLatencyMS(float64(time.Since(startCreateSignedMessageTime).Milliseconds()))
+
+	txHash, err := m.SendMessage(signedMessage)
+	if err != nil {
+		m.metrics.IncFailedRelayMessageCount("failed to send warp message")
+		return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)
+	}
+	m.logger.Info(
+		"Finished relaying message to destination chain",
+		zap.Stringer("txID", txHash),
+	)
+	m.metrics.IncSuccessfulRelayMessageCount()
+
+	return txHash, nil
 }
 
 func parseTeleporterMessage(

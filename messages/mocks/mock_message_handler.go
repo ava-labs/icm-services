@@ -12,9 +12,11 @@ package mocks
 import (
 	reflect "reflect"
 
+	ids "github.com/ava-labs/avalanchego/ids"
 	logging "github.com/ava-labs/avalanchego/utils/logging"
 	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	messages "github.com/ava-labs/icm-services/messages"
+	aggregator "github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	vms "github.com/ava-labs/icm-services/vms"
 	common "github.com/ava-labs/libevm/common"
 	gomock "go.uber.org/mock/gomock"
@@ -60,18 +62,90 @@ func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(unsignedM
 }
 
 // NewMessageHandler mocks base method.
-func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient) (messages.MessageHandler, error) {
+func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient, signatureAggregator *aggregator.SignatureAggregator, metrics messages.Metrics) (messages.MessageHandler, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewMessageHandler", logger, unsignedMessage, destinationClient)
+	ret := m.ctrl.Call(m, "NewMessageHandler", logger, unsignedMessage, destinationClient, signatureAggregator, metrics)
 	ret0, _ := ret[0].(messages.MessageHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NewMessageHandler indicates an expected call of NewMessageHandler.
-func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, unsignedMessage, destinationClient any) *gomock.Call {
+func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, unsignedMessage, destinationClient, signatureAggregator, metrics any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, unsignedMessage, destinationClient)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, unsignedMessage, destinationClient, signatureAggregator, metrics)
+}
+
+// MockMetrics is a mock of Metrics interface.
+type MockMetrics struct {
+	ctrl     *gomock.Controller
+	recorder *MockMetricsMockRecorder
+	isgomock struct{}
+}
+
+// MockMetricsMockRecorder is the mock recorder for MockMetrics.
+type MockMetricsMockRecorder struct {
+	mock *MockMetrics
+}
+
+// NewMockMetrics creates a new mock instance.
+func NewMockMetrics(ctrl *gomock.Controller) *MockMetrics {
+	mock := &MockMetrics{ctrl: ctrl}
+	mock.recorder = &MockMetricsMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMetrics) EXPECT() *MockMetricsMockRecorder {
+	return m.recorder
+}
+
+// IncFailedRelayMessageCount mocks base method.
+func (m *MockMetrics) IncFailedRelayMessageCount(failureReason string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "IncFailedRelayMessageCount", failureReason)
+}
+
+// IncFailedRelayMessageCount indicates an expected call of IncFailedRelayMessageCount.
+func (mr *MockMetricsMockRecorder) IncFailedRelayMessageCount(failureReason any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncFailedRelayMessageCount", reflect.TypeOf((*MockMetrics)(nil).IncFailedRelayMessageCount), failureReason)
+}
+
+// IncFetchSignatureAppRequestCount mocks base method.
+func (m *MockMetrics) IncFetchSignatureAppRequestCount() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "IncFetchSignatureAppRequestCount")
+}
+
+// IncFetchSignatureAppRequestCount indicates an expected call of IncFetchSignatureAppRequestCount.
+func (mr *MockMetricsMockRecorder) IncFetchSignatureAppRequestCount() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncFetchSignatureAppRequestCount", reflect.TypeOf((*MockMetrics)(nil).IncFetchSignatureAppRequestCount))
+}
+
+// IncSuccessfulRelayMessageCount mocks base method.
+func (m *MockMetrics) IncSuccessfulRelayMessageCount() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "IncSuccessfulRelayMessageCount")
+}
+
+// IncSuccessfulRelayMessageCount indicates an expected call of IncSuccessfulRelayMessageCount.
+func (mr *MockMetricsMockRecorder) IncSuccessfulRelayMessageCount() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncSuccessfulRelayMessageCount", reflect.TypeOf((*MockMetrics)(nil).IncSuccessfulRelayMessageCount))
+}
+
+// SetCreateSignedMessageLatencyMS mocks base method.
+func (m *MockMetrics) SetCreateSignedMessageLatencyMS(latency float64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetCreateSignedMessageLatencyMS", latency)
+}
+
+// SetCreateSignedMessageLatencyMS indicates an expected call of SetCreateSignedMessageLatencyMS.
+func (mr *MockMetricsMockRecorder) SetCreateSignedMessageLatencyMS(latency any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCreateSignedMessageLatencyMS", reflect.TypeOf((*MockMetrics)(nil).SetCreateSignedMessageLatencyMS), latency)
 }
 
 // MockMessageHandler is a mock of MessageHandler interface.
@@ -112,18 +186,19 @@ func (mr *MockMessageHandlerMockRecorder) GetUnsignedMessage() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnsignedMessage", reflect.TypeOf((*MockMessageHandler)(nil).GetUnsignedMessage))
 }
 
-// LoggerWithContext mocks base method.
-func (m *MockMessageHandler) LoggerWithContext(arg0 logging.Logger) logging.Logger {
+// ProcessMessage mocks base method.
+func (m *MockMessageHandler) ProcessMessage(signingSubnetID ids.ID, quorumNumerator uint64) (common.Hash, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LoggerWithContext", arg0)
-	ret0, _ := ret[0].(logging.Logger)
-	return ret0
+	ret := m.ctrl.Call(m, "ProcessMessage", signingSubnetID, quorumNumerator)
+	ret0, _ := ret[0].(common.Hash)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// LoggerWithContext indicates an expected call of LoggerWithContext.
-func (mr *MockMessageHandlerMockRecorder) LoggerWithContext(arg0 any) *gomock.Call {
+// ProcessMessage indicates an expected call of ProcessMessage.
+func (mr *MockMessageHandlerMockRecorder) ProcessMessage(signingSubnetID, quorumNumerator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoggerWithContext", reflect.TypeOf((*MockMessageHandler)(nil).LoggerWithContext), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessMessage", reflect.TypeOf((*MockMessageHandler)(nil).ProcessMessage), signingSubnetID, quorumNumerator)
 }
 
 // SendMessage mocks base method.
