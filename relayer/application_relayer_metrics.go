@@ -4,6 +4,8 @@
 package relayer
 
 import (
+	"github.com/ava-labs/icm-services/database"
+	"github.com/ava-labs/icm-services/messages"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -52,4 +54,43 @@ func NewApplicationRelayerMetrics(registerer prometheus.Registerer) *Application
 	registerer.MustRegister(m.fetchSignatureAppRequestCount)
 
 	return &m
+}
+
+// relayerMetrics binds ApplicationRelayerMetrics to a single relayer's label set so that it can be
+// handed to a message handler as messages.Metrics, without the handler depending on the relayer.
+type relayerMetrics struct {
+	metrics            *ApplicationRelayerMetrics
+	destinationChainID string
+	sourceChainID      string
+}
+
+var _ messages.Metrics = (*relayerMetrics)(nil)
+
+// forRelayer returns a messages.Metrics that records metrics for the given relayer.
+func (m *ApplicationRelayerMetrics) forRelayer(relayerID database.RelayerID) *relayerMetrics {
+	return &relayerMetrics{
+		metrics:            m,
+		destinationChainID: relayerID.DestinationBlockchainID.String(),
+		sourceChainID:      relayerID.SourceBlockchainID.String(),
+	}
+}
+
+func (m *relayerMetrics) IncSuccessfulRelayMessageCount() {
+	m.metrics.successfulRelayMessageCount.
+		WithLabelValues(m.destinationChainID, m.sourceChainID).Inc()
+}
+
+func (m *relayerMetrics) IncFailedRelayMessageCount(failureReason string) {
+	m.metrics.failedRelayMessageCount.
+		WithLabelValues(m.destinationChainID, m.sourceChainID, failureReason).Inc()
+}
+
+func (m *relayerMetrics) SetCreateSignedMessageLatencyMS(latency float64) {
+	m.metrics.createSignedMessageLatencyMS.
+		WithLabelValues(m.destinationChainID, m.sourceChainID).Set(latency)
+}
+
+func (m *relayerMetrics) IncFetchSignatureAppRequestCount() {
+	m.metrics.fetchSignatureAppRequestCount.
+		WithLabelValues(m.destinationChainID, m.sourceChainID).Inc()
 }
