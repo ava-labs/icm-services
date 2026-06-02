@@ -138,10 +138,7 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 		var txHash common.Hash
 		startProcessMessageTime := time.Now()
 		// Skip the cache if this is not the first attempt
-		txHash, err = handler.ProcessMessage(
-			r.signingSubnetID,
-			r.warpConfig.QuorumNumerator,
-		)
+		txHash, err = handler.ProcessMessage()
 		if err == nil {
 			return txHash, nil
 		}

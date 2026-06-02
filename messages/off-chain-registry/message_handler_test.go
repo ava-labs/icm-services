@@ -169,6 +169,8 @@ func TestShouldSendMessage(t *testing.T) {
 				mockClient,
 				nil,
 				mocks.NewMockMetrics(ctrl),
+				ids.Empty,
+				0,
 			)
 			require.NoError(t, err)
 			result, err := handler.(*messageHandler).ShouldSendMessage()

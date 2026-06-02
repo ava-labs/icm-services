@@ -62,18 +62,18 @@ func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(unsignedM
 }
 
 // NewMessageHandler mocks base method.
-func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient, signatureAggregator *aggregator.SignatureAggregator, metrics messages.Metrics) (messages.MessageHandler, error) {
+func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient, signatureAggregator *aggregator.SignatureAggregator, metrics messages.Metrics, signingSubnetID ids.ID, quorumNumerator uint64) (messages.MessageHandler, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewMessageHandler", logger, unsignedMessage, destinationClient, signatureAggregator, metrics)
+	ret := m.ctrl.Call(m, "NewMessageHandler", logger, unsignedMessage, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator)
 	ret0, _ := ret[0].(messages.MessageHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NewMessageHandler indicates an expected call of NewMessageHandler.
-func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, unsignedMessage, destinationClient, signatureAggregator, metrics any) *gomock.Call {
+func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, unsignedMessage, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, unsignedMessage, destinationClient, signatureAggregator, metrics)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, unsignedMessage, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator)
 }
 
 // MockMetrics is a mock of Metrics interface.
@@ -173,17 +173,16 @@ func (m *MockMessageHandler) EXPECT() *MockMessageHandlerMockRecorder {
 }
 
 // ProcessMessage mocks base method.
-func (m *MockMessageHandler) ProcessMessage(signingSubnetID ids.ID, quorumNumerator uint64) (common.Hash, error) {
+func (m *MockMessageHandler) ProcessMessage() (common.Hash, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ProcessMessage", signingSubnetID, quorumNumerator)
+	ret := m.ctrl.Call(m, "ProcessMessage")
 	ret0, _ := ret[0].(common.Hash)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ProcessMessage indicates an expected call of ProcessMessage.
-func (mr *MockMessageHandlerMockRecorder) ProcessMessage(signingSubnetID, quorumNumerator any) *gomock.Call {
+func (mr *MockMessageHandlerMockRecorder) ProcessMessage() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessMessage", reflect.TypeOf((*MockMessageHandler)(nil).ProcessMessage), signingSubnetID, quorumNumerator)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessMessage", reflect.TypeOf((*MockMessageHandler)(nil).ProcessMessage))
 }
-
