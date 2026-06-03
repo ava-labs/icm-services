@@ -108,7 +108,7 @@ func GetSourceBlockchainRelayerIDs(sourceBlockchain *config.SourceBlockchain) []
 	srcAddresses := sourceBlockchain.GetAllowedOriginSenderAddresses()
 	// If no addresses are provided, use the zero address to construct the relayer ID
 	if len(srcAddresses) == 0 {
-		srcAddresses = append(srcAddresses, AllAllowedAddress)
+		srcAddresses = []common.Address{AllAllowedAddress}
 	}
 	for _, protocol := range sourceBlockchain.Protocols() {
 		for _, srcAddress := range srcAddresses {
@@ -116,7 +116,7 @@ func GetSourceBlockchainRelayerIDs(sourceBlockchain *config.SourceBlockchain) []
 				dstAddresses := dst.GetAddresses()
 				// If no addresses are provided, use the zero address to construct the relayer ID
 				if len(dstAddresses) == 0 {
-					dstAddresses = append(dstAddresses, AllAllowedAddress)
+					dstAddresses = []common.Address{AllAllowedAddress}
 				}
 				for _, dstAddress := range dstAddresses {
 					ids = append(ids, NewRelayerID(
