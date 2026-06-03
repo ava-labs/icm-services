@@ -25,15 +25,21 @@ struct Attestation {
  * @notice Adapts ZKStateManager for the Teleporter messaging protocol.
  */
 contract ZKAdapter is ZKStateManager, IAdapter {
-    bytes32 private constant _MESSAGE_SENT_TOPIC = keccak256("TeleporterMessageSent(bytes)");
+    /// @notice topic0 of the TeleporterV2MessageSent event which is the only log topic verifyMessage accepts
+    bytes32 private constant _MESSAGE_SENT_TOPIC = keccak256("TeleporterV2MessageSent(bytes)");
 
+    /// @notice The network ID (mainnet/testnet/local) messages must originate from
     uint32 public immutable sourceNetworkId;
 
-    event TeleporterMessageSent(bytes encodedMessage);
+    /// @notice Address of the trusted source chain adapter that emits TeleporterV2MessageSent logs
+    address public immutable sourceEmitter;
+
+    event TeleporterV2MessageSent(bytes encodedMessage);
 
     constructor(
         uint256 sourceChainId_,
         uint32 sourceNetworkId_,
+        address sourceEmitter_,
         Consensus.State memory startingState,
         Execution.BeaconConfig memory beaconConfig_,
         uint24 permissibleTimespan_,
@@ -54,6 +60,7 @@ contract ZKAdapter is ZKStateManager, IAdapter {
         )
     {
         sourceNetworkId = sourceNetworkId_;
+        sourceEmitter = sourceEmitter_;
     }
 
     /**
@@ -63,14 +70,13 @@ contract ZKAdapter is ZKStateManager, IAdapter {
         TeleporterMessageV2 calldata message
     ) external {
         require(msg.sender == message.originTeleporterAddress, "unauthorized sender");
-        emit TeleporterMessageSent(abi.encode(message));
+        emit TeleporterV2MessageSent(abi.encode(message));
     }
 
     /**
      * @notice Verifies a Teleporter message was emitted on the source chain by validating the attestation.
-     * @dev Reverts unless the attestation proves that a `TeleporterMessageSent` log was emitted by a
-     * trusted source-side adapter whose payload equals the message being verified. The source-side adapter
-     * has the same contract address as the destination-side adapter, since both are deployed via Nick's method.
+     * @dev Reverts unless the attestation proves that a `TeleporterV2MessageSent` log was emitted by the
+     * trusted source-side adapter (`sourceEmitter`) whose payload equals the message being verified.
      */
     function verifyMessage(
         TeleporterICMMessage calldata message
@@ -79,7 +85,7 @@ contract ZKAdapter is ZKStateManager, IAdapter {
         require(message.sourceBlockchainID == bytes32(sourceChainId), "bad source chain");
         require(message.sourceNetworkID == sourceNetworkId, "bad network");
 
-        require(att.logProof.expectedEmitter == address(this), "bad emitter");
+        require(att.logProof.expectedEmitter == sourceEmitter, "bad emitter");
         require(att.logProof.expectedTopic0 == _MESSAGE_SENT_TOPIC, "bad topic");
 
         bytes memory logData = this.verifyLogAndExtract(att.execProof, att.logProof);
