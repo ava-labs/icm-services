@@ -79,17 +79,12 @@ func (f *factory) NewMessageHandler(
 	}, nil
 }
 
-func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (
-	messages.MessageRoutingInfo,
-	error,
-) {
-	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)
-	if err != nil {
-		return messages.MessageRoutingInfo{}, fmt.Errorf("failed parsing addressed payload: %w", err)
-	}
+func (f *factory) GetMessageRoutingInfo(
+	unsignedMessage *warp.UnsignedMessage,
+) (messages.MessageRoutingInfo, error) {
 	return messages.MessageRoutingInfo{
 			SourceChainID:      unsignedMessage.SourceChainID,
-			SenderAddress:      common.BytesToAddress(addressedPayload.SourceAddress),
+			SenderAddress:      OffChainRegistrySourceAddress, // Off-chain registry messages have a zero address as the sender
 			DestinationChainID: unsignedMessage.SourceChainID,
 			DestinationAddress: f.registryAddress,
 		},

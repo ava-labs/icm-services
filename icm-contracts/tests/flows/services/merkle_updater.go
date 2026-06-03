@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
-	"sort"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -87,10 +86,7 @@ func MerkleUpdater(
 			Weight:                     val.Weight,
 		}
 	}
-	sort.Slice(pChainValidators, func(i, j int) bool {
-		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) <
-			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
-	})
+	utils.SortValidators(pChainValidators)
 
 	pChainGenesisRoot := validatorupdater.BuildMerkleRoot(pChainValidators)
 	var pChainTotalWeight uint64
