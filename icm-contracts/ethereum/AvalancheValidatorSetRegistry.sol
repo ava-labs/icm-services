@@ -72,6 +72,7 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
+        require(msg.sender == message.originTeleporterAddress, "unauthorized sender");
         IWarpMessenger(_WARP_PRECOMPILE_ADDRESS).sendWarpMessage(
             TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message)
         );
