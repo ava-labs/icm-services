@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"math/big"
-	"sort"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
@@ -80,10 +79,7 @@ func MerkleValidatorSetRegistry(
 			Weight:                     val.Weight,
 		}
 	}
-	sort.Slice(pChainValidators, func(i, j int) bool {
-		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) <
-			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
-	})
+	utils.SortValidators(pChainValidators)
 	pChainRoot := validatorupdater.BuildMerkleRoot(pChainValidators)
 	var pChainTotalWeight uint64
 	for _, v := range pChainValidators {
@@ -358,8 +354,6 @@ func fetchSortedL1ValidatorsAtHeight(
 			Weight:                     vdr.Weight,
 		}
 	}
-	sort.Slice(validators, func(i, j int) bool {
-		return string(validators[i].UncompressedPublicKeyBytes[:]) < string(validators[j].UncompressedPublicKeyBytes[:])
-	})
+	utils.SortValidators(validators)
 	return validators
 }

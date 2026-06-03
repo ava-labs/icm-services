@@ -568,7 +568,7 @@ func createApplicationRelayersForSourceChain(
 	}
 
 	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(sourceBlockchain) {
-		logger = logger.With(
+		log := logger.With(
 			zap.Stringer("relayerID", relayerID.ID),
 			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
 			zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
@@ -578,14 +578,14 @@ func createApplicationRelayersForSourceChain(
 		if cfg.ProcessMissedBlocks {
 			var err error
 			height, err = database.CalculateStartingBlockHeight(
-				logger,
+				log,
 				db,
 				relayerID,
 				sourceBlockchain.ProcessHistoricalBlocksFromHeight,
 				currentHeight,
 			)
 			if err != nil {
-				logger.Error("Failed to calculate starting block height", zap.Error(err))
+				log.Error("Failed to calculate starting block height", zap.Error(err))
 				return nil, 0, err
 			}
 
@@ -596,7 +596,7 @@ func createApplicationRelayersForSourceChain(
 		}
 
 		checkpointManager, err := checkpoint.NewCheckpointManager(
-			logger,
+			log,
 			checkpointMetrics,
 			db,
 			ticker.Subscribe(),
@@ -604,12 +604,12 @@ func createApplicationRelayersForSourceChain(
 			height,
 		)
 		if err != nil {
-			logger.Error("Failed to create checkpoint manager", zap.Error(err))
+			log.Error("Failed to create checkpoint manager", zap.Error(err))
 			return nil, 0, err
 		}
 
 		applicationRelayer, err := relayer.NewApplicationRelayer(
-			logger,
+			log,
 			metrics,
 			network,
 			relayerID,
@@ -621,12 +621,12 @@ func createApplicationRelayersForSourceChain(
 			processMessageSemaphore,
 		)
 		if err != nil {
-			logger.Error("Failed to create application relayer", zap.Error(err))
+			log.Error("Failed to create application relayer", zap.Error(err))
 			return nil, 0, err
 		}
 		applicationRelayers[relayerID.ID] = applicationRelayer
 
-		logger.Info("Created application relayer")
+		log.Info("Created application relayer")
 	}
 	return applicationRelayers, minHeight, nil
 }
