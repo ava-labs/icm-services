@@ -18,8 +18,6 @@ import {Consensus, Execution, Receipt} from "./StateManagerLibrary.sol";
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 
-// TODO: Add e2e testing for verifying Ethereum events on the C-chain. See https://github.com/ava-labs/icm-services/issues/1239
-
 /**
  * @notice Contains the data required to verify and perform a beacon chain state transition.
  * @dev This struct bundles the ZK proof (seal) with the public inputs (journal) required to
@@ -183,44 +181,28 @@ contract ZKStateManager is AccessControl {
     }
 
     /**
-     * @notice Proves that a specific log was emitted on the beacon chain and executes application logic.
+     * @notice Verifies that a specific log was emitted on the beacon chain and returns the log.
      * @dev This is the main entry point for bridging events. It performs two key verifications:
      * 1. Execution Verification: Validates that the provided `targetReceiptsRoot` is part of the canonical beacon chain history using the `execProof`.
      * 2. Log Verification: Uses the validated `targetReceiptsRoot` to verify the inclusion  of a specific Receipt (and Log) via the `logProof`.
-     * Once verified, it emits a `ZKEventImported` event and passes the verified data to the internal `_onEventImport` handler for application-specific processing.
+     * Once verified, it emits a `ZKEventImported` event.
      * @param execProof The execution proof linking a receipt root to a trusted beacon block root.
      * @param logProof The log proof establishing the receipt and log inclusion against a trusted receipts root.
      */
-    function proveLogAndExecute(
+    function verifyLogAndExtract(
         Execution.Proof calldata execProof,
         Receipt.Proof calldata logProof
-    ) external {
-        // Verify the execution state proof against a stored beacon block root.
+    ) external returns (bytes memory logData) {
         bytes32 anchorRoot = _allowedBeaconBlocks[execProof.anchorSlot];
         require(anchorRoot != UNDEFINED_ROOT, "Anchor slot is undefined");
         Execution.verify(anchorRoot, execProof, _beaconConfig);
-
-        // Verify the receipt and log, and extract the log data.
-        bytes memory logData = Receipt.verifyAndExtractLog(execProof.targetReceiptsRoot, logProof);
-
-        // Emit the event.
+        logData = Receipt.verifyAndExtractLog(execProof.targetReceiptsRoot, logProof);
         emit ZKEventImported(
             sourceChainId,
             execProof.targetSlot,
             logProof.expectedEmitter,
             execProof.targetExecutionHeaderRoot,
             logProof.logIndex
-        );
-
-        // Hand off the event to application logic.
-        _onEventImport(
-            ZKEventInfo({
-                sourceChainId: sourceChainId,
-                beaconSlot: execProof.targetSlot,
-                executionRoot: execProof.targetExecutionHeaderRoot,
-                logIndex: logProof.logIndex,
-                logData: logData
-            })
         );
     }
 
@@ -268,16 +250,6 @@ contract ZKStateManager is AccessControl {
         root = _allowedBeaconBlocks[slot];
         valid = root != UNDEFINED_ROOT;
     }
-
-    /**
-     * @notice Application-specific logic to handle the imported event.
-     * @dev Override this in derived contracts to process verified cross-chain events.
-     */
-    function _onEventImport(
-        ZKEventInfo memory eventInfo
-    ) internal virtual 
-    // solhint-disable-next-line no-empty-blocks
-    {}
 
     /**
      * @notice Transitions and updates the consensus state of the contract to the new post-state.
@@ -333,7 +305,7 @@ contract ZKStateManager is AccessControl {
         Consensus.State memory,
         Consensus.State memory
     ) internal pure returns (bool) {
-        // TODO: Add permissible transition check to prevent stale state transitions
+        // TODO: Add permissible transition check to prevent stale state transitions. Issue https://github.com/ava-labs/icm-services/issues/1360
         return true;
     }
 }

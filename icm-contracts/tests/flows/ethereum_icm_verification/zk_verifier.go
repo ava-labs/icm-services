@@ -170,6 +170,7 @@ func ZKAdapterVerifier(
 		zkAdapterABI,
 		byteCode,
 		big.NewInt(11155111), // Sepolia
+		uint32(12345),
 		startingState,
 		fuluBeaconConfig,
 		big.NewInt(86400),
@@ -180,6 +181,7 @@ func ZKAdapterVerifier(
 	)
 	Expect(err).Should(BeNil())
 
+	gasLimit := uint64(8_000_000)
 	zkadapterContractTransaction,
 		zkadapterDeployerAddress,
 		zkadapterContractAddress,
@@ -187,7 +189,7 @@ func ZKAdapterVerifier(
 		byteCode,
 		nil,
 		deploymentUtils.GetDefaultContractCreationGasPrice(),
-		nil,
+		&gasLimit,
 	)
 	Expect(err).Should(BeNil())
 
@@ -247,7 +249,7 @@ func ZKAdapterVerifier(
 	}
 
 	// Submit the proofs to the contract
-	tx, err = avalancheZkadapter.ProveLogAndExecute(opts, execProof, receiptProof)
+	tx, err = avalancheZkadapter.VerifyLogAndExtract(opts, execProof, receiptProof)
 	Expect(err).Should(BeNil())
 	receipt := utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
 
