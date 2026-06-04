@@ -73,7 +73,8 @@ contract ZKAdapter is ZKStateManager, IAdapter {
     /**
      * @notice Verifies a Teleporter message was emitted on the source chain by validating the attestation.
      * @dev Reverts unless the attestation proves that a `TeleporterV2MessageSent` log was emitted by the
-     * trusted source-side adapter (`sourceEmitter`) whose payload equals the message being verified.
+     * trusted source-side adapter, whose address via Nick's method is `address(this)`, whose payload 
+     * equals the message being verified.
      */
     function verifyMessage(
         TeleporterICMMessage calldata message

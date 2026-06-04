@@ -170,8 +170,6 @@ func ZKAdapterVerifier(
 		zkAdapterABI,
 		byteCode,
 		big.NewInt(11155111), // Sepolia
-		uint32(12345),
-		common.HexToAddress(fixture.ReceiptProof.ExpectedEmitter),
 		startingState,
 		fuluBeaconConfig,
 		big.NewInt(86400),
