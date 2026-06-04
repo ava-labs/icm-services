@@ -6,6 +6,7 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {AvalancheValidatorSetRegistry} from "../AvalancheValidatorSetRegistry.sol";
 import {ICMMessage} from "../../common/ICM.sol";
+import {TeleporterMessageV2} from "../../common/TeleporterMessageV2.sol";
 import {BLST} from "../utils/BLST.sol";
 import {DiffUpdater} from "../DiffUpdater.sol";
 import {SubsetUpdater} from "../SubsetUpdater.sol";
@@ -1795,5 +1796,61 @@ contract AvalancheValidatorSetRegistryTests is AvalancheValidatorSetRegistryComm
             }
             changes[uint256(j + 1)] = key;
         }
+    }
+}
+
+contract AvalancheValidatorSetRegistrySendMessageTest is AvalancheValidatorSetRegistryCommon {
+    SubsetUpdater private _registry;
+    DiffUpdater private _diffRegistry;
+
+    function setUp() public {
+        setUpSubsetUpdater();
+        setUpDiffUpdater();
+    }
+
+    function setUpSubsetUpdater() public {
+        (ValidatorSet memory validatorSet, bytes32 validatorSetHash) = dummyPChainValidatorSet();
+        bytes32[] memory shardHashes = new bytes32[](1);
+        shardHashes[0] = validatorSetHash;
+        ValidatorSetMetadata memory initialValidatorSetMetadata = ValidatorSetMetadata({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            pChainHeight: validatorSet.pChainHeight,
+            pChainTimestamp: validatorSet.pChainTimestamp,
+            shardHashes: shardHashes
+        });
+        _registry = new SubsetUpdater(NETWORK_ID, initialValidatorSetMetadata);
+    }
+
+    function setUpDiffUpdater() public {
+        (ValidatorSet memory validatorSet,) = dummyPChainValidatorSetForDiff();
+        ValidatorSetDiff memory diff = allAdditionsValidatorSetDiff(validatorSet, 0, 0);
+        bytes memory diffBytes = ValidatorSets.serializeValidatorSetDiff(diff);
+        bytes32[] memory shardHashes = new bytes32[](1);
+        shardHashes[0] = sha256(diffBytes);
+        require(
+            validatorSet.pChainHeight > 0,
+            "pChainHeight being transitioned to must be greater than 0 for diff setup"
+        );
+        ValidatorSetMetadata memory metadata = ValidatorSetMetadata({
+            avalancheBlockchainID: validatorSet.avalancheBlockchainID,
+            pChainHeight: validatorSet.pChainHeight - 1,
+            pChainTimestamp: validatorSet.pChainTimestamp - 1,
+            shardHashes: shardHashes
+        });
+        _diffRegistry = new DiffUpdater(NETWORK_ID, metadata);
+    }
+
+    /// @dev sendMessage reverts when msg.sender is not the message's originTeleporterAddress.
+    function testSendMessageRevertsUnauthorizedSender() public {
+        TeleporterMessageV2 memory message;
+        message.originTeleporterAddress = address(0xBEEF);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("unauthorized sender"));
+        _registry.sendMessage(message);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("unauthorized sender"));
+        _diffRegistry.sendMessage(message);
     }
 }

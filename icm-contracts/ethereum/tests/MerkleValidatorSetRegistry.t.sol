@@ -758,3 +758,22 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         });
     }
 }
+
+contract MerkleValidatorSetRegistrySendMessageTest is MerkleValidatorSetRegistryCommon {
+    MerkleValidatorSetRegistry private _registry;
+    Validator[] private _validators;
+
+    function setUp() public {
+        _registry = _setUpRegistryWithPChainValidators(_validators);
+    }
+
+    /// @dev sendMessage reverts when msg.sender is not the message's originTeleporterAddress.
+    function testSendMessageRevertsUnauthorizedSender() public {
+        TeleporterMessageV2 memory message;
+        message.originTeleporterAddress = address(0xBEEF);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("unauthorized sender"));
+        _registry.sendMessage(message);
+    }
+}
