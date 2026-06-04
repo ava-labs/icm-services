@@ -192,11 +192,11 @@ contract ZKStateManager is AccessControl {
     function verifyLogAndExtract(
         Execution.Proof calldata execProof,
         Receipt.Proof calldata logProof
-    ) external returns (bytes memory logData) {
+    ) external returns (bytes memory) {
         bytes32 anchorRoot = _allowedBeaconBlocks[execProof.anchorSlot];
         require(anchorRoot != UNDEFINED_ROOT, "Anchor slot is undefined");
         Execution.verify(anchorRoot, execProof, _beaconConfig);
-        logData = Receipt.verifyAndExtractLog(execProof.targetReceiptsRoot, logProof);
+        bytes memory logData = Receipt.verifyAndExtractLog(execProof.targetReceiptsRoot, logProof);
         emit ZKEventImported(
             sourceChainId,
             execProof.targetSlot,
@@ -204,6 +204,7 @@ contract ZKStateManager is AccessControl {
             execProof.targetExecutionHeaderRoot,
             logProof.logIndex
         );
+        return logData;
     }
 
     function updateImageID(

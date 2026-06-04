@@ -7,10 +7,11 @@ pragma solidity ^0.8.30;
 
 import {ZKStateManager} from "./ZKStateManager.sol";
 import {
-    TeleporterICMMessage, TeleporterMessageV2
+    TeleporterICMMessage,
+    TeleporterMessageV2,
+    IAdapter
 } from "../../../common/ITeleporterMessengerV2.sol";
 import {Consensus, Execution, Receipt} from "./StateManagerLibrary.sol";
-import {IAdapter} from "../../../common/ITeleporterMessengerV2.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -31,15 +32,12 @@ contract ZKAdapter is ZKStateManager, IAdapter {
     /// @notice The network ID (mainnet/testnet/local) messages must originate from
     uint32 public immutable sourceNetworkId;
 
-    /// @notice Address of the trusted source chain adapter that emits TeleporterV2MessageSent logs
-    address public immutable sourceEmitter;
-
     event TeleporterV2MessageSent(bytes encodedMessage);
+
+    error UnsupportedSourceChain(uint256 chainId);
 
     constructor(
         uint256 sourceChainId_,
-        uint32 sourceNetworkId_,
-        address sourceEmitter_,
         Consensus.State memory startingState,
         Execution.BeaconConfig memory beaconConfig_,
         uint24 permissibleTimespan_,
@@ -59,8 +57,7 @@ contract ZKAdapter is ZKStateManager, IAdapter {
             superAdmin
         )
     {
-        sourceNetworkId = sourceNetworkId_;
-        sourceEmitter = sourceEmitter_;
+        sourceNetworkId = _networkIdForChain(sourceChainId_);
     }
 
     /**
@@ -85,7 +82,7 @@ contract ZKAdapter is ZKStateManager, IAdapter {
         require(message.sourceBlockchainID == bytes32(sourceChainId), "bad source chain");
         require(message.sourceNetworkID == sourceNetworkId, "bad network");
 
-        require(att.logProof.expectedEmitter == sourceEmitter, "bad emitter");
+        require(att.logProof.expectedEmitter == address(this), "bad emitter");
         require(att.logProof.expectedTopic0 == _MESSAGE_SENT_TOPIC, "bad topic");
 
         bytes memory logData = this.verifyLogAndExtract(att.execProof, att.logProof);
@@ -93,5 +90,14 @@ contract ZKAdapter is ZKStateManager, IAdapter {
         require(keccak256(emitted) == keccak256(abi.encode(message.message)), "payload mismatch");
 
         return true;
+    }
+
+    /// @notice Maps a source EVM chain ID to its ICM network ID.
+    function _networkIdForChain(
+        uint256 chainId_
+    ) internal pure returns (uint32) {
+        if (chainId_ == 1) return 1;
+        if (chainId_ == 11155111) return 2;
+        revert UnsupportedSourceChain(chainId_);
     }
 }
