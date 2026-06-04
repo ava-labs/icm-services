@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"math/rand"
 	"sort"
@@ -47,6 +48,12 @@ const (
 	// reach out to more validators when the highest-weight ones are slow to respond, while
 	// still leaving the original batch's requests in flight in case they respond late.
 	batchResponseTimeout = utils.DefaultAppRequestTimeout / 2
+
+	// Minimum number of validators to include in a single signature request batch.
+	// Even when a smaller set of high-weight validators would be enough to reach quorum
+	// on paper, we query at least this many so that a slow or offline validator doesn't
+	// force us to wait for the batch timeout before reaching out to anyone else.
+	minBatchSize = 3
 
 	// The minimum balance that an L1 validator must maintain in order to participate
 	// in the aggregate signature.
@@ -326,91 +333,77 @@ func (s *SignatureAggregator) getCachedSignaturesForMessage(
 	return signatureMap, accumulatedSignatureWeight
 }
 
-// validatorIndex pairs a validator's index in the canonical ordering with its weight.
-// Used to prioritize requests to higher-weight validators first.
-type validatorIndex struct {
-	index  int
-	weight uint64
+// queryableValidator is a single canonical validator that still needs to be queried,
+// paired with its weight and the connected node IDs to send the request to.
+type queryableValidator struct {
+	weight  uint64
+	nodeIDs []ids.NodeID
 }
 
-// sortedQueryableValidators returns the indices of validators that still need to be queried
-// (i.e. that do not yet have a cached signature in [signatureMap]), sorted by descending weight.
-// Ties are broken by canonical index for determinism.
-func sortedQueryableValidators(
+// queryableValidatorsByWeight returns the validators that still need to be queried
+// (those without a cached signature in [signatureMap] and with at least one connected
+// node), sorted by descending weight. The canonical validator set is already ordered by
+// public key, so a stable sort preserves that order for validators of equal weight.
+func queryableValidatorsByWeight(
 	vdrs *peers.CanonicalValidators,
 	signatureMap map[int][bls.SignatureLen]byte,
-) []validatorIndex {
-	candidates := make([]validatorIndex, 0, len(vdrs.ValidatorSet.Validators))
+) []queryableValidator {
+	queryable := make([]queryableValidator, 0, len(vdrs.ValidatorSet.Validators))
 	for i, v := range vdrs.ValidatorSet.Validators {
 		if _, has := signatureMap[i]; has {
 			continue
 		}
-		candidates = append(candidates, validatorIndex{index: i, weight: v.Weight})
-	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].weight != candidates[j].weight {
-			return candidates[i].weight > candidates[j].weight
-		}
-		return candidates[i].index < candidates[j].index
-	})
-	return candidates
-}
-
-// pickNextBatch advances [cursor] through [candidates] and returns the set of node IDs
-// to query next. Validators are added to the batch in weight-descending order until the
-// cumulative weight of newly added validators is at least [minBatchWeight], or there are
-// no more candidates. [queriedNodes] is updated in place with any node added to the batch.
-// Returns the batch's node IDs and the cumulative weight of newly added validators.
-func pickNextBatch(
-	vdrs *peers.CanonicalValidators,
-	candidates []validatorIndex,
-	cursor *int,
-	queriedNodes set.Set[ids.NodeID],
-	minBatchWeight uint64,
-) (set.Set[ids.NodeID], uint64) {
-	batchNodes := set.NewSet[ids.NodeID](0)
-	batchWeight := uint64(0)
-	for *cursor < len(candidates) && batchWeight < minBatchWeight {
-		c := candidates[*cursor]
-		*cursor++
-		v := vdrs.ValidatorSet.Validators[c.index]
-		added := false
+		var nodeIDs []ids.NodeID
 		for _, nodeID := range v.NodeIDs {
-			if vdrs.ConnectedNodes.Contains(nodeID) && !queriedNodes.Contains(nodeID) {
-				queriedNodes.Add(nodeID)
-				batchNodes.Add(nodeID)
-				added = true
+			if vdrs.ConnectedNodes.Contains(nodeID) {
+				nodeIDs = append(nodeIDs, nodeID)
 			}
 		}
-		if added {
-			batchWeight += c.weight
+		// Skip validators we have no connected node to query.
+		if len(nodeIDs) == 0 {
+			continue
 		}
+		queryable = append(queryable, queryableValidator{weight: v.Weight, nodeIDs: nodeIDs})
 	}
-	return batchNodes, batchWeight
+	sort.SliceStable(queryable, func(i, j int) bool {
+		return queryable[i].weight > queryable[j].weight
+	})
+	return queryable
 }
 
-// quorumPercentageDenominator is the denominator implied by quorumPercentage parameters,
-// which are expressed as integer percentages on a 0-100 scale.
-const quorumPercentageDenominator = uint64(100)
+// nextBatch splits [remaining] into the next batch of validators to query and the
+// validators left over for subsequent batches. Validators are taken in weight-descending
+// order until the cumulative weight is at least [minWeight] and the batch holds at least
+// [minBatchSize] validators (or [remaining] is exhausted). Returns the batch's node IDs,
+// the batch's cumulative validator weight, and the remaining validators.
+func nextBatch(
+	remaining []queryableValidator,
+	minWeight uint64,
+) (set.Set[ids.NodeID], uint64, []queryableValidator) {
+	batchNodes := set.NewSet[ids.NodeID](minBatchSize)
+	var batchWeight uint64
+	n := 0
+	for n < len(remaining) && (n < minBatchSize || batchWeight < minWeight) {
+		batchWeight += remaining[n].weight
+		for _, nodeID := range remaining[n].nodeIDs {
+			batchNodes.Add(nodeID)
+		}
+		n++
+	}
+	return batchNodes, batchWeight, remaining[n:]
+}
 
-// weightGap returns the additional weight still required to meet the [quorumPercentage]
-// threshold, given the [accumulatedWeight] and the validator set's [totalWeight].
-// Returns 0 if the threshold has already been met.
+// weightGap returns the additional signature weight still required to meet the
+// [quorumPercentage] threshold given [accumulatedWeight] and the validator set's
+// [totalWeight]. Returns 0 if the threshold has already been met.
 func weightGap(accumulatedWeight *big.Int, totalWeight, quorumPercentage uint64) uint64 {
-	// required = ceil(totalWeight * quorumPercentage / 100)
-	required := new(big.Int).Mul(
-		new(big.Int).SetUint64(totalWeight),
-		new(big.Int).SetUint64(quorumPercentage),
-	)
-	denom := new(big.Int).SetUint64(quorumPercentageDenominator)
-	required.Add(required, new(big.Int).Sub(denom, big.NewInt(1)))
-	required.Quo(required, denom)
-	if accumulatedWeight.Cmp(required) >= 0 {
+	required := utils.RequiredSignatureWeight(totalWeight, quorumPercentage)
+	gap := new(big.Int).Sub(required, accumulatedWeight)
+	if gap.Sign() <= 0 {
 		return 0
 	}
-	gap := new(big.Int).Sub(required, accumulatedWeight)
 	if !gap.IsUint64() {
-		return ^uint64(0)
+		return math.MaxUint64
 	}
 	return gap.Uint64()
 }
@@ -530,9 +523,9 @@ func (s *SignatureAggregator) collectSignatures(
 	ctx, cancel := context.WithTimeout(ctx, s.signatureRequestTimeout)
 	defer cancel()
 
-	candidates := sortedQueryableValidators(vdrs, signatureMap)
-	cursor := 0
-	queriedNodes := set.NewSet[ids.NodeID](len(vdrs.ValidatorSet.Validators))
+	// Sort the queryable validators by weight once. Each batch consumes a prefix of
+	// [remaining], so a validator is never queried more than once per aggregation.
+	remaining := queryableValidatorsByWeight(vdrs, signatureMap)
 	pendingResponses := 0
 	// Buffer the merged channel to accommodate every possible response without blocking
 	// the per-batch forwarder goroutines.
@@ -545,15 +538,17 @@ func (s *SignatureAggregator) collectSignatures(
 		"Aggregator collecting signatures from peers in weight-prioritized batches.",
 		zap.Int("validatorSetSize", len(vdrs.ValidatorSet.Validators)),
 		zap.Int("signatureMapSize", len(signatureMap)),
-		zap.Int("candidatesRemaining", len(candidates)),
+		zap.Int("queryableValidators", len(remaining)),
 	)
 
 	for {
 		// Send a new batch sized to close the current weight gap, if there are any
-		// candidates remaining and we haven't yet met the target threshold.
+		// validators remaining and we haven't yet met the target threshold.
 		gap := weightGap(accumulatedSignatureWeight, totalWeight, targetThreshold)
-		if gap > 0 && cursor < len(candidates) {
-			batchNodes, batchWeight := pickNextBatch(vdrs, candidates, &cursor, queriedNodes, gap)
+		if gap > 0 && len(remaining) > 0 {
+			var batchNodes set.Set[ids.NodeID]
+			var batchWeight uint64
+			batchNodes, batchWeight, remaining = nextBatch(remaining, gap)
 			if batchNodes.Len() > 0 {
 				sent, err := s.sendBatch(
 					ctx,
