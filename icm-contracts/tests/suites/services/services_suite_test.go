@@ -281,6 +281,11 @@ var _ = ginkgo.Describe("[ICM Relayer & Signature Aggregator Integration Tests",
 		func(ctx context.Context) {
 			servicesFlows.MerkleUpdater(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
 		})
+	ginkgo.It("MerkleMessageRelay",
+		ginkgo.Label(servicesLabel),
+		func(ctx context.Context) {
+			servicesFlows.MerkleMessageRelay(ctx, log, localNetworkInstance, localEthereumNetworkInstance, teleporterInfo)
+		})
 	// ValidatorsOnlyNetwork runs last: it puts a subnet in validator-only mode, so any following
 	// test that dials all L1s (e.g. GetL1Infos) would fail until nodes are restarted with the
 	// normal chain config again. Running this spec last avoids that extra restore/restart pass for

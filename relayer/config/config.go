@@ -142,6 +142,17 @@ func (c *Config) Validate() error {
 		blockchainIDToSubnetID[s.blockchainID] = s.subnetID
 	}
 
+	// Validate external EVM destinations and register the IDs of delivery-enabled ones so
+	// that source SupportedDestinations may reference them.
+	for _, e := range c.ExternalEVMDestinations {
+		if err := e.ValidateDelivery(); err != nil {
+			return fmt.Errorf("failed to validate external EVM destination: %w", err)
+		}
+		if e.Deliver {
+			destinationChains.Add(e.DestinationBlockchainID)
+		}
+	}
+
 	// Validate the source chains and store the source subnet and chain IDs for future use
 	sourceBlockchains := set.NewSet[string](len(c.SourceBlockchains))
 	for _, s := range c.SourceBlockchains {
@@ -304,6 +315,16 @@ func (c *Config) GetWarpConfig(blockchainID ids.ID) (WarpConfig, error) {
 	for _, s := range c.DestinationBlockchains {
 		if blockchainID == s.GetBlockchainID() {
 			return s.warpConfig, nil
+		}
+	}
+	// Fall back to external EVM delivery destinations, whose Warp config (quorum) comes
+	// from configuration since they cannot be queried for a Warp precompile config.
+	for _, e := range c.ExternalEVMDestinations {
+		if !e.Deliver {
+			continue
+		}
+		if id, err := e.GetDestinationBlockchainID(); err == nil && id == blockchainID {
+			return e.GetWarpConfig(), nil
 		}
 	}
 	return WarpConfig{}, fmt.Errorf("blockchain %s not configured as a destination", blockchainID)
