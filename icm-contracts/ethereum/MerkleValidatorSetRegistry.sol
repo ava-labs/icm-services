@@ -58,6 +58,10 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         });
     }
 
+    /// @dev sendMessage has no msg.sender == originTeleporterAddress check. This check must live in
+    /// the contract that the messenger (Teleporter) calls directly, currently in Adapter.sol, 
+    /// in order to prevent unauthorized calls to sendMessage. To clarify, this contract cannot be used as the  
+    /// direct messaging entry-point.
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {

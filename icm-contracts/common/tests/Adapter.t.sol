@@ -195,8 +195,8 @@ contract AdapterSendMessageAuthTest is Test {
     /// @dev sendMessage reverts when msg.sender is not the message's originTeleporterAddress.
     function testSendMessageRevertsUnauthorizedSender() public {
         TeleporterMessageV2 memory message;
-        message.originTeleporterAddress = address(0xBEEF); 
-        message.destinationBlockchainID = _BLOCKCHAIN1;    
+        message.originTeleporterAddress = address(0xBEEF);
+        message.destinationBlockchainID = _BLOCKCHAIN1;
 
         vm.prank(address(0xBAD));
         vm.expectRevert(bytes("unauthorized sender"));

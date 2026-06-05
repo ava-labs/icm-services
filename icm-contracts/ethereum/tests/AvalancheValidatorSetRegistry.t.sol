@@ -6,7 +6,6 @@ pragma solidity ^0.8.30;
 import {Test} from "@forge-std/Test.sol";
 import {AvalancheValidatorSetRegistry} from "../AvalancheValidatorSetRegistry.sol";
 import {ICMMessage} from "../../common/ICM.sol";
-import {TeleporterMessageV2} from "../../common/TeleporterMessageV2.sol";
 import {BLST} from "../utils/BLST.sol";
 import {DiffUpdater} from "../DiffUpdater.sol";
 import {SubsetUpdater} from "../SubsetUpdater.sol";
