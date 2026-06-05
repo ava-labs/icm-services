@@ -45,6 +45,7 @@ contract Adapter is IAdapter {
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
+        require(msg.sender == message.originTeleporterAddress, "unauthorized sender");
         if (message.destinationBlockchainID == chain1) {
             return adapter1.sendMessage(message);
         } else if (message.destinationBlockchainID == chain2) {

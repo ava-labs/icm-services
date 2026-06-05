@@ -173,3 +173,33 @@ contract BtoA is IAdapter {
         revert("Adapter 2");
     }
 }
+
+contract AdapterSendMessageAuthTest is Test {
+    bytes32 private constant _BLOCKCHAIN1 = hex"01";
+    bytes32 private constant _BLOCKCHAIN2 = hex"02";
+
+    Adapter private _multiplexAdapter;
+    IAdapter private _adapter1;
+    IAdapter private _adapter2;
+    TeleporterMessengerV2 private _teleporter1;
+
+    function setUp() public {
+        _adapter1 = new AtoB();
+        _adapter2 = new BtoA();
+        _multiplexAdapter =
+            new Adapter(_BLOCKCHAIN1, _BLOCKCHAIN2, address(_adapter1), address(_adapter2));
+        _teleporter1 = new TeleporterMessengerV2(address(_multiplexAdapter));
+        _teleporter1.initialize(_BLOCKCHAIN1);
+    }
+
+    /// @dev sendMessage reverts when msg.sender is not the message's originTeleporterAddress.
+    function testSendMessageRevertsUnauthorizedSender() public {
+        TeleporterMessageV2 memory message;
+        message.originTeleporterAddress = address(0xBEEF); 
+        message.destinationBlockchainID = _BLOCKCHAIN1;    
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("unauthorized sender"));
+        _multiplexAdapter.sendMessage(message);
+    }
+}
