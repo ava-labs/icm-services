@@ -4,11 +4,12 @@
 package utils
 
 import (
+	"cmp"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
 	"math/big"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -109,8 +110,8 @@ func CalculateQuorumPercentageBuffer(
 // to extract each item's weight. The sort is stable, so items of equal weight retain
 // their original relative order.
 func SortByWeightDescending[T any](items []T, weight func(T) uint64) {
-	sort.SliceStable(items, func(i, j int) bool {
-		return weight(items[i]) > weight(items[j])
+	slices.SortStableFunc(items, func(a, b T) int {
+		return cmp.Compare(weight(b), weight(a))
 	})
 }
 
