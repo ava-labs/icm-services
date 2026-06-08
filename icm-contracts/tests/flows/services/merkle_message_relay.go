@@ -194,6 +194,11 @@ func MerkleMessageRelay(
 	Expect(err).Should(BeNil())
 	log.Info("Sent TeleporterV2 message from L1 to Ethereum", zap.Stringer("messageID", messageID))
 
+	// Advance the source chain a few blocks so the relayer's WS subscription reliably surfaces the
+	// block containing the message. subnet-evm only produces blocks when there are transactions, so
+	// without follow-on activity the message block's new-head notification can be delayed.
+	Expect(utils.IssueTxsToAdvanceChain(ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5)).Should(BeNil())
+
 	// =========================================================================
 	// Assert the relayer delivers the message to the Ethereum TeleporterMessengerV2
 	// =========================================================================
