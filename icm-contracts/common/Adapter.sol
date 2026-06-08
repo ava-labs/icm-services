@@ -42,9 +42,16 @@ contract Adapter is IAdapter {
         }
     }
 
+    /// @notice Routes an outbound message to the inner adapter to its destination chain.
+    /// @dev Enforces msg.sender == originTeleporterAddress at the wrapper level, which is the
+    /// entry-point for messaging protocols like Teleporter. This check cannot be performed at
+    /// the inner adapter level (e.g., by the MerkleValidatorSetRegistry contract) because it is
+    /// not called directly by Teleporter. The correct flow is: Teleporter -> Adapter (this contract)
+    /// -> Registry contract.
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
+        require(msg.sender == message.originTeleporterAddress, "unauthorized sender");
         if (message.destinationBlockchainID == chain1) {
             return adapter1.sendMessage(message);
         } else if (message.destinationBlockchainID == chain2) {
