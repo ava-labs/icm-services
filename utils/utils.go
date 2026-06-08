@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/big"
+	"sort"
 	"strings"
 	"time"
 
@@ -102,6 +103,15 @@ func CalculateQuorumPercentageBuffer(
 		return 100 - requiredQuorumPercentage
 	}
 	return desiredQuorumPercentageBuffer
+}
+
+// SortByWeightDescending sorts [items] in place by descending weight, using [weight]
+// to extract each item's weight. The sort is stable, so items of equal weight retain
+// their original relative order.
+func SortByWeightDescending[T any](items []T, weight func(T) uint64) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return weight(items[i]) > weight(items[j])
+	})
 }
 
 //

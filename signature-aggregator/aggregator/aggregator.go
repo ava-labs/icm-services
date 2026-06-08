@@ -12,7 +12,6 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -365,8 +364,8 @@ func queryableValidatorsByWeight(
 		}
 		queryable = append(queryable, queryableValidator{weight: v.Weight, nodeIDs: nodeIDs})
 	}
-	sort.SliceStable(queryable, func(i, j int) bool {
-		return queryable[i].weight > queryable[j].weight
+	utils.SortByWeightDescending(queryable, func(v queryableValidator) uint64 {
+		return v.weight
 	})
 	return queryable
 }
@@ -1005,8 +1004,8 @@ func pruneSignatureMapToQuorum(
 		}
 		signers = append(signers, signerEntry{idx: i, weight: v.Weight})
 	}
-	sort.SliceStable(signers, func(a, b int) bool {
-		return signers[a].weight > signers[b].weight
+	utils.SortByWeightDescending(signers, func(s signerEntry) uint64 {
+		return s.weight
 	})
 
 	requiredWeight := utils.RequiredSignatureWeight(totalWeight, quorumPercentage)
