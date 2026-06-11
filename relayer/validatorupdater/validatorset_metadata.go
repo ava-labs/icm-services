@@ -4,9 +4,11 @@
 package validatorupdater
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/avalanchego/codec/linearcodec"
@@ -98,4 +100,16 @@ func initializeValidatorSetMetadata(v *ValidatorSetMetadata) error {
 	}
 	v.initialize(bytes)
 	return nil
+}
+
+// SortValidators sorts validators in-place by ascending lexicographic order of their
+// uncompressed BLS public key bytes. This matches the canonical order required
+// by both the contracts and the signature aggregator.
+func SortValidators(validators []*Validator) {
+	sort.Slice(validators, func(i, j int) bool {
+		return bytes.Compare(
+			validators[i].UncompressedPublicKeyBytes[:],
+			validators[j].UncompressedPublicKeyBytes[:],
+		) < 0
+	})
 }

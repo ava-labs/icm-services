@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -738,9 +737,7 @@ func (d *DiffSetUpdater) fetchSortedValidators(
 			Weight:                     vdr.Weight,
 		}
 	}
-	sort.Slice(validators, func(i, j int) bool {
-		return string(validators[i].UncompressedPublicKeyBytes[:]) < string(validators[j].UncompressedPublicKeyBytes[:])
-	})
+	SortValidators(validators)
 
 	return validators, nil
 }

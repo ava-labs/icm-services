@@ -14,6 +14,7 @@ import (
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/peers"
+	"github.com/ava-labs/icm-services/relayer/checkpoint"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/utils"
@@ -33,17 +34,6 @@ const (
 	defaultQuorumPercentageBuffer = uint64(3)
 )
 
-// CheckpointManager stores committed heights in the database
-type CheckpointManager interface {
-	// Run starts a go routine that periodically stores the last committed height in the Database
-	Run()
-	// StageCommittedHeight queues a height to be written to the database.
-	// Heights are committed in sequence, so if height is not exactly one
-	// greater than the current committedHeight, it is instead cached in memory
-	// to potentially be committed later.
-	StageCommittedHeight(height uint64)
-}
-
 // ApplicationRelayers define a Warp message route from a specific source address on a specific source blockchain
 // to a specific destination address on a specific destination blockchain. This routing information is
 // encapsulated in [relayerID], which also represents the database key for an ApplicationRelayer.
@@ -55,7 +45,7 @@ type ApplicationRelayer struct {
 	destinationClient       vms.DestinationClient
 	relayerID               database.RelayerID
 	warpConfig              config.WarpConfig
-	checkpointManager       CheckpointManager
+	checkpointManager       *checkpoint.CheckpointManager
 	signatureAggregator     *aggregator.SignatureAggregator
 	processMessageSemaphore chan struct{}
 }
@@ -67,7 +57,7 @@ func NewApplicationRelayer(
 	relayerID database.RelayerID,
 	destinationClient vms.DestinationClient,
 	sourceBlockchain *config.SourceBlockchain,
-	checkpointManager CheckpointManager,
+	checkpointManager *checkpoint.CheckpointManager,
 	cfg *config.Config,
 	signatureAggregator *aggregator.SignatureAggregator,
 	processMessageSemaphore chan struct{},

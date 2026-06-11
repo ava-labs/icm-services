@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
-	"sort"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -100,10 +99,7 @@ func DiffUpdater(
 			Weight:                     vdr.Weight,
 		}
 	}
-	sort.Slice(pChainValidators, func(i, j int) bool {
-		return string(pChainValidators[i].UncompressedPublicKeyBytes[:]) <
-			string(pChainValidators[j].UncompressedPublicKeyBytes[:])
-	})
+	utils.SortValidators(pChainValidators)
 
 	var pChainID [32]byte // all zeros = PlatformChainID
 	pChainTimestamp, err := pChainClient.GetBlockTimestampAtHeight(ctx, pChainHeight)
