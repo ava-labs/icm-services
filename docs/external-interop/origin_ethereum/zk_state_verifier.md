@@ -1,6 +1,6 @@
 # Verifying ICM Messages with ZK Proofs
 
-As described in [Authenticating ICM Messages](https://github.com/ava-labs/icm-services/blob/main/docs/external-interop/icm_message_authentication.md), any contract that implements the `IMessageVerifier` interface can be used by a `TeleporterMessengerV2` instance to authenticate inbound messages. The protocol is agnostic to how a message is authenticated; that responsibility is delegated entirely to the verifier.
+As described in [Authenticating ICM Messages](https://github.com/ava-labs/icm-services/blob/main/docs/external-interop/icm_message_authentication.md), any contract that implements the `IMessageVerifier` interface can be used by a `TeleporterMessengerV2` instance to authenticate inbound messages. The protocol is agnostic to how a message is authenticated as that responsibility is delegated entirely to the verifier.
 
 The `ZKAdapter` is one such `IMessageVerifier` implementation. While [`AvalancheValidatorSetRegistry`](https://github.com/ava-labs/icm-services/blob/main/docs/external-interop/origin_avalanche/validator_set_registry.md) authenticates messages originating from Avalanche L1s on an external EVM chain by checking a quorum of BLS validator signatures, the `ZKAdapter` covers the opposite direction: it authenticates messages originating on Ethereum so that they can be consumed on Avalanche L1s. It does so by leveraging zero-knowledge (ZK) proofs of the source chain's consensus rather than trusting a signing committee. From the trusted consensus state, it proves execution-layer events using various Merkle proofs from the beacon state root down to a receipt log event. 
 
@@ -114,7 +114,6 @@ function verifyMessage(
     return true;
 }
 ```
-
 `verifyMessage` confirms the message really came from the source chain and isn't something the relayer made up. The relayer supplies the proof, so the adapter can't trust the fields in it; instead it checks each one against a value it already knows. It confirms the message names the chain and network this adapter tracks, that the proven log was emitted by the trusted adapter (the same contract address on both chains, via Nick's method), and that the log is a `TeleporterV2MessageSent` event. It then runs `verifyLogAndExtract` to check the proof against the synced beacon state. Finally, it checks that the log's contents match the message being verified — the step that ties the proof to *this* message, since otherwise a real proof of some unrelated event would pass. If any check fails the call reverts, and that revert propagates out of `receiveCrossChainMessage`.
 
  
