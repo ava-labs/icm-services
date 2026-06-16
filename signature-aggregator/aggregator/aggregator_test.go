@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"math/big"
 	"slices"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -523,92 +522,62 @@ func TestQueryableValidatorsByWeightSkipsUnconnected(t *testing.T) {
 	require.Equal(t, uint64(1), queryable[1].weight)
 }
 
-func TestNextBatch(t *testing.T) {
-	// Six single-node validators (so batch.Len() equals the validator count).
-	connected, _ := makeConnectedValidatorsWithWeights([]uint64{7, 3, 2, 1, 1, 1})
-	remaining := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-	require.Len(t, remaining, 6)
+func TestNodesToQuery(t *testing.T) {
+	// Each validator has a single node, so the returned set size equals the number of
+	// selected validators.
+	t.Run("single dominant validator covers the stake", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
+		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
+		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		// The dominant validator alone exceeds the coverage goal and the rest fall below the
+		// tiny-validator threshold, so only the dominant validator is queried.
+		require.Equal(t, 1, nodes.Len())
+	})
 
-	// Even though the weight-7 validator alone covers minWeight=5, the batch must
-	// still include at least minBatchSize validators.
-	batch, batchWeight, rest := nextBatch(remaining, 5)
-	require.Equal(t, minBatchSize, batch.Len())
-	require.Equal(t, uint64(7+3+2), batchWeight)
-	require.Len(t, rest, 6-minBatchSize)
+	t.Run("queries multiple validators to cover the stake", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{40, 30, 20, 10})
+		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
+		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		// No proper subset covers 95% of stake, so every validator is queried.
+		require.Equal(t, 4, nodes.Len())
+	})
 
-	// A larger minWeight pulls in validators beyond the minimum batch size.
-	batch, batchWeight, rest = nextBatch(remaining, 14)
-	require.Equal(t, 5, batch.Len())
-	require.Equal(t, uint64(7+3+2+1+1), batchWeight)
-	require.Len(t, rest, 1)
+	t.Run("skips the long tail of tiny validators", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
+		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
+		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		// The three largest validators cover 95% of stake; the five 1-weight validators are
+		// each below 1% of total stake and are skipped.
+		require.Equal(t, 3, nodes.Len())
+	})
 
-	// Requesting more weight than remains returns every validator.
-	batch, batchWeight, rest = nextBatch(remaining, 100)
-	require.Equal(t, 6, batch.Len())
-	require.Equal(t, uint64(7+3+2+1+1+1), batchWeight)
-	require.Empty(t, rest)
+	t.Run("a higher coverage goal queries further into the tail", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
+		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
+		// A coverage goal of 100% forces every validator to be queried.
+		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, 100)
+		require.Equal(t, 8, nodes.Len())
+	})
 }
 
-func TestNextBatchConsumesRemaining(t *testing.T) {
-	connected, _ := makeConnectedValidatorsWithWeights([]uint64{5, 4, 3, 2, 1})
-	remaining := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-
-	// First batch takes the minimum number of validators (highest weight first).
-	batch, _, remaining := nextBatch(remaining, 1)
-	require.Equal(t, minBatchSize, batch.Len())
-	require.Len(t, remaining, 5-minBatchSize)
-
-	// The remaining validators are consumed by subsequent batches.
-	batch, _, remaining = nextBatch(remaining, 1)
-	require.Equal(t, 5-minBatchSize, batch.Len())
-	require.Empty(t, remaining)
-}
-
-func TestWeightGap(t *testing.T) {
+func TestWeightAtLeastPercent(t *testing.T) {
 	tests := []struct {
-		name              string
-		accumulatedWeight uint64
-		totalWeight       uint64
-		quorumPercentage  uint64
-		expectedGap       uint64
+		name        string
+		weight      uint64
+		totalWeight uint64
+		percent     uint64
+		expected    bool
 	}{
-		{
-			name:              "zero accumulated",
-			accumulatedWeight: 0,
-			totalWeight:       100,
-			quorumPercentage:  67,
-			expectedGap:       67,
-		},
-		{
-			name:              "threshold met exactly",
-			accumulatedWeight: 67,
-			totalWeight:       100,
-			quorumPercentage:  67,
-			expectedGap:       0,
-		},
-		{
-			name:              "threshold exceeded",
-			accumulatedWeight: 80,
-			totalWeight:       100,
-			quorumPercentage:  67,
-			expectedGap:       0,
-		},
-		{
-			name:              "ceil rounding",
-			accumulatedWeight: 0,
-			totalWeight:       7,
-			quorumPercentage:  67,
-			expectedGap:       5, // ceil(7 * 67 / 100) = ceil(4.69) = 5
-		},
+		{name: "exactly at threshold", weight: 67, totalWeight: 100, percent: 67, expected: true},
+		{name: "above threshold", weight: 80, totalWeight: 100, percent: 67, expected: true},
+		{name: "below threshold", weight: 66, totalWeight: 100, percent: 67, expected: false},
+		{name: "exactly one percent", weight: 1, totalWeight: 100, percent: 1, expected: true},
+		{name: "below one percent", weight: 1, totalWeight: 101, percent: 1, expected: false},
+		{name: "ceil boundary", weight: 5, totalWeight: 7, percent: 67, expected: true}, // 5*100 >= 7*67 -> 500 >= 469
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gap := weightGap(
-				new(big.Int).SetUint64(tc.accumulatedWeight),
-				tc.totalWeight,
-				tc.quorumPercentage,
-			)
-			require.Equal(t, tc.expectedGap, gap)
+			require.Equal(t, tc.expected, weightAtLeastPercent(tc.weight, tc.totalWeight, tc.percent))
 		})
 	}
 }
@@ -617,21 +586,21 @@ func TestWeightGap(t *testing.T) {
 // prioritizes the highest-weight validators and does not fan out to the entire validator
 // set when a small batch already covers quorum.
 func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
-	// One dominant validator at weight 100 and seven small validators at weight 1 each.
-	// A 51% quorum is satisfiable by the dominant validator alone, so the aggregator
-	// should issue a single batch of minBatchSize validators that includes the dominant
-	// one, rather than querying all validators.
-	weights := append([]uint64{100}, make([]uint64, 7)...)
+	// One dominant validator at weight 1000 and seven small validators at weight 1 each.
+	// The dominant validator alone covers >95% of stake and the rest fall below the
+	// tiny-validator threshold, so the aggregator should query only the dominant validator
+	// rather than fanning out to the whole set.
+	weights := append([]uint64{1000}, make([]uint64, 7)...)
 	for i := 1; i < len(weights); i++ {
 		weights[i] = 1
 	}
 	connectedValidators, validatorSigners := makeConnectedValidatorsWithWeights(weights)
-	require.Greater(t, len(connectedValidators.ValidatorSet.Validators), minBatchSize)
+	require.Greater(t, len(connectedValidators.ValidatorSet.Validators), 1)
 
 	// Locate the dominant validator's canonical index.
 	dominantIdx := -1
 	for i, v := range connectedValidators.ValidatorSet.Validators {
-		if v.Weight == 100 {
+		if v.Weight == 1000 {
 			dominantIdx = i
 			break
 		}
@@ -664,8 +633,8 @@ func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
 		platformvm.GetSubnetClientResponse{}, nil,
 	).Times(1)
 
-	// The aggregator should issue a single batch limited to minBatchSize validators that
-	// includes the dominant validator, rather than fanning out to the whole set.
+	// The aggregator should issue a single request to just the dominant validator, rather
+	// than fanning out to the whole set.
 	mockNetwork.EXPECT().Send(
 		gomock.Any(), gomock.Any(), subnetID, subnets.NoOpAllower,
 	).Times(1).DoAndReturn(
@@ -677,7 +646,7 @@ func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
 		) set.Set[ids.NodeID] {
 			sendConfig, ok := config.(avagocommon.SendConfig)
 			require.True(t, ok)
-			require.Equal(t, minBatchSize, sendConfig.NodeIDs.Len())
+			require.Equal(t, 1, sendConfig.NodeIDs.Len())
 			require.True(t, sendConfig.NodeIDs.Contains(dominantNodeID))
 
 			currentRequestID := aggregator.currentRequestID.Load()
@@ -715,30 +684,17 @@ func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
 	))
 }
 
-// TestCreateSignedMessageAdvancesToNextBatchOnTimeout verifies that when the highest-weight
-// validator fails to respond within the batch timeout window, the aggregator falls through
-// to query additional validators rather than waiting indefinitely.
-func TestCreateSignedMessageAdvancesToNextBatchOnTimeout(t *testing.T) {
-	// Dominant validator (weight 100) that will never respond, plus six small validators
-	// (weight 1 each) that respond when queried. With minBatchSize=3 the first batch is
-	// {dominant, small, small}; the two small validators alone (weight 2) cannot meet the
-	// required 3% quorum (ceil(106 * 3 / 100) = 4), so the aggregator must time out and
-	// query a second batch before reaching quorum.
-	weights := append([]uint64{100}, make([]uint64, 6)...)
-	for i := 1; i < len(weights); i++ {
-		weights[i] = 1
-	}
-	connectedValidators, validatorSigners := makeConnectedValidatorsWithWeights(weights)
+// TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent verifies that, after
+// issuing its single weight-prioritized request, the aggregator still reaches quorum from
+// the validators that do respond even if one of the queried validators stays silent.
+func TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent(t *testing.T) {
+	// Two equal-weight validators. Both are needed to cover 95% of stake, so both are
+	// queried in the single request. A 40% quorum is met by either one alone, so the
+	// aggregator should succeed even though one validator never responds.
+	connectedValidators, validatorSigners := makeConnectedValidatorsWithWeights([]uint64{50, 50})
+	require.Len(t, connectedValidators.ValidatorSet.Validators, 2)
 
-	dominantIdx := -1
-	for i, v := range connectedValidators.ValidatorSet.Validators {
-		if v.Weight == 100 {
-			dominantIdx = i
-			break
-		}
-	}
-	require.NotEqual(t, -1, dominantIdx)
-	dominantNodeID := connectedValidators.ValidatorSet.Validators[dominantIdx].NodeIDs[0]
+	silentNodeID := connectedValidators.ValidatorSet.Validators[0].NodeIDs[0]
 
 	chainID := ids.GenerateTestID()
 	networkID := constants.UnitTestID
@@ -765,30 +721,26 @@ func TestCreateSignedMessageAdvancesToNextBatchOnTimeout(t *testing.T) {
 		platformvm.GetSubnetClientResponse{}, nil,
 	).Times(1)
 
-	// Track how many distinct Sends we observe so we can ensure the aggregator advanced
-	// past the unresponsive dominant validator and queried additional validators.
-	var sendCallCount int32
+	// A single request is sent to both validators.
 	mockNetwork.EXPECT().Send(
 		gomock.Any(), gomock.Any(), subnetID, subnets.NoOpAllower,
-	).MinTimes(2).DoAndReturn(
+	).Times(1).DoAndReturn(
 		func(
 			outboundMsg *message.OutboundMessage,
 			config interface{},
 			subnetID ids.ID,
 			allower interface{},
 		) set.Set[ids.NodeID] {
-			atomic.AddInt32(&sendCallCount, 1)
 			sendConfig, ok := config.(avagocommon.SendConfig)
 			require.True(t, ok)
+			require.Equal(t, 2, sendConfig.NodeIDs.Len())
 			currentRequestID := aggregator.currentRequestID.Load()
 
-			// Respond on behalf of every queried small validator. The dominant validator
-			// stays silent, so the first batch can only gather weight from its small
-			// validators and must time out before the next batch is sent.
+			// Respond on behalf of every queried validator except the silent one.
 			go func() {
 				time.Sleep(10 * time.Millisecond)
 				for nodeID := range sendConfig.NodeIDs {
-					if nodeID == dominantNodeID {
+					if nodeID == silentNodeID {
 						continue
 					}
 					idx := connectedValidators.NodeValidatorIndexMap[nodeID]
@@ -816,13 +768,12 @@ func TestCreateSignedMessageAdvancesToNextBatchOnTimeout(t *testing.T) {
 
 	signedMessage, err := aggregator.CreateSignedMessage(
 		t.Context(), logging.NoLog{}, msg, nil, subnetID,
-		3, 0, // 3% required quorum, no buffer.
+		40, 0, // 40% required quorum, no buffer.
 		pchainapi.ProposedHeight,
 	)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, atomic.LoadInt32(&sendCallCount), int32(2))
 	require.NoError(t, signedMessage.Signature.Verify(
-		msg, networkID, connectedValidators.ValidatorSet, 3, 100,
+		msg, networkID, connectedValidators.ValidatorSet, 40, 100,
 	))
 }
 

@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"math/rand"
 	"sync"
@@ -41,18 +40,16 @@ import (
 type blsSignatureBuf [bls.SignatureLen]byte
 
 const (
-	// Time to wait for outstanding responses from an in-flight batch of validators before
-	// sending requests to the next batch of validators (ordered by descending weight).
-	// This is shorter than the per-AppRequest network timeout, so we can opportunistically
-	// reach out to more validators when the highest-weight ones are slow to respond, while
-	// still leaving the original batch's requests in flight in case they respond late.
-	batchResponseTimeout = utils.DefaultAppRequestTimeout / 2
+	// When selecting which validators to query for signatures, validators are taken in
+	// descending weight order until their cumulative weight covers this percentage of the
+	// total stake. Querying more stake than the quorum threshold leaves a buffer so that a
+	// few non-responding validators don't prevent us from reaching quorum.
+	queryStakePercentage = 95
 
-	// Minimum number of validators to include in a single signature request batch.
-	// Even when a smaller set of high-weight validators would be enough to reach quorum
-	// on paper, we query at least this many so that a slow or offline validator doesn't
-	// force us to wait for the batch timeout before reaching out to anyone else.
-	minBatchSize = 3
+	// Once [queryStakePercentage] of stake is already covered, validators whose individual
+	// weight is below this percentage of the total stake are not queried. This avoids
+	// querying a long tail of tiny validators for a negligible amount of additional stake.
+	minQueryWeightPercentage = 1
 
 	// The minimum balance that an L1 validator must maintain in order to participate
 	// in the aggregate signature.
@@ -370,57 +367,49 @@ func queryableValidatorsByWeight(
 	return queryable
 }
 
-// nextBatch splits [remaining] into the next batch of validators to query and the
-// validators left over for subsequent batches. Validators are taken in weight-descending
-// order until the cumulative weight is at least [minWeight] and the batch holds at least
-// [minBatchSize] validators (or [remaining] is exhausted). Returns the batch's node IDs,
-// the batch's cumulative validator weight, and the remaining validators.
-func nextBatch(
-	remaining []queryableValidator,
-	minWeight uint64,
-) (set.Set[ids.NodeID], uint64, []queryableValidator) {
-	batchNodes := set.NewSet[ids.NodeID](minBatchSize)
-	var batchWeight uint64
-	n := 0
-	for n < len(remaining) && (n < minBatchSize || batchWeight < minWeight) {
-		batchWeight += remaining[n].weight
-		for _, nodeID := range remaining[n].nodeIDs {
-			batchNodes.Add(nodeID)
+// nodesToQuery returns the set of connected node IDs to request signatures from, preferring
+// higher-weight validators. Validators in [queryable] (already sorted by descending weight)
+// are included until their cumulative weight covers [coverageGoal] percent of [totalWeight];
+// beyond that point validators are included only while their individual weight is at least
+// [minQueryWeightPercentage] of [totalWeight], so the long tail of tiny validators is skipped.
+func nodesToQuery(queryable []queryableValidator, totalWeight, coverageGoal uint64) set.Set[ids.NodeID] {
+	nodes := set.NewSet[ids.NodeID](len(queryable))
+	var cumulative uint64
+	for _, v := range queryable {
+		covered := weightAtLeastPercent(cumulative, totalWeight, coverageGoal)
+		tiny := !weightAtLeastPercent(v.weight, totalWeight, minQueryWeightPercentage)
+		if covered && tiny {
+			break
 		}
-		n++
+		cumulative += v.weight
+		for _, nodeID := range v.nodeIDs {
+			nodes.Add(nodeID)
+		}
 	}
-	return batchNodes, batchWeight, remaining[n:]
+	return nodes
 }
 
-// weightGap returns the additional signature weight still required to meet the
-// [quorumPercentage] threshold given [accumulatedWeight] and the validator set's
-// [totalWeight]. Returns 0 if the threshold has already been met.
-func weightGap(accumulatedWeight *big.Int, totalWeight, quorumPercentage uint64) uint64 {
-	required := utils.RequiredSignatureWeight(totalWeight, quorumPercentage)
-	gap := new(big.Int).Sub(required, accumulatedWeight)
-	if gap.Sign() <= 0 {
-		return 0
-	}
-	if !gap.IsUint64() {
-		return math.MaxUint64
-	}
-	return gap.Uint64()
+// weightAtLeastPercent reports whether [weight] is at least [percent] percent of
+// [totalWeight], i.e. weight >= totalWeight * percent / 100, computed with big.Int to
+// avoid overflowing uint64.
+func weightAtLeastPercent(weight, totalWeight, percent uint64) bool {
+	lhs := new(big.Int).Mul(new(big.Int).SetUint64(weight), big.NewInt(100))
+	rhs := new(big.Int).Mul(new(big.Int).SetUint64(totalWeight), new(big.Int).SetUint64(percent))
+	return lhs.Cmp(rhs) >= 0
 }
 
-// sendBatch issues a single batched AppRequest to the supplied [batchNodes] set, registers
-// the corresponding timeout / response tracking with the network for the nodes actually
-// reached, and starts a goroutine that forwards responses for the batch onto [mergedChan].
-// Returns the number of responses the caller should expect to receive (real responses or
-// timeouts) for the batch, i.e. the number of nodes the request was successfully sent to.
-func (s *SignatureAggregator) sendBatch(
-	ctx context.Context,
+// sendRequest issues a single AppRequest to [queryNodes], registering response and timeout
+// tracking with the network only for the nodes actually reached. It returns the channel the
+// network handler delivers responses (and timeouts) on, plus the number of responses to
+// expect (the number of nodes successfully reached). If no node could be reached, it returns
+// a nil channel and a count of 0.
+func (s *SignatureAggregator) sendRequest(
 	log logging.Logger,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	reqBytes []byte,
 	sourceSubnet ids.ID,
-	batchNodes set.Set[ids.NodeID],
-	mergedChan chan<- message.InboundMessage,
-) (int, error) {
+	queryNodes set.Set[ids.NodeID],
+) (chan message.InboundMessage, int, error) {
 	requestID := s.currentRequestID.Add(2)
 	outMsg, err := s.messageCreator.AppRequest(
 		unsignedMessage.SourceChainID,
@@ -429,19 +418,17 @@ func (s *SignatureAggregator) sendBatch(
 		reqBytes,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create app request message: %w", err)
+		return nil, 0, fmt.Errorf("failed to create app request message: %w", err)
 	}
 
 	// Send first, then register the request and timeouts only for the nodes the network
-	// actually reached. This keeps the handler's expected-response count ([sentTo]) in
-	// agreement with the count returned to the caller, so timeouts for unreachable nodes
-	// are never forwarded onto the (shared) merged channel and miscounted against a later
-	// batch.
-	sentTo := s.network.Send(outMsg, batchNodes, sourceSubnet, subnets.NoOpAllower)
+	// actually reached, so the handler's expected-response count agrees with the count
+	// returned to the caller.
+	sentTo := s.network.Send(outMsg, queryNodes, sourceSubnet, subnets.NoOpAllower)
 	s.metrics.AppRequestCount.Inc()
 
 	var failedSendNodes []ids.NodeID
-	for nodeID := range batchNodes {
+	for nodeID := range queryNodes {
 		if !sentTo.Contains(nodeID) {
 			failedSendNodes = append(failedSendNodes, nodeID)
 			s.metrics.FailuresSendingToNode.Inc()
@@ -457,9 +444,8 @@ func (s *SignatureAggregator) sendBatch(
 		)
 	}
 
-	// If we couldn't reach anyone there is nothing to await for this batch.
 	if sentTo.Len() == 0 {
-		return 0, nil
+		return nil, 0, nil
 	}
 
 	for nodeID := range sentTo {
@@ -473,44 +459,34 @@ func (s *SignatureAggregator) sendBatch(
 
 	responseChan := s.network.RegisterRequestID(requestID, sentTo)
 	if responseChan == nil {
-		return 0, fmt.Errorf("failed to register request ID %d", requestID)
+		return nil, 0, fmt.Errorf("failed to register request ID %d", requestID)
 	}
 
 	log.Debug(
-		"Sent batched signature request to network",
+		"Sent signature request to network",
 		zap.Uint32("requestID", requestID),
-		zap.Int("batchSize", batchNodes.Len()),
 		zap.Int("expectedResponses", sentTo.Len()),
 	)
 
-	// Forward responses for this batch onto the merged channel. The batch's responseChan
-	// is closed by the external handler after all expected responses (real or timeout) arrive,
-	// so this goroutine will exit naturally. If the parent context is cancelled (e.g. the
-	// caller returned early after reaching quorum), we drain the channel and call
-	// OnFinishedHandling on any remaining responses without forwarding them.
-	go func() {
-		for resp := range responseChan {
-			select {
-			case mergedChan <- resp:
-			case <-ctx.Done():
-				resp.OnFinishedHandling()
-				for r := range responseChan {
-					r.OnFinishedHandling()
-				}
-				return
-			}
-		}
-	}()
-
-	return sentTo.Len(), nil
+	return responseChan, sentTo.Len(), nil
 }
 
-// collectSignatures incrementally queries validators for signatures, prioritizing higher-weight
-// validators first. Validators are grouped into batches sized to (potentially) close the gap
-// between the current accumulated weight and the target quorum + buffer threshold. If a batch
-// does not deliver enough signatures within [batchResponseTimeout], an additional batch is sent
-// to the next-highest-weight validators while the prior batch's requests remain in flight.
-// The overall collection is bounded by [signatureRequestTimeout].
+// finishResponses drains and releases any responses left on [responseChan] that the caller
+// did not process (e.g. because quorum was reached or the context expired). The handler
+// closes the channel once every expected response or timeout has arrived, so this returns
+// once all outstanding requests resolve.
+func finishResponses(responseChan <-chan message.InboundMessage) {
+	for resp := range responseChan {
+		resp.OnFinishedHandling()
+	}
+}
+
+// collectSignatures queries validators for signatures, prioritizing higher-weight validators.
+// It selects the highest-weight validators that together cover most of the stake (see
+// [nodesToQuery]), sends them all a single signature request, and aggregates the responses as
+// they arrive. It returns as soon as the accumulated weight meets the required quorum plus
+// buffer, and otherwise falls back to the required quorum once all responses are in. The
+// overall collection is bounded by [signatureRequestTimeout].
 func (s *SignatureAggregator) collectSignatures(
 	ctx context.Context,
 	logger logging.Logger,
@@ -531,86 +507,36 @@ func (s *SignatureAggregator) collectSignatures(
 	ctx, cancel := context.WithTimeout(ctx, s.signatureRequestTimeout)
 	defer cancel()
 
-	// Sort the queryable validators by weight once. Each batch consumes a prefix of
-	// [remaining], so a validator is never queried more than once per aggregation.
-	remaining := queryableValidatorsByWeight(vdrs, signatureMap)
-	// pendingResponses is owned solely by this goroutine: it is mutated here and in
-	// drainResponses (called synchronously below), never by the per-batch forwarder
-	// goroutines, which only write to mergedChan. So a plain int is safe here.
-	pendingResponses := 0
-	// Buffer the merged channel to accommodate every possible response without blocking
-	// the per-batch forwarder goroutines.
-	mergedChan := make(chan message.InboundMessage, len(vdrs.ValidatorSet.Validators))
-
-	targetThreshold := requiredQuorumPercentage + quorumPercentageBuffer
 	totalWeight := vdrs.ValidatorSet.TotalWeight
+	targetThreshold := requiredQuorumPercentage + quorumPercentageBuffer
+
+	// Select the highest-weight validators to query. Always cover enough stake to reach the
+	// target threshold if everyone responds, while skipping the long tail of tiny validators.
+	queryable := queryableValidatorsByWeight(vdrs, signatureMap)
+	coverageGoal := max(queryStakePercentage, targetThreshold)
+	queryNodes := nodesToQuery(queryable, totalWeight, coverageGoal)
 
 	log.Debug(
-		"Aggregator collecting signatures from peers in weight-prioritized batches.",
+		"Aggregator collecting signatures from weight-prioritized validators.",
 		zap.Int("validatorSetSize", len(vdrs.ValidatorSet.Validators)),
 		zap.Int("signatureMapSize", len(signatureMap)),
-		zap.Int("queryableValidators", len(remaining)),
+		zap.Int("queryableValidators", len(queryable)),
+		zap.Int("queryNodes", queryNodes.Len()),
 	)
 
-	for {
-		// Send a new batch sized to close the current weight gap, if there are any
-		// validators remaining and we haven't yet met the target threshold.
-		gap := weightGap(accumulatedSignatureWeight, totalWeight, targetThreshold)
-		if gap > 0 && len(remaining) > 0 {
-			var batchNodes set.Set[ids.NodeID]
-			var batchWeight uint64
-			batchNodes, batchWeight, remaining = nextBatch(remaining, gap)
-			if batchNodes.Len() > 0 {
-				sent, err := s.sendBatch(
-					ctx,
-					log,
-					unsignedMessage,
-					reqBytes,
-					sourceSubnet,
-					batchNodes,
-					mergedChan,
-				)
-				if err != nil {
-					log.Warn("Failed to send batched signature request", zap.Error(err))
-				} else {
-					pendingResponses += sent
-					log.Debug(
-						"Issued signature request batch",
-						zap.Int("batchSize", batchNodes.Len()),
-						zap.Uint64("batchWeight", batchWeight),
-						zap.Int("pendingResponses", pendingResponses),
-					)
-				}
-			}
-			// If this batch reached no one (send error or every node unreachable),
-			// keep pulling from [remaining] instead of ending collection while
-			// candidates are still untried.
-			if pendingResponses == 0 {
-				continue
-			}
-		}
-
-		// If there's nothing in flight and no more candidates, we've exhausted our options.
-		if pendingResponses == 0 {
-			break
-		}
-
-		// Wait for responses from in-flight batches, bounded by the per-batch timeout.
-		// Reaching the timeout triggers an additional batch (if any candidates remain)
-		// while leaving the existing in-flight requests alive in case they respond late.
-		batchDeadline := time.After(batchResponseTimeout)
-		signedMsg, err := s.drainResponses(
+	if queryNodes.Len() > 0 {
+		signedMsg, err := s.requestSignatures(
 			ctx,
 			log,
-			vdrs,
 			unsignedMessage,
+			reqBytes,
+			sourceSubnet,
+			queryNodes,
+			vdrs,
 			signatureMap,
 			excludedValidators,
 			accumulatedSignatureWeight,
 			targetThreshold,
-			mergedChan,
-			batchDeadline,
-			&pendingResponses,
 		)
 		if err != nil {
 			return nil, err
@@ -625,8 +551,8 @@ func (s *SignatureAggregator) collectSignatures(
 		}
 	}
 
-	// All in-flight responses processed and no more candidates remain. We did not reach
-	// the (required + buffer) threshold, so try aggregating with just the required quorum.
+	// We did not reach the (required + buffer) threshold, so try aggregating with just the
+	// required quorum.
 	signedMsg, err := s.aggregateIfSufficientWeight(
 		log,
 		unsignedMessage,
@@ -653,31 +579,49 @@ func (s *SignatureAggregator) collectSignatures(
 	return nil, errNotEnoughSignatures
 }
 
-// drainResponses processes responses arriving on [mergedChan] until either the per-batch
-// [batchDeadline] fires, [pendingResponses] reaches zero, or a quorum is reached. Each
-// processed response decrements *pendingResponses. Returns a signed message if quorum was
-// reached during processing.
-func (s *SignatureAggregator) drainResponses(
+// requestSignatures sends a single signature request to [queryNodes] and processes the
+// responses as they arrive, returning a signed message as soon as [quorumPercentage] of stake
+// is accumulated. It returns (nil, nil) if all responses are processed (or the context
+// expires) without reaching the threshold.
+func (s *SignatureAggregator) requestSignatures(
 	ctx context.Context,
 	log logging.Logger,
-	vdrs *peers.CanonicalValidators,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
+	reqBytes []byte,
+	sourceSubnet ids.ID,
+	queryNodes set.Set[ids.NodeID],
+	vdrs *peers.CanonicalValidators,
 	signatureMap map[int][bls.SignatureLen]byte,
 	excludedValidators set.Set[int],
 	accumulatedSignatureWeight *big.Int,
 	quorumPercentage uint64,
-	mergedChan <-chan message.InboundMessage,
-	batchDeadline <-chan time.Time,
-	pendingResponses *int,
 ) (*avalancheWarp.Message, error) {
-	for *pendingResponses > 0 {
+	responseChan, expectedResponses, err := s.sendRequest(
+		log,
+		unsignedMessage,
+		reqBytes,
+		sourceSubnet,
+		queryNodes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if responseChan == nil {
+		return nil, nil
+	}
+	// Release any responses we don't process (because quorum was reached or the context
+	// expired) so their handlers are always finished. The drain runs in the background so
+	// returning early isn't blocked waiting for outstanding requests to time out.
+	defer func() { go finishResponses(responseChan) }()
+
+	for i := 0; i < expectedResponses; i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-batchDeadline:
-			return nil, nil
-		case response := <-mergedChan:
-			*pendingResponses--
+		case response, ok := <-responseChan:
+			if !ok {
+				return nil, nil
+			}
 			signedMsg, err := s.handleResponse(
 				log,
 				response,
