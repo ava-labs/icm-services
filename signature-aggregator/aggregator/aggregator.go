@@ -408,9 +408,10 @@ func weightGap(accumulatedWeight *big.Int, totalWeight, quorumPercentage uint64)
 }
 
 // sendBatch issues a single batched AppRequest to the supplied [batchNodes] set, registers
-// the corresponding timeout / response tracking with the network, and starts a goroutine
-// that forwards responses for the batch onto [mergedChan]. Returns the number of responses
-// the caller should expect to receive (real responses or timeouts) for the batch.
+// the corresponding timeout / response tracking with the network for the nodes actually
+// reached, and starts a goroutine that forwards responses for the batch onto [mergedChan].
+// Returns the number of responses the caller should expect to receive (real responses or
+// timeouts) for the batch, i.e. the number of nodes the request was successfully sent to.
 func (s *SignatureAggregator) sendBatch(
 	ctx context.Context,
 	log logging.Logger,
@@ -431,28 +432,17 @@ func (s *SignatureAggregator) sendBatch(
 		return 0, fmt.Errorf("failed to create app request message: %w", err)
 	}
 
-	for nodeID := range batchNodes {
-		s.network.RegisterAppRequest(ids.RequestID{
-			NodeID:    nodeID,
-			ChainID:   unsignedMessage.SourceChainID,
-			RequestID: requestID,
-			Op:        byte(message.AppResponseOp),
-		})
-	}
-
-	responseChan := s.network.RegisterRequestID(requestID, batchNodes)
-	if responseChan == nil {
-		return 0, fmt.Errorf("failed to register request ID %d", requestID)
-	}
-
+	// Send first, then register the request and timeouts only for the nodes the network
+	// actually reached. This keeps the handler's expected-response count ([sentTo]) in
+	// agreement with the count returned to the caller, so timeouts for unreachable nodes
+	// are never forwarded onto the (shared) merged channel and miscounted against a later
+	// batch.
 	sentTo := s.network.Send(outMsg, batchNodes, sourceSubnet, subnets.NoOpAllower)
 	s.metrics.AppRequestCount.Inc()
 
-	expectedResponses := batchNodes.Len()
 	var failedSendNodes []ids.NodeID
 	for nodeID := range batchNodes {
 		if !sentTo.Contains(nodeID) {
-			expectedResponses--
 			failedSendNodes = append(failedSendNodes, nodeID)
 			s.metrics.FailuresSendingToNode.Inc()
 		}
@@ -461,17 +451,36 @@ func (s *SignatureAggregator) sendBatch(
 		log.Info(
 			"Failed to make async request to some nodes",
 			zap.Uint32("requestID", requestID),
-			zap.Int("numSent", expectedResponses),
+			zap.Int("numSent", sentTo.Len()),
 			zap.Int("numFailures", len(failedSendNodes)),
 			zap.Stringers("failedNodes", failedSendNodes),
 		)
+	}
+
+	// If we couldn't reach anyone there is nothing to await for this batch.
+	if sentTo.Len() == 0 {
+		return 0, nil
+	}
+
+	for nodeID := range sentTo {
+		s.network.RegisterAppRequest(ids.RequestID{
+			NodeID:    nodeID,
+			ChainID:   unsignedMessage.SourceChainID,
+			RequestID: requestID,
+			Op:        byte(message.AppResponseOp),
+		})
+	}
+
+	responseChan := s.network.RegisterRequestID(requestID, sentTo)
+	if responseChan == nil {
+		return 0, fmt.Errorf("failed to register request ID %d", requestID)
 	}
 
 	log.Debug(
 		"Sent batched signature request to network",
 		zap.Uint32("requestID", requestID),
 		zap.Int("batchSize", batchNodes.Len()),
-		zap.Int("expectedResponses", expectedResponses),
+		zap.Int("expectedResponses", sentTo.Len()),
 	)
 
 	// Forward responses for this batch onto the merged channel. The batch's responseChan
@@ -493,7 +502,7 @@ func (s *SignatureAggregator) sendBatch(
 		}
 	}()
 
-	return expectedResponses, nil
+	return sentTo.Len(), nil
 }
 
 // collectSignatures incrementally queries validators for signatures, prioritizing higher-weight
@@ -525,6 +534,9 @@ func (s *SignatureAggregator) collectSignatures(
 	// Sort the queryable validators by weight once. Each batch consumes a prefix of
 	// [remaining], so a validator is never queried more than once per aggregation.
 	remaining := queryableValidatorsByWeight(vdrs, signatureMap)
+	// pendingResponses is owned solely by this goroutine: it is mutated here and in
+	// drainResponses (called synchronously below), never by the per-batch forwarder
+	// goroutines, which only write to mergedChan. So a plain int is safe here.
 	pendingResponses := 0
 	// Buffer the merged channel to accommodate every possible response without blocking
 	// the per-batch forwarder goroutines.
@@ -569,6 +581,12 @@ func (s *SignatureAggregator) collectSignatures(
 						zap.Int("pendingResponses", pendingResponses),
 					)
 				}
+			}
+			// If this batch reached no one (send error or every node unreachable),
+			// keep pulling from [remaining] instead of ending collection while
+			// candidates are still untried.
+			if pendingResponses == 0 {
+				continue
 			}
 		}
 
@@ -630,11 +648,8 @@ func (s *SignatureAggregator) collectSignatures(
 		return signedMsg, nil
 	}
 
-	logger.Warn(
-		"Failed to collect a threshold of signatures",
-		zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
-		zap.Uint64("totalValidatorWeight", totalWeight),
-	)
+	// The caller logs this failure (with the same context) at error level, so avoid
+	// logging it twice here.
 	return nil, errNotEnoughSignatures
 }
 
@@ -905,7 +920,9 @@ func (s *SignatureAggregator) handleResponse(
 			PublicKeyBytes(validator.PublicKeyBytes),
 			SignatureBytes(signature),
 		)
-		if !excludedValidators.Contains(vdrIndex) {
+		// A validator may be reached through more than one node ID, so guard against
+		// counting its weight twice if multiple of its nodes return a valid signature.
+		if _, alreadyCounted := signatureMap[vdrIndex]; !alreadyCounted && !excludedValidators.Contains(vdrIndex) {
 			signatureMap[vdrIndex] = signature
 			accumulatedSignatureWeight.Add(accumulatedSignatureWeight, new(big.Int).SetUint64(validator.Weight))
 		}
