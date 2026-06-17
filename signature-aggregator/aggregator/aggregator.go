@@ -42,13 +42,11 @@ type blsSignatureBuf [bls.SignatureLen]byte
 const (
 	// When selecting which validators to query for signatures, validators are taken in
 	// descending weight order until their cumulative weight covers this percentage of the
-	// total stake. Querying more stake than the quorum threshold leaves a buffer so that a
-	// few non-responding validators don't prevent us from reaching quorum.
+	// total stake, leaving a buffer above the quorum threshold for non-responding validators.
 	queryStakePercentage = 95
 
-	// Once [queryStakePercentage] of stake is already covered, validators whose individual
-	// weight is below this percentage of the total stake are not queried. This avoids
-	// querying a long tail of tiny validators for a negligible amount of additional stake.
+	// Once [queryStakePercentage] of stake is covered, validators below this percentage of
+	// total stake are skipped, to avoid querying a long tail of tiny validators.
 	minQueryWeightPercentage = 1
 
 	// The minimum balance that an L1 validator must maintain in order to participate
@@ -367,11 +365,10 @@ func queryableValidatorsByWeight(
 	return queryable
 }
 
-// nodesToQuery returns the set of connected node IDs to request signatures from, preferring
-// higher-weight validators. Validators in [queryable] (already sorted by descending weight)
-// are included until their cumulative weight covers [coverageGoal] percent of [totalWeight];
-// beyond that point validators are included only while their individual weight is at least
-// [minQueryWeightPercentage] of [totalWeight], so the long tail of tiny validators is skipped.
+// nodesToQuery returns the node IDs to request signatures from, taking validators from
+// [queryable] (sorted by descending weight) until their cumulative weight covers
+// [coverageGoal] percent of [totalWeight], then continuing only while each validator is at
+// least [minQueryWeightPercentage] of [totalWeight] so the tiny-validator tail is skipped.
 func nodesToQuery(queryable []queryableValidator, totalWeight, coverageGoal uint64) set.Set[ids.NodeID] {
 	nodes := set.NewSet[ids.NodeID](len(queryable))
 	var cumulative uint64
@@ -389,20 +386,17 @@ func nodesToQuery(queryable []queryableValidator, totalWeight, coverageGoal uint
 	return nodes
 }
 
-// weightAtLeastPercent reports whether [weight] is at least [percent] percent of
-// [totalWeight], i.e. weight >= totalWeight * percent / 100, computed with big.Int to
-// avoid overflowing uint64.
+// weightAtLeastPercent reports whether weight >= totalWeight * percent / 100, using big.Int
+// to avoid overflowing uint64.
 func weightAtLeastPercent(weight, totalWeight, percent uint64) bool {
 	lhs := new(big.Int).Mul(new(big.Int).SetUint64(weight), big.NewInt(100))
 	rhs := new(big.Int).Mul(new(big.Int).SetUint64(totalWeight), new(big.Int).SetUint64(percent))
 	return lhs.Cmp(rhs) >= 0
 }
 
-// sendRequest issues a single AppRequest to [queryNodes], registering response and timeout
-// tracking with the network only for the nodes actually reached. It returns the channel the
-// network handler delivers responses (and timeouts) on, plus the number of responses to
-// expect (the number of nodes successfully reached). If no node could be reached, it returns
-// a nil channel and a count of 0.
+// sendRequest issues a single AppRequest to [queryNodes], registering response/timeout
+// tracking only for the nodes actually reached. It returns the response channel and the
+// number of responses to expect, or a nil channel and 0 if no node was reached.
 func (s *SignatureAggregator) sendRequest(
 	log logging.Logger,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
@@ -421,9 +415,8 @@ func (s *SignatureAggregator) sendRequest(
 		return nil, 0, fmt.Errorf("failed to create app request message: %w", err)
 	}
 
-	// Send first, then register the request and timeouts only for the nodes the network
-	// actually reached, so the handler's expected-response count agrees with the count
-	// returned to the caller.
+	// Send first, then register only for the nodes reached, so the handler's expected
+	// response count matches the count returned to the caller.
 	sentTo := s.network.Send(outMsg, queryNodes, sourceSubnet, subnets.NoOpAllower)
 	s.metrics.AppRequestCount.Inc()
 
@@ -471,22 +464,19 @@ func (s *SignatureAggregator) sendRequest(
 	return responseChan, sentTo.Len(), nil
 }
 
-// finishResponses drains and releases any responses left on [responseChan] that the caller
-// did not process (e.g. because quorum was reached or the context expired). The handler
-// closes the channel once every expected response or timeout has arrived, so this returns
-// once all outstanding requests resolve.
+// finishResponses releases any responses the caller didn't process (e.g. after quorum was
+// reached or the context expired). It returns once the handler closes [responseChan], i.e.
+// once all outstanding requests have responded or timed out.
 func finishResponses(responseChan <-chan message.InboundMessage) {
 	for resp := range responseChan {
 		resp.OnFinishedHandling()
 	}
 }
 
-// collectSignatures queries validators for signatures, prioritizing higher-weight validators.
-// It selects the highest-weight validators that together cover most of the stake (see
-// [nodesToQuery]), sends them all a single signature request, and aggregates the responses as
-// they arrive. It returns as soon as the accumulated weight meets the required quorum plus
-// buffer, and otherwise falls back to the required quorum once all responses are in. The
-// overall collection is bounded by [signatureRequestTimeout].
+// collectSignatures sends a single signature request to the highest-weight validators (see
+// [nodesToQuery]) and aggregates the responses. It returns once the accumulated weight meets
+// the required quorum plus buffer, falling back to just the required quorum once all responses
+// are in. The collection is bounded by [signatureRequestTimeout].
 func (s *SignatureAggregator) collectSignatures(
 	ctx context.Context,
 	logger logging.Logger,
@@ -510,8 +500,8 @@ func (s *SignatureAggregator) collectSignatures(
 	totalWeight := vdrs.ValidatorSet.TotalWeight
 	targetThreshold := requiredQuorumPercentage + quorumPercentageBuffer
 
-	// Select the highest-weight validators to query. Always cover enough stake to reach the
-	// target threshold if everyone responds, while skipping the long tail of tiny validators.
+	// Cover enough stake to reach the target threshold if everyone responds, but never less
+	// than [queryStakePercentage].
 	queryable := queryableValidatorsByWeight(vdrs, signatureMap)
 	coverageGoal := max(queryStakePercentage, targetThreshold)
 	queryNodes := nodesToQuery(queryable, totalWeight, coverageGoal)
@@ -551,8 +541,7 @@ func (s *SignatureAggregator) collectSignatures(
 		}
 	}
 
-	// We did not reach the (required + buffer) threshold, so try aggregating with just the
-	// required quorum.
+	// Didn't reach required + buffer; try aggregating with just the required quorum.
 	signedMsg, err := s.aggregateIfSufficientWeight(
 		log,
 		unsignedMessage,
@@ -574,15 +563,13 @@ func (s *SignatureAggregator) collectSignatures(
 		return signedMsg, nil
 	}
 
-	// The caller logs this failure (with the same context) at error level, so avoid
-	// logging it twice here.
+	// The caller logs this failure at error level, so don't log it again here.
 	return nil, errNotEnoughSignatures
 }
 
-// requestSignatures sends a single signature request to [queryNodes] and processes the
-// responses as they arrive, returning a signed message as soon as [quorumPercentage] of stake
-// is accumulated. It returns (nil, nil) if all responses are processed (or the context
-// expires) without reaching the threshold.
+// requestSignatures sends a single request to [queryNodes] and processes responses as they
+// arrive, returning a signed message once [quorumPercentage] of stake is accumulated, or
+// (nil, nil) if the threshold isn't reached before all responses are in or the context ends.
 func (s *SignatureAggregator) requestSignatures(
 	ctx context.Context,
 	log logging.Logger,
@@ -609,9 +596,8 @@ func (s *SignatureAggregator) requestSignatures(
 	if responseChan == nil {
 		return nil, nil
 	}
-	// Release any responses we don't process (because quorum was reached or the context
-	// expired) so their handlers are always finished. The drain runs in the background so
-	// returning early isn't blocked waiting for outstanding requests to time out.
+	// Drain unprocessed responses in the background so returning early (on quorum or
+	// timeout) doesn't block, while still finishing every response's handler.
 	defer func() { go finishResponses(responseChan) }()
 
 	for i := 0; i < expectedResponses; i++ {
@@ -864,8 +850,7 @@ func (s *SignatureAggregator) handleResponse(
 			PublicKeyBytes(validator.PublicKeyBytes),
 			SignatureBytes(signature),
 		)
-		// A validator may be reached through more than one node ID, so guard against
-		// counting its weight twice if multiple of its nodes return a valid signature.
+		// A validator can be reached via multiple node IDs; don't count its weight twice.
 		if _, alreadyCounted := signatureMap[vdrIndex]; !alreadyCounted && !excludedValidators.Contains(vdrIndex) {
 			signatureMap[vdrIndex] = signature
 			accumulatedSignatureWeight.Add(accumulatedSignatureWeight, new(big.Int).SetUint64(validator.Weight))
