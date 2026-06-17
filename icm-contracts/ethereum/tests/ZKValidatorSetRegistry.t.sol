@@ -231,7 +231,8 @@ contract ZKValidatorSetRegistryVerifyMessageTest is ZKValidatorSetRegistryCommon
 
     /// @dev Returns false when signed weight is below quorum threshold
     function testVerifyMessageBelowQuorumReverts() public {
-        (TeleporterICMMessage memory message, bytes memory signedData) = _buildICMMessage(PCHAIN_BLOCKCHAIN_ID);
+        (TeleporterICMMessage memory message, bytes memory signedData) =
+            _buildICMMessage(PCHAIN_BLOCKCHAIN_ID);
         message.attestation =
             _validAttestation(PCHAIN_BLOCKCHAIN_ID, PCHAIN_GENESIS_ROOT, signedData, 66);
 
