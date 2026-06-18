@@ -7,10 +7,7 @@ struct FreeStanding {
 }
 
 function packFreeStanding(FreeStanding memory obj) pure returns (bytes memory) {
-    /* solhint-disable */
-
     return abi.encodePacked(abi.encodePacked(bytes(obj.text).length, obj.text), abi.encodePacked(obj.flag));
-    /* solhint-enable */
 }
 
 library PackMethods {
@@ -27,7 +24,7 @@ library PackMethods {
     }
 
     function packStruct(Struct memory obj) public pure returns (bytes memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         bytes memory names_bytes;
         names_bytes = abi.encodePacked(obj.names.length);
         for (uint256 i_0 = 0; i_0 < obj.names.length;) {
@@ -39,12 +36,10 @@ library PackMethods {
             }
         }
         return abi.encodePacked(packFreeStanding(obj.free), names_bytes);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function packEnum(Enum obj) public pure returns (bytes memory) {
-        /* solhint-disable */
         return abi.encodePacked(obj);
-        /* solhint-enable */
     }
 }

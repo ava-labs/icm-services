@@ -34,8 +34,9 @@
 //! `calldata` (flag): Accept `bytes calldata data` instead of `bytes memory data`. The generated
 //! code uses calldata array slices throughout, avoiding any memory allocation for the buffer itself.
 //!
-//! All generated function bodies are automatically wrapped with `/* solhint-disable */` /
-//! `/* solhint-enable */`, so no annotation is needed to suppress lint warnings inside generated code.
+//! Generated function bodies are wrapped with specific `/* solhint-disable <rule> */` /
+//! `/* solhint-enable <rule> */` guards for only the lint rules that actually fire.
+//! Functions with no suppressible violations are emitted with no guards at all.
 //!
 //! _Fields_
 //! Each non-primitive field is decoded by calling its own unpack function, which must be in scope

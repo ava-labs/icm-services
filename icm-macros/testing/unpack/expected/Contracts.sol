@@ -19,7 +19,8 @@ library FirstContract {
     }
 
     function unpackFreeStanding(bytes memory data) public pure returns (uint256, FreeStanding memory) {
-        /* solhint-disable */
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         FreeStanding memory result;
@@ -50,11 +51,13 @@ library FirstContract {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
-        /* solhint-enable */
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackStruct(bytes memory data) public pure returns (uint256, Struct memory) {
-        /* solhint-disable */
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         Struct memory result;
@@ -104,7 +107,8 @@ library FirstContract {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
-        /* solhint-enable */
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
     }
 }
 
@@ -117,7 +121,8 @@ library SecondContract {
     }
 
     function serializeOther(bytes memory data) public pure returns (uint256, FirstContract.Other memory) {
-        /* solhint-disable */
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         FirstContract.Other memory result;
@@ -135,11 +140,13 @@ library SecondContract {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
-        /* solhint-enable */
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackStruct(bytes memory data) public pure returns (uint256, Struct memory) {
-        /* solhint-disable */
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         Struct memory result;
@@ -189,6 +196,7 @@ library SecondContract {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
-        /* solhint-enable */
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
     }
 }

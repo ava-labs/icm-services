@@ -115,6 +115,32 @@ jobs:
       - run: git --no-pager diff -- go.mod go.sum  # This prints the diff
       - run: git --no-pager diff --quiet -- go.mod go.sum  # This errors if there is a diff
 
+  check-expanded-macros:
+    name: Check expanded macros are up to date
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
+
+      - name: Regenerate expanded contracts
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+          ./scripts/expand_macros.sh
+
+      - name: Fail if expanded contracts are out of date
+        run: |
+          git diff --exit-code icm-contracts-expanded/ || \
+            (echo 'Expanded macro contracts are out of date. Run ./scripts/expand_macros.sh and commit the results.' && exit 1)
+
   abi_binding:
     name: abi_binding
     runs-on: ubuntu-22.04

@@ -33,7 +33,8 @@ library PackMethods {
     }
 
     function deserializeStruct(bytes memory data) internal pure returns (uint256, Struct memory) {
-        /* solhint-disable */
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         Struct memory result;
@@ -88,12 +89,11 @@ library PackMethods {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
-        /* solhint-enable */
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackChoice(bytes memory data) public pure returns (uint256, Choice) {
-        /* solhint-disable */
         return (1, Choice(uint8(data[0])));
-        /* solhint-enable */
     }
 }

@@ -155,9 +155,7 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::
     let body = if field_asserts.is_empty() {
         format!(
             "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
-            \n    /* solhint-disable */\
             \n    return (1, {type_name}(uint8(data[0])));\
-            \n    /* solhint-enable */\
             \n}}"
         )
     } else {
@@ -168,14 +166,15 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::
                 format!("\n    require({expr});")
             })
             .collect();
-        format!(
-            "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
-            \n    /* solhint-disable */\
-            \n    {type_name} result = {type_name}(uint8(data[0]));{assert_lines}\
-            \n    return (1, result);\
-            \n    /* solhint-enable */\
-            \n}}"
-        )
+        {
+            let (open, close) = crate::solhint::solhint_guards(&["reason-string"]);
+            format!(
+                "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
+                \n    {open}{type_name} result = {type_name}(uint8(data[0]));{assert_lines}\
+                \n    return (1, result);{close}\
+                \n}}"
+            )
+        }
     };
     Ok(body)
 }
@@ -321,15 +320,24 @@ pub fn unpack_struct(
         }
     }
     let vis = vis_prefix(&args.visibility);
+    let has_asserts = !args.assert.is_empty()
+        || args.fields.iter().any(|fa| !fa.assert.is_empty());
+    let mut rules: Vec<&str> = Vec::new();
+    if !args.calldata {
+        rules.push("no-inline-assembly");
+    }
+    rules.push("var-name-mixedcase");
+    if has_asserts {
+        rules.push("reason-string");
+    }
+    let (open, close) = crate::solhint::solhint_guards(&rules);
     Ok(format!(
         "function {fn_name}({input}) {vis}pure returns (uint256, {type_name} memory) {{\
-        \n    /* solhint-disable */\
-        \n    {length_tracking}\
+        \n    {open}{length_tracking}\
         \n    {type_name} memory result;\
         \n    {body}\
         \n    {epilogue}\
-        \n    return ({bytes_read}, result);\
-        \n    /* solhint-enable */\
+        \n    return ({bytes_read}, result);{close}\
         \n}}"
     ))
 }
