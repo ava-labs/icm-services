@@ -4,15 +4,15 @@
 pragma solidity ^0.8.30;
 
 import {IMerkleValidatorSetRegistry} from "./interfaces/IMerkleValidatorSetRegistry.sol";
-import {ICMMessage} from "../common/ICM.sol";
+import {ICMMessage} from "@common/ICM.sol";
 import {ValidatorSetMerkleCommitment, ValidatorSets} from "./utils/ValidatorSets.sol";
 import {
     TeleporterMessageV2Parsing,
     TeleporterICMMessage,
     TeleporterMessageV2
-} from "../common/TeleporterMessageV2.sol";
-import {IAdapter} from "../common/ITeleporterMessengerV2.sol";
-import {IWarpMessenger} from "../avalanche/subnet-evm/IWarpMessenger.sol";
+} from "@common/TeleporterMessageV2.sol";
+import {IAdapter} from "@common/ITeleporterMessengerV2.sol";
+import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 
 /**
