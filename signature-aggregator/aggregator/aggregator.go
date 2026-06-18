@@ -502,7 +502,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		zap.Uint64("pchainHeight", pchainHeight),
 		zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 	)
-)
+
 	if requiredQuorumPercentage == 0 || requiredQuorumPercentage > 100 {
 		return nil, fmt.Errorf("invalid quorum percentage: %d", requiredQuorumPercentage)
 	}
