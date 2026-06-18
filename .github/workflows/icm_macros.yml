@@ -40,7 +40,7 @@ jobs:
 
       - name: Configure git credentials for private dependencies
         run: |
-          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
           mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
 
       - name: Format
@@ -77,7 +77,7 @@ jobs:
 
       - name: Configure git credentials for private dependencies
         run: |
-          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
           mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
 
       - name: Build
