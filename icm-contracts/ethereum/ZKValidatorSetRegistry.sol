@@ -151,7 +151,8 @@ contract ZKValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             address(this),
             TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message.message)
         );
-        return _verifyZKAttestation(message.attestation, signedData, message.sourceBlockchainID);
+        _verifyZKAttestation(message.attestation, signedData, message.sourceBlockchainID);
+        return true;
     }
 
     /**
@@ -226,7 +227,7 @@ contract ZKValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         bytes calldata attestation,
         bytes memory signedData,
         bytes32 blockchainID
-    ) internal view returns (bool) {
+    ) internal view {
         (bytes memory publicValues, bytes memory proofBytes) =
             abi.decode(attestation, (bytes, bytes));
 
@@ -243,6 +244,5 @@ contract ZKValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         );
 
         ISP1Verifier(sp1Verifier).verifyProof(attestationProgramVKey, publicValues, proofBytes);
-        return true;
     }
 }
