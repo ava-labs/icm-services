@@ -56,7 +56,8 @@ library PackMethods {
     }
 
     function unpackStruct(bytes calldata data) public pure returns (uint256, Struct memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
+        /* solhint-disable reason-string */
         uint256 _initial_length = data.length;
         Struct memory result;
 
@@ -113,11 +114,14 @@ library PackMethods {
             require(result.Bytes.length == bytes(result.String).length);
         }
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
+        /* solhint-enable reason-string */
     }
 
     function unpackInner(bytes memory data) public pure returns (uint256, Inner memory) {
-        /* solhint-disable */
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
+        /* solhint-disable reason-string */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         Inner memory result;
@@ -138,7 +142,9 @@ library PackMethods {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
-        /* solhint-enable */
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
+        /* solhint-enable reason-string */
     }
 
     function unpackMultilineAssert(bytes memory data) public pure returns (uint256, MultilineAssert memory) {

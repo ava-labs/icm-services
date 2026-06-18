@@ -200,6 +200,7 @@ pub fn pack_struct(
         encode_packed_args.push(arg);
     }
     // collect the arguments for abi.encodePacked into a comma-separated list
+    let has_array_fields = !recursive_packings.is_empty();
     let encode_packed_args = encode_packed_args.join(", ");
     // recursively expand the packing methods for the composite types and add them to the body.
     // Each expansion gets its own block so that its count local goes out of scope once its loop
@@ -210,6 +211,17 @@ pub fn pack_struct(
         body.push_str(&format!("\n{{{expansion}\n}}"));
     }
     let vis = vis_prefix(&args.visibility);
+    let (open, close) = crate::solhint::solhint_guards(if has_array_fields {
+        &["var-name-mixedcase"]
+    } else {
+        &[]
+    });
+    let body_prefix = if body.is_empty() {
+        String::new()
+    } else {
+        format!("{body}\n    ")
+    };
+
     let assert_lines: String = args
         .assert
         .iter()
@@ -221,12 +233,12 @@ pub fn pack_struct(
     Ok(if assert_lines.is_empty() {
         format!(
             "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
-            {{\n    {body}\n    return abi.encodePacked({encode_packed_args});\n}}"
+        {{\n    {open}{body_prefix}return abi.encodePacked({encode_packed_args});{close}\n}}"
         )
     } else {
         format!(
             "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
-            {{\n    {body}\n    bytes memory result = abi.encodePacked({encode_packed_args});{assert_lines}\n    return result;\n}}"
+            {{\n    {open}{body_prefix}\n    bytes memory result = abi.encodePacked({encode_packed_args});{assert_lines}\n    return result;{close}\n}}"
         )
     })
 }
