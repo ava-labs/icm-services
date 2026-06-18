@@ -104,14 +104,14 @@ pub(crate) fn parse_comment(
 ) -> Option<RawPackArgs> {
     let pack_start = comment.find("#[pack(")?;
     let args_start = pack_start + "#[pack(".len();
-    let args_end = args_start + comment[args_start..].find(')')?;
-    let args_str = &comment[args_start..args_end];
+    let args_end = args_start + find_closing_paren(&comment[args_start..])?;
+    let args_str = strip_comment_prefixes(&comment[args_start..args_end]);
 
     let mut contract = None;
     let mut name = None;
     let mut visibility = "public".to_string();
 
-    for pair in args_str.split(',') {
+    for pair in split_args(&args_str) {
         let pair = pair.trim();
         if let Some((key, val)) = pair.split_once('=') {
             let val = val.trim().trim_matches('"');
@@ -139,41 +139,28 @@ pub(crate) fn parse_comment(
 
 fn parse_field_args(comment: Option<&str>) -> FieldArgs {
     let Some(comment) = comment else {
-        return FieldArgs {
-            method: None,
-            ignore: false,
-            length: None,
-        };
+        return FieldArgs::default();
     };
     let Some(pack_start) = comment.find("#[pack(") else {
-        return FieldArgs {
-            method: None,
-            ignore: false,
-            length: None,
-        };
+        return FieldArgs::default();
     };
     let args_start = pack_start + "#[pack(".len();
-    let Some(args_end_rel) = comment[args_start..].find(')') else {
-        return FieldArgs {
-            method: None,
-            ignore: false,
-            length: None,
-        };
+    let Some(args_end_rel) = find_closing_paren(&comment[args_start..]) else {
+        return FieldArgs::default();
     };
-    let args_str = comment[args_start..args_start + args_end_rel].trim();
+    let args_str = strip_comment_prefixes(comment[args_start..args_start + args_end_rel].trim());
 
     if args_str == "ignore" {
         return FieldArgs {
-            method: None,
             ignore: true,
-            length: None,
+            ..Default::default()
         };
     }
 
     let mut method = None;
     let mut ignore = false;
     let mut length = None;
-    for arg in args_str.split(',') {
+    for arg in split_args(&args_str) {
         if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
@@ -193,9 +180,8 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
     }
     if ignore {
         FieldArgs {
-            method: None,
             ignore: true,
-            length: None,
+            ..Default::default()
         }
     } else {
         FieldArgs {
@@ -204,6 +190,105 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
             length,
         }
     }
+}
+
+/// Strips comment-line prefixes (`//`, `///`, `*`) from a multi-line args string.
+///
+/// When `#[pack(...)]` spans multiple lines each continuation line begins
+/// with a comment prefix that must be removed before parsing keys and values.
+/// Handles both formats that `reforge::get_comment` may produce:
+///   - Newline-separated: `"\n//    arg1,\n//    arg2"`
+///   - Concatenated (no newlines): `"//    arg1,//    arg2"`
+///
+/// Splits on `\n` and on `//` occurrences outside quoted strings, strips
+/// leading whitespace and `*` block-comment markers from each segment, drops
+/// empty segments, and joins the results with a single space.
+fn strip_comment_prefixes(s: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    let mut seg_start = 0;
+    let mut in_quotes = false;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => {
+                in_quotes = !in_quotes;
+                i += 1;
+            }
+            b'\n' if !in_quotes => {
+                segments.push(&s[seg_start..i]);
+                i += 1;
+                seg_start = i;
+            }
+            b'/' if !in_quotes && i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
+                segments.push(&s[seg_start..i]);
+                i += 2;
+                // skip optional third slash (///)
+                if i < bytes.len() && bytes[i] == b'/' {
+                    i += 1;
+                }
+                seg_start = i;
+            }
+            _ => i += 1,
+        }
+    }
+    segments.push(&s[seg_start..]);
+
+    segments
+        .iter()
+        .filter_map(|seg| {
+            let t = seg.trim_start();
+            let t = if let Some(r) = t.strip_prefix('*') {
+                r.trim_start()
+            } else {
+                t
+            };
+            if t.is_empty() { None } else { Some(t) }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Finds the index of the `)` that closes the current paren level, skipping
+/// over any nested `(...)` pairs and `"..."` quoted strings.
+/// Returns `None` if no such `)` exists.
+fn find_closing_paren(s: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_quotes = false;
+    for (i, c) in s.char_indices() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            '(' if !in_quotes => depth += 1,
+            ')' if !in_quotes => {
+                if depth == 0 {
+                    return Some(i);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits `s` on commas that are outside of `"..."` quoted strings.
+fn split_args(s: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut in_quotes = false;
+    for (i, c) in s.char_indices() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => {
+                result.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    result.push(&s[start..]);
+    result
 }
 
 #[cfg(test)]

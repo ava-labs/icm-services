@@ -34,32 +34,27 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
-      - name: Cache reforge binary
-        id: cache-reforge
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+      - name: Apply expanded macros
+        run: |
+          # Copy pre-generated expanded contracts over the macro-annotated originals
+          # so that forge compiles the expanded Solidity that slither will analyze.
+          find icm-contracts-expanded -name '*.sol' | while IFS= read -r f; do
+              rel="${f#icm-contracts-expanded/}"
+              dest="icm-contracts/$rel"
+              cp "$f" "$dest"
+          done
 
-      - name: Cache Cargo (icm-macros)
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build reforge
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        run: ./scripts/build_reforge.sh
+      - name: Compile with expanded sources
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin
+          forge build --build-info
+          FOUNDRY_PROFILE=common forge build --build-info
+          FOUNDRY_PROFILE=ethereum forge build --build-info
 
       - name: Run Slither
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          slither ./ --fail-none --sarif ./results.sarif
+          slither ./ --foundry-ignore-compile --fail-none --sarif ./results.sarif
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v4

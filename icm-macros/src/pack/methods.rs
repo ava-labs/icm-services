@@ -120,6 +120,7 @@ pub fn pack_struct(
         encode_packed_args.push(arg);
     }
     // collect the arguments for abi.encodePacked into a comma-separated list
+    let has_array_fields = !recursive_packings.is_empty();
     let encode_packed_args = encode_packed_args.join(", ");
     // recursively expand the packing methods for the composite types and add them to the body
     for node in recursive_packings {
@@ -129,9 +130,17 @@ pub fn pack_struct(
         .name
         .unwrap_or_else(|| format!("pack{}", struct_def.name));
     let vis = vis_prefix(&args.visibility);
+    let (open, close) = crate::solhint::solhint_guards(
+        if has_array_fields { &["var-name-mixedcase"] } else { &[] },
+    );
+    let body_prefix = if body.is_empty() {
+        String::new()
+    } else {
+        format!("{body}\n    ")
+    };
     Ok(format!(
         "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
-        {{\n    {body}\n    return abi.encodePacked({encode_packed_args});\n}}"
+        {{\n    {open}{body_prefix}return abi.encodePacked({encode_packed_args});{close}\n}}"
     ))
 }
 

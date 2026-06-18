@@ -55,9 +55,18 @@ jobs:
 
   solhint:
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: Install Foundry
+      run: ./scripts/install_foundry.sh
+
+    - name: Setup reforge
+      uses: ./.github/actions/setup-reforge
 
     - name: Install solhint
       run: |
@@ -65,7 +74,9 @@ jobs:
         solhint --version
 
     - name: Run Lint
-      run: ./scripts/lint.sh --sol-lint
+      run: |
+        export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+        ./scripts/lint.sh --sol-lint
 
   format-solidity:
     runs-on: ubuntu-22.04
@@ -79,27 +90,8 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
-      - name: Cache reforge binary
-        id: cache-reforge
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
-
-      - name: Cache Cargo (icm-macros)
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build reforge
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        run: ./scripts/build_reforge.sh
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
 
       - name: Check Solidity Formatting
         run: |
@@ -123,6 +115,32 @@ jobs:
       - run: git --no-pager diff -- go.mod go.sum  # This prints the diff
       - run: git --no-pager diff --quiet -- go.mod go.sum  # This errors if there is a diff
 
+  check-expanded-macros:
+    name: Check expanded macros are up to date
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
+
+      - name: Regenerate expanded contracts
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+          ./scripts/expand_macros.sh
+
+      - name: Fail if expanded contracts are out of date
+        run: |
+          git diff --exit-code icm-contracts-expanded/ || \
+            (echo 'Expanded macro contracts are out of date. Run ./scripts/expand_macros.sh and commit the results.' && exit 1)
+
   abi_binding:
     name: abi_binding
     runs-on: ubuntu-22.04
@@ -141,27 +159,8 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
-      - name: Cache reforge binary
-        id: cache-reforge
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
-
-      - name: Cache Cargo (icm-macros)
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build reforge
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        run: ./scripts/build_reforge.sh
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
 
       - name: Install solc
         run: |

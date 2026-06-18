@@ -98,6 +98,24 @@ while read -r filepath; do
     remappings+=" $transformed_lines "
 done < <(find "$REPO_PATH/lib" -type f -name "remappings.txt" )
 
+# Expand macros for a foundry profile into a target directory, maintaining the
+# same relative path structure as the project root. All three profiles are
+# written into the same dir so that cross-profile relative imports resolve.
+function expand_profile_to_dir() {
+    local profile="$1"
+    local outdir="$2"
+    local current_file=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^===\ (.+)\ ===$ ]]; then
+            current_file="$outdir/${BASH_REMATCH[1]}"
+            mkdir -p "$(dirname "$current_file")"
+            : > "$current_file"
+        elif [[ -n "$current_file" ]]; then
+            printf '%s\n' "$line" >> "$current_file"
+        fi
+    done < <(FOUNDRY_PROFILE="$profile" reforge --display '**/*.sol' build 2>/dev/null)
+}
+
 function convertToLower() {
     if [ "$(uname -m)" = 'arm64' ]; then
         echo $1 | perl -ne 'print lc'
@@ -132,12 +150,38 @@ remove_matching_string() {
 function generate_bindings() {
     local evm_version="$1"
     local additional_flags="$2"
-    shift 2
+    # When non-empty, compile macro-expanded files from this root instead of
+    # the original source tree.  Pass empty string for external libraries that
+    # have no macro annotations.
+    local source_root="$3"
+    shift 3
     local contract_names=("$@")
 
     echo "EVM Version: $evm_version"
     echo "Solidity Version: $AVALANCHE_SOLIDITY_VERSION"
     echo "Additional flags: $additional_flags"
+
+    # When compiling from the expanded dir, redirect project-source remappings
+    # (those whose RHS does not start with lib/ or /) to paths inside source_root,
+    # expressed as paths RELATIVE to $REPO_PATH (the solc CWD).  Keeping both the
+    # input file and all remapping targets as relative paths ensures solc uses a
+    # single consistent key for every file in its internal map, preventing the
+    # "IWrappedNativeToken to IWrappedNativeToken" type-conflict that arises when
+    # the same physical file is reached once via a relative path and once via an
+    # absolute path derived from a remapping target.
+    local source_root_rel="${source_root#$REPO_PATH/}"
+    local effective_remappings="$remappings"
+    if [[ -n "$source_root" ]]; then
+        effective_remappings=""
+        for remap in $remappings; do
+            local rhs="${remap#*=}"
+            if [[ "$rhs" == lib/* || "$rhs" == /* ]]; then
+                effective_remappings+=" $remap"
+            else
+                effective_remappings+=" ${remap%%=*}=$source_root_rel/$rhs"
+            fi
+        done
+    fi
 
     for contract_name in "${contract_names[@]}"
     do
@@ -152,7 +196,18 @@ function generate_bindings() {
 
         cwd=$(pwd)
         cd $REPO_PATH
-        solc --optimize --evm-version $evm_version $additional_flags --combined-json abi,bin,metadata,ast,devdoc,userdoc --pretty-json $cwd/$dir/$contract_name.sol $remappings > $combined_json
+
+        # Express the input file as a path relative to $REPO_PATH so that solc
+        # records it under the same relative key it uses for all other project
+        # files reached via the redirected remappings above.
+        local sol_file
+        if [[ -n "$source_root" ]]; then
+            sol_file="$source_root_rel/${cwd#$REPO_PATH/}/$dir/$contract_name.sol"
+        else
+            sol_file="$cwd/$dir/$contract_name.sol"
+        fi
+
+        solc --optimize --evm-version $evm_version $additional_flags --metadata-hash none --combined-json abi,bin,metadata,ast,devdoc,userdoc --pretty-json $sol_file $effective_remappings > $combined_json
         cd $cwd
 
         # construct the exclude list
@@ -204,24 +259,38 @@ if [[ -z "${ETHEREUM_CONTRACT_LIST}" ]]; then
     ETHEREUM_CONTRACT_LIST=($DEFAULT_ETHEREUM_CONTRACT_LIST)
 fi
 
+# Expand macros into a fixed directory so that the absolute paths embedded by
+# solc in its metadata output are stable across runs, keeping generated Go
+# bindings deterministic.  A random mktemp path would change every invocation
+# and propagate into the metadata field of the combined JSON that abigen embeds
+# in the generated file.
+EXPANDED_DIR="$REPO_PATH/out/macro-expanded"
+rm -rf "$EXPANDED_DIR"
+mkdir -p "$EXPANDED_DIR"
+trap "rm -rf '$EXPANDED_DIR'" EXIT
+cd $REPO_PATH
+for profile in default common ethereum; do
+    expand_profile_to_dir "$profile" "$EXPANDED_DIR"
+done
+
 contract_names=(${AVALANCHE_CONTRACT_LIST[@]})
 cd $AVALANCHE_ICM_PATH
-generate_bindings "$AVALANCHE_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$AVALANCHE_EVM_VERSION" "--via-ir" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=(${COMMON_CONTRACT_LIST[@]})
 cd $COMMON_ICM_PATH
-generate_bindings "$COMMON_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$COMMON_EVM_VERSION" "--via-ir" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=(${ETHEREUM_CONTRACT_LIST[@]})
 cd $ETHEREUM_ICM_PATH
-generate_bindings "$ETHEREUM_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$ETHEREUM_EVM_VERSION" "--via-ir" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=($PROXY_LIST)
 cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/transparent
-generate_bindings "$AVALANCHE_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$AVALANCHE_EVM_VERSION" "" "" "${contract_names[@]}"
 
 contract_names=($ACCESS_LIST)
 cd $REPO_PATH/lib/openzeppelin-contracts-upgradeable/contracts/access
-generate_bindings "$AVALANCHE_EVM_VERSION" "" "${contract_names[@]}"
+generate_bindings "$AVALANCHE_EVM_VERSION" "" "" "${contract_names[@]}"
 
 exit 0

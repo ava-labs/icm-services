@@ -34,6 +34,8 @@ library PackMethods {
     }
 
     function unpackDynamicStruct(bytes memory data) public pure returns (uint256, DynamicStruct memory) {
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         DynamicStruct memory result;
@@ -105,6 +107,8 @@ library PackMethods {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackDynamicStructCalldata(bytes calldata data)
@@ -112,6 +116,7 @@ library PackMethods {
         pure
         returns (uint256, DynamicStructCalldata memory)
     {
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         DynamicStructCalldata memory result;
 
@@ -152,5 +157,6 @@ library PackMethods {
         result.Hash = Hash;
 
         return (_initial_length - data.length, result);
+        /* solhint-enable var-name-mixedcase */
     }
 }

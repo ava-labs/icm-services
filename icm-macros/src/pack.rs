@@ -29,9 +29,9 @@
 //! `assert`: Provide a closure of the form `|b| {...} -> bool` to assert some post-condition on the
 //! serialized data.
 //!
-//! `solhint-disable` (flag): Wrap the generated function with
-//! `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly` comments.
-//! Use this when the project enforces the solhint `no-inline-assembly` rule.
+//! Generated function bodies are wrapped with specific `/* solhint-disable <rule> */` /
+//! `/* solhint-enable <rule> */` guards for only the lint rules that actually fire.
+//! Functions with no suppressible violations are emitted with no guards at all.
 //!
 //! _Fields_
 //! As mentioned above, each non-primitive field is assumed to also possess a pack method. This is

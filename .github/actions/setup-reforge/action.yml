@@ -1,0 +1,28 @@
+name: Setup reforge
+description: Cache and build the reforge binary from icm-macros
+
+runs:
+  using: composite
+  steps:
+    - name: Cache reforge binary
+      id: cache-reforge
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/bin/reforge
+        key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
+    - name: Cache Cargo (icm-macros)
+      if: steps.cache-reforge.outputs.cache-hit != 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          icm-macros/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+
+    - name: Build reforge
+      if: steps.cache-reforge.outputs.cache-hit != 'true'
+      shell: bash
+      run: ./scripts/build_reforge.sh

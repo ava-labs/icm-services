@@ -25,42 +25,23 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
-      - name: Cache reforge binary
-        id: cache-reforge
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
-
-      - name: Cache Cargo (icm-macros)
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build reforge
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        run: ./scripts/build_reforge.sh
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
 
       - name: Run Avalanche unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          forge test -vvv
+          reforge test -vvv
 
       - name: Run Ethereum unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          FOUNDRY_PROFILE=ethereum forge test -vvv
+          FOUNDRY_PROFILE=ethereum reforge test -vvv
 
       - name: Run Common unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          FOUNDRY_PROFILE=common forge test -vvv
+          FOUNDRY_PROFILE=common reforge test -vvv
 
   unit_tests:
     name: Unit tests

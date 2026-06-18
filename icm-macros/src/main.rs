@@ -1,3 +1,4 @@
+mod solhint;
 mod pack;
 mod unpack;
 

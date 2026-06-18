@@ -18,6 +18,7 @@ library PackMethods {
     }
 
     function packStruct(Struct memory obj) public pure returns (bytes memory) {
+        /* solhint-disable var-name-mixedcase */
         bytes memory free_bytes;
         bytes memory flags_bytes;
         free_bytes = abi.encodePacked(obj.free.length);
@@ -66,5 +67,6 @@ library PackMethods {
             }
         }
         return abi.encodePacked(free_bytes, flags_bytes);
+        /* solhint-enable var-name-mixedcase */
     }
 }
