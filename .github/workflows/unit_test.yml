@@ -45,7 +45,9 @@ jobs:
 
       - name: Configure git credentials for private dependencies
         if: steps.cache-reforge.outputs.cache-hit != 'true'
-        run: git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+        run: |
+          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
 
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
