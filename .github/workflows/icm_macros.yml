@@ -38,6 +38,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Configure git credentials for private dependencies
+        run: git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Format
         working-directory: icm-macros
         run: cargo fmt --check
@@ -69,6 +72,9 @@ jobs:
             icm-macros/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        run: git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Build
         working-directory: icm-macros
@@ -107,6 +113,10 @@ jobs:
             icm-macros/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Build reforge
         if: steps.cache-reforge.outputs.cache-hit != 'true'
