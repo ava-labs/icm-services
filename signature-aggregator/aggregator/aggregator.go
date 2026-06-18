@@ -502,9 +502,12 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		zap.Uint64("pchainHeight", pchainHeight),
 		zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 	)
+)
+	if requiredQuorumPercentage == 0 || requiredQuorumPercentage > 100 {
+		return nil, fmt.Errorf("invalid quorum percentage: %d", requiredQuorumPercentage)
+	}
 
 	log.Debug("Creating signed message")
-	// Select signing subnet
 	signingSubnet, sourceSubnet, err := s.selectSigningSubnet(ctx, log, unsignedMessage, inputSigningSubnet)
 	if err != nil {
 		return nil, err
