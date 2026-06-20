@@ -223,7 +223,10 @@ contract ERC20TokenRemoteTest is ERC20TokenTransferrerTest, TokenRemoteTest {
         return instance;
     }
 
-    function _checkExpectedWithdrawal(address recipient, uint256 amount) internal override {
+    function _checkExpectedWithdrawal(
+        address recipient,
+        uint256 amount
+    ) internal override {
         vm.expectEmit(true, true, true, true, address(tokenRemote));
         emit TokensWithdrawn(recipient, amount);
         vm.expectEmit(true, true, true, true, address(tokenRemote));
@@ -295,7 +298,10 @@ contract ERC20TokenRemoteTest is ERC20TokenTransferrerTest, TokenRemoteTest {
         vm.expectRevert(_formatErrorMessage("insufficient tokens to transfer"));
     }
 
-    function _setUpExpectedDeposit(uint256 amount, uint256 feeAmount) internal virtual override {
+    function _setUpExpectedDeposit(
+        uint256 amount,
+        uint256 feeAmount
+    ) internal virtual override {
         // Transfer the fee to the token transferrer if it is greater than 0
         if (feeAmount > 0) {
             IERC20(app).safeIncreaseAllowance(address(tokenTransferrer), feeAmount);
@@ -318,7 +324,10 @@ contract ERC20TokenRemoteTest is ERC20TokenTransferrerTest, TokenRemoteTest {
         return app.totalSupply();
     }
 
-    function _setUpMockMint(address, uint256) internal pure override {
+    function _setUpMockMint(
+        address,
+        uint256
+    ) internal pure override {
         // Don't need to mock the minting of an ERC20TokenRemoteUpgradeable since it is an internal call
         // on the remote contract.
         return;

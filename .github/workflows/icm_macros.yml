@@ -1,0 +1,132 @@
+name: ICM Macros CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  icm-macros-lint:
+    name: ICM Macros Lint
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
+
+      - name: Format
+        working-directory: icm-macros
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: icm-macros
+        run: cargo clippy -- -D warnings
+
+  icm-macros-test:
+    name: ICM Macros Tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.91.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
+
+      - name: Build
+        working-directory: icm-macros
+        run: cargo build
+
+      - name: Test
+        working-directory: icm-macros
+        run: cargo test -- --skip tests::test_e2e
+
+  icm-macros-test-e2e:
+    name: ICM Macros E2E Tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Cache reforge binary
+        id: cache-reforge
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/reforge
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
+      - name: Cache Cargo (icm-macros)
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Build reforge
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: ./scripts/build_reforge.sh
+
+      - name: Run Solidity tests
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+          FOUNDRY_PROFILE=macros reforge test

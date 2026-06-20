@@ -34,9 +34,37 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Cache reforge binary
+        id: cache-reforge
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/reforge
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
+      - name: Cache Cargo (icm-macros)
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Configure git credentials for private dependencies
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.ORG_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p ~/.cargo && echo -e '[net]\ngit-fetch-with-cli = true' >> ~/.cargo/config.toml
+
+      - name: Build reforge
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: ./scripts/build_reforge.sh
+
       - name: Run Slither
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           slither ./ --fail-none --sarif ./results.sarif
 
       - name: Upload SARIF file
