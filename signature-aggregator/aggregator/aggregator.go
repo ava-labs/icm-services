@@ -52,7 +52,6 @@ const (
 
 var (
 	// Errors
-	errInvalidQuorumPercentage = errors.New("invalid total quorum percentage")
 	errNotEnoughSignatures     = errors.New("failed to collect a threshold of signatures")
 	errNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
 )
@@ -264,13 +263,6 @@ func (s *SignatureAggregator) getExcludedValidators(
 	return excludedValidators, nil
 }
 
-func validateQuorumPercentages(required, buffer uint64) error {
-	if required == 0 || required+buffer > 100 {
-		return errInvalidQuorumPercentage
-	}
-	return nil
-}
-
 func (s *SignatureAggregator) selectSigningSubnet(
 	ctx context.Context,
 	log logging.Logger,
@@ -330,7 +322,7 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 	signatureMap map[int][bls.SignatureLen]byte,
 	excludedValidators set.Set[int],
 	accumulatedSignatureWeight *big.Int,
-	requiredQuorumPercentage, quorumPercentageBuffer uint64,
+	requiredQuorumPercentage uint64,
 ) (*avalancheWarp.Message, error) {
 	var signedMsg *avalancheWarp.Message
 	// Query the validators with retries. On each retry, query one node per unique BLS pubkey
@@ -421,84 +413,59 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 			)
 		}
 
+		if responsesExpected == 0 {
+			return errNotEnoughSignatures
+		}
+
 		responseCount := 0
-		if responsesExpected > 0 {
-		responseLoop:
-			for {
-				select {
-				case <-ctx.Done():
-					return backoff.Permanent(ctx.Err())
-				case response, ok := <-responseChan:
-					if !ok {
-						break responseLoop
-					}
-					log.Debug(
-						"Processing response from node",
-						zap.Stringer("nodeID", response.NodeID),
+		for {
+			select {
+			case <-ctx.Done():
+				return backoff.Permanent(ctx.Err())
+			case response, ok := <-responseChan:
+				if !ok {
+					return errNotEnoughSignatures
+				}
+				log.Debug(
+					"Processing response from node",
+					zap.Stringer("nodeID", response.NodeID),
+				)
+				var relevant bool
+				signedMsg, relevant, err = s.handleResponse(
+					log,
+					response,
+					sentTo,
+					requestID,
+					vdrs,
+					unsignedMessage,
+					signatureMap,
+					excludedValidators,
+					accumulatedSignatureWeight,
+					requiredQuorumPercentage,
+				)
+				if err != nil {
+					// don't increase node failures metric here, because we did
+					// it in handleResponse
+					return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
+				}
+				if relevant {
+					responseCount++
+				}
+				// If we have sufficient signatures, return here.
+				if signedMsg != nil {
+					log.Info(
+						"Created signed message.",
+						zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+						zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
 					)
-					var relevant bool
-					signedMsg, relevant, err = s.handleResponse(
-						log,
-						response,
-						sentTo,
-						requestID,
-						vdrs,
-						unsignedMessage,
-						signatureMap,
-						excludedValidators,
-						accumulatedSignatureWeight,
-						requiredQuorumPercentage+quorumPercentageBuffer,
-					)
-					if err != nil {
-						// don't increase node failures metric here, because we did
-						// it in handleResponse
-						return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
-					}
-					if relevant {
-						responseCount++
-					}
-					// If we have sufficient signatures, return here.
-					if signedMsg != nil {
-						log.Info(
-							"Created signed message.",
-							zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-							zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-						)
-						return nil
-					}
-					// Break once we've had successful or unsuccessful responses from each requested node
-					if responseCount == responsesExpected {
-						break responseLoop
-					}
+					return nil
+				}
+				// Break once we've had successful or unsuccessful responses from each requested node
+				if responseCount == responsesExpected {
+					return errNotEnoughSignatures
 				}
 			}
 		}
-
-		// If we don't have enough signatures to represent the required quorum percentage plus the buffer
-		// percentage after all the expected responses have been received, check if we have enough signatures
-		// for just the required quorum percentage.
-		signedMsg, err = s.aggregateIfSufficientWeight(
-			log,
-			unsignedMessage,
-			signatureMap,
-			accumulatedSignatureWeight,
-			vdrs.ValidatorSet.Validators,
-			vdrs.ValidatorSet.TotalWeight,
-			requiredQuorumPercentage,
-		)
-		if err != nil {
-			return err
-		}
-		if signedMsg != nil {
-			log.Info(
-				"Created signed message.",
-				zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-				zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-			)
-			return nil
-		}
-
-		return errNotEnoughSignatures
 	}
 	notify := func(err error, duration time.Duration) {
 		logger.Debug(
@@ -528,23 +495,19 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	justification []byte,
 	inputSigningSubnet ids.ID,
 	requiredQuorumPercentage uint64,
-	quorumPercentageBuffer uint64,
 	pchainHeight uint64,
 ) (*avalancheWarp.Message, error) {
 	log = log.With(
 		zap.Uint64("requiredQuorumPercentage", requiredQuorumPercentage),
-		zap.Uint64("quorumPercentageBuffer", quorumPercentageBuffer),
 		zap.Uint64("pchainHeight", pchainHeight),
 		zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 	)
-	log.Info("Creating signed message")
-	if err := validateQuorumPercentages(requiredQuorumPercentage, quorumPercentageBuffer); err != nil {
-		log.Error("Invalid quorum percentages")
-		return nil, err
+
+	if requiredQuorumPercentage == 0 || requiredQuorumPercentage > 100 {
+		return nil, fmt.Errorf("invalid quorum percentage: %d", requiredQuorumPercentage)
 	}
 
 	log.Debug("Creating signed message")
-	// Select signing subnet
 	signingSubnet, sourceSubnet, err := s.selectSigningSubnet(ctx, log, unsignedMessage, inputSigningSubnet)
 	if err != nil {
 		return nil, err
@@ -600,8 +563,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		excludedValidators,
 	)
 
-	// Only return early if we have enough signatures to meet the quorum percentage
-	// plus the buffer percentage.
+	// Only return early if we have enough signatures to meet the quorum percentage.
 	if signedMsg, err := s.aggregateIfSufficientWeight(
 		log,
 		unsignedMessage,
@@ -609,7 +571,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		accumulatedSignatureWeight,
 		vdrs.ValidatorSet.Validators,
 		vdrs.ValidatorSet.TotalWeight,
-		requiredQuorumPercentage+quorumPercentageBuffer,
+		requiredQuorumPercentage,
 	); err != nil {
 		return nil, err
 	} else if signedMsg != nil {
@@ -641,7 +603,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		excludedValidators,
 		accumulatedSignatureWeight,
 		requiredQuorumPercentage,
-		quorumPercentageBuffer,
 	)
 	if err != nil {
 		log.Error(
