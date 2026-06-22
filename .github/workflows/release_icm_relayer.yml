@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Git checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -40,7 +40,7 @@ jobs:
         uses: docker/setup-qemu-action@v4
 
       - name: Checkout osxcross
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: tpoechtrager/osxcross
           path: osxcross
