@@ -10,3 +10,4 @@ root=$(
 
 "$root"/scripts/build_relayer.sh
 "$root"/scripts/build_signature_aggregator.sh
+"$root"/scripts/build_oracle_sidecar.sh
