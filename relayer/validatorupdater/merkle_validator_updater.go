@@ -357,7 +357,6 @@ func (s *MerkleSetUpdater) performUpdate(
 		nil,
 		signingChain,
 		defaultQuorumPercentage,
-		defaultQuorumPercentageBuf,
 		onChainPChainHeight,
 	)
 	if err != nil {

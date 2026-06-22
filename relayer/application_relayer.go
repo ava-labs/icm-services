@@ -27,11 +27,6 @@ import (
 const (
 	retryTimeout  = 10 * time.Second
 	maxRetryCount = 5
-
-	// The additional percentage of stake weight that we will try to aggregate signatures from above the required
-	// quorum. This allows for small weight changes in between the time the signature is constructed and the time
-	// it is verified to not cause the verification to fail.
-	defaultQuorumPercentageBuffer = uint64(3)
 )
 
 // ApplicationRelayers define a Warp message route from a specific source address on a specific source blockchain
@@ -159,10 +154,6 @@ func (r *ApplicationRelayer) processMessage(
 	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
 	defer cancel()
 
-	quorumPercentageBuffer := utils.CalculateQuorumPercentageBuffer(
-		r.warpConfig.QuorumNumerator,
-		defaultQuorumPercentageBuffer,
-	)
 	// Determine the appropriate P-Chain height for validator set selection
 	pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx)
 	if err != nil {
@@ -177,7 +168,6 @@ func (r *ApplicationRelayer) processMessage(
 		nil,
 		r.signingSubnetID,
 		r.warpConfig.QuorumNumerator,
-		quorumPercentageBuffer,
 		pchainHeight,
 	)
 	r.incFetchSignatureAppRequestCount()
