@@ -1,0 +1,5 @@
+[workspace]
+resolver = "2"
+members = ["lib", "prover"]
+# sp1-program cross-compiles to the SP1 target with its own patches; built by prover/build.rs.
+exclude = ["sp1-program"]

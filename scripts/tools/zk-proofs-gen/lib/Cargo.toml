@@ -1,0 +1,17 @@
+[package]
+name = "merkle-sig-verification"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bls12_381 = { version = "0.8", default-features = false, features = ["groups", "pairings", "alloc", "experimental"] }
+bitvec = { version = "1", default-features = false, features = ["alloc"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+sha2 = { version = "0.10", default-features = false }
+alloy-sol-types = "0.8"
+
+[dev-dependencies]
+hex = "0.4"
+
+[features]
+test-utils = []
