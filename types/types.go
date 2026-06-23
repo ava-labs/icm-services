@@ -20,10 +20,9 @@ import (
 )
 
 var (
-	TeleporterPrecompileLogFilter = common.FromHex("0x2a211ad4a59ab9d003852404f9c57c690704ee755f3c79d2c2812ad32da99df8")
-	WarpPrecompileLogFilter       = warp.WarpABI.Events["SendWarpMessage"].ID
-	ErrInvalidLog                 = errors.New("invalid warp message log")
-	ErrFailedToProcessLogs        = errors.New("failed to process logs")
+	WarpPrecompileLogFilter = warp.WarpABI.Events["SendWarpMessage"].ID
+	ErrInvalidLog           = errors.New("invalid warp message log")
+	ErrFailedToProcessLogs  = errors.New("failed to process logs")
 )
 
 // ICMBlockInfo describes the block height and logs needed to process Warp messages.
@@ -55,8 +54,14 @@ func NewICMBlockInfo(
 		logs []types.Log
 		err  error
 	)
-	// Check if the block contains warp logs, and fetch them from the client if it does
-	if header.Bloom.Test(TeleporterPrecompileLogFilter[:]) {
+	// Check if the block contains warp logs, and fetch them from the client if it does.
+	// We test the block bloom against the event-signature topics we actually filter for
+	// (topics[0]) rather than a single hardcoded event hash. The warp precompile emits a
+	// SendWarpMessage log whenever a message is sent (for both the Teleporter v1 path and the
+	// TeleporterV2/Merkle adapter path), so gating on the warp event signature reliably detects
+	// relayable blocks across protocol versions. A bloom match may be a false positive; the
+	// FilterLogs call below performs the precise filtering.
+	if bloomContainsAnyEventTopic(header.Bloom, topics) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
 		operation := func() (err error) {
@@ -91,6 +96,23 @@ func NewICMBlockInfo(
 		Logs:        logs,
 		IsCatchup:   false,
 	}, nil
+}
+
+// bloomContainsAnyEventTopic reports whether the block's bloom filter indicates the presence of at
+// least one of the event-signature topics being filtered for (the first topic position, topics[0]).
+// If no event-signature topics are provided, it conservatively returns true so that logs are still
+// fetched. A positive result may be a false positive due to the probabilistic nature of bloom
+// filters; callers must perform precise filtering afterwards.
+func bloomContainsAnyEventTopic(bloom types.Bloom, topics [][]common.Hash) bool {
+	if len(topics) == 0 || len(topics[0]) == 0 {
+		return true
+	}
+	for _, eventTopic := range topics[0] {
+		if bloom.Test(eventTopic[:]) {
+			return true
+		}
+	}
+	return false
 }
 
 // Extract the Warp message information from the raw log
