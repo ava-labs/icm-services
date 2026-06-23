@@ -91,21 +91,6 @@ func SignedWarpMessageToAccessList(signedMessage *avalancheWarp.Message) types.A
 	}
 }
 
-// CalculateQuorumPercentageBuffer calculates the quorum percentage buffer based on the required quorum percentage
-// and the desired quorum percentage buffer.
-func CalculateQuorumPercentageBuffer(
-	requiredQuorumPercentage uint64,
-	desiredQuorumPercentageBuffer uint64,
-) uint64 {
-	if requiredQuorumPercentage >= 100 {
-		return 0
-	}
-	if requiredQuorumPercentage+desiredQuorumPercentageBuffer > 100 {
-		return 100 - requiredQuorumPercentage
-	}
-	return desiredQuorumPercentageBuffer
-}
-
 // SortByWeightDescending sorts [items] in place by descending weight, using [weight]
 // to extract each item's weight. The sort is stable, so items of equal weight retain
 // their original relative order.

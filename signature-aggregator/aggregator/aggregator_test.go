@@ -128,42 +128,6 @@ func makeConnectedValidators(validatorCount int) (*peers.CanonicalValidators, []
 	return makeConnectedValidatorsWithWeights(weights)
 }
 
-func TestCreateSignedMessageFailsInvalidQuorumPercentage(t *testing.T) {
-	testCases := []struct {
-		name                     string
-		requiredQuorumPercentage uint64
-		quorumPercentageBuffer   uint64
-	}{
-		{
-			name:                     "Zero required quorum percentage",
-			requiredQuorumPercentage: 0,
-			quorumPercentageBuffer:   5,
-		},
-		{
-			name:                     "Quorum percentage above 100",
-			requiredQuorumPercentage: 96,
-			quorumPercentageBuffer:   5,
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
-			signedMsg, err := aggregator.CreateSignedMessage(
-				t.Context(),
-				logging.NoLog{},
-				&warp.UnsignedMessage{},
-				nil,
-				ids.Empty,
-				tc.requiredQuorumPercentage,
-				tc.quorumPercentageBuffer,
-				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
-			)
-			require.Nil(t, signedMsg)
-			require.ErrorIs(t, err, errInvalidQuorumPercentage)
-		})
-	}
-}
-
 func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
@@ -188,7 +152,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	).AnyTimes()
 	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return([]peer.Info{}).AnyTimes()
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, pchainapi.ProposedHeight)
 	require.ErrorContains(t, err, "no signatures")
 }
 
@@ -216,7 +180,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	).AnyTimes()
 	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return([]peer.Info{}).AnyTimes()
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, 0, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, pchainapi.ProposedHeight)
 	require.ErrorContains(
 		t,
 		err,
@@ -308,7 +272,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	).Times(1)
 
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, subnetID, 80, 0, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, subnetID, 80, pchainapi.ProposedHeight)
 	require.ErrorIs(
 		t,
 		err,
@@ -321,17 +285,14 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	testCases := []struct {
 		name                     string
 		requiredQuorumPercentage uint64
-		quorumPercentageBuffer   uint64
 	}{
 		{
 			name:                     "Succeeds with buffer",
 			requiredQuorumPercentage: 67,
-			quorumPercentageBuffer:   5,
 		},
 		{
 			name:                     "Succeeds without buffer",
 			requiredQuorumPercentage: 80,
-			quorumPercentageBuffer:   5,
 		},
 	}
 
@@ -466,7 +427,6 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				nil,
 				subnetID,
 				tc.requiredQuorumPercentage,
-				tc.quorumPercentageBuffer,
 				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
 			)
 			require.NoError(t, err)
@@ -675,7 +635,7 @@ func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
 
 	signedMessage, err := aggregator.CreateSignedMessage(
 		t.Context(), logging.NoLog{}, msg, nil, subnetID,
-		51, 0, // 51% required quorum, no buffer.
+		51, // 51% required quorum.
 		pchainapi.ProposedHeight,
 	)
 	require.NoError(t, err)
@@ -768,7 +728,7 @@ func TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent(t *testin
 
 	signedMessage, err := aggregator.CreateSignedMessage(
 		t.Context(), logging.NoLog{}, msg, nil, subnetID,
-		40, 0, // 40% required quorum, no buffer.
+		40, // 40% required quorum.
 		pchainapi.ProposedHeight,
 	)
 	require.NoError(t, err)
@@ -1049,47 +1009,6 @@ func TestGetExcludedValidators(t *testing.T) {
 				} else {
 					require.False(t, excluded.Contains(idx), "validator %d should NOT be excluded", idx)
 				}
-			}
-		})
-	}
-}
-
-func TestValidateQuorumPercentages(t *testing.T) {
-	tests := []struct {
-		name     string
-		required uint64
-		buffer   uint64
-		wantErr  bool
-	}{
-		{
-			name:     "valid",
-			required: 80,
-			buffer:   5,
-			wantErr:  false,
-		},
-		{
-			name:     "zero required",
-			required: 0,
-			buffer:   5,
-			wantErr:  true},
-		{
-			name:     "sum over 100",
-			required: 98, buffer: 5,
-			wantErr: true,
-		},
-		{
-			name:     "exactly 100",
-			required: 100,
-			buffer:   0,
-			wantErr:  false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := validateQuorumPercentages(tc.required, tc.buffer)
-			if tc.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
 			}
 		})
 	}
