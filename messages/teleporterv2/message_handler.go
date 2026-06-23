@@ -11,8 +11,8 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
@@ -255,7 +255,8 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		teleporterMessenger, msgErr := m.getTeleporterMessenger()
 		if msgErr == nil {
-			if delivered, derr := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID); derr == nil && delivered {
+			delivered, derr := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+			if derr == nil && delivered {
 				log.Info("Execution reverted: message already delivered to destination.")
 				return txHash, nil
 			}
