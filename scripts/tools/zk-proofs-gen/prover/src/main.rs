@@ -1,15 +1,11 @@
-//! Standalone tester for the attestation circuit, driven by the lib's icm-services fixtures.
-//!   cargo run --release -- execute          # fast: run guest, print public values + cycles
-//!   cargo run --release -- prove            # STARK proof + self-verify
-//!   cargo run --release -- prove --groth16  # on-chain proof (slow, heavy) + bytes for the contract
-//!   cargo run --release -- vkey             # program verification key (bytes32)
 use alloy_sol_types::SolValue;
 use clap::Parser;
 use merkle_sig_verification::{test_fixtures, PublicValues};
 use sha2::{Digest, Sha256};
-use sp1_sdk::{include_elf, HashableKey, ProverClient, SP1Stdin};
+use sp1_sdk::blocking::{Prover, ProveRequest, ProverClient};
+use sp1_sdk::{include_elf, Elf, HashableKey, ProvingKey, SP1Stdin};
 
-pub const ELF: &[u8] = include_elf!("zk-valset-program");
+pub const ELF: Elf = include_elf!("zk-valset-program");
 
 #[derive(Parser)]
 enum Cmd {
@@ -52,29 +48,28 @@ fn check(pv_bytes: &[u8]) {
 fn main() {
     sp1_sdk::utils::setup_logger();
     let stdin = fixture_stdin();
-    let client = ProverClient::from_env();
+    let client = ProverClient::builder().cpu().build();
 
     match Cmd::parse() {
         Cmd::Vkey => {
-            let (_, vk) = client.setup(ELF);
-            println!("{}", vk.bytes32());
+            let pk = client.setup(ELF).expect("setup failed");
+            println!("{}", pk.verifying_key().bytes32());
         }
         Cmd::Execute => {
-            // No proving — runs the guest in the executor. Seconds, not minutes.
-            let (pv, report) = client.execute(ELF, &stdin).run().expect("execute failed");
+            let (pv, report) = client.execute(ELF, stdin).run().expect("execute failed");
             println!("executed in {} cycles", report.total_instruction_count());
             check(pv.as_slice());
         }
         Cmd::Prove { groth16 } => {
-            let (pk, vk) = client.setup(ELF);
+            let pk = client.setup(ELF).expect("setup failed");
             let proof = if groth16 {
-                client.prove(&pk, &stdin).groth16().run()
+                client.prove(&pk, stdin).groth16().run()
             } else {
-                client.prove(&pk, &stdin).run()
+                client.prove(&pk, stdin).run()
             }
             .expect("prove failed");
 
-            client.verify(&proof, &vk).expect("self-verify failed");
+            client.verify(&proof, pk.verifying_key(), None).expect("self-verify failed");
             println!("✓ proof generated and self-verified");
             check(proof.public_values.as_slice());
 

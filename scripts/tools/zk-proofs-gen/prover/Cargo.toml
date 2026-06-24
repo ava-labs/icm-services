@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sp1-sdk = "6.0.0"
+sp1-sdk = { workspace = true, features = ["blocking"] }
 merkle-sig-verification = { path = "../lib", features = ["test-utils"] }
 alloy-sol-types = "0.8"
 sha2 = "0.10"
@@ -12,4 +12,4 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"] }
 
 [build-dependencies]
-sp1-build = "6.0.0"
+sp1-build = { workspace = true }
