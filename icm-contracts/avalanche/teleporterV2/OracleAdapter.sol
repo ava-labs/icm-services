@@ -238,16 +238,16 @@ contract OracleAdapter {
 
         // 6. Deliver to destination. The destContract is part of the signed warp payload
         //    (verified in step 3), so the relayer cannot redirect to an arbitrary contract.
+        emit OracleMessageReceived(
+            messageID, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
+        );
+
         IOracleMessageReceiver(oracleMsg.destContract).receiveOracleMessage(
             warp.sourceChainID,
             oracleMsg.sourceType,
             oracleMsg.sourceAddress,
             oracleMsg.nonce,
             oracleMsg.payload
-        );
-
-        emit OracleMessageReceived(
-            messageID, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
         );
     }
 
