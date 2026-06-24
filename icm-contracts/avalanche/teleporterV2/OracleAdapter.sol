@@ -124,7 +124,9 @@ contract OracleAdapter {
     // Constructor
     // -------------------------------------------------------------------------
 
-    constructor(address _owner) {
+    constructor(
+        address _owner
+    ) {
         if (_owner == address(0)) revert ZeroAddress();
         owner = _owner;
         emit OwnershipTransferred(address(0), _owner);
@@ -157,7 +159,9 @@ contract OracleAdapter {
     /**
      * @notice Transfer ownership to a new address.
      */
-    function transferOwnership(address newOwner) external onlyOwner {
+    function transferOwnership(
+        address newOwner
+    ) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
@@ -187,9 +191,7 @@ contract OracleAdapter {
      * @param oracleMsg The oracle message, provided as calldata by the relayer. Its hash
      *                  is checked against the warp payload to bind BLS verification to content.
      */
-    function receiveOracleMessage(uint32 warpIndex, OracleMessage calldata oracleMsg)
-        external
-    {
+    function receiveOracleMessage(uint32 warpIndex, OracleMessage calldata oracleMsg) external {
         // 1. Read the precompile-verified warp message. The BLS aggregate was already
         //    checked against this L1's validator set during block execution.
         (WarpMessage memory warp, bool valid) = WARP_MESSENGER.getVerifiedWarpMessage(warpIndex);
@@ -199,7 +201,9 @@ contract OracleAdapter {
         //    L1's own warp signer (SourceChainID = this chain's blockchain ID), so a message
         //    from a different chain cannot be accepted here.
         bytes32 thisChainID = WARP_MESSENGER.getBlockchainID();
-        if (warp.sourceChainID != thisChainID) revert WrongSourceChain(warp.sourceChainID, thisChainID);
+        if (warp.sourceChainID != thisChainID) {
+            revert WrongSourceChain(warp.sourceChainID, thisChainID);
+        }
 
         // 3. Bind the BLS-verified payload to the oracle message fields provided by the relayer.
         //    The warp payload is abi.encode of the individual fields (NOT abi.encode of the struct,
@@ -254,11 +258,10 @@ contract OracleAdapter {
     /**
      * @notice Returns true if the (sourceType, sourceAddress) pair is on the allowlist.
      */
-    function isAllowed(string calldata sourceType, string calldata sourceAddress)
-        external
-        view
-        returns (bool)
-    {
+    function isAllowed(
+        string calldata sourceType,
+        string calldata sourceAddress
+    ) external view returns (bool) {
         return _allowedSources[keccak256(abi.encode(sourceType, sourceAddress))];
     }
 
@@ -266,7 +269,9 @@ contract OracleAdapter {
      * @notice Returns true if the message with the given ID has already been delivered.
      * @dev messageID = keccak256(abi.encode(sourceType, sourceAddress, nonce))
      */
-    function isProcessed(bytes32 messageID) external view returns (bool) {
+    function isProcessed(
+        bytes32 messageID
+    ) external view returns (bool) {
         return _processedMessages[messageID];
     }
 }

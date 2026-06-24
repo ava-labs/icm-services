@@ -17,8 +17,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mr-tron/base58"
-
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
@@ -28,6 +26,7 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
+	"github.com/mr-tron/base58"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
@@ -68,7 +67,9 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 		"params": []any{memoProgram, map[string]any{"limit": 1}},
 	})
 	var sigsResp struct {
-		Result []struct{ Signature string `json:"signature"` } `json:"result"`
+		Result []struct {
+			Signature string `json:"signature"`
+		} `json:"result"`
 	}
 	Expect(json.Unmarshal(sigsRaw, &sigsResp)).Should(BeNil())
 	Expect(sigsResp.Result).ShouldNot(BeEmpty(), "no recent Memo Program transactions at SOLANA_RPC_URL")
