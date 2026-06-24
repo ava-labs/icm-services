@@ -7,17 +7,23 @@
 //   - RUN_E2E=true environment variable
 //   - AVALANCHEGO_PATH pointing to a binary built from the
 //     boraplusplus/sidecar-verifier branch (oracle handler ID 4 support)
-//   - build/oracle-sidecar binary (built by scripts/build_oracle_sidecar.sh)
+//
+// Optional — enables real Solana verification:
+//   - SOLANA_RPC_URL set to a Solana JSON-RPC endpoint (e.g. https://api.devnet.solana.com)
+//     When set, the suite builds and runs the real solanarpc sidecar (from the avalanchego
+//     source tree) instead of the mock, and the test flow fetches a live Memo Program
+//     transaction to use as the oracle payload.
 package oracle_test
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -33,8 +39,7 @@ import (
 )
 
 const (
-	warpGenesisTemplateFile = "./tests/utils/warp-genesis-template.json"
-	oracleLabel             = "OracleAttestation"
+	oracleLabel = "OracleAttestation"
 	// oracleSidecarPort is the port the mock sidecar listens on. Validators'
 	// oracle.endpoint chain config must reference this port.
 	oracleSidecarPort = 9900
@@ -45,6 +50,7 @@ var (
 	localNetworkInstance *network.LocalAvalancheNetwork
 	oracleSidecar        *exec.Cmd
 	e2eFlags             *e2e.FlagVars
+	solanaRPCURL         string // non-empty when SOLANA_RPC_URL is set; selects real sidecar mode
 )
 
 func TestMain(m *testing.M) {
@@ -81,27 +87,66 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		),
 	)
 
+	repoRoot, err := utils.GetRepoRoot()
+	Expect(err).Should(BeNil())
+
 	log.Info("Building all ICM service executables (includes oracle-sidecar)")
 	utils.BuildAllExecutables(ctx, log)
 
-	// Start the mock oracle sidecar before the network so validators can reach
-	// it when they boot with oracle.endpoint in their chain config.
+	solanaRPCURL = os.Getenv("SOLANA_RPC_URL")
 	sidecarEndpoint := fmt.Sprintf("http://127.0.0.1:%d", oracleSidecarPort)
-	log.Info("Starting oracle mock sidecar", zap.String("endpoint", sidecarEndpoint))
-	oracleSidecar = exec.CommandContext(ctx, "./build/oracle-sidecar",
-		"--port", fmt.Sprintf("%d", oracleSidecarPort))
+
+	if solanaRPCURL != "" {
+		// Real mode: build the solanarpc sidecar from the avalanchego source tree
+		// (derived from AVALANCHEGO_PATH) and start it pointing at the given RPC endpoint.
+		avalancheGoRoot := filepath.Dir(filepath.Dir(os.Getenv("AVALANCHEGO_PATH")))
+		solanarpcBin := filepath.Join(repoRoot, "build/solanarpc-sidecar")
+		log.Info("Building solanarpc sidecar", zap.String("avalancheGoRoot", avalancheGoRoot))
+		buildCmd := exec.Command("go", "build", "-o", solanarpcBin, "./sidecar/solanarpc/")
+		buildCmd.Dir = avalancheGoRoot
+		buildOut, buildErr := buildCmd.CombinedOutput()
+		log.Info(string(buildOut))
+		Expect(buildErr).Should(BeNil())
+
+		log.Info("Starting real solanarpc sidecar",
+			zap.String("endpoint", sidecarEndpoint),
+			zap.String("solanaRPC", solanaRPCURL),
+		)
+		oracleSidecar = exec.Command(solanarpcBin,
+			"--addr", fmt.Sprintf(":%d", oracleSidecarPort),
+			"--solana-rpc", solanaRPCURL,
+		)
+	} else {
+		// Mock mode: start the unconditional accept sidecar (no Solana RPC needed).
+		log.Info("Starting oracle mock sidecar", zap.String("endpoint", sidecarEndpoint))
+		oracleSidecar = exec.Command(filepath.Join(repoRoot, "build/oracle-sidecar"),
+			"--port", fmt.Sprintf("%d", oracleSidecarPort),
+		)
+	}
 	oracleSidecar.Stdout = os.Stdout
 	oracleSidecar.Stderr = os.Stderr
-	err := oracleSidecar.Start()
+	err = oracleSidecar.Start()
 	Expect(err).Should(BeNil())
 	go func() {
-		waitErr := oracleSidecar.Wait()
-		if !errors.Is(ctx.Err(), context.Canceled) {
+		if waitErr := oracleSidecar.Wait(); waitErr != nil {
 			log.Error("oracle-sidecar exited abnormally", zap.Error(waitErr))
 		}
 	}()
-	// Give the sidecar a moment to bind its port before the network starts.
-	time.Sleep(500 * time.Millisecond)
+	// Wait until the sidecar actually accepts TCP connections (not just a fixed sleep).
+	sidecarAddr := fmt.Sprintf("127.0.0.1:%d", oracleSidecarPort)
+	readyDeadline := time.Now().Add(10 * time.Second)
+	for {
+		conn, dialErr := net.DialTimeout("tcp", sidecarAddr, 200*time.Millisecond)
+		if dialErr == nil {
+			conn.Close()
+			break
+		}
+		if time.Now().After(readyDeadline) {
+			Expect(fmt.Errorf("oracle-sidecar did not bind %s within 10s: %w", sidecarAddr, dialErr)).Should(BeNil())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	log.Info("Oracle sidecar is ready", zap.String("addr", sidecarAddr))
 
 	// Build chain config for the oracle L1: enable warp and point oracle
 	// handler at the mock sidecar. The empty allowed-sources slice for "solana"
@@ -120,7 +165,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	localNetworkInstance = network.NewLocalAvalancheNetwork(
 		networkStartCtx,
 		"oracle-attestation-e2e",
-		warpGenesisTemplateFile,
+		filepath.Join(repoRoot, "tests/utils/warp-genesis-template.json"),
 		[]network.L1Spec{
 			{
 				Name:        "A",
@@ -143,6 +188,9 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 func cleanup() {
 	if oracleSidecar != nil {
+		if oracleSidecar.Process != nil {
+			_ = oracleSidecar.Process.Kill()
+		}
 		oracleSidecar = nil
 	}
 	if localNetworkInstance != nil {
@@ -157,6 +205,6 @@ var _ = ginkgo.Describe("[Oracle Attestation E2E Tests]", func() {
 	ginkgo.It("Oracle Attestation",
 		ginkgo.Label(oracleLabel),
 		func(ctx context.Context) {
-			oracleFlows.OracleAttestation(ctx, log, localNetworkInstance)
+			oracleFlows.OracleAttestation(ctx, log, localNetworkInstance, solanaRPCURL)
 		})
 })
