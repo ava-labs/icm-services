@@ -13,6 +13,7 @@ import (
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
+	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
@@ -219,10 +220,12 @@ func TestShouldSendMessage(t *testing.T) {
 			)
 			require.NoError(t, err)
 			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-			messageHandler, err := factory.NewMessageHandler(
+			handler, err := factory.NewMessageHandler(
 				logging.NoLog{},
 				test.warpUnsignedMessage,
 				mockClient,
+				nil,
+				mocks.NewMockMetrics(ctrl),
 			)
 			if test.expectedParseError {
 				// If we expect an error parsing the Warp message, we should not call ShouldSendMessage
@@ -254,7 +257,7 @@ func TestShouldSendMessage(t *testing.T) {
 			}
 
 			// Call the method under test
-			result, err := messageHandler.ShouldSendMessage()
+			result, err := handler.(*messageHandler).ShouldSendMessage()
 			require.NoError(t, err)
 			require.Equal(t, test.expectedResult, result)
 		})
@@ -318,10 +321,12 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	)
 	require.NoError(t, err)
 	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-	messageHandler, err := factory.NewMessageHandler(
+	handler, err := factory.NewMessageHandler(
 		logging.NoLog{},
 		warpUnsignedMessage,
 		mockClient,
+		nil,
+		mocks.NewMockMetrics(ctrl),
 	)
 	require.NoError(t, err)
 
@@ -346,6 +351,6 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 		Times(1)
 
 	// Call the method under test
-	_, err = messageHandler.SendMessage(signedMessage)
+	_, err = handler.(*messageHandler).SendMessage(signedMessage)
 	require.NoError(t, err)
 }
