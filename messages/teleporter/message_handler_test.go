@@ -226,6 +226,8 @@ func TestShouldSendMessage(t *testing.T) {
 				mockClient,
 				nil,
 				mocks.NewMockMetrics(ctrl),
+				ids.Empty,
+				0,
 			)
 			if test.expectedParseError {
 				// If we expect an error parsing the Warp message, we should not call ShouldSendMessage
@@ -327,6 +329,8 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 		mockClient,
 		nil,
 		mocks.NewMockMetrics(ctrl),
+		ids.Empty,
+		0,
 	)
 	require.NoError(t, err)
 
