@@ -443,52 +443,38 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	}
 }
 
-func TestQueryableValidatorsByWeight(t *testing.T) {
+func TestValidatorsByWeight(t *testing.T) {
 	// Three connected validators with distinct weights.
 	connected, _ := makeConnectedValidatorsWithWeights([]uint64{5, 10, 1})
 
-	queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-	require.Len(t, queryable, 3)
+	sorted := validatorsByWeight(connected)
+	require.Len(t, sorted, 3)
 	// Sorted by descending weight.
-	require.Equal(t, uint64(10), queryable[0].weight)
-	require.Equal(t, uint64(5), queryable[1].weight)
-	require.Equal(t, uint64(1), queryable[2].weight)
-
-	// Validators with a cached signature should be excluded.
-	indexByWeight := map[uint64]int{}
-	for i, v := range connected.ValidatorSet.Validators {
-		indexByWeight[v.Weight] = i
-	}
-	cached := map[int][bls.SignatureLen]byte{
-		indexByWeight[10]: {},
-	}
-	queryable = queryableValidatorsByWeight(connected, cached)
-	require.Len(t, queryable, 2)
-	require.Equal(t, uint64(5), queryable[0].weight)
-	require.Equal(t, uint64(1), queryable[1].weight)
+	require.Equal(t, uint64(10), sorted[0].Weight)
+	require.Equal(t, uint64(5), sorted[1].Weight)
+	require.Equal(t, uint64(1), sorted[2].Weight)
 }
 
-func TestQueryableValidatorsByWeightSkipsUnconnected(t *testing.T) {
-	connected, _ := makeConnectedValidatorsWithWeights([]uint64{10, 5, 1})
-
-	// Disconnect the highest-weight validator's only node.
-	queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-	require.Equal(t, uint64(10), queryable[0].weight)
-	connected.ConnectedNodes.Remove(queryable[0].nodeIDs[0])
-
-	queryable = queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-	require.Len(t, queryable, 2)
-	require.Equal(t, uint64(5), queryable[0].weight)
-	require.Equal(t, uint64(1), queryable[1].weight)
+// validatorByWeight returns the canonical validator with the given weight.
+func validatorByWeight(t *testing.T, connected *peers.CanonicalValidators, weight uint64) *validators.Warp {
+	t.Helper()
+	for _, v := range connected.ValidatorSet.Validators {
+		if v.Weight == weight {
+			return v
+		}
+	}
+	t.Fatalf("no validator with weight %d", weight)
+	return nil
 }
 
 func TestNodesToQuery(t *testing.T) {
+	noneSigned := set.NewSet[PublicKeyBytes](0)
 	// Each validator has a single node, so the returned set size equals the number of
 	// selected validators.
 	t.Run("single dominant validator covers the stake", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
-		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		sorted := validatorsByWeight(connected)
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
 		// The dominant validator alone exceeds the coverage goal and the rest fall below the
 		// tiny-validator threshold, so only the dominant validator is queried.
 		require.Equal(t, 1, nodes.Len())
@@ -496,16 +482,16 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("queries multiple validators to cover the stake", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{40, 30, 20, 10})
-		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		sorted := validatorsByWeight(connected)
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
 		// No proper subset covers 95% of stake, so every validator is queried.
 		require.Equal(t, 4, nodes.Len())
 	})
 
 	t.Run("skips the long tail of tiny validators", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
-		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
-		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		sorted := validatorsByWeight(connected)
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
 		// The three largest validators cover 95% of stake; the five 1-weight validators are
 		// each below 1% of total stake and are skipped.
 		require.Equal(t, 3, nodes.Len())
@@ -513,10 +499,49 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("a higher coverage goal queries further into the tail", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
-		queryable := queryableValidatorsByWeight(connected, map[int][bls.SignatureLen]byte{})
+		sorted := validatorsByWeight(connected)
 		// A coverage goal of 100% forces every validator to be queried.
-		nodes := nodesToQuery(queryable, connected.ValidatorSet.TotalWeight, 100)
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, 100)
 		require.Equal(t, 8, nodes.Len())
+	})
+
+	t.Run("skips validators with no connected node", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{10, 5, 1})
+		sorted := validatorsByWeight(connected)
+		// Disconnect the highest-weight validator's only node.
+		require.Equal(t, uint64(10), sorted[0].Weight)
+		connected.ConnectedNodes.Remove(sorted[0].NodeIDs[0])
+
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, 100)
+		// The disconnected validator is skipped; only the two connected ones are queried.
+		require.Equal(t, 2, nodes.Len())
+		require.False(t, nodes.Contains(sorted[0].NodeIDs[0]))
+	})
+
+	t.Run("cached validator is not re-queried", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{5, 10, 1})
+		sorted := validatorsByWeight(connected)
+		top := validatorByWeight(t, connected, 10)
+		signed := set.NewSet[PublicKeyBytes](1)
+		signed.Add(PublicKeyBytes(top.PublicKeyBytes))
+
+		nodes := nodesToQuery(sorted, signed, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, 100)
+		// The cached validator's node is not queried; the other two are.
+		require.Equal(t, 2, nodes.Len())
+		require.False(t, nodes.Contains(top.NodeIDs[0]))
+	})
+
+	t.Run("cached weight counts toward the coverage goal", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
+		sorted := validatorsByWeight(connected)
+		dominant := validatorByWeight(t, connected, 1000)
+		signed := set.NewSet[PublicKeyBytes](1)
+		signed.Add(PublicKeyBytes(dominant.PublicKeyBytes))
+
+		nodes := nodesToQuery(sorted, signed, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		// The cached dominant validator already covers >95% of stake, so the tiny-validator
+		// tail is skipped and no node is queried.
+		require.Equal(t, 0, nodes.Len())
 	})
 }
 

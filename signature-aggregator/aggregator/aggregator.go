@@ -319,59 +319,71 @@ func (s *SignatureAggregator) getCachedSignaturesForMessage(
 	return signatureMap, accumulatedSignatureWeight
 }
 
-// queryableValidator is a single canonical validator that still needs to be queried,
-// paired with its weight and the connected node IDs to send the request to.
-type queryableValidator struct {
-	weight  uint64
-	nodeIDs []ids.NodeID
+// validatorsByWeight returns the canonical validators sorted by descending weight. The
+// canonical validator set is already ordered by public key, so a stable sort preserves that
+// order for validators of equal weight.
+func validatorsByWeight(vdrs *peers.CanonicalValidators) []*validators.Warp {
+	sorted := make([]*validators.Warp, len(vdrs.ValidatorSet.Validators))
+	copy(sorted, vdrs.ValidatorSet.Validators)
+	utils.SortByWeightDescending(sorted, func(v *validators.Warp) uint64 {
+		return v.Weight
+	})
+	return sorted
 }
 
-// queryableValidatorsByWeight returns the validators that still need to be queried
-// (those without a cached signature in [signatureMap] and with at least one connected
-// node), sorted by descending weight. The canonical validator set is already ordered by
-// public key, so a stable sort preserves that order for validators of equal weight.
-func queryableValidatorsByWeight(
+// signedValidators returns the set of public keys for validators whose signature is already
+// present in [signatureMap] (keyed by canonical validator index).
+func signedValidators(
 	vdrs *peers.CanonicalValidators,
 	signatureMap map[int][bls.SignatureLen]byte,
-) []queryableValidator {
-	queryable := make([]queryableValidator, 0, len(vdrs.ValidatorSet.Validators))
-	for i, v := range vdrs.ValidatorSet.Validators {
-		if _, has := signatureMap[i]; has {
-			continue
-		}
-		var nodeIDs []ids.NodeID
-		for _, nodeID := range v.NodeIDs {
-			if vdrs.ConnectedNodes.Contains(nodeID) {
-				nodeIDs = append(nodeIDs, nodeID)
-			}
-		}
-		// Skip validators we have no connected node to query.
-		if len(nodeIDs) == 0 {
-			continue
-		}
-		queryable = append(queryable, queryableValidator{weight: v.Weight, nodeIDs: nodeIDs})
+) set.Set[PublicKeyBytes] {
+	signed := set.NewSet[PublicKeyBytes](len(signatureMap))
+	for i := range signatureMap {
+		signed.Add(PublicKeyBytes(vdrs.ValidatorSet.Validators[i].PublicKeyBytes))
 	}
-	utils.SortByWeightDescending(queryable, func(v queryableValidator) uint64 {
-		return v.weight
-	})
-	return queryable
+	return signed
 }
 
-// nodesToQuery returns the node IDs to request signatures from, taking validators from
-// [queryable] (sorted by descending weight) until their cumulative weight covers
-// [coverageGoal] percent of [totalWeight], then continuing only while each validator is at
-// least [minQueryWeightPercentage] of [totalWeight] so the tiny-validator tail is skipped.
-func nodesToQuery(queryable []queryableValidator, totalWeight, coverageGoal uint64) set.Set[ids.NodeID] {
-	nodes := set.NewSet[ids.NodeID](len(queryable))
+// nodesToQuery returns the node IDs to request signatures from. It walks [sorted] (validators
+// in descending weight order), accumulating weight until it covers [coverageGoal] percent of
+// [totalWeight], then continues only while each validator is at least [minQueryWeightPercentage]
+// of [totalWeight] so the tiny-validator tail is skipped. Validators whose signature is already
+// cached (those in [signed]) contribute their weight to the cumulative total but are not queried
+// again, and validators with no connected node are skipped.
+func nodesToQuery(
+	sorted []*validators.Warp,
+	signed set.Set[PublicKeyBytes],
+	connectedNodes set.Set[ids.NodeID],
+	totalWeight, coverageGoal uint64,
+) set.Set[ids.NodeID] {
+	nodes := set.NewSet[ids.NodeID](len(sorted))
 	var cumulative uint64
-	for _, v := range queryable {
+	for _, v := range sorted {
+		// A cached signature already covers this validator's weight, so count it toward the
+		// coverage goal without querying the validator again.
+		if signed.Contains(PublicKeyBytes(v.PublicKeyBytes)) {
+			cumulative += v.Weight
+			continue
+		}
+
+		// Only query validators we have a connected node for.
+		var queryNodes []ids.NodeID
+		for _, nodeID := range v.NodeIDs {
+			if connectedNodes.Contains(nodeID) {
+				queryNodes = append(queryNodes, nodeID)
+			}
+		}
+		if len(queryNodes) == 0 {
+			continue
+		}
+
 		covered := weightAtLeastPercent(cumulative, totalWeight, coverageGoal)
-		tiny := !weightAtLeastPercent(v.weight, totalWeight, minQueryWeightPercentage)
+		tiny := !weightAtLeastPercent(v.Weight, totalWeight, minQueryWeightPercentage)
 		if covered && tiny {
 			break
 		}
-		cumulative += v.weight
-		for _, nodeID := range v.nodeIDs {
+		cumulative += v.Weight
+		for _, nodeID := range queryNodes {
 			nodes.Add(nodeID)
 		}
 	}
@@ -493,15 +505,15 @@ func (s *SignatureAggregator) collectSignatures(
 
 	// Cover enough stake to reach the quorum if everyone responds, but never less than
 	// [queryStakePercentage], which leaves a buffer for non-responding validators.
-	queryable := queryableValidatorsByWeight(vdrs, signatureMap)
+	sortedValidators := validatorsByWeight(vdrs)
+	signed := signedValidators(vdrs, signatureMap)
 	coverageGoal := max(queryStakePercentage, requiredQuorumPercentage)
-	queryNodes := nodesToQuery(queryable, totalWeight, coverageGoal)
+	queryNodes := nodesToQuery(sortedValidators, signed, vdrs.ConnectedNodes, totalWeight, coverageGoal)
 
 	log.Debug(
 		"Aggregator collecting signatures from weight-prioritized validators.",
 		zap.Int("validatorSetSize", len(vdrs.ValidatorSet.Validators)),
 		zap.Int("signatureMapSize", len(signatureMap)),
-		zap.Int("queryableValidators", len(queryable)),
 		zap.Int("queryNodes", queryNodes.Len()),
 	)
 
