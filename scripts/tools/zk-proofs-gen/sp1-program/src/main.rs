@@ -1,5 +1,8 @@
 //! SP1 guest: verifies a validator set Merkle attestation in-circuit and commits
 //! ABI-encoded public values for the on-chain ZKValidatorSetRegistry.
+
+//! THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION. 
+
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 

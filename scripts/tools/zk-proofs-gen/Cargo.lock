@@ -6592,6 +6592,7 @@ dependencies = [
  "clap",
  "hex",
  "merkle-sig-verification",
+ "serde_json",
  "sha2",
  "sp1-build",
  "sp1-sdk",

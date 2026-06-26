@@ -1,3 +1,10 @@
+//! Validator-set Merkle attestation verification shared between the SP1 guest program and the host
+//! prover. Parses a `ValidatorSetMerkleAttestation`, rebuilds the Merkle root, verifies the
+//! aggregate BLS12-381 signature, and checks the stake-weighted quorum matching the on-chain
+//! `ValidatorSets` logic. `PublicValues` is the ABI-encoded output the contract decodes.
+
+//! THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION. 
+
 use bitvec::vec::BitVec;
 use bls12_381::{
     hash_to_curve::{ExpandMsgXmd, HashToCurve},
@@ -13,8 +20,6 @@ pub const BLS_SIGNATURE_SIZE: usize = 192;
 
 pub type Hash = [u8; 32];
 
-// ABI-encoded public values the guest commits, decoded directly by the Solidity contract.
-// Field order/types must match the contract's PublicValues struct.
 sol! {
     struct PublicValues {
         bytes32 root;
@@ -54,7 +59,7 @@ pub fn verify(
     total_weight: u64,
     signed_data_hash: &Hash,
 ) -> Option<bool> {
-    // Bind the proof to a specific message before any expensive crypto.
+    // Bind the proof to the message
     let actual_hash: [u8; 32] = Sha256::digest(signed_data).into();
     if &actual_hash != signed_data_hash {
         return None;
