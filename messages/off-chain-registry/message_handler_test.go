@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
+	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
@@ -162,9 +163,15 @@ func TestShouldSendMessage(t *testing.T) {
 					test.destinationBlockchainID,
 				)
 			}
-			messageHandler, err := factory.NewMessageHandler(logging.NoLog{}, unsignedMessage, mockClient)
+			handler, err := factory.NewMessageHandler(
+				logging.NoLog{},
+				unsignedMessage,
+				mockClient,
+				nil,
+				mocks.NewMockMetrics(ctrl),
+			)
 			require.NoError(t, err)
-			result, err := messageHandler.ShouldSendMessage()
+			result, err := handler.(*messageHandler).ShouldSendMessage()
 			if test.expectedError {
 				require.Error(t, err)
 			} else {
