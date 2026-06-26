@@ -89,32 +89,6 @@ func SignedWarpMessageToAccessList(signedMessage *avalancheWarp.Message) types.A
 	}
 }
 
-// defaultQuorumPercentageBuffer is the additional percentage of stake weight that a relayer will try to
-// aggregate signatures from above the required quorum. This allows for small weight changes in between the
-// time the signature is constructed and the time it is verified to not cause the verification to fail.
-const defaultQuorumPercentageBuffer = uint64(3)
-
-// CalculateQuorumPercentageBuffer calculates the quorum percentage buffer based on the required quorum percentage
-// and the desired quorum percentage buffer.
-func CalculateQuorumPercentageBuffer(
-	requiredQuorumPercentage uint64,
-	desiredQuorumPercentageBuffer uint64,
-) uint64 {
-	if requiredQuorumPercentage >= 100 {
-		return 0
-	}
-	if requiredQuorumPercentage+desiredQuorumPercentageBuffer > 100 {
-		return 100 - requiredQuorumPercentage
-	}
-	return desiredQuorumPercentageBuffer
-}
-
-// DefaultQuorumPercentageBuffer returns the quorum percentage buffer to use above the given required quorum
-// percentage, applying defaultQuorumPercentageBuffer (capped so the total does not exceed 100%).
-func DefaultQuorumPercentageBuffer(requiredQuorumPercentage uint64) uint64 {
-	return CalculateQuorumPercentageBuffer(requiredQuorumPercentage, defaultQuorumPercentageBuffer)
-}
-
 //
 // Generic Utils
 //

@@ -341,7 +341,6 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
 	defer cancel()
 
-	quorumPercentageBuffer := utils.DefaultQuorumPercentageBuffer(m.quorumNumerator)
 	// Determine the appropriate P-Chain height for validator set selection
 	pchainHeight, err := m.destinationClient.GetPChainHeightForDestination(ctx)
 	if err != nil {
@@ -356,7 +355,6 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 		nil,
 		m.signingSubnetID,
 		m.quorumNumerator,
-		quorumPercentageBuffer,
 		pchainHeight,
 	)
 	m.metrics.IncFetchSignatureAppRequestCount()
