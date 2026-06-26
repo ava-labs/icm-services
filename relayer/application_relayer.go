@@ -4,8 +4,6 @@
 package relayer
 
 import (
-	"context"
-	"fmt"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -17,7 +15,6 @@ import (
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
-	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
 	"go.uber.org/zap"
@@ -34,7 +31,7 @@ const (
 // encapsulated in [relayerID], which also represents the database key for an ApplicationRelayer.
 type ApplicationRelayer struct {
 	logger                  logging.Logger
-	metrics                 *ApplicationRelayerMetrics
+	metrics                 messages.Metrics
 	network                 *peers.AppRequestNetwork
 	signingSubnetID         ids.ID
 	destinationClient       vms.DestinationClient
@@ -76,13 +73,12 @@ func NewApplicationRelayer(
 		// Otherwise, the source subnet signs the message.
 		signingSubnet = sourceBlockchain.GetSubnetID()
 	}
-	logger = logger.With(zap.Stringer("signingSubnetID", signingSubnet))
 
 	checkpointManager.Run()
 
 	return &ApplicationRelayer{
-		logger:                  logger,
-		metrics:                 metrics,
+		logger:                  logger.With(zap.Stringer("signingSubnetID", signingSubnet)),
+		metrics:                 metrics.forRelayer(relayerID),
 		network:                 network,
 		destinationClient:       destinationClient,
 		relayerID:               relayerID,
@@ -131,70 +127,7 @@ func (r *ApplicationRelayer) ProcessHeight(
 	logger.Verbo("Processed block")
 }
 
-// Relays a message to the destination chain. Does not checkpoint the height.
-// returns the transaction hash if the message is successfully relayed.
-func (r *ApplicationRelayer) processMessage(
-	logger logging.Logger,
-	handler messages.MessageHandler,
-) (common.Hash, error) {
-	logger.Info("Relaying message")
-	shouldSend, err := handler.ShouldSendMessage()
-	if err != nil {
-		r.incFailedRelayMessageCount("failed to check if message should be sent")
-		return common.Hash{}, fmt.Errorf("failed to check if message should be sent: %w", err)
-	}
-	if !shouldSend {
-		logger.Info("Message should not be sent")
-		return common.Hash{}, nil
-	}
-	unsignedMessage := handler.GetUnsignedMessage()
-
-	startCreateSignedMessageTime := time.Now()
-
-	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
-	defer cancel()
-
-	// Determine the appropriate P-Chain height for validator set selection
-	pchainHeight, err := r.destinationClient.GetPChainHeightForDestination(ctx)
-	if err != nil {
-		r.incFailedRelayMessageCount("failed to determine P-Chain height")
-		return common.Hash{}, fmt.Errorf("failed to determine P-Chain height for validator set: %w", err)
-	}
-
-	signedMessage, err := r.signatureAggregator.CreateSignedMessage(
-		ctx,
-		logger,
-		unsignedMessage,
-		nil,
-		r.signingSubnetID,
-		r.warpConfig.QuorumNumerator,
-		pchainHeight,
-	)
-	r.incFetchSignatureAppRequestCount()
-	if err != nil {
-		r.incFailedRelayMessageCount("failed to create signed warp message via AppRequest network")
-		return common.Hash{}, fmt.Errorf("failed to create signed warp messsage via AppRequest network: %w", err)
-	}
-
-	// create signed message latency (ms)
-	r.setCreateSignedMessageLatencyMS(float64(time.Since(startCreateSignedMessageTime).Milliseconds()))
-
-	txHash, err := handler.SendMessage(signedMessage)
-	if err != nil {
-		r.incFailedRelayMessageCount("failed to send warp message")
-		return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)
-	}
-	logger.Info(
-		"Finished relaying message to destination chain",
-		zap.Stringer("txID", txHash),
-	)
-	r.incSuccessfulRelayMessageCount()
-
-	return txHash, nil
-}
-
 func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (common.Hash, error) {
-	logger := handler.LoggerWithContext(r.logger)
 	var err error
 	// Retry processing the message if it fails to account for cases where the signature is successfully aggregated
 	// but the message fails to verify on the destination chain due to validator churn
@@ -205,7 +138,10 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 		var txHash common.Hash
 		startProcessMessageTime := time.Now()
 		// Skip the cache if this is not the first attempt
-		txHash, err = r.processMessage(logger, handler)
+		txHash, err = handler.ProcessMessage(
+			r.signingSubnetID,
+			r.warpConfig.QuorumNumerator,
+		)
 		if err == nil {
 			return txHash, nil
 		}
@@ -218,41 +154,4 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 	}
 	r.logger.Error("failed to process message after max retries", zap.Error(err))
 	return common.Hash{}, err
-}
-
-//
-// Metrics
-//
-
-func (r *ApplicationRelayer) incSuccessfulRelayMessageCount() {
-	r.metrics.successfulRelayMessageCount.
-		WithLabelValues(
-			r.relayerID.DestinationBlockchainID.String(),
-			r.relayerID.SourceBlockchainID.String(),
-		).Inc()
-}
-
-func (r *ApplicationRelayer) incFailedRelayMessageCount(failureReason string) {
-	r.metrics.failedRelayMessageCount.
-		WithLabelValues(
-			r.relayerID.DestinationBlockchainID.String(),
-			r.relayerID.SourceBlockchainID.String(),
-			failureReason,
-		).Inc()
-}
-
-func (r *ApplicationRelayer) setCreateSignedMessageLatencyMS(latency float64) {
-	r.metrics.createSignedMessageLatencyMS.
-		WithLabelValues(
-			r.relayerID.DestinationBlockchainID.String(),
-			r.relayerID.SourceBlockchainID.String(),
-		).Set(latency)
-}
-
-func (r *ApplicationRelayer) incFetchSignatureAppRequestCount() {
-	r.metrics.fetchSignatureAppRequestCount.
-		WithLabelValues(
-			r.relayerID.DestinationBlockchainID.String(),
-			r.relayerID.SourceBlockchainID.String(),
-		).Inc()
 }
