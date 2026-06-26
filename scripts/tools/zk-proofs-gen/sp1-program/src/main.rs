@@ -1,3 +1,7 @@
+//! (c) 2026, Ava Labs, Inc. All rights reserved.
+//! See the file LICENSE for licensing terms.
+//! SPDX-License-Identifier: LicenseRef-Ecosystem
+
 //! SP1 guest: verifies a validator set Merkle attestation in-circuit and commits
 //! ABI-encoded public values for the on-chain ZKValidatorSetRegistry.
 

@@ -1,3 +1,7 @@
+//! (c) 2026, Ava Labs, Inc. All rights reserved.
+//! See the file LICENSE for licensing terms.
+//! SPDX-License-Identifier: LicenseRef-Ecosystem
+
 //! CLI for the validator-set attestation circuit: run the guest (execute), generate and
 //! self-verify proofs (prove, optionally Groth16 + a JSON fixture via --out), and print the
 //! program verification key (vkey). Runs against the icm-services test fixture.

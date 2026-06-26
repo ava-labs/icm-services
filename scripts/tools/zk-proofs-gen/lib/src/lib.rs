@@ -1,3 +1,7 @@
+//! (c) 2026, Ava Labs, Inc. All rights reserved.
+//! See the file LICENSE for licensing terms.
+//! SPDX-License-Identifier: LicenseRef-Ecosystem
+
 //! Validator-set Merkle attestation verification shared between the SP1 guest program and the host
 //! prover. Parses a `ValidatorSetMerkleAttestation`, rebuilds the Merkle root, verifies the
 //! aggregate BLS12-381 signature, and checks the stake-weighted quorum matching the on-chain
