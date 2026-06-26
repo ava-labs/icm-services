@@ -9,9 +9,9 @@ tool (
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.14.3-0.20260522103411-a295be69028b
+	github.com/ava-labs/avalanchego v1.14.3-rc.2
 	github.com/ava-labs/avalanchego/graft/subnet-evm v1.14.2
-	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
+	github.com/ava-labs/libevm v1.13.15-0.20260430210457-c891ff86e981
 	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.25
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.4
@@ -95,7 +95,7 @@ require (
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
 	github.com/ava-labs/avalanchego/graft/coreth v1.14.2 // indirect
-	github.com/ava-labs/firewood-go-ethhash/ffi v0.3.1 // indirect
+	github.com/ava-labs/firewood-go-ethhash/ffi v0.4.0 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
