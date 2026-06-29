@@ -474,7 +474,8 @@ func TestNodesToQuery(t *testing.T) {
 	t.Run("single dominant validator covers the stake", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
 		sorted := validatorsByWeight(connected)
-		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
 		// The dominant validator alone exceeds the coverage goal and the rest fall below the
 		// tiny-validator threshold, so only the dominant validator is queried.
 		require.Equal(t, 1, nodes.Len())
@@ -483,7 +484,8 @@ func TestNodesToQuery(t *testing.T) {
 	t.Run("queries multiple validators to cover the stake", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{40, 30, 20, 10})
 		sorted := validatorsByWeight(connected)
-		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
 		// No proper subset covers 95% of stake, so every validator is queried.
 		require.Equal(t, 4, nodes.Len())
 	})
@@ -491,7 +493,8 @@ func TestNodesToQuery(t *testing.T) {
 	t.Run("skips the long tail of tiny validators", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
 		sorted := validatorsByWeight(connected)
-		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
 		// The three largest validators cover 95% of stake; the five 1-weight validators are
 		// each below 1% of total stake and are skipped.
 		require.Equal(t, 3, nodes.Len())
@@ -538,7 +541,8 @@ func TestNodesToQuery(t *testing.T) {
 		signed := set.NewSet[PublicKeyBytes](1)
 		signed.Add(PublicKeyBytes(dominant.PublicKeyBytes))
 
-		nodes := nodesToQuery(sorted, signed, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, queryStakePercentage)
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, signed, connected.ConnectedNodes, total, queryStakePercentage)
 		// The cached dominant validator already covers >95% of stake, so the tiny-validator
 		// tail is skipped and no node is queried.
 		require.Equal(t, 0, nodes.Len())
