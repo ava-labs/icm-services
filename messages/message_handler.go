@@ -24,6 +24,8 @@ type MessageHandlerFactory interface {
 		destinationClient vms.DestinationClient,
 		signatureAggregator *aggregator.SignatureAggregator,
 		metrics Metrics,
+		signingSubnetID ids.ID,
+		quorumNumerator uint64,
 	) (MessageHandler, error)
 
 	// Return info for routing the message to the correct relayer
@@ -53,8 +55,5 @@ type MessageHandler interface {
 	// ProcessMessage relays the message to the destination chain by aggregating a signature for it
 	// and sending it via SendMessage. It does not retry on failure or checkpoint the height.
 	// Returns the transaction hash if the message is successfully relayed.
-	ProcessMessage(
-		signingSubnetID ids.ID,
-		quorumNumerator uint64,
-	) (common.Hash, error)
+	ProcessMessage() (common.Hash, error)
 }
