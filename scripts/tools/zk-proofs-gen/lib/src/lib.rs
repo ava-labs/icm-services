@@ -1,13 +1,24 @@
 //! (c) 2026, Ava Labs, Inc. All rights reserved.
 //! See the file LICENSE for licensing terms.
 //! SPDX-License-Identifier: LicenseRef-Ecosystem
-
+//!
 //! Validator-set Merkle attestation verification shared between the SP1 guest program and the host
 //! prover. Parses a `ValidatorSetMerkleAttestation`, rebuilds the Merkle root, verifies the
-//! aggregate BLS12-381 signature, and checks the stake-weighted quorum matching the on-chain
-//! `ValidatorSets` logic. `PublicValues` is the ABI-encoded output the contract decodes.
-
-//! THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION. 
+//! aggregate BLS12-381 signature, and checks that the committed signing weight is the true sum of
+//! the signers' weights. `PublicValues` is the ABI-encoded output the contract decodes.
+//!
+//! The attestation (signers, multiproof, flags, aggregate signature) and the signed message are
+//! private inputs: they go into the proof but are never revealed on-chain. The proof attests that,
+//! given those private inputs, the signer leaves hash up to a Merkle `root`, their aggregate
+//! signature is valid over a message whose hash is `messageHash`, and their combined `signedWeight`
+//! is the true sum of the signers' weights. Those values are committed publicly. The contract then
+//! checks them against its own state — `root` and `sourceBlockchainID` against the stored
+//! commitment, `messageHash` against the message it reconstructs — and applies the stake-weighted
+//! quorum threshold to `signedWeight` on-chain. So a single proof plus a few small public values
+//! stands in for verifying the multiproof and aggregate signature in calldata, while the signers
+//! and signature themselves stay private.
+//!
+//! THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
 
 use bitvec::vec::BitVec;
 use bls12_381::{
@@ -25,11 +36,13 @@ pub const BLS_SIGNATURE_SIZE: usize = 192;
 pub type Hash = [u8; 32];
 
 sol! {
+    // ABI-encoded public values the guest commits and ZKValidatorSetRegistry decodes.
+    // Field order/types must match the contract's PublicValues struct exactly.
     struct PublicValues {
+        bytes32 sourceBlockchainID;
         bytes32 root;
-        uint64  totalWeight;
-        bool    quorumReached;
         bytes32 messageHash;
+        uint64  signedWeight;
     }
 }
 
@@ -58,14 +71,14 @@ impl<'de> Deserialize<'de> for ValidatorSetMerkleAttestation {
 
 pub fn verify(
     attestation: &ValidatorSetMerkleAttestation,
-    signed_data: &[u8],
-    expected: &Hash,
-    total_weight: u64,
-    signed_data_hash: &Hash,
-) -> Option<bool> {
-    // Bind the proof to the message
-    let actual_hash: [u8; 32] = Sha256::digest(signed_data).into();
-    if &actual_hash != signed_data_hash {
+    message: &[u8],
+    root: &Hash,
+    message_hash: &Hash,
+    signed_weight: u64,
+) -> Option<()> {
+    // Bind the proof to a specific message before any expensive crypto.
+    let actual_hash: [u8; 32] = Sha256::digest(message).into();
+    if &actual_hash != message_hash {
         return None;
     }
 
@@ -109,32 +122,41 @@ pub fn verify(
         hashes[i] = hash_node(&a, &b);
     }
 
-    // get the computed root hash
-    let root = if flags_len > 0 {
+    // Extract the reconstructed Merkle root from the multiproof walk.
+    let computed_root = if flags_len > 0 {
+        // Real tree: all proof hashes must have been consumed
+        // and the root is the last computed hash.
         if proof_hashes.next().is_some() {
             return None;
         }
         hashes.last().cloned()?
     } else if leaves_len > 0 {
+        // Single validator: no tree to walk, the root is its leaf hash.
         hash_validator(attestation.signers.first()?)
     } else {
+        // No leaves: the root is the lone proof hash.
         attestation.proof.first().cloned()?
     };
 
-    // if we get the right root hash, verify the signature and return the total weight
-    if &root != expected {
+    // Check the obtained root hash against the expected public value from the contract
+    if &computed_root != root {
         return None;
     }
 
-    let sig_valid = verify_signature(signed_data, &agg_pk, attestation.aggregate_sig);
+    // Verify the aggregate signature over the message
+    let sig_valid = verify_signature(message, &agg_pk, attestation.aggregate_sig);
     if !sig_valid {
         return None;
     }
 
+    // Assert the committed signing weight is the true sum of the signers' weights; the
+    // contract applies the stake-weighted quorum threshold on-chain against its stored total.
     let signing_weight: u64 = attestation.signers.iter().map(|v| v.weight).sum();
-    // Use u128 to avoid overflow when multiplying large weights.
-    let quorum_reached = (signing_weight as u128) * 3 > (total_weight as u128) * 2;
-    Some(quorum_reached)
+    if signing_weight != signed_weight {
+        None
+    } else {
+        Some(())
+    }
 }
 
 pub fn verify_signature(message: &[u8], key: &G1Affine, signature: G2Affine) -> bool {
@@ -262,6 +284,17 @@ pub mod test_fixtures {
 
     /// Total weight of all 4 validators in the test set (weights 1, 2, 3, 4).
     pub const TOTAL_WEIGHT: u64 = 10;
+
+    /// Weight of the 3 signers in the test attestation (v0=1, v2=3, v3=4).
+    pub const SIGNING_WEIGHT: u64 = 8;
+
+    /// The source blockchain ID committed in the signed warp message (bytes 6..38 of
+    /// SIGNED_DATA_HEX, i.e. the warp message's sourceChainID).
+    pub const SOURCE_BLOCKCHAIN_ID: Hash = [
+        0x3d, 0x0a, 0xd1, 0x2b, 0x8e, 0xe8, 0x92, 0x8e, 0xdf, 0x24, 0x8c, 0xa9, 0x1c, 0xa5, 0x56,
+        0x00, 0xfb, 0x38, 0x3f, 0x07, 0xc3, 0x2b, 0xff, 0x1d, 0x6d, 0xec, 0x47, 0x2b, 0x25, 0xcf,
+        0x59, 0xa7,
+    ];
 
     /// Computes the expected Merkle root for the 4-validator test set.
     ///
@@ -467,14 +500,13 @@ mod tests {
         let expected = test_fixtures::expected_root();
         let signed_data_hash: [u8; 32] = Sha256::digest(&signed_data).into();
 
-        let quorum_reached = verify(
+        verify(
             &attestation,
             &signed_data,
             &expected,
-            test_fixtures::TOTAL_WEIGHT,
             &signed_data_hash,
+            test_fixtures::SIGNING_WEIGHT,
         )
         .expect("Test failed");
-        assert!(quorum_reached);
     }
 }
