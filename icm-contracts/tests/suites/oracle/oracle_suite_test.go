@@ -94,7 +94,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	utils.BuildAllExecutables(ctx, log)
 
 	solanaRPCURL = os.Getenv("SOLANA_RPC_URL")
-	sidecarEndpoint := fmt.Sprintf("http://127.0.0.1:%d", oracleSidecarPort)
+	sidecarEndpoint := fmt.Sprintf("127.0.0.1:%d", oracleSidecarPort)
 
 	if solanaRPCURL != "" {
 		// Real mode: build the solanarpc sidecar from the avalanchego source tree
@@ -102,11 +102,15 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		avalancheGoRoot := filepath.Dir(filepath.Dir(os.Getenv("AVALANCHEGO_PATH")))
 		solanarpcBin := filepath.Join(repoRoot, "build/solanarpc-sidecar")
 		log.Info("Building solanarpc sidecar", zap.String("avalancheGoRoot", avalancheGoRoot))
-		buildCmd := exec.Command("go", "build", "-o", solanarpcBin, "./sidecar/solanarpc/")
+		buildCmd := exec.Command("go", "build", "-o", solanarpcBin, "./sidecar/")
 		buildCmd.Dir = avalancheGoRoot
 		buildOut, buildErr := buildCmd.CombinedOutput()
 		log.Info(string(buildOut))
 		Expect(buildErr).Should(BeNil())
+
+		configPath := filepath.Join(repoRoot, "build/solanarpc-config.json")
+		configJSON := fmt.Sprintf(`{"rpc_url": %q}`, solanaRPCURL)
+		Expect(os.WriteFile(configPath, []byte(configJSON), 0o600)).Should(BeNil())
 
 		log.Info("Starting real solanarpc sidecar",
 			zap.String("endpoint", sidecarEndpoint),
@@ -114,7 +118,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		)
 		oracleSidecar = exec.Command(solanarpcBin,
 			"--addr", fmt.Sprintf(":%d", oracleSidecarPort),
-			"--solana-rpc", solanaRPCURL,
+			"--verifier-type", "solanarpc",
+			"--config-path", configPath,
 		)
 	} else {
 		// Mock mode: start the unconditional accept sidecar (no Solana RPC needed).
@@ -148,15 +153,12 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	}
 	log.Info("Oracle sidecar is ready", zap.String("addr", sidecarAddr))
 
-	// Build chain config for the oracle L1: enable warp and point oracle
-	// handler at the mock sidecar. The empty allowed-sources slice for "solana"
-	// means all source addresses on that source type are permitted.
+	// Build chain config for the oracle L1: enable warp and point the oracle
+	// handler at the sidecar. Allowlist enforcement lives in the sidecar config,
+	// not in the node config.
 	oracleChainConfig := utils.DefaultChainConfig()
 	oracleChainConfig["oracle"] = map[string]any{
 		"endpoint": sidecarEndpoint,
-		"allowed-sources": map[string]any{
-			"solana": []any{},
-		},
 	}
 
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*time.Second)
