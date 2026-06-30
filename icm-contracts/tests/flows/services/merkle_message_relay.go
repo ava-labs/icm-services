@@ -281,8 +281,7 @@ func createMerkleMessageRelayConfig(
 			PollIntervalSeconds:      testPollIntervalSeconds,
 			MaxUpdateIntervalSeconds: merkleMaxUpdateIntervalSeconds,
 
-			// Message delivery
-			Deliver:                 true,
+			// Message delivery (enabled by setting DestinationBlockchainID)
 			DestinationBlockchainID: ethBlockchainID.String(),
 			TeleporterAddress:       teleporterAddr.Hex(),
 		},

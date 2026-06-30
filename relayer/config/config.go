@@ -148,7 +148,7 @@ func (c *Config) Validate() error {
 		if err := e.ValidateDelivery(); err != nil {
 			return fmt.Errorf("failed to validate external EVM destination: %w", err)
 		}
-		if e.Deliver {
+		if e.DeliversMessages() {
 			destinationChains.Add(e.DestinationBlockchainID)
 		}
 	}
@@ -320,7 +320,7 @@ func (c *Config) GetWarpConfig(blockchainID ids.ID) (WarpConfig, error) {
 	// Fall back to external EVM delivery destinations, whose Warp config (quorum) comes
 	// from configuration since they cannot be queried for a Warp precompile config.
 	for _, e := range c.ExternalEVMDestinations {
-		if !e.Deliver {
+		if !e.DeliversMessages() {
 			continue
 		}
 		if id, err := e.GetDestinationBlockchainID(); err == nil && id == blockchainID {

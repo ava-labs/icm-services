@@ -118,7 +118,7 @@ func CreateDestinationClients(
 	// Create destination clients for external EVM chains (e.g. Ethereum) configured for
 	// TeleporterV2 message delivery.
 	for _, extDest := range relayerConfig.ExternalEVMDestinations {
-		if !extDest.Deliver {
+		if !extDest.DeliversMessages() {
 			continue
 		}
 		destID, err := extDest.GetDestinationBlockchainID()

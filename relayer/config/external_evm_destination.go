@@ -18,8 +18,8 @@ const defaultDeliveryQuorumNumerator = 67
 // ExternalEVMDestination configures an external EVM chain (e.g. Ethereum) for the relayer.
 //
 // A single entry can act as a validator-set updater target (keeps the on-chain registry's
-// validator set fresh) and/or, when Deliver is set, as a TeleporterV2 message-delivery
-// destination (the relayer submits receiveCrossChainMessage transactions to it).
+// validator set fresh) and, when DestinationBlockchainID is set, as a TeleporterV2
+// message-delivery destination (the relayer submits receiveCrossChainMessage transactions to it).
 type ExternalEVMDestination struct {
 	// RPC endpoint of the external EVM chain (e.g. local geth node)
 	RPCEndpoint string `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
@@ -51,14 +51,12 @@ type ExternalEVMDestination struct {
 	// deferred and retried on the next poll.
 	MaxGasPriceGwei uint64 `mapstructure:"max-gas-price-gwei" json:"max-gas-price-gwei,omitempty"`
 
-	// --- Message delivery configuration (only used when Deliver is true) ---
+	// --- Message delivery configuration (only used when DestinationBlockchainID is set) ---
 
-	// Deliver enables this external EVM chain as a TeleporterV2 message-delivery
-	// destination. The relayer routes messages whose destination blockchain ID equals
-	// DestinationBlockchainID to this chain.
-	Deliver bool `mapstructure:"deliver" json:"deliver,omitempty"`
 	// DestinationBlockchainID is the blockchain ID (cb58 or hex) by which TeleporterV2
 	// messages address this external chain (the message's destinationBlockchainID field).
+	// Setting it enables this external EVM chain as a TeleporterV2 message-delivery
+	// destination; leaving it empty makes the entry a validator-set updater only.
 	DestinationBlockchainID string `mapstructure:"destination-blockchain-id" json:"destination-blockchain-id,omitempty"` //nolint:lll
 	// TeleporterAddress is the TeleporterMessengerV2 contract address on the external
 	// chain. With the universal deployer it is identical on the source chain.
@@ -78,6 +76,13 @@ func (e *ExternalEVMDestination) GetDestinationBlockchainID() (ids.ID, error) {
 	return ids.FromString(e.DestinationBlockchainID)
 }
 
+// DeliversMessages reports whether this external destination is configured as a TeleporterV2
+// message-delivery target, which is enabled by setting DestinationBlockchainID. When empty the
+// entry acts as a validator-set updater only.
+func (e *ExternalEVMDestination) DeliversMessages() bool {
+	return e.DestinationBlockchainID != ""
+}
+
 // GetWarpConfig returns the Warp configuration used when signing messages destined for this
 // external EVM chain. The source subnet signs, so only the quorum numerator is meaningful.
 func (e *ExternalEVMDestination) GetWarpConfig() WarpConfig {
@@ -89,9 +94,9 @@ func (e *ExternalEVMDestination) GetWarpConfig() WarpConfig {
 }
 
 // ValidateDelivery validates and normalizes the fields required when this external destination
-// is used for TeleporterV2 message delivery. It is a no-op when Deliver is false.
+// is used for TeleporterV2 message delivery. It is a no-op when delivery is not configured.
 func (e *ExternalEVMDestination) ValidateDelivery() error {
-	if !e.Deliver {
+	if !e.DeliversMessages() {
 		return nil
 	}
 	if _, err := e.GetDestinationBlockchainID(); err != nil {
