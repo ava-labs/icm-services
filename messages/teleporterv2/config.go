@@ -14,7 +14,7 @@ import (
 // Unlike the warp-precompile based handler, regular ICM messages are verified on the
 // destination chain by a MerkleValidatorSetRegistry that acts as the TeleporterMessengerV2
 // adapter. The relayer attaches a Merkle attestation (signers + multi-proof + aggregate BLS
-// signature) instead of riding the signed warp message in the transaction access list.
+// signature) instead of reading the signed warp message in the transaction access list.
 type Config struct {
 	// RewardAddress is the address credited as the relayer reward recipient on the source chain.
 	RewardAddress string `json:"reward-address"`

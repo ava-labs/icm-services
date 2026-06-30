@@ -317,21 +317,23 @@ func (m *messageHandler) SendMessage(
 
 	txHash := receipt.TxHash
 	log := m.logger.With(zap.Stringer("txID", txHash))
-	if receipt.Status != types.ReceiptStatusSuccessful {
-		teleporterMessenger, msgErr := m.getTeleporterMessenger()
-		if msgErr == nil {
-			delivered, derr := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
-			if derr == nil && delivered {
-				log.Info("Execution reverted: message already delivered to destination.")
-				return txHash, nil
-			}
-		}
-		log.Error("Transaction failed")
-		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
+	if receipt.Status == types.ReceiptStatusSuccessful {
+		log.Info("Delivered message to destination chain")
+		return txHash, nil
 	}
 
-	log.Info("Delivered message to destination chain")
-	return txHash, nil
+	// The transaction reverted. A common benign cause is that the message was already delivered
+	// by another relayer, so check delivery status before treating the revert as a failure.
+	teleporterMessenger, msgErr := m.getTeleporterMessenger()
+	if msgErr == nil {
+		delivered, derr := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+		if derr == nil && delivered {
+			log.Info("Execution reverted: message already delivered to destination.")
+			return txHash, nil
+		}
+	}
+	log.Error("Transaction failed")
+	return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
 }
 
 // fetchCommitment reads the registry's stored validator set commitment for the source chain,
