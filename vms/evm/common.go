@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -104,6 +105,10 @@ func (s *concurrentSigner) processIncomingTransactions() {
 	}
 }
 
+// maxNonceResyncAttempts bounds how many times issueTransaction will resync the
+// cached nonce from the chain and retry when a send fails with "nonce too low".
+const maxNonceResyncAttempts = 3
+
 // issueTransaction sends the transaction but does not wait for confirmation.
 // In order to properly manage the in-memory nonce, this function must not be
 // called concurrently for a given concurrentSigner instance.
@@ -116,52 +121,71 @@ func (s *concurrentSigner) issueTransaction(
 		zap.Stringer("to", data.to),
 	)
 
-	// Create a standard EIP-1559 transaction with the predicate access list
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:    data.chainID,
-		Nonce:      s.currentNonce,
-		To:         &data.to,
-		Gas:        data.gasLimit,
-		GasFeeCap:  data.gasFeeCap,
-		GasTipCap:  data.gasTipCap,
-		Value:      big.NewInt(0),
-		Data:       data.callData,
-		AccessList: data.accessList,
-	})
+	var signedTx *types.Transaction
+	for attempt := 0; ; attempt++ {
+		// Create a standard EIP-1559 transaction with the predicate access list
+		tx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:    data.chainID,
+			Nonce:      s.currentNonce,
+			To:         &data.to,
+			Gas:        data.gasLimit,
+			GasFeeCap:  data.gasFeeCap,
+			GasTipCap:  data.gasTipCap,
+			Value:      big.NewInt(0),
+			Data:       data.callData,
+			AccessList: data.accessList,
+		})
 
-	// Sign and send the transaction on the destination chain
-	signedTx, err := s.signer.SignTx(tx, data.chainID)
-	if err != nil {
-		s.logger.Error(
-			"Failed to sign transaction",
-			zap.Error(err),
+		// Sign and send the transaction on the destination chain
+		var err error
+		signedTx, err = s.signer.SignTx(tx, data.chainID)
+		if err != nil {
+			s.logger.Error(
+				"Failed to sign transaction",
+				zap.Error(err),
+			)
+			return err
+		}
+
+		log := s.logger.With(
+			zap.Stringer("txID", signedTx.Hash()),
+			zap.Uint64("gasLimit", data.gasLimit),
+			zap.Stringer("from", s.signer.Address()),
+			zap.Stringer("to", data.to),
+			zap.Stringer("gasFeeCap", data.gasFeeCap),
+			zap.Stringer("gasTipCap", data.gasTipCap),
+			zap.Uint64("nonce", s.currentNonce),
 		)
-		return err
-	}
 
-	sendTxCtx, sendTxCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-	defer sendTxCtxCancel()
+		log.Info("Sending transaction")
 
-	log := s.logger.With(
-		zap.Stringer("txID", signedTx.Hash()),
-		zap.Uint64("gasLimit", data.gasLimit),
-		zap.Stringer("from", s.signer.Address()),
-		zap.Stringer("to", data.to),
-		zap.Stringer("gasFeeCap", data.gasFeeCap),
-		zap.Stringer("gasTipCap", data.gasTipCap),
-		zap.Uint64("nonce", s.currentNonce),
-	)
+		sendTxCtx, sendTxCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+		err = s.destinationClient.SendTransaction(sendTxCtx, signedTx)
+		sendTxCtxCancel()
+		if err == nil {
+			log.Info("Sent transaction")
+			break
+		}
 
-	log.Info("Sending transaction")
+		// The cached nonce can fall behind the chain when another component sharing this
+		// account (e.g. the Merkle validator-set updater submitting registerValidatorSet)
+		// consumes a nonce out-of-band. Resync the nonce from the chain and retry rather
+		// than failing the delivery outright.
+		if isNonceTooLowError(err) && attempt < maxNonceResyncAttempts {
+			log.Warn("Nonce too low, resyncing nonce from chain and retrying", zap.Error(err))
+			if resyncErr := s.resyncNonce(); resyncErr != nil {
+				log.Error("Failed to resync nonce from chain", zap.Error(resyncErr))
+				return err
+			}
+			continue
+		}
 
-	if err := s.destinationClient.SendTransaction(sendTxCtx, signedTx); err != nil {
 		log.Error(
 			"Failed to send transaction",
 			zap.Error(err),
 		)
 		return err
 	}
-	log.Info("Sent transaction")
 
 	s.currentNonce++
 
@@ -171,6 +195,31 @@ func (s *concurrentSigner) issueTransaction(
 	go s.waitForReceipt(signedTx.Hash(), data.resultChan)
 
 	return nil
+}
+
+// resyncNonce refreshes the cached nonce from the latest mined state on the chain. It is
+// used to recover from "nonce too low" errors that arise when the account is also used by
+// another component (such as the validator-set updater).
+func (s *concurrentSigner) resyncNonce() error {
+	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer cancel()
+	nonce, err := s.destinationClient.NonceAt(ctx, s.signer.Address(), nil)
+	if err != nil {
+		return err
+	}
+	s.logger.Info(
+		"Resynced nonce from chain",
+		zap.Uint64("previousNonce", s.currentNonce),
+		zap.Uint64("newNonce", nonce),
+	)
+	s.currentNonce = nonce
+	return nil
+}
+
+// isNonceTooLowError reports whether err indicates the submitted transaction's nonce was
+// lower than the account's next expected nonce.
+func isNonceTooLowError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "nonce too low")
 }
 
 // waitForReceipt always writes to the result channel,

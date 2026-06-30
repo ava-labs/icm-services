@@ -31,13 +31,14 @@ const (
 // EventFilterForProtocol returns the ethereum log filter topics for the given protocol and contract address.
 func EventFilterForProtocol(protocol config.Protocol) [][]common.Hash {
 	switch protocol.Type {
-	case config.TELEPORTER:
+	case config.TELEPORTER, config.TELEPORTER_V2:
+		// Both Teleporter and TeleporterV2 emit messages via the Warp precompile
+		// (TeleporterV2 through its adapter). The warp log's sender topic is the
+		// configured protocol address (the adapter/registry for the V2 Merkle path).
 		return [][]common.Hash{
 			{types.WarpPrecompileLogFilter},
 			{common.BytesToHash(protocol.Address[:])},
 		}
-	case config.TELEPORTER_V2:
-		panic("teleporter v2 is not yet supported")
 	default:
 		panic("unsupported protocol")
 	}
