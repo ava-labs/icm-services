@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,7 +33,6 @@ import (
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
-	"github.com/cenkalti/backoff/v4"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
@@ -42,6 +40,15 @@ import (
 type blsSignatureBuf [bls.SignatureLen]byte
 
 const (
+	// When selecting which validators to query for signatures, validators are taken in
+	// descending weight order until their cumulative weight covers this percentage of the
+	// total stake, leaving a buffer above the quorum threshold for non-responding validators.
+	queryStakePercentage = 95
+
+	// Once [queryStakePercentage] of stake is covered, validators below this percentage of
+	// total stake are skipped, to avoid querying a long tail of tiny validators.
+	minQueryWeightPercentage = 1
+
 	// The minimum balance that an L1 validator must maintain in order to participate
 	// in the aggregate signature.
 	minimumL1ValidatorBalance = 2048 * units.NanoAvax
@@ -312,7 +319,169 @@ func (s *SignatureAggregator) getCachedSignaturesForMessage(
 	return signatureMap, accumulatedSignatureWeight
 }
 
-func (s *SignatureAggregator) collectSignaturesWithRetries(
+// validatorsByWeight returns the canonical validators sorted by descending weight. The
+// canonical validator set is already ordered by public key, so a stable sort preserves that
+// order for validators of equal weight.
+func validatorsByWeight(vdrs *peers.CanonicalValidators) []*validators.Warp {
+	sorted := make([]*validators.Warp, len(vdrs.ValidatorSet.Validators))
+	copy(sorted, vdrs.ValidatorSet.Validators)
+	utils.SortByWeightDescending(sorted, func(v *validators.Warp) uint64 {
+		return v.Weight
+	})
+	return sorted
+}
+
+// signedValidators returns the set of public keys for validators whose signature is already
+// present in [signatureMap] (keyed by canonical validator index).
+func signedValidators(
+	vdrs *peers.CanonicalValidators,
+	signatureMap map[int][bls.SignatureLen]byte,
+) set.Set[PublicKeyBytes] {
+	signed := set.NewSet[PublicKeyBytes](len(signatureMap))
+	for i := range signatureMap {
+		signed.Add(PublicKeyBytes(vdrs.ValidatorSet.Validators[i].PublicKeyBytes))
+	}
+	return signed
+}
+
+// nodesToQuery returns the node IDs to request signatures from. It walks [sorted] (validators
+// in descending weight order), accumulating weight until it covers [coverageGoal] percent of
+// [totalWeight], then continues only while each validator is at least [minQueryWeightPercentage]
+// of [totalWeight] so the tiny-validator tail is skipped. Validators whose signature is already
+// cached (those in [signed]) contribute their weight to the cumulative total but are not queried
+// again, and validators with no connected node are skipped.
+func nodesToQuery(
+	sorted []*validators.Warp,
+	signed set.Set[PublicKeyBytes],
+	connectedNodes set.Set[ids.NodeID],
+	totalWeight, coverageGoal uint64,
+) set.Set[ids.NodeID] {
+	nodes := set.NewSet[ids.NodeID](len(sorted))
+	var cumulative uint64
+	for _, v := range sorted {
+		// A cached signature already covers this validator's weight, so count it toward the
+		// coverage goal without querying the validator again.
+		if signed.Contains(PublicKeyBytes(v.PublicKeyBytes)) {
+			cumulative += v.Weight
+			continue
+		}
+
+		// Only query validators we have a connected node for.
+		var queryNodes []ids.NodeID
+		for _, nodeID := range v.NodeIDs {
+			if connectedNodes.Contains(nodeID) {
+				queryNodes = append(queryNodes, nodeID)
+			}
+		}
+		if len(queryNodes) == 0 {
+			continue
+		}
+
+		covered := weightAtLeastPercent(cumulative, totalWeight, coverageGoal)
+		tiny := !weightAtLeastPercent(v.Weight, totalWeight, minQueryWeightPercentage)
+		if covered && tiny {
+			break
+		}
+		cumulative += v.Weight
+		for _, nodeID := range queryNodes {
+			nodes.Add(nodeID)
+		}
+	}
+	return nodes
+}
+
+// weightAtLeastPercent reports whether weight >= totalWeight * percent / 100, using big.Int
+// to avoid overflowing uint64.
+func weightAtLeastPercent(weight, totalWeight, percent uint64) bool {
+	lhs := new(big.Int).Mul(new(big.Int).SetUint64(weight), big.NewInt(100))
+	rhs := new(big.Int).Mul(new(big.Int).SetUint64(totalWeight), new(big.Int).SetUint64(percent))
+	return lhs.Cmp(rhs) >= 0
+}
+
+// sendRequest issues a single AppRequest to [queryNodes], registering response/timeout
+// tracking only for the nodes actually reached. It returns the response channel and the
+// number of responses to expect, or a nil channel and 0 if no node was reached.
+func (s *SignatureAggregator) sendRequest(
+	log logging.Logger,
+	unsignedMessage *avalancheWarp.UnsignedMessage,
+	reqBytes []byte,
+	sourceSubnet ids.ID,
+	queryNodes set.Set[ids.NodeID],
+) (chan message.InboundMessage, int, error) {
+	requestID := s.currentRequestID.Add(2)
+	outMsg, err := s.messageCreator.AppRequest(
+		unsignedMessage.SourceChainID,
+		requestID,
+		utils.DefaultAppRequestTimeout,
+		reqBytes,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create app request message: %w", err)
+	}
+
+	// Send first, then register only for the nodes reached, so the handler's expected
+	// response count matches the count returned to the caller.
+	sentTo := s.network.Send(outMsg, queryNodes, sourceSubnet, subnets.NoOpAllower)
+	s.metrics.AppRequestCount.Inc()
+
+	var failedSendNodes []ids.NodeID
+	for nodeID := range queryNodes {
+		if !sentTo.Contains(nodeID) {
+			failedSendNodes = append(failedSendNodes, nodeID)
+			s.metrics.FailuresSendingToNode.Inc()
+		}
+	}
+	if len(failedSendNodes) > 0 {
+		log.Info(
+			"Failed to make async request to some nodes",
+			zap.Uint32("requestID", requestID),
+			zap.Int("numSent", sentTo.Len()),
+			zap.Int("numFailures", len(failedSendNodes)),
+			zap.Stringers("failedNodes", failedSendNodes),
+		)
+	}
+
+	if sentTo.Len() == 0 {
+		return nil, 0, nil
+	}
+
+	for nodeID := range sentTo {
+		s.network.RegisterAppRequest(ids.RequestID{
+			NodeID:    nodeID,
+			ChainID:   unsignedMessage.SourceChainID,
+			RequestID: requestID,
+			Op:        byte(message.AppResponseOp),
+		})
+	}
+
+	responseChan := s.network.RegisterRequestID(requestID, sentTo)
+	if responseChan == nil {
+		return nil, 0, fmt.Errorf("failed to register request ID %d", requestID)
+	}
+
+	log.Debug(
+		"Sent signature request to network",
+		zap.Uint32("requestID", requestID),
+		zap.Int("expectedResponses", sentTo.Len()),
+	)
+
+	return responseChan, sentTo.Len(), nil
+}
+
+// finishResponses releases any responses the caller didn't process (e.g. after quorum was
+// reached or the context expired). It returns once the handler closes [responseChan], i.e.
+// once all outstanding requests have responded or timed out.
+func finishResponses(responseChan <-chan message.InboundMessage) {
+	for resp := range responseChan {
+		resp.OnFinishedHandling()
+	}
+}
+
+// collectSignatures sends a single signature request to the highest-weight validators (see
+// [nodesToQuery]) and aggregates the responses. It returns once the accumulated weight meets
+// the required quorum plus buffer, falling back to just the required quorum once all responses
+// are in. The collection is bounded by [signatureRequestTimeout].
+func (s *SignatureAggregator) collectSignatures(
 	ctx context.Context,
 	logger logging.Logger,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
@@ -324,168 +493,144 @@ func (s *SignatureAggregator) collectSignaturesWithRetries(
 	accumulatedSignatureWeight *big.Int,
 	requiredQuorumPercentage uint64,
 ) (*avalancheWarp.Message, error) {
-	var signedMsg *avalancheWarp.Message
-	// Query the validators with retries. On each retry, query one node per unique BLS pubkey
-	operation := func() error {
-		// Construct the AppRequest
-		requestID := s.currentRequestID.Add(2)
+	log := logger.With(
+		zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
+		zap.Stringer("signingSubnetID", signingSubnet),
+	)
 
-		log := logger.With(
-			zap.Int("requestID", int(requestID)),
-			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
-			zap.Stringer("signingSubnetID", signingSubnet),
-		)
+	ctx, cancel := context.WithTimeout(ctx, s.signatureRequestTimeout)
+	defer cancel()
 
-		outMsg, err := s.messageCreator.AppRequest(
-			unsignedMessage.SourceChainID,
-			requestID,
-			utils.DefaultAppRequestTimeout,
+	totalWeight := vdrs.ValidatorSet.TotalWeight
+
+	// Cover enough stake to reach the quorum if everyone responds, but never less than
+	// [queryStakePercentage], which leaves a buffer for non-responding validators.
+	sortedValidators := validatorsByWeight(vdrs)
+	signed := signedValidators(vdrs, signatureMap)
+	coverageGoal := max(queryStakePercentage, requiredQuorumPercentage)
+	queryNodes := nodesToQuery(sortedValidators, signed, vdrs.ConnectedNodes, totalWeight, coverageGoal)
+
+	log.Debug(
+		"Aggregator collecting signatures from weight-prioritized validators.",
+		zap.Int("validatorSetSize", len(vdrs.ValidatorSet.Validators)),
+		zap.Int("signatureMapSize", len(signatureMap)),
+		zap.Int("queryNodes", queryNodes.Len()),
+	)
+
+	if queryNodes.Len() > 0 {
+		signedMsg, err := s.requestSignatures(
+			ctx,
+			log,
+			unsignedMessage,
 			reqBytes,
+			sourceSubnet,
+			queryNodes,
+			vdrs,
+			signatureMap,
+			excludedValidators,
+			accumulatedSignatureWeight,
+			requiredQuorumPercentage,
 		)
 		if err != nil {
-			msg := "Failed to create app request message"
-			log.Warn(msg, zap.Error(err))
-			return fmt.Errorf("%s: %w", msg, err)
+			return nil, err
 		}
-
-		responsesExpected := len(vdrs.ValidatorSet.Validators) - len(signatureMap)
-		log.Debug(
-			"Aggregator collecting signatures from peers.",
-			zap.Int("validatorSetSize", len(vdrs.ValidatorSet.Validators)),
-			zap.Int("signatureMapSize", len(signatureMap)),
-			zap.Int("responsesExpected", responsesExpected),
-		)
-
-		vdrSet := set.NewSet[ids.NodeID](len(vdrs.ValidatorSet.Validators))
-		for i, vdr := range vdrs.ValidatorSet.Validators {
-			// If we already have the signature for this validator, do not query any of the composite nodes again
-			if _, ok := signatureMap[i]; ok {
-				continue
-			}
-			// Add connected nodes to the request. We still query excludedValidators so that we may cache
-			// their signatures for future requests.
-			for _, nodeID := range vdr.NodeIDs {
-				if vdrs.ConnectedNodes.Contains(nodeID) && !vdrSet.Contains(nodeID) {
-					vdrSet.Add(nodeID)
-					log.Debug(
-						"Added node ID to query.",
-						zap.Stringer("nodeID", nodeID),
-					)
-					// Register a timeout response for each queried node
-					reqID := ids.RequestID{
-						NodeID:    nodeID,
-						ChainID:   unsignedMessage.SourceChainID,
-						RequestID: requestID,
-						Op:        byte(message.AppResponseOp),
-					}
-					s.network.RegisterAppRequest(reqID)
-				}
-			}
-		}
-		responseChan := s.network.RegisterRequestID(requestID, vdrSet)
-		if responseChan == nil {
-			msg := "Failed to register request ID"
-			log.Error(msg)
-			return fmt.Errorf("%s", msg)
-		}
-
-		sentTo := s.network.Send(outMsg, vdrSet, sourceSubnet, subnets.NoOpAllower)
-		s.metrics.AppRequestCount.Inc()
-		log.Debug(
-			"Sent signature request to network",
-			zap.Any("sentTo", sentTo),
-		)
-
-		failedSendNodes := make([]ids.NodeID, 0, responsesExpected)
-		for nodeID := range vdrSet {
-			if !sentTo.Contains(nodeID) {
-				responsesExpected--
-				failedSendNodes = append(failedSendNodes, nodeID)
-				s.metrics.FailuresSendingToNode.Inc()
-			}
-		}
-		if len(failedSendNodes) > 0 {
+		if signedMsg != nil {
 			log.Info(
-				"Failed to make async request to some nodes",
-				zap.Int("numSent", responsesExpected),
-				zap.Int("numFailures", len(failedSendNodes)),
-				zap.Stringers("failedNodes", failedSendNodes),
+				"Created signed message.",
+				zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+				zap.Uint64("totalValidatorWeight", totalWeight),
 			)
+			return signedMsg, nil
 		}
+	}
 
-		if responsesExpected == 0 {
-			return errNotEnoughSignatures
-		}
+	// Process any responses that arrived without reaching quorum during the request, in case
+	// cached signatures plus the collected ones now suffice.
+	signedMsg, err := s.aggregateIfSufficientWeight(
+		log,
+		unsignedMessage,
+		signatureMap,
+		accumulatedSignatureWeight,
+		vdrs.ValidatorSet.Validators,
+		totalWeight,
+		requiredQuorumPercentage,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if signedMsg != nil {
+		log.Info(
+			"Created signed message.",
+			zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+			zap.Uint64("totalValidatorWeight", totalWeight),
+		)
+		return signedMsg, nil
+	}
 
-		responseCount := 0
-		for {
-			select {
-			case <-ctx.Done():
-				return backoff.Permanent(ctx.Err())
-			case response, ok := <-responseChan:
-				if !ok {
-					return errNotEnoughSignatures
-				}
-				log.Debug(
-					"Processing response from node",
-					zap.Stringer("nodeID", response.NodeID),
-				)
-				var relevant bool
-				signedMsg, relevant, err = s.handleResponse(
-					log,
-					response,
-					sentTo,
-					requestID,
-					vdrs,
-					unsignedMessage,
-					signatureMap,
-					excludedValidators,
-					accumulatedSignatureWeight,
-					requiredQuorumPercentage,
-				)
-				if err != nil {
-					// don't increase node failures metric here, because we did
-					// it in handleResponse
-					return backoff.Permanent(fmt.Errorf("failed to handle response: %w", err))
-				}
-				if relevant {
-					responseCount++
-				}
-				// If we have sufficient signatures, return here.
-				if signedMsg != nil {
-					log.Info(
-						"Created signed message.",
-						zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-						zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-					)
-					return nil
-				}
-				// Break once we've had successful or unsuccessful responses from each requested node
-				if responseCount == responsesExpected {
-					return errNotEnoughSignatures
-				}
+	// The caller logs this failure at error level, so don't log it again here.
+	return nil, errNotEnoughSignatures
+}
+
+// requestSignatures sends a single request to [queryNodes] and processes responses as they
+// arrive, returning a signed message once [quorumPercentage] of stake is accumulated, or
+// (nil, nil) if the threshold isn't reached before all responses are in or the context ends.
+func (s *SignatureAggregator) requestSignatures(
+	ctx context.Context,
+	log logging.Logger,
+	unsignedMessage *avalancheWarp.UnsignedMessage,
+	reqBytes []byte,
+	sourceSubnet ids.ID,
+	queryNodes set.Set[ids.NodeID],
+	vdrs *peers.CanonicalValidators,
+	signatureMap map[int][bls.SignatureLen]byte,
+	excludedValidators set.Set[int],
+	accumulatedSignatureWeight *big.Int,
+	quorumPercentage uint64,
+) (*avalancheWarp.Message, error) {
+	responseChan, expectedResponses, err := s.sendRequest(
+		log,
+		unsignedMessage,
+		reqBytes,
+		sourceSubnet,
+		queryNodes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if responseChan == nil {
+		return nil, nil
+	}
+	// Drain unprocessed responses in the background so returning early (on quorum or
+	// timeout) doesn't block, while still finishing every response's handler.
+	defer func() { go finishResponses(responseChan) }()
+
+	for i := 0; i < expectedResponses; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case response, ok := <-responseChan:
+			if !ok {
+				return nil, nil
+			}
+			signedMsg, err := s.handleResponse(
+				log,
+				response,
+				vdrs,
+				unsignedMessage,
+				signatureMap,
+				excludedValidators,
+				accumulatedSignatureWeight,
+				quorumPercentage,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to handle response: %w", err)
+			}
+			if signedMsg != nil {
+				return signedMsg, nil
 			}
 		}
 	}
-	notify := func(err error, duration time.Duration) {
-		logger.Debug(
-			"request signatures failed, retrying...",
-			zap.Duration("retryIn", duration),
-			zap.Error(err),
-		)
-	}
-
-	err := utils.WithRetriesTimeout(operation, notify, s.signatureRequestTimeout)
-	if err != nil {
-		logger.Warn(
-			"Failed to collect a threshold of signatures",
-			zap.Uint64("accumulatedWeight", accumulatedSignatureWeight.Uint64()),
-			zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
-			zap.Error(err),
-		)
-		return nil, errNotEnoughSignatures
-	}
-	return signedMsg, nil
+	return nil, nil
 }
 
 func (s *SignatureAggregator) CreateSignedMessage(
@@ -590,8 +735,8 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
-	// Collect signatures with retries
-	signedMsg, err := s.collectSignaturesWithRetries(
+	// Collect signatures from validators in weight-prioritized batches.
+	signedMsg, err := s.collectSignatures(
 		ctx,
 		log,
 		unsignedMessage,
@@ -656,53 +801,41 @@ func (s *SignatureAggregator) isSubnetL1(ctx context.Context, subnetID ids.ID) (
 	return isL1, nil
 }
 
-// Attempts to create a signed Warp message from the accumulated responses.
-// Returns a non-nil Warp message if [accumulatedSignatureWeight] exceeds the signature verification threshold.
-// Returns false in the second return parameter if the app response is not relevant to the current signature
-// aggregation request. Returns an error only if a non-recoverable error occurs, otherwise returns a nil error
-// to continue processing responses.
+// handleResponse processes a single response from a validator that the aggregator is
+// awaiting. It caches any valid signature, updates [signatureMap] / [accumulatedSignatureWeight]
+// if the corresponding validator is not in [excludedValidators], and returns a non-nil signed
+// Warp message if [accumulatedSignatureWeight] now meets [quorumPercentage] of the validator
+// set's total weight. Returns an error only if a non-recoverable error occurs, otherwise
+// returns a nil error to continue processing further responses.
 func (s *SignatureAggregator) handleResponse(
 	log logging.Logger,
 	response message.InboundMessage,
-	sentTo set.Set[ids.NodeID],
-	requestID uint32,
 	connectedValidators *peers.CanonicalValidators,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	signatureMap map[int][bls.SignatureLen]byte,
 	excludedValidators set.Set[int],
 	accumulatedSignatureWeight *big.Int,
 	quorumPercentage uint64,
-) (*avalancheWarp.Message, bool, error) {
-	// Regardless of the response's relevance, call it's finished handler once this function returns
+) (*avalancheWarp.Message, error) {
+	// Regardless of the response's relevance, call its finished handler once this function returns.
 	defer response.OnFinishedHandling()
 
-	// Check if this is an expected response.
-	m := response.Message
-	rcvReqID, ok := message.GetRequestID(m)
-	if !ok {
-		// This should never occur, since inbound message validity is already checked by the inbound handler
-		log.Error("Could not get requestID from message")
-		return nil, false, nil
-	}
 	nodeID := response.NodeID
-	if !sentTo.Contains(nodeID) || rcvReqID != requestID {
-		log.Debug("Skipping irrelevant app response")
-		return nil, false, nil
-	}
 
-	// If we receive an AppRequestFailed, then the request timed out.
-	// This is still a relevant response, since we are no longer expecting a response from that node.
+	// If we receive an AppRequestFailed, then the request timed out at the network layer.
+	// We treat this as a relevant response, since we are no longer expecting a real response
+	// from that node for this request.
 	if response.Op == message.AppErrorOp {
-		log.Debug("Request timed out")
+		log.Debug("Request timed out", zap.Stringer("nodeID", nodeID))
 		s.metrics.ValidatorTimeouts.Inc()
-		return nil, true, nil
+		return nil, nil
 	}
 
 	validator, vdrIndex := connectedValidators.GetValidator(nodeID)
 	signature, valid := s.isValidSignatureResponse(log, unsignedMessage, response, validator.PublicKey)
-	// Cache any valid signature, but only include in the aggregation if the validator is not explicitly
-	// excluded, that way we can use the cached signature on future requests if the validator is
-	// no longer excluded
+	// Cache any valid signature, but only include in the aggregation if the validator is not
+	// explicitly excluded, so that we can reuse the cached signature on future requests if
+	// the validator is no longer excluded.
 	if valid {
 		log.Debug(
 			"Got valid signature response",
@@ -715,7 +848,8 @@ func (s *SignatureAggregator) handleResponse(
 			PublicKeyBytes(validator.PublicKeyBytes),
 			SignatureBytes(signature),
 		)
-		if !excludedValidators.Contains(vdrIndex) {
+		// A validator can be reached via multiple node IDs; don't count its weight twice.
+		if _, alreadyCounted := signatureMap[vdrIndex]; !alreadyCounted && !excludedValidators.Contains(vdrIndex) {
 			signatureMap[vdrIndex] = signature
 			accumulatedSignatureWeight.Add(accumulatedSignatureWeight, new(big.Int).SetUint64(validator.Weight))
 		}
@@ -727,10 +861,10 @@ func (s *SignatureAggregator) handleResponse(
 			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
 		)
 		s.metrics.InvalidSignatureResponses.Inc()
-		return nil, true, nil
+		return nil, nil
 	}
 
-	if signedMsg, err := s.aggregateIfSufficientWeight(
+	return s.aggregateIfSufficientWeight(
 		log,
 		unsignedMessage,
 		signatureMap,
@@ -738,14 +872,7 @@ func (s *SignatureAggregator) handleResponse(
 		connectedValidators.ValidatorSet.Validators,
 		connectedValidators.ValidatorSet.TotalWeight,
 		quorumPercentage,
-	); err != nil {
-		return nil, true, err
-	} else if signedMsg != nil {
-		return signedMsg, true, nil
-	}
-
-	// Not enough signatures, continue processing messages
-	return nil, true, nil
+	)
 }
 
 func (s *SignatureAggregator) aggregateIfSufficientWeight(
@@ -821,8 +948,8 @@ func pruneSignatureMapToQuorum(
 		}
 		signers = append(signers, signerEntry{idx: i, weight: v.Weight})
 	}
-	sort.SliceStable(signers, func(a, b int) bool {
-		return signers[a].weight > signers[b].weight
+	utils.SortByWeightDescending(signers, func(s signerEntry) uint64 {
+		return s.weight
 	})
 
 	requiredWeight := utils.RequiredSignatureWeight(totalWeight, quorumPercentage)

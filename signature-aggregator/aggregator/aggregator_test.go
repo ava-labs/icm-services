@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/message"
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
+	avagocommon "github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/subnets"
 	"github.com/ava-labs/avalanchego/utils"
@@ -440,6 +441,329 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 			require.NoError(t, verifyErr)
 		})
 	}
+}
+
+func TestValidatorsByWeight(t *testing.T) {
+	// Three connected validators with distinct weights.
+	connected, _ := makeConnectedValidatorsWithWeights([]uint64{5, 10, 1})
+
+	sorted := validatorsByWeight(connected)
+	require.Len(t, sorted, 3)
+	// Sorted by descending weight.
+	require.Equal(t, uint64(10), sorted[0].Weight)
+	require.Equal(t, uint64(5), sorted[1].Weight)
+	require.Equal(t, uint64(1), sorted[2].Weight)
+}
+
+// validatorByWeight returns the canonical validator with the given weight.
+func validatorByWeight(t *testing.T, connected *peers.CanonicalValidators, weight uint64) *validators.Warp {
+	t.Helper()
+	for _, v := range connected.ValidatorSet.Validators {
+		if v.Weight == weight {
+			return v
+		}
+	}
+	t.Fatalf("no validator with weight %d", weight)
+	return nil
+}
+
+func TestNodesToQuery(t *testing.T) {
+	noneSigned := set.NewSet[PublicKeyBytes](0)
+	// Each validator has a single node, so the returned set size equals the number of
+	// selected validators.
+	t.Run("single dominant validator covers the stake", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
+		sorted := validatorsByWeight(connected)
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
+		// The dominant validator alone exceeds the coverage goal and the rest fall below the
+		// tiny-validator threshold, so only the dominant validator is queried.
+		require.Equal(t, 1, nodes.Len())
+	})
+
+	t.Run("queries multiple validators to cover the stake", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{40, 30, 20, 10})
+		sorted := validatorsByWeight(connected)
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
+		// No proper subset covers 95% of stake, so every validator is queried.
+		require.Equal(t, 4, nodes.Len())
+	})
+
+	t.Run("skips the long tail of tiny validators", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
+		sorted := validatorsByWeight(connected)
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
+		// The three largest validators cover 95% of stake; the five 1-weight validators are
+		// each below 1% of total stake and are skipped.
+		require.Equal(t, 3, nodes.Len())
+	})
+
+	t.Run("a higher coverage goal queries further into the tail", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
+		sorted := validatorsByWeight(connected)
+		// A coverage goal of 100% forces every validator to be queried.
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, 100)
+		require.Equal(t, 8, nodes.Len())
+	})
+
+	t.Run("skips validators with no connected node", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{10, 5, 1})
+		sorted := validatorsByWeight(connected)
+		// Disconnect the highest-weight validator's only node.
+		require.Equal(t, uint64(10), sorted[0].Weight)
+		connected.ConnectedNodes.Remove(sorted[0].NodeIDs[0])
+
+		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, 100)
+		// The disconnected validator is skipped; only the two connected ones are queried.
+		require.Equal(t, 2, nodes.Len())
+		require.False(t, nodes.Contains(sorted[0].NodeIDs[0]))
+	})
+
+	t.Run("cached validator is not re-queried", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{5, 10, 1})
+		sorted := validatorsByWeight(connected)
+		top := validatorByWeight(t, connected, 10)
+		signed := set.NewSet[PublicKeyBytes](1)
+		signed.Add(PublicKeyBytes(top.PublicKeyBytes))
+
+		nodes := nodesToQuery(sorted, signed, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, 100)
+		// The cached validator's node is not queried; the other two are.
+		require.Equal(t, 2, nodes.Len())
+		require.False(t, nodes.Contains(top.NodeIDs[0]))
+	})
+
+	t.Run("cached weight counts toward the coverage goal", func(t *testing.T) {
+		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
+		sorted := validatorsByWeight(connected)
+		dominant := validatorByWeight(t, connected, 1000)
+		signed := set.NewSet[PublicKeyBytes](1)
+		signed.Add(PublicKeyBytes(dominant.PublicKeyBytes))
+
+		total := connected.ValidatorSet.TotalWeight
+		nodes := nodesToQuery(sorted, signed, connected.ConnectedNodes, total, queryStakePercentage)
+		// The cached dominant validator already covers >95% of stake, so the tiny-validator
+		// tail is skipped and no node is queried.
+		require.Equal(t, 0, nodes.Len())
+	})
+}
+
+func TestWeightAtLeastPercent(t *testing.T) {
+	tests := []struct {
+		name        string
+		weight      uint64
+		totalWeight uint64
+		percent     uint64
+		expected    bool
+	}{
+		{name: "exactly at threshold", weight: 67, totalWeight: 100, percent: 67, expected: true},
+		{name: "above threshold", weight: 80, totalWeight: 100, percent: 67, expected: true},
+		{name: "below threshold", weight: 66, totalWeight: 100, percent: 67, expected: false},
+		{name: "exactly one percent", weight: 1, totalWeight: 100, percent: 1, expected: true},
+		{name: "below one percent", weight: 1, totalWeight: 101, percent: 1, expected: false},
+		{name: "ceil boundary", weight: 5, totalWeight: 7, percent: 67, expected: true}, // 5*100 >= 7*67 -> 500 >= 469
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, weightAtLeastPercent(tc.weight, tc.totalWeight, tc.percent))
+		})
+	}
+}
+
+// TestCreateSignedMessagePrioritizesHighWeightValidators verifies that the aggregator
+// prioritizes the highest-weight validators and does not fan out to the entire validator
+// set when a small batch already covers quorum.
+func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
+	// One dominant validator at weight 1000 and seven small validators at weight 1 each.
+	// The dominant validator alone covers >95% of stake and the rest fall below the
+	// tiny-validator threshold, so the aggregator should query only the dominant validator
+	// rather than fanning out to the whole set.
+	weights := append([]uint64{1000}, make([]uint64, 7)...)
+	for i := 1; i < len(weights); i++ {
+		weights[i] = 1
+	}
+	connectedValidators, validatorSigners := makeConnectedValidatorsWithWeights(weights)
+	require.Greater(t, len(connectedValidators.ValidatorSet.Validators), 1)
+
+	// Locate the dominant validator's canonical index.
+	dominantIdx := -1
+	for i, v := range connectedValidators.ValidatorSet.Validators {
+		if v.Weight == 1000 {
+			dominantIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, dominantIdx)
+	dominantNodeID := connectedValidators.ValidatorSet.Validators[dominantIdx].NodeIDs[0]
+
+	chainID := ids.GenerateTestID()
+	networkID := constants.UnitTestID
+	msg, err := warp.NewUnsignedMessage(networkID, chainID, utils.RandomBytes(64))
+	require.NoError(t, err)
+
+	aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
+
+	subnetID := ids.GenerateTestID()
+	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(subnetID, nil).AnyTimes()
+	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), subnetID).Return(
+		connectedValidators.ValidatorSet, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{subnetID: connectedValidators.ValidatorSet}, nil,
+	).AnyTimes()
+
+	var peerInfos []peer.Info
+	for nodeID := range connectedValidators.ConnectedNodes {
+		peerInfos = append(peerInfos, peer.Info{ID: nodeID})
+	}
+	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfos).AnyTimes()
+	mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+		platformvm.GetSubnetClientResponse{}, nil,
+	).Times(1)
+
+	// The aggregator should issue a single request to just the dominant validator, rather
+	// than fanning out to the whole set.
+	mockNetwork.EXPECT().Send(
+		gomock.Any(), gomock.Any(), subnetID, subnets.NoOpAllower,
+	).Times(1).DoAndReturn(
+		func(
+			outboundMsg *message.OutboundMessage,
+			config interface{},
+			subnetID ids.ID,
+			allower interface{},
+		) set.Set[ids.NodeID] {
+			sendConfig, ok := config.(avagocommon.SendConfig)
+			require.True(t, ok)
+			require.Equal(t, 1, sendConfig.NodeIDs.Len())
+			require.True(t, sendConfig.NodeIDs.Contains(dominantNodeID))
+
+			currentRequestID := aggregator.currentRequestID.Load()
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				signature, err := validatorSigners[dominantIdx].Sign(msg.Bytes())
+				if err != nil {
+					t.Logf("failed to sign: %v", err)
+					return
+				}
+				responseBytes, err := proto.Marshal(&sdk.SignatureResponse{
+					Signature: bls.SignatureToBytes(signature),
+				})
+				if err != nil {
+					t.Logf("failed to marshal: %v", err)
+					return
+				}
+				handler.HandleInbound(
+					context.Background(),
+					message.InboundAppResponse(chainID, currentRequestID, responseBytes, dominantNodeID),
+				)
+			}()
+			return sendConfig.NodeIDs
+		},
+	)
+
+	signedMessage, err := aggregator.CreateSignedMessage(
+		t.Context(), logging.NoLog{}, msg, nil, subnetID,
+		51, // 51% required quorum.
+		pchainapi.ProposedHeight,
+	)
+	require.NoError(t, err)
+	require.NoError(t, signedMessage.Signature.Verify(
+		msg, networkID, connectedValidators.ValidatorSet, 51, 100,
+	))
+}
+
+// TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent verifies that, after
+// issuing its single weight-prioritized request, the aggregator still reaches quorum from
+// the validators that do respond even if one of the queried validators stays silent.
+func TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent(t *testing.T) {
+	// Two equal-weight validators. Both are needed to cover 95% of stake, so both are
+	// queried in the single request. A 40% quorum is met by either one alone, so the
+	// aggregator should succeed even though one validator never responds.
+	connectedValidators, validatorSigners := makeConnectedValidatorsWithWeights([]uint64{50, 50})
+	require.Len(t, connectedValidators.ValidatorSet.Validators, 2)
+
+	silentNodeID := connectedValidators.ValidatorSet.Validators[0].NodeIDs[0]
+
+	chainID := ids.GenerateTestID()
+	networkID := constants.UnitTestID
+	msg, err := warp.NewUnsignedMessage(networkID, chainID, utils.RandomBytes(64))
+	require.NoError(t, err)
+
+	aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
+
+	subnetID := ids.GenerateTestID()
+	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(subnetID, nil).AnyTimes()
+	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), subnetID).Return(
+		connectedValidators.ValidatorSet, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{subnetID: connectedValidators.ValidatorSet}, nil,
+	).AnyTimes()
+
+	var peerInfos []peer.Info
+	for nodeID := range connectedValidators.ConnectedNodes {
+		peerInfos = append(peerInfos, peer.Info{ID: nodeID})
+	}
+	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfos).AnyTimes()
+	mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+		platformvm.GetSubnetClientResponse{}, nil,
+	).Times(1)
+
+	// A single request is sent to both validators.
+	mockNetwork.EXPECT().Send(
+		gomock.Any(), gomock.Any(), subnetID, subnets.NoOpAllower,
+	).Times(1).DoAndReturn(
+		func(
+			outboundMsg *message.OutboundMessage,
+			config interface{},
+			subnetID ids.ID,
+			allower interface{},
+		) set.Set[ids.NodeID] {
+			sendConfig, ok := config.(avagocommon.SendConfig)
+			require.True(t, ok)
+			require.Equal(t, 2, sendConfig.NodeIDs.Len())
+			currentRequestID := aggregator.currentRequestID.Load()
+
+			// Respond on behalf of every queried validator except the silent one.
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				for nodeID := range sendConfig.NodeIDs {
+					if nodeID == silentNodeID {
+						continue
+					}
+					idx := connectedValidators.NodeValidatorIndexMap[nodeID]
+					signature, err := validatorSigners[idx].Sign(msg.Bytes())
+					if err != nil {
+						t.Logf("failed to sign: %v", err)
+						continue
+					}
+					responseBytes, err := proto.Marshal(&sdk.SignatureResponse{
+						Signature: bls.SignatureToBytes(signature),
+					})
+					if err != nil {
+						t.Logf("failed to marshal: %v", err)
+						continue
+					}
+					handler.HandleInbound(
+						context.Background(),
+						message.InboundAppResponse(chainID, currentRequestID, responseBytes, nodeID),
+					)
+				}
+			}()
+			return sendConfig.NodeIDs
+		},
+	)
+
+	signedMessage, err := aggregator.CreateSignedMessage(
+		t.Context(), logging.NoLog{}, msg, nil, subnetID,
+		40, // 40% required quorum.
+		pchainapi.ProposedHeight,
+	)
+	require.NoError(t, err)
+	require.NoError(t, signedMessage.Signature.Verify(
+		msg, networkID, connectedValidators.ValidatorSet, 40, 100,
+	))
 }
 
 func TestUnmarshalResponse(t *testing.T) {
