@@ -98,9 +98,13 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	}
 
 	messageHandler, err := messageHandlerFactory.NewMessageHandler(
-		mc.logger,
+		appRelayer.logger,
 		warpMessageInfo.UnsignedMessage,
 		appRelayer.destinationClient,
+		appRelayer.signatureAggregator,
+		appRelayer.metrics,
+		appRelayer.signingSubnetID,
+		appRelayer.warpConfig.QuorumNumerator,
 	)
 	if err != nil {
 		mc.logger.Error("Failed to create message handler", zap.Error(err))

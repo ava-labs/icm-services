@@ -9,6 +9,7 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/common"
 )
@@ -21,6 +22,10 @@ type MessageHandlerFactory interface {
 		logger logging.Logger,
 		unsignedMessage *warp.UnsignedMessage,
 		destinationClient vms.DestinationClient,
+		signatureAggregator *aggregator.SignatureAggregator,
+		metrics Metrics,
+		signingSubnetID ids.ID,
+		quorumNumerator uint64,
 	) (MessageHandler, error)
 
 	// Return info for routing the message to the correct relayer
@@ -35,20 +40,20 @@ type MessageRoutingInfo struct {
 	DestinationAddress common.Address
 }
 
+// Metrics records the outcome of relaying a single Warp message. It is implemented by the
+// caller (e.g. the relayer) so that the message handler can emit metrics without depending
+// on the relayer package.
+type Metrics interface {
+	IncSuccessfulRelayMessageCount()
+	IncFailedRelayMessageCount(failureReason string)
+	IncFetchSignatureAppRequestCount()
+	SetCreateSignedMessageLatencyMS(latency float64)
+}
+
 // MessageHandlers relay a single Warp message. A new instance should be created for each Warp message.
 type MessageHandler interface {
-	// ShouldSendMessage returns true if the message should be sent to the destination chain
-	// If an error is returned, the boolean should be ignored by the caller.
-	ShouldSendMessage() (bool, error)
-
-	// SendMessage sends the signed message to the destination chain. The payload parsed according to
-	// the VM rules is also passed in, since MessageManager does not assume any particular VM
-	// returns the transaction hash if the transaction is successful.
-	SendMessage(signedMessage *warp.Message) (common.Hash, error)
-
-	// LoggerWithContext returns a logger with the message context
-	LoggerWithContext(logging.Logger) logging.Logger
-
-	// GetUnsignedMessage returns the unsigned message
-	GetUnsignedMessage() *warp.UnsignedMessage
+	// ProcessMessage relays the message to the destination chain by aggregating a signature for it
+	// and sending it via SendMessage. It does not retry on failure or checkpoint the height.
+	// Returns the transaction hash if the message is successfully relayed.
+	ProcessMessage() (common.Hash, error)
 }
