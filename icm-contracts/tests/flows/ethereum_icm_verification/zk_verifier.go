@@ -9,6 +9,7 @@ import (
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	zkstatemanager "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKStateManager"
 	risczerogroth16verifier "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/external/risc0/groth16/RiscZeroGroth16Verifier"
+	sp1groth16verifier "github.com/ava-labs/icm-services/abi-bindings/go/external/sp1-contracts/v6.1.0/SP1Groth16Verifier"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	deploymentUtils "github.com/ava-labs/icm-services/icm-contracts/utils/deployment-utils"
