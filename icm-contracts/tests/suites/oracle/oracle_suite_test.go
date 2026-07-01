@@ -11,7 +11,7 @@
 // Optional — enables real Solana verification:
 //   - SOLANA_RPC_URL set to a Solana JSON-RPC endpoint (e.g. https://api.devnet.solana.com)
 //     When set, the suite builds and runs the real solanarpc sidecar (from the avalanchego
-//     source tree) instead of the mock, and the test flow fetches a live Memo Program
+//     source tree) in addition to the mock, and the test flow fetches a live Memo Program
 //     transaction to use as the oracle payload.
 package oracle_test
 
@@ -117,7 +117,14 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 
 	// When SOLANA_RPC_URL is set, also build and start the real solanarpc sidecar on port 9901.
 	if solanaRPCURL != "" {
-		avalancheGoRoot := filepath.Dir(filepath.Dir(os.Getenv("AVALANCHEGO_PATH")))
+		avalancheGoPath := os.Getenv("AVALANCHEGO_PATH")
+		Expect(filepath.IsAbs(avalancheGoPath)).Should(
+			BeTrue(),
+			"AVALANCHEGO_PATH must be an absolute path when SOLANA_RPC_URL is set (got %q); "+
+				"go test sets the working directory to the package directory, making relative paths resolve incorrectly",
+			avalancheGoPath,
+		)
+		avalancheGoRoot := filepath.Dir(filepath.Dir(avalancheGoPath))
 		solanarpcBin := filepath.Join(repoRoot, "build/solanarpc-sidecar")
 		log.Info("Building solanarpc sidecar", zap.String("avalancheGoRoot", avalancheGoRoot))
 		buildCmd := exec.Command("go", "build", "-o", solanarpcBin, "./sidecar/")
@@ -188,8 +195,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		"oracle-attestation-e2e",
 		filepath.Join(repoRoot, "tests/utils/warp-genesis-template.json"),
 		l1Specs,
-		3, // numPrimaryNetworkValidators
-		0, // extraNodeCount
+		len(l1Specs)+1, // numPrimaryNetworkValidators; +1 keeps one spare beyond the L1 count
+		0,              // extraNodeCount
 		e2eFlags,
 	)
 
@@ -217,17 +224,15 @@ func cleanup() {
 // waitForTCP polls addr until a TCP connection succeeds or deadline is exceeded.
 func waitForTCP(addr string, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
-	for {
+	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			return
 		}
-		if time.Now().After(deadline) {
-			Expect(fmt.Errorf("process did not bind %s within %s: %w", addr, timeout, err)).Should(BeNil())
-		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	Expect(fmt.Errorf("process did not bind %s within %s", addr, timeout)).Should(BeNil())
 }
 
 var _ = ginkgo.AfterSuite(cleanup)

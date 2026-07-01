@@ -24,10 +24,12 @@ contract MockOracleReceiver is IOracleMessageReceiver {
     uint256 public receiveCount;
 
     error OnlyOracleAdapter(address caller, address expected);
+    error ZeroAddress();
 
     constructor(
         address oracleAdapter_
     ) {
+        if (oracleAdapter_ == address(0)) revert ZeroAddress();
         oracleAdapter = oracleAdapter_;
     }
 
@@ -50,6 +52,6 @@ contract MockOracleReceiver is IOracleMessageReceiver {
         lastSourceAddress = sourceAddress;
         lastNonce = nonce;
         lastPayload = payload;
-        receiveCount++;
+        ++receiveCount;
     }
 }
