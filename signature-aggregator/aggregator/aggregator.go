@@ -65,6 +65,10 @@ type SignatureAggregator struct {
 	validatorClient         clients.CanonicalValidatorState
 	underfundedL1NodeCache  *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 	signatureRequestTimeout time.Duration
+	// handlerID is the p2p protocol handler ID used when marshaling requests.
+	// Defaults to networkP2P.SignatureRequestHandlerID (native warp, ID 2).
+	// Override via newSignatureAggregatorWithHandlerID for oracle attestation (ID 4).
+	handlerID uint64
 
 	subnetMapsLock sync.Mutex
 
@@ -96,10 +100,38 @@ func NewSignatureAggregator(
 		validatorClient:         validatorClient,
 		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
 		signatureRequestTimeout: signatureRequestTimeout,
+		handlerID:               networkP2P.SignatureRequestHandlerID,
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
 	sa.currentRequestID.Store(rand.Uint32() | 1)
 	return &sa, nil
+}
+
+// newSignatureAggregatorWithHandlerID creates a SignatureAggregator that routes
+// requests to the given p2p handlerID instead of the default native-warp handler.
+// Use this to build protocol-specific aggregators (e.g. oracle attestation at ID 4).
+func newSignatureAggregatorWithHandlerID(
+	network *peers.AppRequestNetwork,
+	messageCreator message.Creator,
+	signatureCacheSize uint64,
+	aggregatorMetrics *metrics.SignatureAggregatorMetrics,
+	validatorClient clients.CanonicalValidatorState,
+	signatureRequestTimeout time.Duration,
+	handlerID uint64,
+) (*SignatureAggregator, error) {
+	sa, err := NewSignatureAggregator(
+		network,
+		messageCreator,
+		signatureCacheSize,
+		aggregatorMetrics,
+		validatorClient,
+		signatureRequestTimeout,
+	)
+	if err != nil {
+		return nil, err
+	}
+	sa.handlerID = handlerID
+	return sa, nil
 }
 
 func (s *SignatureAggregator) connectToQuorumValidators(
@@ -945,7 +977,7 @@ func (s *SignatureAggregator) marshalRequest(
 		return nil, err
 	}
 	return networkP2P.PrefixMessage(
-		networkP2P.ProtocolPrefix(networkP2P.SignatureRequestHandlerID),
+		networkP2P.ProtocolPrefix(s.handlerID),
 		messageBytes,
 	), nil
 }
