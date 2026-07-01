@@ -40,17 +40,20 @@ import (
 
 const (
 	oracleLabel = "OracleAttestation"
-	// oracleSidecarPort is the port the mock sidecar listens on. Validators'
-	// oracle.endpoint chain config must reference this port.
+	// oracleSidecarPort is the port the mock gRPC sidecar listens on.
 	oracleSidecarPort = 9900
+	// realSidecarPort is the port the real solanarpc gRPC sidecar listens on when
+	// SOLANA_RPC_URL is set. Validators for the real-Solana L1 point here.
+	realSidecarPort = 9901
 )
 
 var (
 	log                  logging.Logger
 	localNetworkInstance *network.LocalAvalancheNetwork
-	oracleSidecar        *exec.Cmd
+	oracleSidecar        *exec.Cmd // mock gRPC sidecar, always running
+	realSidecar          *exec.Cmd // real solanarpc sidecar, non-nil only when SOLANA_RPC_URL set
 	e2eFlags             *e2e.FlagVars
-	solanaRPCURL         string // non-empty when SOLANA_RPC_URL is set; selects real sidecar mode
+	solanaRPCURL         string // non-empty when SOLANA_RPC_URL is set
 )
 
 func TestMain(m *testing.M) {
@@ -94,11 +97,26 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	utils.BuildAllExecutables(ctx, log)
 
 	solanaRPCURL = os.Getenv("SOLANA_RPC_URL")
-	sidecarEndpoint := fmt.Sprintf("127.0.0.1:%d", oracleSidecarPort)
 
+	// Always start the mock gRPC sidecar on port 9900 (unconditional accept).
+	mockEndpoint := fmt.Sprintf("127.0.0.1:%d", oracleSidecarPort)
+	log.Info("Starting oracle mock sidecar", zap.String("endpoint", mockEndpoint))
+	oracleSidecar = exec.Command(filepath.Join(repoRoot, "build/oracle-sidecar"),
+		"--port", fmt.Sprintf("%d", oracleSidecarPort),
+	)
+	oracleSidecar.Stdout = os.Stdout
+	oracleSidecar.Stderr = os.Stderr
+	Expect(oracleSidecar.Start()).Should(BeNil())
+	go func() {
+		if waitErr := oracleSidecar.Wait(); waitErr != nil {
+			log.Error("oracle-sidecar exited abnormally", zap.Error(waitErr))
+		}
+	}()
+	waitForTCP(mockEndpoint, 10*time.Second)
+	log.Info("Mock oracle sidecar is ready", zap.String("addr", mockEndpoint))
+
+	// When SOLANA_RPC_URL is set, also build and start the real solanarpc sidecar on port 9901.
 	if solanaRPCURL != "" {
-		// Real mode: build the solanarpc sidecar from the avalanchego source tree
-		// (derived from AVALANCHEGO_PATH) and start it pointing at the given RPC endpoint.
 		avalancheGoRoot := filepath.Dir(filepath.Dir(os.Getenv("AVALANCHEGO_PATH")))
 		solanarpcBin := filepath.Join(repoRoot, "build/solanarpc-sidecar")
 		log.Info("Building solanarpc sidecar", zap.String("avalancheGoRoot", avalancheGoRoot))
@@ -112,53 +130,54 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		configJSON := fmt.Sprintf(`{"rpc_url": %q}`, solanaRPCURL)
 		Expect(os.WriteFile(configPath, []byte(configJSON), 0o600)).Should(BeNil())
 
+		realEndpoint := fmt.Sprintf("127.0.0.1:%d", realSidecarPort)
 		log.Info("Starting real solanarpc sidecar",
-			zap.String("endpoint", sidecarEndpoint),
+			zap.String("endpoint", realEndpoint),
 			zap.String("solanaRPC", solanaRPCURL),
 		)
-		oracleSidecar = exec.Command(solanarpcBin,
-			"--addr", fmt.Sprintf(":%d", oracleSidecarPort),
+		realSidecar = exec.Command(solanarpcBin,
+			"--addr", fmt.Sprintf(":%d", realSidecarPort),
 			"--verifier-type", "solanarpc",
 			"--config-path", configPath,
 		)
-	} else {
-		// Mock mode: start the unconditional accept sidecar (no Solana RPC needed).
-		log.Info("Starting oracle mock sidecar", zap.String("endpoint", sidecarEndpoint))
-		oracleSidecar = exec.Command(filepath.Join(repoRoot, "build/oracle-sidecar"),
-			"--port", fmt.Sprintf("%d", oracleSidecarPort),
-		)
+		realSidecar.Stdout = os.Stdout
+		realSidecar.Stderr = os.Stderr
+		Expect(realSidecar.Start()).Should(BeNil())
+		go func() {
+			if waitErr := realSidecar.Wait(); waitErr != nil {
+				log.Error("solanarpc-sidecar exited abnormally", zap.Error(waitErr))
+			}
+		}()
+		waitForTCP(realEndpoint, 10*time.Second)
+		log.Info("Real solanarpc sidecar is ready", zap.String("addr", realEndpoint))
 	}
-	oracleSidecar.Stdout = os.Stdout
-	oracleSidecar.Stderr = os.Stderr
-	err = oracleSidecar.Start()
-	Expect(err).Should(BeNil())
-	go func() {
-		if waitErr := oracleSidecar.Wait(); waitErr != nil {
-			log.Error("oracle-sidecar exited abnormally", zap.Error(waitErr))
-		}
-	}()
-	// Wait until the sidecar actually accepts TCP connections (not just a fixed sleep).
-	sidecarAddr := fmt.Sprintf("127.0.0.1:%d", oracleSidecarPort)
-	readyDeadline := time.Now().Add(10 * time.Second)
-	for {
-		conn, dialErr := net.DialTimeout("tcp", sidecarAddr, 200*time.Millisecond)
-		if dialErr == nil {
-			conn.Close()
-			break
-		}
-		if time.Now().After(readyDeadline) {
-			Expect(fmt.Errorf("oracle-sidecar did not bind %s within 10s: %w", sidecarAddr, dialErr)).Should(BeNil())
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	log.Info("Oracle sidecar is ready", zap.String("addr", sidecarAddr))
 
-	// Build chain config for the oracle L1: enable warp and point the oracle
-	// handler at the sidecar. Allowlist enforcement lives in the sidecar config,
-	// not in the node config.
-	oracleChainConfig := utils.DefaultChainConfig()
-	oracleChainConfig["oracle"] = map[string]any{
-		"endpoint": sidecarEndpoint,
+	// Build chain configs pointing each L1 at its sidecar.
+	mockChainConfig := utils.DefaultChainConfig()
+	mockChainConfig["oracle"] = map[string]any{
+		"endpoint": mockEndpoint,
+	}
+
+	l1Specs := []network.L1Spec{
+		{
+			Name:        "mock",
+			EVMChainID:  12345,
+			NodeCount:   2,
+			ChainConfig: mockChainConfig,
+		},
+	}
+
+	if solanaRPCURL != "" {
+		realChainConfig := utils.DefaultChainConfig()
+		realChainConfig["oracle"] = map[string]any{
+			"endpoint": fmt.Sprintf("127.0.0.1:%d", realSidecarPort),
+		}
+		l1Specs = append(l1Specs, network.L1Spec{
+			Name:        "real",
+			EVMChainID:  12346,
+			NodeCount:   2,
+			ChainConfig: realChainConfig,
+		})
 	}
 
 	networkStartCtx, networkStartCancel := context.WithTimeout(ctx, 240*time.Second)
@@ -168,14 +187,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		networkStartCtx,
 		"oracle-attestation-e2e",
 		filepath.Join(repoRoot, "tests/utils/warp-genesis-template.json"),
-		[]network.L1Spec{
-			{
-				Name:        "A",
-				EVMChainID:  12345,
-				NodeCount:   2,
-				ChainConfig: oracleChainConfig,
-			},
-		},
+		l1Specs,
 		3, // numPrimaryNetworkValidators
 		0, // extraNodeCount
 		e2eFlags,
@@ -189,24 +201,52 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 })
 
 func cleanup() {
-	if oracleSidecar != nil {
-		if oracleSidecar.Process != nil {
-			_ = oracleSidecar.Process.Kill()
+	for _, cmd := range []*exec.Cmd{oracleSidecar, realSidecar} {
+		if cmd != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
 		}
-		oracleSidecar = nil
 	}
+	oracleSidecar = nil
+	realSidecar = nil
 	if localNetworkInstance != nil {
 		localNetworkInstance.TearDownNetwork()
 		localNetworkInstance = nil
 	}
 }
 
+// waitForTCP polls addr until a TCP connection succeeds or deadline is exceeded.
+func waitForTCP(addr string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return
+		}
+		if time.Now().After(deadline) {
+			Expect(fmt.Errorf("process did not bind %s within %s: %w", addr, timeout, err)).Should(BeNil())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 var _ = ginkgo.AfterSuite(cleanup)
 
 var _ = ginkgo.Describe("[Oracle Attestation E2E Tests]", func() {
-	ginkgo.It("Oracle Attestation",
+	ginkgo.It("Oracle Attestation (mock sidecar — unconditional accept)",
 		ginkgo.Label(oracleLabel),
 		func(ctx context.Context) {
-			oracleFlows.OracleAttestation(ctx, log, localNetworkInstance, solanaRPCURL)
+			l1Infos := localNetworkInstance.GetL1Infos()
+			oracleFlows.OracleAttestation(ctx, log, localNetworkInstance, l1Infos[0], "")
+		})
+
+	ginkgo.It("Oracle Attestation (real solanarpc sidecar)",
+		ginkgo.Label(oracleLabel),
+		func(ctx context.Context) {
+			if solanaRPCURL == "" {
+				ginkgo.Skip("SOLANA_RPC_URL not set; skipping real Solana sidecar test")
+			}
+			l1Infos := localNetworkInstance.GetL1Infos()
+			oracleFlows.OracleAttestation(ctx, log, localNetworkInstance, l1Infos[1], solanaRPCURL)
 		})
 })
