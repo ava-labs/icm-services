@@ -23,16 +23,17 @@ enum Cmd {
     Prove {
         #[arg(long)]
         groth16: bool,
-        /// Write a {vkey, publicValues, proof} JSON fixture to this path (use with --groth16).
+        /// Write a {vkey, publicValues, proof, signedData} JSON fixture to this path (use with --groth16).
         #[arg(long)]
         out: Option<String>,
     },
     Vkey,
 }
 
-// Packs the icm-services test fixture into the guest's input witness. The writes must
-// match the guest's io::read order exactly — SP1Stdin is positional, not named.
-fn fixture_stdin() -> SP1Stdin {
+// Packs the icm-services test fixture into the guest's input witness and 
+// returns it along with the signed data the proof commits to. The order 
+// of items placed into stdin must match the guest's io::read order exactly. 
+fn generate_fixture_stdin_from_test() -> (SP1Stdin, Vec<u8>) {
     let attestation = hex::decode(test_fixtures::ATTESTATION_HEX).expect("attestation hex");
     let signed_data = hex::decode(test_fixtures::SIGNED_DATA_HEX).expect("signed_data hex");
     let source_blockchain_id = test_fixtures::SOURCE_BLOCKCHAIN_ID;
@@ -41,13 +42,13 @@ fn fixture_stdin() -> SP1Stdin {
     let signed_weight = test_fixtures::SIGNING_WEIGHT;
 
     let mut stdin = SP1Stdin::new();
-    stdin.write(&attestation); // Vec<u8>; parsed by ValidatorSetMerkleAttestation::deserialize
-    stdin.write(&signed_data); // Vec<u8>  (the message)
-    stdin.write(&source_blockchain_id); // [u8; 32]
-    stdin.write(&root); // [u8; 32]
-    stdin.write(&signed_data_hash); // [u8; 32]  (the message hash)
-    stdin.write(&signed_weight); // u64
-    stdin
+    stdin.write(&attestation);
+    stdin.write(&signed_data);
+    stdin.write(&source_blockchain_id);
+    stdin.write(&root); 
+    stdin.write(&signed_data_hash); 
+    stdin.write(&signed_weight); 
+    (stdin, signed_data)
 }
 
 fn check(pv_bytes: &[u8]) {
@@ -63,7 +64,7 @@ fn check(pv_bytes: &[u8]) {
 
 fn main() {
     sp1_sdk::utils::setup_logger();
-    let stdin = fixture_stdin();
+    let (stdin, signed_data) = generate_fixture_stdin_from_test(); 
     let client = ProverClient::builder().cpu().build();
 
     match Cmd::parse() {
@@ -106,6 +107,7 @@ fn main() {
                     "vkey":         pk.verifying_key().bytes32(),
                     "publicValues": public_values_hex,
                     "proof":        proof_hex,
+                    "signedData":   format!("0x{}", hex::encode(signed_data)),
                 });
                 if let Some(parent) = std::path::Path::new(&path).parent() {
                     std::fs::create_dir_all(parent).expect("create fixture dir");
