@@ -1,0 +1,63 @@
+name: Rust tests for zk-proofs-gen
+
+on:
+  push:
+    paths:
+      - "scripts/tools/zk-proofs-gen/**"
+      - ".github/workflows/zk-proofs-gen-tests.yml"
+  pull_request:
+    paths:
+      - "scripts/tools/zk-proofs-gen/**"
+      - ".github/workflows/zk-proofs-gen-tests.yml"
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/tools/zk-proofs-gen
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned nightly
+        run: rustup toolchain install $(cat nightly-toolchain) --component rustfmt
+      - name: Install taplo and cargo-sort
+        uses: taiki-e/install-action@v2
+        with:
+          tool: taplo-cli,cargo-sort
+      - run: make fmt-check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/tools/zk-proofs-gen
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned nightly
+        run: rustup toolchain install $(cat nightly-toolchain) --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scripts/tools/zk-proofs-gen -> target
+      # Excluded crates (see Makefile):
+      #   zk-valset-program — targets the zkVM, not native
+      #   zk-valset-prover  — build.rs requires the SP1 toolchain
+      - run: make clippy
+
+  rust-unit-tests:
+    name: Rust unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/tools/zk-proofs-gen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scripts/tools/zk-proofs-gen -> target
+          
+      - run: cargo test --release -p merkle-sig-verification
