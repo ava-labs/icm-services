@@ -356,4 +356,13 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				ecdsaVerifierContractAddress,
 			)
 		})
+
+	ginkgo.It("Test ZKValidatorSetRegistry",
+		ginkgo.Label(ethereumICMVerificationLabel),
+		func(ctx context.Context) {
+			ethereumIcmVerification.ZKValidatorSetRegistry(
+				ctx,
+				localEthereumNetworkInstance,
+			)
+		})
 })

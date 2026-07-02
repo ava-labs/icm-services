@@ -1,0 +1,14 @@
+{
+  "lib/forge-std": {
+    "branch": {
+      "name": "v1",
+      "rev": "7117c90c8cf6c68e5acce4f09a6b24715cea4de6"
+    }
+  },
+  "lib/openzeppelin-contracts-upgradeable": {
+    "rev": "fa525310e45f91eb20a6d3baa2644be8e0adba31"
+  },
+  "lib/solidity-merkle-trees": {
+    "rev": "03832eb448ab77e5010281d7894c77b92a0640ad"
+  }
+}
