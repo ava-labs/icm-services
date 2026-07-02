@@ -4,13 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sp1-sdk = { workspace = true, features = ["blocking"] }
-merkle-sig-verification = { path = "../lib", features = ["test-utils"] }
 alloy-sol-types = "0.8"
-sha2 = "0.10"
-hex = "0.4"
 clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+indicatif = "0.17"
+merkle-sig-verification = { path = "../lib", features = ["test-utils"] }
 serde_json = "1"
+sha2 = "0.10"
+sp1-sdk = { version = "6.0.1", features = [
+  "blocking",
+  "network",
+  "native-gnark",
+] }
+tokio = { version = "1", features = ["full"] }
 
 [build-dependencies]
 sp1-build = { workspace = true }
