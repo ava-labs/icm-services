@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // Source: https://github.com/succinctlabs/sp1-contracts/blob/d3629729c3216eb51bd4859d027a8eb729399fa4/contracts/src/v6.1.0/SP1VerifierGroth16.sol
-// Modified: Updated Solidity pragma from ^0.8.20 to ^0.8.30
+// Modified: Updated Solidity pragma from ^0.8.20 to ^0.8.30 and renamed contract from SP1Verifier to SP1VerifierGroth16
 pragma solidity ^0.8.30;
 /* solhint-disable */
 
@@ -11,7 +11,7 @@ import {Verifier} from "./Groth16Verifier.sol";
 /// @title SP1 Verifier
 /// @author Succinct Labs
 /// @notice This contracts implements a solidity verifier for SP1.
-contract SP1Verifier is Verifier, ISP1VerifierWithHash {
+contract SP1VerifierGroth16 is Verifier, ISP1VerifierWithHash {
     /// @notice Thrown when the verifier selector from this proof does not match the one in this
     /// verifier. This indicates that this proof was sent to the wrong verifier.
     /// @param received The verifier selector from the first 4 bytes of the proof.
@@ -44,7 +44,9 @@ contract SP1Verifier is Verifier, ISP1VerifierWithHash {
 
     /// @notice Hashes the public values to a field elements inside Bn254.
     /// @param publicValues The public values.
-    function hashPublicValues(bytes calldata publicValues) public pure returns (bytes32) {
+    function hashPublicValues(
+        bytes calldata publicValues
+    ) public pure returns (bytes32) {
         return sha256(publicValues) & bytes32(uint256((1 << 253) - 1));
     }
 

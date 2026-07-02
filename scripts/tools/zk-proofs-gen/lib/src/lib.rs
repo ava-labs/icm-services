@@ -20,15 +20,15 @@
 //!
 //! THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
 
+use alloy_sol_types::sol;
 use bitvec::vec::BitVec;
 use bls12_381::{
+    G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
     hash_to_curve::{ExpandMsgXmd, HashToCurve},
-    multi_miller_loop, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
+    multi_miller_loop,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-
-use alloy_sol_types::sol;
 
 pub const BLS_PUBLIC_KEY_SIZE: usize = 96;
 pub const BLS_SIGNATURE_SIZE: usize = 192;
@@ -87,9 +87,7 @@ pub fn verify(
         attestation
             .signers
             .iter()
-            .fold(G1Projective::identity(), |acc, v| {
-                acc + G1Projective::from(v.public_key)
-            }),
+            .fold(G1Projective::identity(), |acc, v| acc + G1Projective::from(v.public_key)),
     );
 
     let flags_len = attestation.flags.len();
@@ -152,11 +150,7 @@ pub fn verify(
     // Assert the committed signing weight is the true sum of the signers' weights; the
     // contract applies the stake-weighted quorum threshold on-chain against its stored total.
     let signing_weight: u64 = attestation.signers.iter().map(|v| v.weight).sum();
-    if signing_weight != signed_weight {
-        None
-    } else {
-        Some(())
-    }
+    if signing_weight != signed_weight { None } else { Some(()) }
 }
 
 pub fn verify_signature(message: &[u8], key: &G1Affine, signature: G2Affine) -> bool {
@@ -179,9 +173,7 @@ pub fn verify_signature(message: &[u8], key: &G1Affine, signature: G2Affine) -> 
 pub fn parse_attestation(mut attestation: &[u8]) -> Option<ValidatorSetMerkleAttestation> {
     const VALIDATOR_SIZE: usize = 8 + BLS_PUBLIC_KEY_SIZE;
 
-    attestation
-        .get(0..2)
-        .map(|codec| codec[0] == 0x01 && codec[1] == 0x00)?;
+    attestation.get(0..2).map(|codec| codec[0] == 0x01 && codec[1] == 0x00)?;
     let num_signer_slice = attestation[2..6].try_into().ok()?;
     let num_signers = u32::from_be_bytes(num_signer_slice);
     attestation = &attestation[6..];
@@ -198,9 +190,7 @@ pub fn parse_attestation(mut attestation: &[u8]) -> Option<ValidatorSetMerkleAtt
             )
             .into_option()?,
             weight: u64::from_be_bytes(
-                attestation[BLS_PUBLIC_KEY_SIZE..VALIDATOR_SIZE]
-                    .try_into()
-                    .ok()?,
+                attestation[BLS_PUBLIC_KEY_SIZE..VALIDATOR_SIZE].try_into().ok()?,
             ),
         });
         attestation = &attestation[VALIDATOR_SIZE..];
@@ -275,12 +265,13 @@ pub fn hash_validator(v: &Validator) -> Hash {
 /// Fixtures derived from the icm-services test vectors. Enable with the `test-utils` feature.
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_fixtures {
+    use bls12_381::{G1Projective, G2Projective, Scalar};
+
     use super::*;
-    use bls12_381::{G1Projective, Scalar};
 
-    pub const ATTESTATION_HEX: &str = "0000000000030572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e166a9d8cabc673a322fda673779d8e3822ba3ecb8670e461f73bb9021d5fd76a4c56d9d4cd16bd1bba86881979749d2800000000000000010c9b60d5afcbd5663a8a44b7c5a02f19e9a77ab0a35bd65809bb5c67ec582c897feb04decc694b13e08587f3ff9b5b60143be6d078c2b79a7d4f1d1b21486a030ec93f56aa54e1de880db5a66dd833a652a95bee27c824084006cb5644cbd43f000000000000000310e7791fb972fe014159aa33a98622da3cdc98ff707965e536d8636b5fcc5ac7a91a8c46e59a00dca575af0f18fb13dc16ba437edcc6551e30c10512367494bfb6b01cc6681e8a4c3cd2501832ab5c4abc40b4578b85cbaffbf0bcd70d67c6e20000000000000004000000017e5866de1dc819a4346a48c956a12e000bf26f3a6f61e0549e01d720f703d0550000000306055273f06e2a177237e5e949abe52c0194ed2a84a8bdb1b04986e721f1206c025f599458c7be4b7f9a133cb291f52900102f103b08360bb6142102804cb972f388a21142167d041b2d81dccfe29ef3ad7a1c1b7a5b725938167ebd089ee30e300fdadf227f40a0e9f6b168555871d5a992f0fbf8d9c65bde4f140f0552f38d009334987b6fcd56a051a63718716ff4220eb925350b4cb88d9d3abb10237f3da95c6d619ec19fa48bd8da6ec4469d8f71395e4681c9540c97a0afc5af8e457413";
+    pub const ATTESTATION_HEX: &str = "0000000000030572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e166a9d8cabc673a322fda673779d8e3822ba3ecb8670e461f73bb9021d5fd76a4c56d9d4cd16bd1bba86881979749d2800000000000000010c9b60d5afcbd5663a8a44b7c5a02f19e9a77ab0a35bd65809bb5c67ec582c897feb04decc694b13e08587f3ff9b5b60143be6d078c2b79a7d4f1d1b21486a030ec93f56aa54e1de880db5a66dd833a652a95bee27c824084006cb5644cbd43f000000000000000310e7791fb972fe014159aa33a98622da3cdc98ff707965e536d8636b5fcc5ac7a91a8c46e59a00dca575af0f18fb13dc16ba437edcc6551e30c10512367494bfb6b01cc6681e8a4c3cd2501832ab5c4abc40b4578b85cbaffbf0bcd70d67c6e20000000000000004000000017e5866de1dc819a4346a48c956a12e000bf26f3a6f61e0549e01d720f703d055000000030614e95777b8333abd7d10dc315f07f17c7f05f9eb15e2366640d775e3d5ff926fcceeb3a31672f1d088013f93819af54d0c79ed80ec71e220a2cbc5f4fba57dfe594fe02ec7782106f7703bf78c1b135661ddb7e8f44851e9f25faf2ecb86edac18067d2e4cac6c9ae0375044310551a8ce0707a554c5ac461ac2e78810dadd2bc3ae71e02324fae360a0d7673d81f14f17d71cdc875d88e144258f6b62c62503f2215ef20cf2421222377f176b85de725a4bda34a35bb1ae54f4f57defd4f8ff";
 
-    pub const SIGNED_DATA_HEX: &str = "0000000000013d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a7000000c6000000000001000000145615deb798bb3e4dfa0139dfa1b3d433cc23b72f000000a40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    pub const SIGNED_DATA_HEX: &str = "0000000000013d0ad12b8ee8928edf248ca91ca55600fb383f07c32bff1d6dec472b25cf59a70000003a000000000001000000000000002c7a6b2d76616c7365742d7265676973747279206e6f2d73656e6465722066697874757265207061796c6f6164";
 
     /// Total weight of all 4 validators in the test set (weights 1, 2, 3, 4).
     pub const TOTAL_WEIGHT: u64 = 10;
@@ -301,25 +292,91 @@ pub mod test_fixtures {
     /// Validator weights: v0=1, v1=2, v2=3, v3=4 (derived from scalars 2, 3, 4, 5).
     /// Tree: hash_node(hash_node(v0, v1), hash_node(v2, v3))
     pub fn expected_root() -> Hash {
-        let validators: Vec<Validator> = [2u64, 3, 4, 5]
+        let (_, validators) = test_validators();
+
+        hash_node(
+            &hash_node(&hash_validator(&validators[0]), &hash_validator(&validators[1])),
+            &hash_node(&hash_validator(&validators[2]), &hash_validator(&validators[3])),
+        )
+    }
+
+    /// Builds the 4-validator test set (secret keys = scalars 2, 3, 4, 5; weights 1..4),
+    /// returning the secret keys alongside so fixture messages can be signed locally.
+    pub fn test_validators() -> (Vec<Scalar>, Vec<Validator>) {
+        let sks: Vec<Scalar> = [2u64, 3, 4, 5].iter().map(|i| Scalar::from(*i)).collect();
+        let validators = sks
             .iter()
             .enumerate()
-            .map(|(ix, i)| Validator {
-                public_key: G1Affine::from(G1Projective::generator() * Scalar::from(*i)),
+            .map(|(ix, sk)| Validator {
+                public_key: G1Affine::from(G1Projective::generator() * sk),
                 weight: ix as u64 + 1,
             })
             .collect();
+        (sks, validators)
+    }
 
-        hash_node(
-            &hash_node(
-                &hash_validator(&validators[0]),
-                &hash_validator(&validators[1]),
-            ),
-            &hash_node(
-                &hash_validator(&validators[2]),
-                &hash_validator(&validators[3]),
-            ),
-        )
+    /// Signs a message with a BLS secret key: sig = sk · H(msg), using the same DST and
+    /// hash-to-curve as `verify_signature`, so produced signatures verify against it.
+    pub fn sign(message: &[u8], sk: &Scalar) -> G2Projective {
+        const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+        let h = <G2Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve([message], DST);
+        h * sk
+    }
+
+    /// Builds the address(0) (validator-set update) unsigned warp message, matching the
+    /// contract's `buildUnsignedWarpMessage` on the no-sender path:
+    ///
+    ///   codec(2)=0 | networkID(4) | sourceChainID(32) | payloadLen+14 (4)
+    ///   | acCodec(2)=0 | typeID(4)=1 | srcAddrLen(4)=0 | payloadLen(4) | payload
+    pub fn build_unsigned_warp_message_no_sender(
+        network_id: u32,
+        source_chain_id: &Hash,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        let mut out = Vec::with_capacity(56 + payload.len());
+        out.extend_from_slice(&[0u8; 2]); // warp codec version
+        out.extend_from_slice(&network_id.to_be_bytes());
+        out.extend_from_slice(source_chain_id);
+        out.extend_from_slice(&((payload.len() as u32) + 14).to_be_bytes()); // addressed-call length
+        out.extend_from_slice(&[0u8; 2]); // addressed-call codec version
+        out.extend_from_slice(&1u32.to_be_bytes()); // addressed-call typeID
+        out.extend_from_slice(&0u32.to_be_bytes()); // srcAddrLen = 0 (no sender)
+        out.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        out.extend_from_slice(payload);
+        out
+    }
+
+    /// Serializes a `ValidatorSetMerkleAttestation` in the byte layout `parse_attestation` reads:
+    ///
+    ///   codec(2)=0x0000 | numSigners(4) | [pubkey(96) | weight(8)]* | numHashes(4) | hash(32)*
+    ///   | numFlags(4) | flagBytes (Lsb0) | aggregateSig(192)
+    pub fn serialize_attestation(
+        signers: &[Validator],
+        proof: &[Hash],
+        flags: &[bool],
+        aggregate_sig: &G2Affine,
+    ) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&[0u8; 2]); // codec version
+        out.extend_from_slice(&(signers.len() as u32).to_be_bytes());
+        for v in signers {
+            out.extend_from_slice(&v.public_key.to_uncompressed());
+            out.extend_from_slice(&v.weight.to_be_bytes());
+        }
+        out.extend_from_slice(&(proof.len() as u32).to_be_bytes());
+        for h in proof {
+            out.extend_from_slice(h);
+        }
+        out.extend_from_slice(&(flags.len() as u32).to_be_bytes());
+        let mut flag_bytes = vec![0u8; flags.len().div_ceil(8)];
+        for (i, f) in flags.iter().enumerate() {
+            if *f {
+                flag_bytes[i / 8] |= 1 << (i % 8); // Lsb0 bit order, matching BitVec<u8>
+            }
+        }
+        out.extend_from_slice(&flag_bytes);
+        out.extend_from_slice(&aggregate_sig.to_uncompressed());
+        out
     }
 }
 
@@ -376,10 +433,7 @@ mod tests {
             .into_iter()
             .map(|pk| {
                 G1Affine::from_uncompressed(
-                    &hex::decode(pk)
-                        .expect("Test failed")
-                        .try_into()
-                        .expect("Test failed"),
+                    &hex::decode(pk).expect("Test failed").try_into().expect("Test failed"),
                 )
                 .into_option()
                 .expect("Test failed")
@@ -396,34 +450,22 @@ mod tests {
     #[test]
     fn test_aggregate_signature() {
         let pk1 = G1Affine::from_uncompressed(
-            &hex::decode(PK1_HEX)
-                .expect("Test failed")
-                .try_into()
-                .expect("Test failed"),
+            &hex::decode(PK1_HEX).expect("Test failed").try_into().expect("Test failed"),
         )
         .into_option()
         .expect("Test failed");
         let pk2 = G1Affine::from_uncompressed(
-            &hex::decode(PK2_HEX)
-                .expect("Test failed")
-                .try_into()
-                .expect("Test failed"),
+            &hex::decode(PK2_HEX).expect("Test failed").try_into().expect("Test failed"),
         )
         .into_option()
         .expect("Test failed");
         let pk3 = G1Affine::from_uncompressed(
-            &hex::decode(PK3_HEX)
-                .expect("Test failed")
-                .try_into()
-                .expect("Test failed"),
+            &hex::decode(PK3_HEX).expect("Test failed").try_into().expect("Test failed"),
         )
         .into_option()
         .expect("Test failed");
         let signature = G2Affine::from_uncompressed(
-            &hex::decode(SIG_BYTES)
-                .expect("Test failed")
-                .try_into()
-                .expect("Test failed"),
+            &hex::decode(SIG_BYTES).expect("Test failed").try_into().expect("Test failed"),
         )
         .into_option()
         .expect("Test failed");
@@ -431,9 +473,7 @@ mod tests {
         let agg_pk = G1Affine::from(
             [pk1, pk2, pk3]
                 .iter()
-                .fold(G1Projective::identity(), |acc, v| {
-                    acc + G1Projective::from(v)
-                }),
+                .fold(G1Projective::identity(), |acc, v| acc + G1Projective::from(v)),
         );
 
         let message = b"TestValidAggregation local signer";
@@ -456,11 +496,7 @@ mod tests {
                 weight: ix as u64 + 1,
             })
             .collect::<Vec<_>>();
-        let signers = vec![
-            validators[0].clone(),
-            validators[2].clone(),
-            validators[3].clone(),
-        ];
+        let signers = vec![validators[0].clone(), validators[2].clone(), validators[3].clone()];
         let mut flags = BitVec::<u8>::new();
         flags.push(false);
         flags.push(true);
@@ -477,10 +513,7 @@ mod tests {
         assert_eq!(
             attestation.aggregate_sig,
             G2Affine::from_uncompressed(
-                &hex::decode(AGGREGATE_SIG)
-                    .expect("Test failed")
-                    .try_into()
-                    .expect("Test failed")
+                &hex::decode(AGGREGATE_SIG).expect("Test failed").try_into().expect("Test failed")
             )
             .into_option()
             .expect("Test failed")
@@ -491,9 +524,7 @@ mod tests {
     #[test]
     fn test_verify_merkle_attestation() {
         let attestation = parse_attestation(
-            hex::decode(test_fixtures::ATTESTATION_HEX)
-                .expect("Test failed")
-                .as_slice(),
+            hex::decode(test_fixtures::ATTESTATION_HEX).expect("Test failed").as_slice(),
         )
         .expect("Test failed");
         let signed_data = hex::decode(test_fixtures::SIGNED_DATA_HEX).expect("Test failed");
@@ -508,5 +539,78 @@ mod tests {
             test_fixtures::SIGNING_WEIGHT,
         )
         .expect("Test failed");
+    }
+
+    /// Round-trip: a locally signed and serialized attestation must parse and verify.
+    /// Guards the sign/serialize helpers against drift from parse_attestation/verify.
+    #[test]
+    fn test_sign_serialize_roundtrip() {
+        use test_fixtures::*;
+
+        let (sks, validators) = test_validators();
+
+        let message = build_unsigned_warp_message_no_sender(1, &SOURCE_BLOCKCHAIN_ID, b"test");
+
+        // Signers v0, v2, v3 (weights 1+3+4 = SIGNING_WEIGHT), same shape as the fixture.
+        let signer_ixs = [0usize, 2, 3];
+        let agg_sig = G2Affine::from(
+            signer_ixs
+                .iter()
+                .fold(bls12_381::G2Projective::identity(), |acc, &i| acc + sign(&message, &sks[i])),
+        );
+
+        let signers: Vec<Validator> = signer_ixs.iter().map(|&i| validators[i].clone()).collect();
+        let proof = vec![hash_validator(&validators[1])];
+        let flags = [false, true, true];
+
+        let bytes = serialize_attestation(&signers, &proof, &flags, &agg_sig);
+        let parsed = parse_attestation(&bytes).expect("serialized attestation must parse");
+
+        let msg_hash: Hash = Sha256::digest(&message).into();
+        verify(&parsed, &message, &expected_root(), &msg_hash, SIGNING_WEIGHT)
+            .expect("locally signed attestation must verify");
+    }
+
+    /// Generates the address(0) (no-sender) fixture pair for ZKValidatorSetRegistry's
+    /// verifyICMMessage path and prints the new SIGNED_DATA_HEX / ATTESTATION_HEX to paste
+    /// into test_fixtures above. Self-checks (parse + verify) before printing.
+    ///
+    /// Run: cargo test --release -p merkle-sig-verification gen_no_sender_fixtures -- --nocapture
+    /// --ignored
+    #[test]
+    #[ignore]
+    fn gen_no_sender_fixtures() {
+        use test_fixtures::*;
+
+        let (sks, validators) = test_validators();
+
+        // address(0) validator-set-update message. The payload is arbitrary since the Go e2e
+        // uses verifyICMMessage, which does not parse it as a commitment.
+        let payload = b"zk-valset-registry no-sender fixture payload".to_vec();
+        let signed_data = build_unsigned_warp_message_no_sender(1, &SOURCE_BLOCKCHAIN_ID, &payload);
+
+        // Signers v0, v2, v3 (weights 1+3+4 = SIGNING_WEIGHT), matching the previous fixture.
+        let signer_ixs = [0usize, 2, 3];
+        let agg_sig = G2Affine::from(
+            signer_ixs.iter().fold(bls12_381::G2Projective::identity(), |acc, &i| {
+                acc + sign(&signed_data, &sks[i])
+            }),
+        );
+
+        let signers: Vec<Validator> = signer_ixs.iter().map(|&i| validators[i].clone()).collect();
+        let proof = vec![hash_validator(&validators[1])]; // v1 is the non-signer
+        let flags = [false, true, true];
+
+        let attestation_bytes = serialize_attestation(&signers, &proof, &flags, &agg_sig);
+
+        // Self-check before printing: the pair must parse and verify end to end.
+        let parsed =
+            parse_attestation(&attestation_bytes).expect("serialized attestation must parse");
+        let msg_hash: Hash = Sha256::digest(&signed_data).into();
+        verify(&parsed, &signed_data, &expected_root(), &msg_hash, SIGNING_WEIGHT)
+            .expect("generated fixture must verify");
+
+        println!("SIGNED_DATA_HEX = \"{}\"", hex::encode(&signed_data));
+        println!("ATTESTATION_HEX = \"{}\"", hex::encode(&attestation_bytes));
     }
 }

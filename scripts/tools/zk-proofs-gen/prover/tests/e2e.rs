@@ -11,8 +11,10 @@
 use alloy_sol_types::SolValue;
 use merkle_sig_verification::{test_fixtures, PublicValues};
 use sha2::{Digest, Sha256};
-use sp1_sdk::blocking::{Prover, ProverClient};
-use sp1_sdk::{include_elf, Elf, SP1Stdin};
+use sp1_sdk::{
+    blocking::{Prover, ProverClient},
+    include_elf, Elf, SP1Stdin,
+};
 
 const ELF: Elf = include_elf!("zk-valset-program");
 
@@ -39,7 +41,8 @@ fn test_e2e_merkle_attestation() {
     let client = ProverClient::builder().cpu().build();
     let (public_values, _report) = client.execute(ELF, stdin).run().expect("execute failed");
 
-    let pv = PublicValues::abi_decode(public_values.as_slice(), true).expect("decode public values");
+    let pv =
+        PublicValues::abi_decode(public_values.as_slice(), true).expect("decode public values");
     assert_eq!(pv.sourceBlockchainID.0, source_blockchain_id, "source blockchain ID mismatch");
     assert_eq!(pv.root.0, root, "root mismatch");
     assert_eq!(pv.messageHash.0, signed_data_hash, "message hash mismatch");

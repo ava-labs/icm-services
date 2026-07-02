@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	zkregistry "github.com/ava-labs/icm-services/abi-bindings/go/ZKValidatorSetRegistry"
-	sp1groth16verifier "github.com/ava-labs/icm-services/abi-bindings/go/external/sp1-contracts/v6.1.0/SP1VerifierGroth16"
+	sp1verifier "github.com/ava-labs/icm-services/abi-bindings/go/external/sp1-contracts/v6.1.0/SP1VerifierGroth16"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/accounts/abi"
@@ -79,11 +79,14 @@ func ZKValidatorSetRegistry(
 	// obtain the raw message (inner payload) since this is what the contract rebuilds the warp envelope from.
 	rawMessage := signedData[warpEnvelopeHeaderLen:]
 
+	// The fixture must be an address(0) (no-sender) message: srcAddrLen at bytes [48:52] is 0.
+	Expect(binary.BigEndian.Uint32(signedData[48:52])).Should(Equal(uint32(0)))
+
 	// sanity check the fixture's signedData hashes to the committed messageHash
 	Expect(sha256.Sum256(signedData)).Should(Equal(publicValues.messageHash))
 
 	// deploy the Groth16 verifier (no constructor args) and wait for it to land
-	sp1VerifierAddr, tx, _, err := sp1groth16verifier.DeploySP1VerifierGroth16(ethereumOpts, ethereumNetwork.EthClient)
+	sp1VerifierAddr, tx, _, err := sp1verifier.DeploySP1VerifierGroth16(ethereumOpts, ethereumNetwork.EthClient)
 	Expect(err).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, ethereumNetwork.EthClient, tx.Hash())
 
