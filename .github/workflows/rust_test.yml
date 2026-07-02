@@ -4,11 +4,11 @@ on:
   push:
     paths:
       - "scripts/tools/zk-proofs-gen/**"
-      - ".github/workflows/zk-proofs-gen-tests.yml"
+      - ".github/workflows/rust_test.yml"
   pull_request:
     paths:
       - "scripts/tools/zk-proofs-gen/**"
-      - ".github/workflows/zk-proofs-gen-tests.yml"
+      - ".github/workflows/rust_test.yml"
 
 jobs:
   fmt:
