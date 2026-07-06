@@ -23,7 +23,7 @@ contract OracleAdapterTest is Test {
     function setUp() public {
         vm.mockCall(
             WARP_PRECOMPILE,
-            abi.encodeWithSelector(IWarpMessenger.getBlockchainID.selector),
+            abi.encodeCall(IWarpMessenger.getBlockchainID, ()),
             abi.encode(THIS_CHAIN_ID)
         );
         adapter = new OracleAdapter(address(this));
