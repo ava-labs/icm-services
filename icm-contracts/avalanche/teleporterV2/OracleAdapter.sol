@@ -6,7 +6,13 @@
 pragma solidity 0.8.30;
 
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
-import {IAdapter, TeleporterMessageV2, TeleporterICMMessage} from "@common/ITeleporterMessengerV2.sol";
+import {
+    IAdapter,
+    IMessageSender,
+    IMessageVerifier,
+    TeleporterMessageV2,
+    TeleporterICMMessage
+} from "@common/ITeleporterMessengerV2.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
