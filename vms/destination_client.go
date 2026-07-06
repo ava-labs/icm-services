@@ -161,7 +161,7 @@ func CreateDestinationClients(
 			evmChainID.String(),
 			extDest.RPCEndpoint,
 			common.HexToAddress(extDest.ContractAddress),
-			[]string{extDest.PrivateKey},
+			[]string{extDest.DeliveryPrivateKey},
 			blockGasLimit,
 			big.NewInt(0), // maxBaseFee: 0 → estimate from the chain
 			big.NewInt(0), // suggestedPriorityFeeBuffer

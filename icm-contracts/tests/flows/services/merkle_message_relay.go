@@ -126,9 +126,17 @@ func MerkleMessageRelay(
 	Expect(err).Should(BeNil())
 	utils.FundRelayers(ctx, []testinfo.L1TestInfo{l1Info}, fundedKey, relayerKey)
 
+	// The message-delivery client must use a different Ethereum account than the validator-set
+	// updater (ethFundedKey) so their nonces never collide. Generate a dedicated delivery key
+	// and fund it from the network's funded account.
+	deliveryKey, err := crypto.GenerateKey()
+	Expect(err).Should(BeNil())
+	deliveryAddress := crypto.PubkeyToAddress(deliveryKey.PublicKey)
+	ethereumNetwork.FundAccount(ctx, deliveryAddress, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(10)))
+
 	relayerConfig := createMerkleMessageRelayConfig(
 		log, teleporter, l1Info, fundedAddress, relayerKey, ethereumNetwork,
-		registryAddr, l1TeleporterAddr, ethFundedKey, ethBlockchainID,
+		registryAddr, l1TeleporterAddr, ethFundedKey, deliveryKey, ethBlockchainID,
 	)
 	Expect(relayerConfig.Validate()).Should(BeNil())
 	relayerConfigPath := utils.WriteRelayerConfig(log, relayerConfig, utils.DefaultRelayerCfgFname)
@@ -242,6 +250,7 @@ func createMerkleMessageRelayConfig(
 	registryAddr common.Address,
 	teleporterAddr common.Address,
 	ethFundedKey *ecdsa.PrivateKey,
+	deliveryKey *ecdsa.PrivateKey,
 	ethBlockchainID ids.ID,
 ) relayercfg.Config {
 	baseConfig := utils.CreateDefaultRelayerConfig(
@@ -281,9 +290,12 @@ func createMerkleMessageRelayConfig(
 			PollIntervalSeconds:      testPollIntervalSeconds,
 			MaxUpdateIntervalSeconds: merkleMaxUpdateIntervalSeconds,
 
-			// Message delivery (enabled by setting DestinationBlockchainID)
+			// Message delivery (enabled by setting DestinationBlockchainID). The delivery
+			// client uses a dedicated key so it does not share a sender account with the
+			// validator-set updater (PrivateKey above).
 			DestinationBlockchainID: ethBlockchainID.String(),
 			TeleporterAddress:       teleporterAddr.Hex(),
+			DeliveryPrivateKey:      hex.EncodeToString(crypto.FromECDSA(deliveryKey)),
 		},
 	}
 

@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/libevm/common"
@@ -23,7 +24,8 @@ const defaultDeliveryQuorumNumerator = 67
 type ExternalEVMDestination struct {
 	// RPC endpoint of the external EVM chain (e.g. local geth node)
 	RPCEndpoint string `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
-	// Hex-encoded private key for signing transactions
+	// Hex-encoded private key used by the validator-set updater to sign
+	// registerValidatorSet/updateValidatorSet transactions.
 	PrivateKey string `mapstructure:"private-key" json:"private-key" sensitive:"true"`
 	// Address of the deployed updater contract
 	ContractAddress string `mapstructure:"contract-address" json:"contract-address"`
@@ -58,6 +60,12 @@ type ExternalEVMDestination struct {
 	// Setting it enables this external EVM chain as a TeleporterV2 message-delivery
 	// destination; leaving it empty makes the entry a validator-set updater only.
 	DestinationBlockchainID string `mapstructure:"destination-blockchain-id" json:"destination-blockchain-id,omitempty"` //nolint:lll
+	// DeliveryPrivateKey is the hex-encoded private key used by the relayer to sign
+	// message-delivery (receiveCrossChainMessage) transactions. It must be different from
+	// PrivateKey so the validator-set updater and the message-delivery client never share a
+	// sender account: sharing an account causes their nonces to collide on-chain. Required
+	// when DestinationBlockchainID is set.
+	DeliveryPrivateKey string `mapstructure:"delivery-private-key" json:"delivery-private-key,omitempty" sensitive:"true"` //nolint:lll
 	// TeleporterAddress is the TeleporterMessengerV2 contract address on the external
 	// chain. With the universal deployer it is identical on the source chain.
 	TeleporterAddress string `mapstructure:"teleporter-address" json:"teleporter-address,omitempty"`
@@ -114,8 +122,23 @@ func (e *ExternalEVMDestination) ValidateDelivery() error {
 	if e.PrivateKey == "" {
 		return errors.New("private-key required for external EVM delivery destination")
 	}
+	if e.DeliveryPrivateKey == "" {
+		return errors.New("delivery-private-key required for external EVM delivery destination")
+	}
+	// The validator-set updater (private-key) and the message-delivery client
+	// (delivery-private-key) must use different sender accounts; sharing one account
+	// makes their nonces collide on-chain.
+	if normalizeHexKey(e.DeliveryPrivateKey) == normalizeHexKey(e.PrivateKey) {
+		return errors.New("delivery-private-key must be different from private-key")
+	}
 	if e.QuorumNumerator == 0 {
 		e.QuorumNumerator = defaultDeliveryQuorumNumerator
 	}
 	return nil
+}
+
+// normalizeHexKey lowercases a hex-encoded private key and strips an optional "0x" prefix so
+// keys can be compared regardless of casing or prefix.
+func normalizeHexKey(key string) string {
+	return strings.TrimPrefix(strings.ToLower(key), "0x")
 }

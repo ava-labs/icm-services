@@ -167,10 +167,10 @@ func (s *concurrentSigner) issueTransaction(
 			break
 		}
 
-		// The cached nonce can fall behind the chain when another component sharing this
-		// account (e.g. the Merkle validator-set updater submitting registerValidatorSet)
-		// consumes a nonce out-of-band. Resync the nonce from the chain and retry rather
-		// than failing the delivery outright.
+		// Each sender account is expected to be owned by a single component, so the cached
+		// nonce should not fall behind the chain. As a defensive fallback (e.g. against an
+		// externally-submitted transaction from the same account), resync the nonce from the
+		// chain and retry rather than failing the delivery outright.
 		if isNonceTooLowError(err) && attempt < maxNonceResyncAttempts {
 			log.Warn("Nonce too low, resyncing nonce from chain and retrying", zap.Error(err))
 			if resyncErr := s.resyncNonce(); resyncErr != nil {
@@ -197,9 +197,9 @@ func (s *concurrentSigner) issueTransaction(
 	return nil
 }
 
-// resyncNonce refreshes the cached nonce from the latest mined state on the chain. It is
-// used to recover from "nonce too low" errors that arise when the account is also used by
-// another component (such as the validator-set updater).
+// resyncNonce refreshes the cached nonce from the latest mined state on the chain. It is a
+// defensive fallback used to recover from "nonce too low" errors, which should not occur
+// under normal operation now that each sender account is owned by a single component.
 func (s *concurrentSigner) resyncNonce() error {
 	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer cancel()

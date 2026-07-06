@@ -32,9 +32,14 @@ const (
 func EventFilterForProtocol(protocol config.Protocol) [][]common.Hash {
 	switch protocol.Type {
 	case config.TELEPORTER, config.TELEPORTER_V2:
-		// Both Teleporter and TeleporterV2 emit messages via the Warp precompile
-		// (TeleporterV2 through its adapter). The warp log's sender topic is the
-		// configured protocol address (the adapter/registry for the V2 Merkle path).
+		// Both Teleporter and TeleporterV2 emit messages via the Warp precompile, so we
+		// filter on the SendWarpMessage event with the configured protocol address as the
+		// sender topic.
+		//
+		// NOTE: not every TeleporterV2 contract emits a Warp log. The Merkle validator-set
+		// registry delivery path, for example, does not go through the Warp precompile, so
+		// this filter would not pick up its messages. We may want a dedicated protocol enum
+		// for the Merkle validator registry rather than overloading TELEPORTER_V2 here.
 		return [][]common.Hash{
 			{types.WarpPrecompileLogFilter},
 			{common.BytesToHash(protocol.Address[:])},

@@ -54,13 +54,9 @@ func NewICMBlockInfo(
 		logs []types.Log
 		err  error
 	)
-	// Check if the block contains warp logs, and fetch them from the client if it does.
-	// We test the block bloom against the event-signature topics we actually filter for
-	// (topics[0]) rather than a single hardcoded event hash. The warp precompile emits a
-	// SendWarpMessage log whenever a message is sent (for both the Teleporter v1 path and the
-	// TeleporterV2/Merkle adapter path), so gating on the warp event signature reliably detects
-	// relayable blocks across protocol versions. A bloom match may be a false positive; the
-	// FilterLogs call below performs the precise filtering.
+	// Only fetch logs when the block's bloom filter indicates that one of the event
+	// topics we filter for (topics[0]) is present. A bloom match may be a false
+	// positive; the FilterLogs call below performs the precise filtering.
 	if bloomContainsAnyEventTopic(header.Bloom, topics) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()

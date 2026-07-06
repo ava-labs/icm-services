@@ -74,9 +74,6 @@ func NewMessageHandlerFactory(
 	if err != nil {
 		return nil, fmt.Errorf("invalid teleporter v2 config: %w", err)
 	}
-	if pChainClient == nil {
-		return nil, fmt.Errorf("teleporter v2 merkle handler requires a P-Chain client")
-	}
 
 	return &factory{
 		messageConfig:   messageConfig,
