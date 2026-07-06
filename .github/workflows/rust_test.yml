@@ -18,7 +18,7 @@ jobs:
       run:
         working-directory: scripts/tools/zk-proofs-gen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install pinned nightly
         run: rustup toolchain install $(cat nightly-toolchain) --component rustfmt
       - name: Install taplo and cargo-sort
@@ -34,7 +34,7 @@ jobs:
       run:
         working-directory: scripts/tools/zk-proofs-gen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install pinned nightly
         run: rustup toolchain install $(cat nightly-toolchain) --component clippy
       - uses: Swatinem/rust-cache@v2
@@ -52,7 +52,7 @@ jobs:
       run:
         working-directory: scripts/tools/zk-proofs-gen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
