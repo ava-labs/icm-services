@@ -6,7 +6,7 @@
 pragma solidity 0.8.30;
 
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
-import {IOracleMessageReceiver} from "./IOracleMessageReceiver.sol";
+import {IAdapter, TeleporterMessageV2, TeleporterICMMessage} from "@common/ITeleporterMessengerV2.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -36,39 +36,25 @@ struct OracleMessage {
 }
 
 /**
- * @notice Standalone adapter that delivers validator-attested oracle messages to destination
- *         contracts on this L1.
+ * @notice IAdapter implementation that delivers validator-attested oracle messages via TeleporterV2.
  *
- * ## How it works
+ * Oracle messages originate from external chains (e.g. Solana). Validators on this L1 attest
+ * to them by signing a warp message whose sourceChainID equals this chain's own blockchain ID.
+ * The signed message rides through TeleporterMessengerV2.receiveCrossChainMessage using
+ * sourceBlockchainID == thisChainID (self-origin).
  *
- * 1. A relayer observes an event on an external chain (e.g. Solana).
- * 2. The relayer encodes the event as an OracleMessage and constructs a warp UnsignedMessage
- *    whose payload is abi.encode(sourceType, sourceAddress, destContract, sourceBlockHeight, nonce, payload).
- *    The warp message's SourceChainID is set to this L1's own chain ID.
- * 3. The relayer fans out ACP-118 signature requests to this L1's validators via handler ID 4.
- *    Each validator's sidecar independently verifies the event against the source chain before signing.
- * 4. Once a quorum of validators (>= 2/3 stake) has signed, the relayer aggregates the BLS
- *    signatures and includes the signed warp message as a predicate in the access list of the
- *    delivery transaction.
- * 5. During block execution, the warp precompile verifies the BLS aggregate against this L1's
- *    validator set and stores the verified WarpMessage in predicate storage.
- * 6. The relayer calls receiveOracleMessage(warpIndex, oracleMsg). This contract reads the
- *    precompile result, hashes the payload to bind the BLS verification to the oracle fields,
- *    enforces the source allowlist and replay protection, then calls the receiver.
+ * ## Attestation encoding
  *
- * ## Security model
+ * TeleporterICMMessage.attestation = abi.encode(uint32 warpIndex, OracleMessage oracleMsg)
  *
- * - BLS security: same as Avalanche consensus — requires >= 2/3 stake to be adversarial.
- * - Source allowlist: only configured (sourceType, sourceAddress) pairs are accepted, preventing
- *   a compromised validator from attesting to arbitrary sources.
- * - Replay protection: keyed on keccak256(sourceType, sourceAddress, nonce). Once delivered,
- *   a message ID can never be reused.
- * - No originSenderAddress check: oracle warp messages are constructed off-chain by the relayer
- *   (there is no sendWarpMessage call on the source), so originSenderAddress is address(0).
+ * ## Message payload encoding (TeleporterMessageV2.message)
+ *
+ * abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload)
+ * Destination contracts receive these fields via receiveTeleporterMessage.
  *
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
-contract OracleAdapter {
+contract OracleAdapter is IAdapter {
     IWarpMessenger public constant WARP_MESSENGER =
         IWarpMessenger(0x0200000000000000000000000000000000000005);
 
@@ -78,6 +64,8 @@ contract OracleAdapter {
     mapping(bytes32 => bool) private _allowedSources;
 
     // keccak256(abi.encode(sourceType, sourceAddress, nonce)) => delivered
+    // Kept alongside Teleporter's own replay protection because oracle nonce is unique
+    // per (sourceType, sourceAddress) pair, not globally across all sources.
     mapping(bytes32 => bool) private _processedMessages;
 
     // -------------------------------------------------------------------------
@@ -85,13 +73,13 @@ contract OracleAdapter {
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Emitted when an oracle message is successfully delivered.
-     * @param messageID    Replay-protection key: keccak256(sourceType, sourceAddress, nonce).
-     * @param sourceType   External chain type (e.g. "solana").
+     * @notice Emitted when an oracle message passes verification and is marked for delivery.
+     * @param messageID     Replay-protection key: keccak256(sourceType, sourceAddress, nonce).
+     * @param sourceType    External chain type (e.g. "solana").
      * @param sourceAddress Source program/contract address.
-     * @param destContract Destination contract that received the payload.
+     * @param destContract  Destination contract that will receive the payload.
      */
-    event OracleMessageReceived(
+    event OracleMessageVerified(
         bytes32 indexed messageID,
         string sourceType,
         string sourceAddress,
@@ -142,6 +130,84 @@ contract OracleAdapter {
     }
 
     // -------------------------------------------------------------------------
+    // IAdapter
+    // -------------------------------------------------------------------------
+
+    /**
+     * @inheritdoc IMessageSender
+     */
+    function sendMessage(
+        TeleporterMessageV2 calldata message
+    ) external override {
+        WARP_MESSENGER.sendWarpMessage(abi.encode(message));
+    }
+
+    /**
+     * @notice Verify a validator-attested oracle message.
+     *
+     * @dev The calling transaction MUST include the signed warp oracle message in its
+     *      access list. The warp precompile verifies the BLS aggregate during block
+     *      execution before this function runs.
+     *
+     *      message.attestation must be abi.encode(uint32 warpIndex, OracleMessage oracleMsg).
+     *      message.sourceBlockchainID must equal this chain's blockchain ID.
+     *
+     * @inheritdoc IMessageVerifier
+     */
+    function verifyMessage(
+        TeleporterICMMessage calldata message
+    ) external override returns (bool) {
+        (uint32 warpIndex, OracleMessage memory oracleMsg) =
+            abi.decode(message.attestation, (uint32, OracleMessage));
+
+        // 1. Read the precompile-verified warp message. The BLS aggregate was already
+        //    checked against this L1's validator set during block execution.
+        (WarpMessage memory warp, bool valid) = WARP_MESSENGER.getVerifiedWarpMessage(warpIndex);
+        if (!valid) revert InvalidWarpMessage();
+
+        // 2. Oracle validators sign with this L1's own blockchain ID as source.
+        bytes32 thisChainID = WARP_MESSENGER.getBlockchainID();
+        if (warp.sourceChainID != thisChainID) {
+            revert WrongSourceChain(warp.sourceChainID, thisChainID);
+        }
+
+        // 3. Bind the BLS-verified payload to the oracle fields provided in the attestation.
+        bytes32 warpPayloadHash = keccak256(warp.payload);
+        bytes32 msgHash = keccak256(
+            abi.encode(
+                oracleMsg.sourceType,
+                oracleMsg.sourceAddress,
+                oracleMsg.destContract,
+                oracleMsg.sourceBlockHeight,
+                oracleMsg.nonce,
+                oracleMsg.payload
+            )
+        );
+        if (warpPayloadHash != msgHash) revert PayloadMismatch();
+
+        // 4. Source allowlist check. Validators also enforce this per-node, but the on-chain
+        //    check ensures a rogue validator cannot deliver to an unconfigured source.
+        bytes32 sourceKey = keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress));
+        if (!_allowedSources[sourceKey]) {
+            revert SourceNotAllowed(oracleMsg.sourceType, oracleMsg.sourceAddress);
+        }
+
+        // 5. Replay protection keyed on (sourceType, sourceAddress, nonce). Independent of
+        //    Teleporter's messageNonce-based replay protection because oracle nonce is unique
+        //    per (sourceType, sourceAddress) pair, not globally.
+        bytes32 messageID =
+            keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.nonce));
+        if (_processedMessages[messageID]) revert AlreadyProcessed(messageID);
+        _processedMessages[messageID] = true;
+
+        emit OracleMessageVerified(
+            messageID, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
+        );
+
+        return true;
+    }
+
+    // -------------------------------------------------------------------------
     // Admin
     // -------------------------------------------------------------------------
 
@@ -169,91 +235,6 @@ contract OracleAdapter {
         if (newOwner == address(0)) revert ZeroAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
-    }
-
-    // -------------------------------------------------------------------------
-    // Core
-    // -------------------------------------------------------------------------
-
-    /**
-     * @notice Deliver a validator-attested oracle message to its destination contract.
-     *
-     * @dev The calling transaction MUST include the signed warp oracle message in its
-     *      access list at index `warpIndex`. The warp precompile verifies the BLS aggregate
-     *      during block execution before this function runs.
-     *
-     *      The warp payload must equal abi.encode(
-     *          oracleMsg.sourceType,
-     *          oracleMsg.sourceAddress,
-     *          oracleMsg.destContract,
-     *          oracleMsg.sourceBlockHeight,
-     *          oracleMsg.nonce,
-     *          oracleMsg.payload
-     *      ). The relayer constructs the warp message with this exact encoding.
-     *
-     * @param warpIndex Index of the verified warp message in predicate storage.
-     * @param oracleMsg The oracle message, provided as calldata by the relayer. Its hash
-     *                  is checked against the warp payload to bind BLS verification to content.
-     */
-    function receiveOracleMessage(uint32 warpIndex, OracleMessage calldata oracleMsg) external {
-        // 1. Read the precompile-verified warp message. The BLS aggregate was already
-        //    checked against this L1's validator set during block execution.
-        (WarpMessage memory warp, bool valid) = WARP_MESSENGER.getVerifiedWarpMessage(warpIndex);
-        if (!valid) revert InvalidWarpMessage();
-
-        // 2. The warp SourceChainID must be this chain. Oracle validators sign with the
-        //    L1's own warp signer (SourceChainID = this chain's blockchain ID), so a message
-        //    from a different chain cannot be accepted here.
-        bytes32 thisChainID = WARP_MESSENGER.getBlockchainID();
-        if (warp.sourceChainID != thisChainID) {
-            revert WrongSourceChain(warp.sourceChainID, thisChainID);
-        }
-
-        // 3. Bind the BLS-verified payload to the oracle message fields provided by the relayer.
-        //    The warp payload is abi.encode of the individual fields (NOT abi.encode of the struct,
-        //    which would add an extra indirection for dynamic types).
-        bytes32 warpPayloadHash = keccak256(warp.payload);
-        bytes32 msgHash = keccak256(
-            abi.encode(
-                oracleMsg.sourceType,
-                oracleMsg.sourceAddress,
-                oracleMsg.destContract,
-                oracleMsg.sourceBlockHeight,
-                oracleMsg.nonce,
-                oracleMsg.payload
-            )
-        );
-        if (warpPayloadHash != msgHash) revert PayloadMismatch();
-
-        // 4. Source allowlist check. Validators also enforce this per-node, but the on-chain
-        //    check ensures a rogue validator cannot deliver to an unconfigured source.
-        bytes32 sourceKey = keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress));
-        if (!_allowedSources[sourceKey]) {
-            revert SourceNotAllowed(oracleMsg.sourceType, oracleMsg.sourceAddress);
-        }
-
-        // 5. Replay protection. MessageID commits to (sourceType, sourceAddress, nonce).
-        //    The nonce must be unique per source; the contract does not enforce monotonicity,
-        //    only uniqueness. Callers should treat nonces as opaque replay-protection tokens.
-        bytes32 messageID =
-            keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.nonce));
-        if (_processedMessages[messageID]) revert AlreadyProcessed(messageID);
-        _processedMessages[messageID] = true;
-
-        // 6. Emit before external call (CEI pattern), then deliver to destination.
-        //    The destContract is part of the signed warp payload (verified in step 3),
-        //    so the relayer cannot redirect to an arbitrary contract.
-        emit OracleMessageReceived(
-            messageID, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
-        );
-
-        IOracleMessageReceiver(oracleMsg.destContract).receiveOracleMessage(
-            warp.sourceChainID,
-            oracleMsg.sourceType,
-            oracleMsg.sourceAddress,
-            oracleMsg.nonce,
-            oracleMsg.payload
-        );
     }
 
     // -------------------------------------------------------------------------

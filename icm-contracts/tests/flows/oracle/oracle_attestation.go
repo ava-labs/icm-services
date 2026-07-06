@@ -23,6 +23,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	mockoraclereceiver "github.com/ava-labs/icm-services/abi-bindings/go/mocks/MockOracleReceiver"
 	oracleadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/OracleAdapter"
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
@@ -173,10 +174,10 @@ func init() {
 }
 
 // OracleAttestation tests the full oracle attestation path:
-//  1. Deploy OracleAdapter and MockOracleReceiver on the L1
-//  2. Construct an OracleMessage (ABI-encoded warp payload) using the mock receiver as destContract
-//  3. Submit to /oracle/aggregate-signatures and receive a BLS-signed warp message
-//  4. Deliver the signed message on-chain via OracleAdapter.receiveOracleMessage
+//  1. Deploy OracleAdapter and TeleporterMessengerV2 on the L1
+//  2. Deploy MockOracleReceiver pointing to TeleporterMessengerV2
+//  3. Construct an OracleMessage and request BLS aggregate signature
+//  4. Deliver the signed message via TeleporterMessengerV2.receiveCrossChainMessage
 //  5. Assert MockOracleReceiver received the expected payload
 //
 // When solanaRPCURL is empty the flow uses the mock sidecar with dummy data.
@@ -190,7 +191,7 @@ func OracleAttestation(
 	l1Info testinfo.L1TestInfo,
 	solanaRPCURL string,
 ) {
-	ginkgo.By("Step 1: Deploy OracleAdapter and MockOracleReceiver")
+	ginkgo.By("Step 1: Deploy OracleAdapter")
 	_, fundedKey := avalancheNetwork.GetFundedAccountInfo()
 	deployOpts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1Info.EVMChainID)
 	Expect(err).Should(BeNil())
@@ -202,8 +203,17 @@ func OracleAttestation(
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, adapterDeployTx.Hash())
 	log.Info("Deployed OracleAdapter", zap.Stringer("address", adapterAddress))
 
+	ginkgo.By("Step 1b: Deploy TeleporterMessengerV2 with OracleAdapter as verifier")
+	teleporterAddress := utils.DeployTeleporterV2(ctx, &l1Info, adapterAddress, fundedKey)
+	teleporterContract, err := teleportermessengerv2.NewTeleporterMessengerV2(
+		teleporterAddress, l1Info.EthClient,
+	)
+	Expect(err).Should(BeNil())
+	log.Info("Deployed TeleporterMessengerV2", zap.Stringer("address", teleporterAddress))
+
+	ginkgo.By("Step 1c: Deploy MockOracleReceiver pointing to TeleporterMessengerV2")
 	mockAddress, mockDeployTx, mockContract, err := mockoraclereceiver.DeployMockOracleReceiver(
-		deployOpts, l1Info.EthClient, adapterAddress,
+		deployOpts, l1Info.EthClient, teleporterAddress,
 	)
 	Expect(err).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, mockDeployTx.Hash())
@@ -324,15 +334,35 @@ func OracleAttestation(
 
 	log.Info("BLS aggregation succeeded", zap.Stringer("messageID", signedMsg.ID()))
 
+	thisChainID := [32]byte(l1Info.BlockchainID)
 	fundedAddress := utils.PrivateKeyToAddress(fundedKey)
+
+	buildICMMessage := func(msg oracleadapter.OracleMessage) (teleportermessengerv2.TeleporterICMMessage, error) {
+		return oracleadapter.BuildOracleICMMessage(
+			0,
+			msg,
+			teleporterAddress,
+			thisChainID,
+			networkID,
+			new(big.Int).SetUint64(500_000),
+		)
+	}
+
 	sendExpectRevert := func(msg oracleadapter.OracleMessage) {
-		data, packErr := oracleadapter.PackReceiveOracleMessage(0, msg)
+		icmMsg, buildErr := buildICMMessage(msg)
+		Expect(buildErr).Should(BeNil())
+		data, packErr := teleportermessengerv2.PackReceiveCrossChainMessageV2(
+			icmMsg.Message,
+			l1Info.BlockchainID,
+			icmMsg.Attestation,
+			common.Address{},
+		)
 		Expect(packErr).Should(BeNil())
 		gasFeeCap, gasTipCap, txNonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
 		tx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:    l1Info.EVMChainID,
 			Nonce:      txNonce,
-			To:         &adapterAddress,
+			To:         &teleporterAddress,
 			Gas:        500_000,
 			GasFeeCap:  gasFeeCap,
 			GasTipCap:  gasTipCap,
@@ -383,8 +413,8 @@ func OracleAttestation(
 	Expect(restoreErr).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, restoreTx.Hash())
 
-	ginkgo.By("Step 6: Deliver the signed oracle message on-chain")
-	callData, packErr := oracleadapter.PackReceiveOracleMessage(0, oracleadapter.OracleMessage{
+	ginkgo.By("Step 6: Deliver the signed oracle message via TeleporterMessengerV2")
+	icmMsg, err := buildICMMessage(oracleadapter.OracleMessage{
 		SourceType:        "solana",
 		SourceAddress:     sourceAddress,
 		DestContract:      mockAddress,
@@ -392,13 +422,21 @@ func OracleAttestation(
 		Nonce:             1,
 		Payload:           msgPayload,
 	})
+	Expect(err).Should(BeNil())
+
+	callData, packErr := teleportermessengerv2.PackReceiveCrossChainMessageV2(
+		icmMsg.Message,
+		l1Info.BlockchainID,
+		icmMsg.Attestation,
+		common.Address{},
+	)
 	Expect(packErr).Should(BeNil())
 
 	gasFeeCap, gasTipCap, txNonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
 	deliveryTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:    l1Info.EVMChainID,
 		Nonce:      txNonce,
-		To:         &adapterAddress,
+		To:         &teleporterAddress,
 		Gas:        500_000,
 		GasFeeCap:  gasFeeCap,
 		GasTipCap:  gasTipCap,
@@ -421,6 +459,22 @@ func OracleAttestation(
 	lastSourceAddr, assertErr := mockContract.LastSourceAddress(&bind.CallOpts{})
 	Expect(assertErr).Should(BeNil())
 	Expect(lastSourceAddr).Should(Equal(sourceAddress))
+
+	lastSourceChainID, assertErr := mockContract.LastSourceChainID(&bind.CallOpts{})
+	Expect(assertErr).Should(BeNil())
+	Expect(lastSourceChainID).Should(Equal(thisChainID))
+
+	ginkgo.By("Step 8: Assert Teleporter recorded the message as received")
+	msgID, assertErr := teleporterContract.CalculateMessageID(
+		&bind.CallOpts{},
+		thisChainID,
+		thisChainID,
+		icmMsg.Message.MessageNonce,
+	)
+	Expect(assertErr).Should(BeNil())
+	received, assertErr := teleporterContract.MessageReceived(&bind.CallOpts{}, msgID)
+	Expect(assertErr).Should(BeNil())
+	Expect(received).Should(BeTrue())
 
 	ginkgo.By("Sad path 4: replay of already-delivered nonce is rejected (AlreadyProcessed)")
 	sendExpectRevert(oracleadapter.OracleMessage{

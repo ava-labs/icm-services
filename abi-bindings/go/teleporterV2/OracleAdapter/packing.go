@@ -3,10 +3,126 @@
 
 package oracleadapter
 
-func PackReceiveOracleMessage(warpIndex uint32, oracleMsg OracleMessage) ([]byte, error) {
-	abi, err := OracleAdapterMetaData.GetAbi()
+import (
+	"fmt"
+	"math/big"
+
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
+	"github.com/ava-labs/libevm/accounts/abi"
+	"github.com/ava-labs/libevm/common"
+)
+
+var (
+	oracleAttestationArgs abi.Arguments
+	oracleMessageBytesArgs abi.Arguments
+)
+
+func init() {
+	stringT, err := abi.NewType("string", "", nil)
 	if err != nil {
-		return nil, err
+		panic(fmt.Sprintf("oracle packing: failed to create string type: %v", err))
 	}
-	return abi.Pack("receiveOracleMessage", warpIndex, oracleMsg)
+	uint32T, err := abi.NewType("uint32", "", nil)
+	if err != nil {
+		panic(fmt.Sprintf("oracle packing: failed to create uint32 type: %v", err))
+	}
+	uint64T, err := abi.NewType("uint64", "", nil)
+	if err != nil {
+		panic(fmt.Sprintf("oracle packing: failed to create uint64 type: %v", err))
+	}
+	bytesT, err := abi.NewType("bytes", "", nil)
+	if err != nil {
+		panic(fmt.Sprintf("oracle packing: failed to create bytes type: %v", err))
+	}
+	oracleMsgT, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
+		{Name: "sourceType", Type: "string"},
+		{Name: "sourceAddress", Type: "string"},
+		{Name: "destContract", Type: "address"},
+		{Name: "sourceBlockHeight", Type: "uint64"},
+		{Name: "nonce", Type: "uint64"},
+		{Name: "payload", Type: "bytes"},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("oracle packing: failed to create OracleMessage tuple type: %v", err))
+	}
+
+	// abi.encode(uint32 warpIndex, OracleMessage oracleMsg) — stored in attestation
+	oracleAttestationArgs = abi.Arguments{
+		{Name: "warpIndex", Type: uint32T},
+		{Name: "oracleMsg", Type: oracleMsgT},
+	}
+
+	// abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload)
+	// stored in TeleporterMessageV2.message and decoded by destination contracts
+	oracleMessageBytesArgs = abi.Arguments{
+		{Name: "sourceType", Type: stringT},
+		{Name: "sourceAddress", Type: stringT},
+		{Name: "sourceBlockHeight", Type: uint64T},
+		{Name: "nonce", Type: uint64T},
+		{Name: "payload", Type: bytesT},
+	}
+}
+
+// PackOracleAttestation encodes the warp index and oracle message into the
+// attestation bytes expected by OracleAdapter.verifyMessage.
+func PackOracleAttestation(warpIndex uint32, oracleMsg OracleMessage) ([]byte, error) {
+	return oracleAttestationArgs.Pack(warpIndex, oracleMsg)
+}
+
+// PackOracleMessageBytes encodes oracle fields into the message bytes stored in
+// TeleporterMessageV2.message. Destination contracts decode these fields via
+// abi.decode(message, (string, string, uint64, uint64, bytes)).
+func PackOracleMessageBytes(oracleMsg OracleMessage) ([]byte, error) {
+	return oracleMessageBytesArgs.Pack(
+		oracleMsg.SourceType,
+		oracleMsg.SourceAddress,
+		oracleMsg.SourceBlockHeight,
+		oracleMsg.Nonce,
+		oracleMsg.Payload,
+	)
+}
+
+// BuildOracleICMMessage constructs a TeleporterICMMessage for an oracle delivery.
+//
+// The relayer supplies:
+//   - warpIndex: index of the verified warp message in predicate storage
+//   - oracleMsg: the oracle message fields
+//   - teleporterAddress: address of TeleporterMessengerV2 on this chain (used as originTeleporterAddress)
+//   - thisChainID: this L1's blockchain ID (used as both sourceBlockchainID and destinationBlockchainID)
+//   - networkID: ICM network ID of this chain
+//   - requiredGasLimit: gas limit for the destination contract call
+func BuildOracleICMMessage(
+	warpIndex uint32,
+	oracleMsg OracleMessage,
+	teleporterAddress common.Address,
+	thisChainID [32]byte,
+	networkID uint32,
+	requiredGasLimit *big.Int,
+) (teleportermessengerv2.TeleporterICMMessage, error) {
+	attestation, err := PackOracleAttestation(warpIndex, oracleMsg)
+	if err != nil {
+		return teleportermessengerv2.TeleporterICMMessage{}, fmt.Errorf("pack oracle attestation: %w", err)
+	}
+
+	msgBytes, err := PackOracleMessageBytes(oracleMsg)
+	if err != nil {
+		return teleportermessengerv2.TeleporterICMMessage{}, fmt.Errorf("pack oracle message bytes: %w", err)
+	}
+
+	return teleportermessengerv2.TeleporterICMMessage{
+		Message: teleportermessengerv2.TeleporterMessageV2{
+			MessageNonce:            new(big.Int).SetUint64(oracleMsg.Nonce),
+			OriginSenderAddress:     common.Address{}, // address(0) — no EVM sender for oracle messages
+			OriginTeleporterAddress: teleporterAddress,
+			DestinationBlockchainID: thisChainID,
+			DestinationAddress:      oracleMsg.DestContract,
+			RequiredGasLimit:        requiredGasLimit,
+			AllowedRelayerAddresses: []common.Address{},
+			Receipts:                []teleportermessengerv2.TeleporterMessageReceipt{},
+			Message:                 msgBytes,
+		},
+		SourceNetworkID:    networkID,
+		SourceBlockchainID: thisChainID,
+		Attestation:        attestation,
+	}, nil
 }

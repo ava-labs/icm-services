@@ -5,53 +5,64 @@
 
 pragma solidity 0.8.30;
 
-import {IOracleMessageReceiver} from "../teleporterV2/IOracleMessageReceiver.sol";
+import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 
 /**
  * @dev Test receiver for oracle E2E tests. Records the last delivered oracle message
  *      so tests can assert on payload correctness.
  *
+ *      Implements ITeleporterReceiver; decodes oracle fields from the message bytes.
+ *      message is abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload).
+ *
  *      NOT FOR PRODUCTION USE.
  */
-contract MockOracleReceiver is IOracleMessageReceiver {
-    address public immutable oracleAdapter;
+contract MockOracleReceiver is ITeleporterReceiver {
+    address public immutable teleporterMessenger;
 
     bytes32 public lastSourceChainID;
     string public lastSourceType;
     string public lastSourceAddress;
+    uint64 public lastSourceBlockHeight;
     uint64 public lastNonce;
     bytes public lastPayload;
     uint256 public receiveCount;
 
-    error OnlyOracleAdapter(address caller, address expected);
+    error OnlyTeleporterMessenger(address caller, address expected);
     error ZeroAddress();
 
     constructor(
-        address oracleAdapter_
+        address teleporterMessenger_
     ) {
-        if (oracleAdapter_ == address(0)) revert ZeroAddress();
-        oracleAdapter = oracleAdapter_;
+        if (teleporterMessenger_ == address(0)) revert ZeroAddress();
+        teleporterMessenger = teleporterMessenger_;
     }
 
     /**
-     * @inheritdoc IOracleMessageReceiver
+     * @inheritdoc ITeleporterReceiver
      */
-    function receiveOracleMessage(
-        bytes32 sourceChainID,
-        string calldata sourceType,
-        string calldata sourceAddress,
-        uint64 nonce,
-        bytes calldata payload
+    function receiveTeleporterMessage(
+        bytes32 sourceBlockchainID,
+        address, // originSenderAddress is address(0) for oracle messages
+        bytes calldata message
     ) external override {
-        if (msg.sender != oracleAdapter) {
-            revert OnlyOracleAdapter(msg.sender, oracleAdapter);
+        if (msg.sender != teleporterMessenger) {
+            revert OnlyTeleporterMessenger(msg.sender, teleporterMessenger);
         }
 
-        lastSourceChainID = sourceChainID;
+        (
+            string memory sourceType,
+            string memory sourceAddress,
+            uint64 sourceBlockHeight,
+            uint64 nonce,
+            bytes memory oraclePayload
+        ) = abi.decode(message, (string, string, uint64, uint64, bytes));
+
+        lastSourceChainID = sourceBlockchainID;
         lastSourceType = sourceType;
         lastSourceAddress = sourceAddress;
+        lastSourceBlockHeight = sourceBlockHeight;
         lastNonce = nonce;
-        lastPayload = payload;
+        lastPayload = oraclePayload;
         ++receiveCount;
     }
 }
