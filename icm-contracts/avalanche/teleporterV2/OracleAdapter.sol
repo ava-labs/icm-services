@@ -35,7 +35,7 @@ struct OracleMessage {
     address destContract;
     // Block or slot number on the source chain at which the event occurred.
     uint64 sourceBlockHeight;
-    // Monotonically increasing per (sourceType, sourceAddress). Enforces replay protection.
+    // Monotonically increasing globally across all oracle sources. Enforces replay protection.
     uint64 nonce;
     // Application-level data from the source chain event.
     bytes payload;
@@ -69,10 +69,10 @@ contract OracleAdapter is IAdapter {
     // keccak256(abi.encode(sourceType, sourceAddress)) => allowed
     mapping(bytes32 => bool) private _allowedSources;
 
-    // keccak256(abi.encode(sourceType, sourceAddress, nonce)) => delivered
-    // Kept alongside Teleporter's own replay protection because oracle nonce is unique
-    // per (sourceType, sourceAddress) pair, not globally across all sources.
-    mapping(bytes32 => bool) private _processedMessages;
+    // global oracle nonce => delivered
+    // Kept alongside Teleporter's own replay protection as defense-in-depth: guards
+    // against direct verifyMessage calls made outside of TeleporterMessengerV2.
+    mapping(uint64 => bool) private _processedMessages;
 
     // -------------------------------------------------------------------------
     // Events
@@ -80,13 +80,13 @@ contract OracleAdapter is IAdapter {
 
     /**
      * @notice Emitted when an oracle message passes verification and is marked for delivery.
-     * @param messageID     Replay-protection key: keccak256(sourceType, sourceAddress, nonce).
+     * @param nonce         Global oracle nonce used as the replay-protection key.
      * @param sourceType    External chain type (e.g. "solana").
      * @param sourceAddress Source program/contract address.
      * @param destContract  Destination contract that will receive the payload.
      */
     event OracleMessageVerified(
-        bytes32 indexed messageID,
+        uint64 indexed nonce,
         string sourceType,
         string sourceAddress,
         address indexed destContract
@@ -110,7 +110,7 @@ contract OracleAdapter is IAdapter {
     error WrongSourceChain(bytes32 got, bytes32 want);
     error PayloadMismatch();
     error SourceNotAllowed(string sourceType, string sourceAddress);
-    error AlreadyProcessed(bytes32 messageID);
+    error AlreadyProcessed(uint64 nonce);
     error Unauthorized();
     error ZeroAddress();
 
@@ -198,16 +198,13 @@ contract OracleAdapter is IAdapter {
             revert SourceNotAllowed(oracleMsg.sourceType, oracleMsg.sourceAddress);
         }
 
-        // 5. Replay protection keyed on (sourceType, sourceAddress, nonce). Independent of
-        //    Teleporter's messageNonce-based replay protection because oracle nonce is unique
-        //    per (sourceType, sourceAddress) pair, not globally.
-        bytes32 messageID =
-            keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.nonce));
-        if (_processedMessages[messageID]) revert AlreadyProcessed(messageID);
-        _processedMessages[messageID] = true;
+        // 5. Replay protection on the global oracle nonce. Independent of Teleporter's own
+        //    replay protection — guards against direct verifyMessage calls outside TeleporterV2.
+        if (_processedMessages[oracleMsg.nonce]) revert AlreadyProcessed(oracleMsg.nonce);
+        _processedMessages[oracleMsg.nonce] = true;
 
         emit OracleMessageVerified(
-            messageID, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
+            oracleMsg.nonce, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
         );
 
         return true;
@@ -258,12 +255,11 @@ contract OracleAdapter is IAdapter {
     }
 
     /**
-     * @notice Returns true if the message with the given ID has already been delivered.
-     * @dev messageID = keccak256(abi.encode(sourceType, sourceAddress, nonce))
+     * @notice Returns true if the global oracle nonce has already been delivered.
      */
     function isProcessed(
-        bytes32 messageID
+        uint64 nonce
     ) external view returns (bool) {
-        return _processedMessages[messageID];
+        return _processedMessages[nonce];
     }
 }

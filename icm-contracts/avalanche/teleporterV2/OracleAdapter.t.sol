@@ -39,16 +39,14 @@ contract OracleAdapterTest is Test {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         _mockWarp(0, oracleMsg, true);
 
-        bytes32 messageID =
-            keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.nonce));
         vm.expectEmit(true, true, false, true, address(adapter));
         emit OracleAdapter.OracleMessageVerified(
-            messageID, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
+            oracleMsg.nonce, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
         );
 
         bool result = adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
         assertTrue(result);
-        assertTrue(adapter.isProcessed(messageID));
+        assertTrue(adapter.isProcessed(oracleMsg.nonce));
     }
 
     // -------------------------------------------------------------------------
@@ -119,12 +117,10 @@ contract OracleAdapterTest is Test {
         _mockWarp(0, oracleMsg, true);
         adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
 
-        // Second delivery: different warp index, same oracle (sourceType, sourceAddress, nonce).
+        // Second delivery: different warp index, same global nonce.
         _mockWarp(1, oracleMsg, true);
-        bytes32 messageID =
-            keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.nonce));
         vm.expectRevert(
-            abi.encodeWithSelector(OracleAdapter.AlreadyProcessed.selector, messageID)
+            abi.encodeWithSelector(OracleAdapter.AlreadyProcessed.selector, oracleMsg.nonce)
         );
         adapter.verifyMessage(_buildICMMsg(1, oracleMsg));
     }
