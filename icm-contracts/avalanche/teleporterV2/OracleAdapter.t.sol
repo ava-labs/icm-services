@@ -7,7 +7,11 @@ pragma solidity 0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
 import {OracleAdapter, OracleMessage} from "./OracleAdapter.sol";
-import {TeleporterICMMessage, TeleporterMessageV2, TeleporterMessageReceipt} from "@common/ITeleporterMessengerV2.sol";
+import {
+    TeleporterICMMessage,
+    TeleporterMessageV2,
+    TeleporterMessageReceipt
+} from "@common/ITeleporterMessengerV2.sol";
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 
@@ -35,7 +39,7 @@ contract OracleAdapterTest is Test {
     // verifyMessage — happy path + event
     // -------------------------------------------------------------------------
 
-    function test_verifyMessage_happyPath() public {
+    function testVerifyMessageHappyPath() public {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         _mockWarp(0, oracleMsg, true);
 
@@ -53,7 +57,7 @@ contract OracleAdapterTest is Test {
     // verifyMessage — revert paths
     // -------------------------------------------------------------------------
 
-    function test_verifyMessage_invalidWarp() public {
+    function testVerifyMessageInvalidWarp() public {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         _mockWarp(0, oracleMsg, false);
 
@@ -61,7 +65,7 @@ contract OracleAdapterTest is Test {
         adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
     }
 
-    function test_verifyMessage_wrongSourceChain() public {
+    function testVerifyMessageWrongSourceChain() public {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         bytes32 wrongChainID = bytes32(uint256(0xDEAD));
 
@@ -84,7 +88,7 @@ contract OracleAdapterTest is Test {
         adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
     }
 
-    function test_verifyMessage_sourceNotAllowed() public {
+    function testVerifyMessageSourceNotAllowed() public {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         oracleMsg.sourceType = "bitcoin";
         oracleMsg.sourceAddress = "bc1qunlisted";
@@ -100,16 +104,14 @@ contract OracleAdapterTest is Test {
         adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
     }
 
-    function test_verifyMessage_alreadyProcessed() public {
+    function testVerifyMessageAlreadyProcessed() public {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         _mockWarp(0, oracleMsg, true);
         adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
 
         // Second delivery: different warp index, same global nonce.
         _mockWarp(1, oracleMsg, true);
-        vm.expectRevert(
-            abi.encodeWithSelector(OracleAdapter.AlreadyProcessed.selector, oracleMsg.nonce)
-        );
+        vm.expectRevert(abi.encodeWithSelector(OracleAdapter.AlreadyProcessed.selector, oracleMsg.nonce));
         adapter.verifyMessage(_buildICMMsg(1, oracleMsg));
     }
 
@@ -117,7 +119,7 @@ contract OracleAdapterTest is Test {
     // sendMessage
     // -------------------------------------------------------------------------
 
-    function test_sendMessage_callsWarpPrecompile() public {
+    function testSendMessageCallsWarpPrecompile() public {
         TeleporterMessageV2 memory teleporterMsg = _emptyTeleporterMsg();
         bytes memory expectedPayload = abi.encode(teleporterMsg);
 
@@ -137,19 +139,19 @@ contract OracleAdapterTest is Test {
     // Admin — onlyOwner guards
     // -------------------------------------------------------------------------
 
-    function test_setAllowedSource_onlyOwner() public {
+    function testSetAllowedSourceOnlyOwner() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(OracleAdapter.Unauthorized.selector);
         adapter.setAllowedSource("solana", "addr", true);
     }
 
-    function test_transferOwnership_onlyOwner() public {
+    function testTransferOwnershipOnlyOwner() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(OracleAdapter.Unauthorized.selector);
         adapter.transferOwnership(address(0xDEAD));
     }
 
-    function test_transferOwnership_zeroAddress() public {
+    function testTransferOwnershipZeroAddress() public {
         vm.expectRevert(OracleAdapter.ZeroAddress.selector);
         adapter.transferOwnership(address(0));
     }
@@ -169,17 +171,6 @@ contract OracleAdapterTest is Test {
         });
     }
 
-    function _oracleMsgPayload(OracleMessage memory oracleMsg) internal pure returns (bytes memory) {
-        return abi.encode(
-            oracleMsg.sourceType,
-            oracleMsg.sourceAddress,
-            oracleMsg.destContract,
-            oracleMsg.sourceBlockHeight,
-            oracleMsg.nonce,
-            oracleMsg.payload
-        );
-    }
-
     function _mockWarp(uint32 warpIndex, OracleMessage memory oracleMsg, bool valid) internal {
         WarpMessage memory warpMsg = WarpMessage({
             sourceChainID: THIS_CHAIN_ID,
@@ -190,6 +181,19 @@ contract OracleAdapterTest is Test {
             WARP_PRECOMPILE,
             abi.encodeCall(IWarpMessenger.getVerifiedWarpMessage, (warpIndex)),
             abi.encode(warpMsg, valid)
+        );
+    }
+
+    function _oracleMsgPayload(
+        OracleMessage memory oracleMsg
+    ) internal pure returns (bytes memory) {
+        return abi.encode(
+            oracleMsg.sourceType,
+            oracleMsg.sourceAddress,
+            oracleMsg.destContract,
+            oracleMsg.sourceBlockHeight,
+            oracleMsg.nonce,
+            oracleMsg.payload
         );
     }
 
@@ -237,11 +241,7 @@ contract OracleAdapterTest is Test {
 contract InlineOracleReceiver is ITeleporterReceiver {
     bytes public lastMessage;
 
-    function receiveTeleporterMessage(
-        bytes32,
-        address,
-        bytes calldata message
-    ) external override {
+    function receiveTeleporterMessage(bytes32, address, bytes calldata message) external override {
         lastMessage = message;
     }
 }
