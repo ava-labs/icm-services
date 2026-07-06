@@ -68,7 +68,7 @@ contract OracleAdapter is IAdapter {
     address public owner;
 
     // keccak256(abi.encode(sourceType, sourceAddress)) => allowed
-    mapping(bytes32 => bool) private _allowedSources;
+    mapping(string => mapping(string => bool)) private _allowedSources;
 
     // global oracle nonce => delivered
     // Kept alongside Teleporter's own replay protection as defense-in-depth: guards
@@ -201,8 +201,7 @@ contract OracleAdapter is IAdapter {
 
         // 4. Source allowlist check. Validators also enforce this per-node, but the on-chain
         //    check ensures a rogue validator cannot deliver to an unconfigured source.
-        bytes32 sourceKey = keccak256(abi.encode(oracleMsg.sourceType, oracleMsg.sourceAddress));
-        if (!_allowedSources[sourceKey]) {
+        if (!_allowedSources[oracleMsg.sourceType][oracleMsg.sourceAddress]) {
             revert SourceNotAllowed(oracleMsg.sourceType, oracleMsg.sourceAddress);
         }
 
@@ -232,8 +231,7 @@ contract OracleAdapter is IAdapter {
         string calldata sourceAddress,
         bool allowed
     ) external onlyOwner {
-        bytes32 key = keccak256(abi.encode(sourceType, sourceAddress));
-        _allowedSources[key] = allowed;
+        _allowedSources[sourceType][sourceAddress] = allowed;
         emit AllowedSourceUpdated(sourceType, sourceAddress, allowed);
     }
 
@@ -259,7 +257,7 @@ contract OracleAdapter is IAdapter {
         string calldata sourceType,
         string calldata sourceAddress
     ) external view returns (bool) {
-        return _allowedSources[keccak256(abi.encode(sourceType, sourceAddress))];
+        return _allowedSources[sourceType][sourceAddress];
     }
 
     /**
