@@ -51,7 +51,8 @@ struct OracleMessage {
  *
  * ## Attestation encoding
  *
- * TeleporterICMMessage.attestation = abi.encode(uint32 warpIndex, OracleMessage oracleMsg)
+ * TeleporterICMMessage.attestation = abi.encode(uint32 warpIndex)
+ * The oracle message is decoded directly from the BLS-verified warp payload.
  *
  * ## Message payload encoding (TeleporterMessageV2.message)
  *
@@ -108,7 +109,6 @@ contract OracleAdapter is IAdapter {
 
     error InvalidWarpMessage();
     error WrongSourceChain(bytes32 got, bytes32 want);
-    error PayloadMismatch();
     error SourceNotAllowed(string sourceType, string sourceAddress);
     error AlreadyProcessed(uint64 nonce);
     error Unauthorized();
@@ -163,8 +163,7 @@ contract OracleAdapter is IAdapter {
     function verifyMessage(
         TeleporterICMMessage calldata message
     ) external override returns (bool) {
-        (uint32 warpIndex, OracleMessage memory oracleMsg) =
-            abi.decode(message.attestation, (uint32, OracleMessage));
+        uint32 warpIndex = abi.decode(message.attestation, (uint32));
 
         // 1. Read the precompile-verified warp message. The BLS aggregate was already
         //    checked against this L1's validator set during block execution.
@@ -177,19 +176,28 @@ contract OracleAdapter is IAdapter {
             revert WrongSourceChain(warp.sourceChainID, thisChainID);
         }
 
-        // 3. Bind the BLS-verified payload to the oracle fields provided in the attestation.
-        bytes32 warpPayloadHash = keccak256(warp.payload);
-        bytes32 msgHash = keccak256(
-            abi.encode(
-                oracleMsg.sourceType,
-                oracleMsg.sourceAddress,
-                oracleMsg.destContract,
-                oracleMsg.sourceBlockHeight,
-                oracleMsg.nonce,
-                oracleMsg.payload
-            )
-        );
-        if (warpPayloadHash != msgHash) revert PayloadMismatch();
+        // 3. Decode the oracle message directly from the BLS-verified warp payload.
+        //    The payload is abi.encode of individual fields (not a packed struct), so decode
+        //    field-by-field and reconstruct the struct to match the Go-side encoding.
+        OracleMessage memory oracleMsg;
+        {
+            (
+                string memory sourceType,
+                string memory sourceAddress,
+                address destContract,
+                uint64 sourceBlockHeight,
+                uint64 nonce,
+                bytes memory msgPayload
+            ) = abi.decode(warp.payload, (string, string, address, uint64, uint64, bytes));
+            oracleMsg = OracleMessage({
+                sourceType: sourceType,
+                sourceAddress: sourceAddress,
+                destContract: destContract,
+                sourceBlockHeight: sourceBlockHeight,
+                nonce: nonce,
+                payload: msgPayload
+            });
+        }
 
         // 4. Source allowlist check. Validators also enforce this per-node, but the on-chain
         //    check ensures a rogue validator cannot deliver to an unconfigured source.

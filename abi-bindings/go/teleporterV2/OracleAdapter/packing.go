@@ -44,22 +44,10 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("oracle packing: failed to create bytes type: %v", err))
 	}
-	oracleMsgT, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
-		{Name: "sourceType", Type: "string"},
-		{Name: "sourceAddress", Type: "string"},
-		{Name: "destContract", Type: "address"},
-		{Name: "sourceBlockHeight", Type: "uint64"},
-		{Name: "nonce", Type: "uint64"},
-		{Name: "payload", Type: "bytes"},
-	})
-	if err != nil {
-		panic(fmt.Sprintf("oracle packing: failed to create OracleMessage tuple type: %v", err))
-	}
-
-	// abi.encode(uint32 warpIndex, OracleMessage oracleMsg) — stored in attestation
+	// abi.encode(uint32 warpIndex) — stored in attestation
+	// The oracle message is decoded directly from the BLS-verified warp payload.
 	oracleAttestationArgs = abi.Arguments{
 		{Name: "warpIndex", Type: uint32T},
-		{Name: "oracleMsg", Type: oracleMsgT},
 	}
 
 	// abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload)
@@ -73,10 +61,11 @@ func init() {
 	}
 }
 
-// PackOracleAttestation encodes the warp index and oracle message into the
-// attestation bytes expected by OracleAdapter.verifyMessage.
-func PackOracleAttestation(warpIndex uint32, oracleMsg OracleMessage) ([]byte, error) {
-	return oracleAttestationArgs.Pack(warpIndex, oracleMsg)
+// PackOracleAttestation encodes the warp index into the attestation bytes expected
+// by OracleAdapter.verifyMessage. The oracle message is decoded by the contract
+// directly from the BLS-verified warp payload.
+func PackOracleAttestation(warpIndex uint32) ([]byte, error) {
+	return oracleAttestationArgs.Pack(warpIndex)
 }
 
 // PackOracleMessageBytes encodes oracle fields into the message bytes stored in
@@ -109,7 +98,7 @@ func BuildOracleICMMessage(
 	networkID uint32,
 	requiredGasLimit *big.Int,
 ) (teleportermessengerv2.TeleporterICMMessage, error) {
-	attestation, err := PackOracleAttestation(warpIndex, oracleMsg)
+	attestation, err := PackOracleAttestation(warpIndex)
 	if err != nil {
 		return teleportermessengerv2.TeleporterICMMessage{}, fmt.Errorf("pack oracle attestation: %w", err)
 	}

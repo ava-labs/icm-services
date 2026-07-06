@@ -92,16 +92,17 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 			"maxSupportedTransactionVersion": 0,
 		}},
 	})
+	type solanaInstr struct {
+		ProgramIDIndex int    `json:"programIdIndex"`
+		Data           string `json:"data"`
+	}
 	var txResp struct {
 		Result *struct {
 			Slot        uint64 `json:"slot"`
 			Transaction struct {
 				Message struct {
-					AccountKeys  []string `json:"accountKeys"`
-					Instructions []struct {
-						ProgramIDIndex int    `json:"programIdIndex"`
-						Data           string `json:"data"`
-					} `json:"instructions"`
+					AccountKeys  []string      `json:"accountKeys"`
+					Instructions []solanaInstr `json:"instructions"`
 				} `json:"message"`
 			} `json:"transaction"`
 			Meta struct {
@@ -109,6 +110,10 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 					Writable []string `json:"writable"`
 					Readonly []string `json:"readonly"`
 				} `json:"loadedAddresses"`
+				InnerInstructions []struct {
+					Index        int           `json:"index"`
+					Instructions []solanaInstr `json:"instructions"`
+				} `json:"innerInstructions"`
 			} `json:"meta"`
 		} `json:"result"`
 	}
@@ -126,8 +131,17 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 			txResp.Result.Meta.LoadedAddresses.Readonly...,
 		)...,
 	)
+	// Collect all instructions: top-level first, then inner.
+	// getSignaturesForAddress returns any tx that mentions a program (including CPI),
+	// so the Memo call may appear only in inner instructions.
+	allInstrs := make([]solanaInstr, 0, len(txResp.Result.Transaction.Message.Instructions))
+	allInstrs = append(allInstrs, txResp.Result.Transaction.Message.Instructions...)
+	for _, inner := range txResp.Result.Meta.InnerInstructions {
+		allInstrs = append(allInstrs, inner.Instructions...)
+	}
+
 	var instrData []byte
-	for _, instr := range txResp.Result.Transaction.Message.Instructions {
+	for _, instr := range allInstrs {
 		if instr.ProgramIDIndex < 0 || instr.ProgramIDIndex >= len(keys) {
 			continue
 		}
@@ -374,30 +388,7 @@ func OracleAttestation(
 		utils.SendTransactionAndWaitForFailure(ctx, l1Info.EthClient, tx)
 	}
 
-	ginkgo.By("Sad path 1: delivery with mangled payload is rejected (PayloadMismatch)")
-	mangledPayload := make([]byte, len(msgPayload))
-	copy(mangledPayload, msgPayload)
-	mangledPayload[len(mangledPayload)-1] ^= 0xFF
-	sendExpectRevert(oracleadapter.OracleMessage{
-		SourceType:        "solana",
-		SourceAddress:     sourceAddress,
-		DestContract:      mockAddress,
-		SourceBlockHeight: blockHeight,
-		Nonce:             1,
-		Payload:           mangledPayload,
-	})
-
-	ginkgo.By("Sad path 2: delivery with mangled source address is rejected (PayloadMismatch)")
-	sendExpectRevert(oracleadapter.OracleMessage{
-		SourceType:        "solana",
-		SourceAddress:     sourceAddress + "_FAKE",
-		DestContract:      mockAddress,
-		SourceBlockHeight: blockHeight,
-		Nonce:             1,
-		Payload:           msgPayload,
-	})
-
-	ginkgo.By("Sad path 3: delivery from non-allowlisted source is rejected (SourceNotAllowed)")
+	ginkgo.By("Sad path 1: delivery from non-allowlisted source is rejected (SourceNotAllowed)")
 	removeTx, removeErr := adapterContract.SetAllowedSource(deployOpts, "solana", sourceAddress, false)
 	Expect(removeErr).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, removeTx.Hash())
@@ -476,7 +467,7 @@ func OracleAttestation(
 	Expect(assertErr).Should(BeNil())
 	Expect(received).Should(BeTrue())
 
-	ginkgo.By("Sad path 4: replay of already-delivered nonce is rejected (AlreadyProcessed)")
+	ginkgo.By("Sad path 3: replay of already-delivered nonce is rejected (AlreadyProcessed)")
 	sendExpectRevert(oracleadapter.OracleMessage{
 		SourceType:        "solana",
 		SourceAddress:     sourceAddress,

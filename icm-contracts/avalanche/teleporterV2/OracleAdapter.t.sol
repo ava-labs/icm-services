@@ -84,18 +84,6 @@ contract OracleAdapterTest is Test {
         adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
     }
 
-    function test_verifyMessage_payloadMismatch() public {
-        OracleMessage memory oracleMsg = _defaultOracleMsg();
-        _mockWarp(0, oracleMsg, true);
-
-        // Attestation carries a tampered nonce — warp payload no longer matches.
-        OracleMessage memory tampered = oracleMsg;
-        tampered.nonce = oracleMsg.nonce + 1;
-
-        vm.expectRevert(OracleAdapter.PayloadMismatch.selector);
-        adapter.verifyMessage(_buildICMMsg(0, tampered));
-    }
-
     function test_verifyMessage_sourceNotAllowed() public {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         oracleMsg.sourceType = "bitcoin";
@@ -225,7 +213,7 @@ contract OracleAdapterTest is Test {
             }),
             sourceNetworkID: 1,
             sourceBlockchainID: THIS_CHAIN_ID,
-            attestation: abi.encode(warpIndex, oracleMsg)
+            attestation: abi.encode(warpIndex)
         });
     }
 
