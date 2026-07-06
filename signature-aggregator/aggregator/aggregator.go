@@ -319,13 +319,13 @@ func (s *SignatureAggregator) getCachedSignaturesForMessage(
 	return signatureMap, accumulatedSignatureWeight
 }
 
-// validatorsByWeight returns the canonical validators sorted by descending weight. The
+// copyValidatorsSortedByWeight returns a copy of [vdrs] sorted by descending weight. The
 // canonical validator set is already ordered by public key, so a stable sort preserves that
 // order for validators of equal weight.
-func validatorsByWeight(vdrs *peers.CanonicalValidators) []*validators.Warp {
-	sorted := make([]*validators.Warp, len(vdrs.ValidatorSet.Validators))
-	copy(sorted, vdrs.ValidatorSet.Validators)
-	utils.SortByWeightDescending(sorted, func(v *validators.Warp) uint64 {
+func copyValidatorsSortedByWeight(vdrs []*validators.Warp) []*validators.Warp {
+	sorted := make([]*validators.Warp, len(vdrs))
+	copy(sorted, vdrs)
+	utils.SortDescending(sorted, func(v *validators.Warp) uint64 {
 		return v.Weight
 	})
 	return sorted
@@ -479,8 +479,7 @@ func finishResponses(responseChan <-chan message.InboundMessage) {
 
 // collectSignatures sends a single signature request to the highest-weight validators (see
 // [nodesToQuery]) and aggregates the responses. It returns once the accumulated weight meets
-// the required quorum plus buffer, falling back to just the required quorum once all responses
-// are in. The collection is bounded by [signatureRequestTimeout].
+// the required quorum. The collection is bounded by [signatureRequestTimeout].
 func (s *SignatureAggregator) collectSignatures(
 	ctx context.Context,
 	logger logging.Logger,
@@ -505,7 +504,7 @@ func (s *SignatureAggregator) collectSignatures(
 
 	// Cover enough stake to reach the quorum if everyone responds, but never less than
 	// [queryStakePercentage], which leaves a buffer for non-responding validators.
-	sortedValidators := validatorsByWeight(vdrs)
+	sortedValidators := copyValidatorsSortedByWeight(vdrs.ValidatorSet.Validators)
 	signed := signedValidators(vdrs, signatureMap)
 	coverageGoal := max(queryStakePercentage, requiredQuorumPercentage)
 	queryNodes := nodesToQuery(sortedValidators, signed, vdrs.ConnectedNodes, totalWeight, coverageGoal)
@@ -517,36 +516,34 @@ func (s *SignatureAggregator) collectSignatures(
 		zap.Int("queryNodes", queryNodes.Len()),
 	)
 
-	if queryNodes.Len() > 0 {
-		signedMsg, err := s.requestSignatures(
-			ctx,
-			log,
-			unsignedMessage,
-			reqBytes,
-			sourceSubnet,
-			queryNodes,
-			vdrs,
-			signatureMap,
-			excludedValidators,
-			accumulatedSignatureWeight,
-			requiredQuorumPercentage,
+	signedMsg, err := s.requestSignatures(
+		ctx,
+		log,
+		unsignedMessage,
+		reqBytes,
+		sourceSubnet,
+		queryNodes,
+		vdrs,
+		signatureMap,
+		excludedValidators,
+		accumulatedSignatureWeight,
+		requiredQuorumPercentage,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if signedMsg != nil {
+		log.Info(
+			"Created signed message.",
+			zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+			zap.Uint64("totalValidatorWeight", totalWeight),
 		)
-		if err != nil {
-			return nil, err
-		}
-		if signedMsg != nil {
-			log.Info(
-				"Created signed message.",
-				zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-				zap.Uint64("totalValidatorWeight", totalWeight),
-			)
-			return signedMsg, nil
-		}
+		return signedMsg, nil
 	}
 
 	// Process any responses that arrived without reaching quorum during the request, in case
 	// cached signatures plus the collected ones now suffice.
-	signedMsg, err := s.aggregateIfSufficientWeight(
+	signedMsg, err = s.aggregateIfSufficientWeight(
 		log,
 		unsignedMessage,
 		signatureMap,
@@ -833,27 +830,7 @@ func (s *SignatureAggregator) handleResponse(
 
 	validator, vdrIndex := connectedValidators.GetValidator(nodeID)
 	signature, valid := s.isValidSignatureResponse(log, unsignedMessage, response, validator.PublicKey)
-	// Cache any valid signature, but only include in the aggregation if the validator is not
-	// explicitly excluded, so that we can reuse the cached signature on future requests if
-	// the validator is no longer excluded.
-	if valid {
-		log.Debug(
-			"Got valid signature response",
-			zap.Stringer("nodeID", nodeID),
-			zap.Uint64("stakeWeight", validator.Weight),
-			zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
-		)
-		s.signatureCache.Add(
-			unsignedMessage.ID(),
-			PublicKeyBytes(validator.PublicKeyBytes),
-			SignatureBytes(signature),
-		)
-		// A validator can be reached via multiple node IDs; don't count its weight twice.
-		if _, alreadyCounted := signatureMap[vdrIndex]; !alreadyCounted && !excludedValidators.Contains(vdrIndex) {
-			signatureMap[vdrIndex] = signature
-			accumulatedSignatureWeight.Add(accumulatedSignatureWeight, new(big.Int).SetUint64(validator.Weight))
-		}
-	} else {
+	if !valid {
 		log.Debug(
 			"Got invalid signature response",
 			zap.Stringer("nodeID", nodeID),
@@ -862,6 +839,26 @@ func (s *SignatureAggregator) handleResponse(
 		)
 		s.metrics.InvalidSignatureResponses.Inc()
 		return nil, nil
+	}
+
+	log.Debug(
+		"Got valid signature response",
+		zap.Stringer("nodeID", nodeID),
+		zap.Uint64("stakeWeight", validator.Weight),
+		zap.Stringer("sourceBlockchainID", unsignedMessage.SourceChainID),
+	)
+	// Cache any valid signature, but only include in the aggregation if the validator is not
+	// explicitly excluded, so that we can reuse the cached signature on future requests if
+	// the validator is no longer excluded.
+	s.signatureCache.Add(
+		unsignedMessage.ID(),
+		PublicKeyBytes(validator.PublicKeyBytes),
+		SignatureBytes(signature),
+	)
+	// A validator can be reached via multiple node IDs; don't count its weight twice.
+	if _, alreadyCounted := signatureMap[vdrIndex]; !alreadyCounted && !excludedValidators.Contains(vdrIndex) {
+		signatureMap[vdrIndex] = signature
+		accumulatedSignatureWeight.Add(accumulatedSignatureWeight, new(big.Int).SetUint64(validator.Weight))
 	}
 
 	return s.aggregateIfSufficientWeight(
@@ -948,7 +945,7 @@ func pruneSignatureMapToQuorum(
 		}
 		signers = append(signers, signerEntry{idx: i, weight: v.Weight})
 	}
-	utils.SortByWeightDescending(signers, func(s signerEntry) uint64 {
+	utils.SortDescending(signers, func(s signerEntry) uint64 {
 		return s.weight
 	})
 

@@ -443,11 +443,11 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 	}
 }
 
-func TestValidatorsByWeight(t *testing.T) {
+func TestCopyValidatorsSortedByWeight(t *testing.T) {
 	// Three connected validators with distinct weights.
 	connected, _ := makeConnectedValidatorsWithWeights([]uint64{5, 10, 1})
 
-	sorted := validatorsByWeight(connected)
+	sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 	require.Len(t, sorted, 3)
 	// Sorted by descending weight.
 	require.Equal(t, uint64(10), sorted[0].Weight)
@@ -473,7 +473,7 @@ func TestNodesToQuery(t *testing.T) {
 	// selected validators.
 	t.Run("single dominant validator covers the stake", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
-		sorted := validatorsByWeight(connected)
+		sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 		total := connected.ValidatorSet.TotalWeight
 		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
 		// The dominant validator alone exceeds the coverage goal and the rest fall below the
@@ -483,7 +483,7 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("queries multiple validators to cover the stake", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{40, 30, 20, 10})
-		sorted := validatorsByWeight(connected)
+		sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 		total := connected.ValidatorSet.TotalWeight
 		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
 		// No proper subset covers 95% of stake, so every validator is queried.
@@ -492,7 +492,7 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("skips the long tail of tiny validators", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
-		sorted := validatorsByWeight(connected)
+		sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 		total := connected.ValidatorSet.TotalWeight
 		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, total, queryStakePercentage)
 		// The three largest validators cover 95% of stake; the five 1-weight validators are
@@ -502,7 +502,7 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("a higher coverage goal queries further into the tail", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{500, 400, 50, 1, 1, 1, 1, 1})
-		sorted := validatorsByWeight(connected)
+		sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 		// A coverage goal of 100% forces every validator to be queried.
 		nodes := nodesToQuery(sorted, noneSigned, connected.ConnectedNodes, connected.ValidatorSet.TotalWeight, 100)
 		require.Equal(t, 8, nodes.Len())
@@ -510,7 +510,7 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("skips validators with no connected node", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{10, 5, 1})
-		sorted := validatorsByWeight(connected)
+		sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 		// Disconnect the highest-weight validator's only node.
 		require.Equal(t, uint64(10), sorted[0].Weight)
 		connected.ConnectedNodes.Remove(sorted[0].NodeIDs[0])
@@ -523,7 +523,7 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("cached validator is not re-queried", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{5, 10, 1})
-		sorted := validatorsByWeight(connected)
+		sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 		top := validatorByWeight(t, connected, 10)
 		signed := set.NewSet[PublicKeyBytes](1)
 		signed.Add(PublicKeyBytes(top.PublicKeyBytes))
@@ -536,7 +536,7 @@ func TestNodesToQuery(t *testing.T) {
 
 	t.Run("cached weight counts toward the coverage goal", func(t *testing.T) {
 		connected, _ := makeConnectedValidatorsWithWeights([]uint64{1000, 1, 1, 1, 1, 1, 1, 1})
-		sorted := validatorsByWeight(connected)
+		sorted := copyValidatorsSortedByWeight(connected.ValidatorSet.Validators)
 		dominant := validatorByWeight(t, connected, 1000)
 		signed := set.NewSet[PublicKeyBytes](1)
 		signed.Add(PublicKeyBytes(dominant.PublicKeyBytes))

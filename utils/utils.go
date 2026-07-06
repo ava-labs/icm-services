@@ -91,12 +91,12 @@ func SignedWarpMessageToAccessList(signedMessage *avalancheWarp.Message) types.A
 	}
 }
 
-// SortByWeightDescending sorts [items] in place by descending weight, using [weight]
-// to extract each item's weight. The sort is stable, so items of equal weight retain
-// their original relative order.
-func SortByWeightDescending[T any](items []T, weight func(T) uint64) {
+// SortDescending sorts [items] in place by descending key, using [key] to extract each
+// item's sort value. The sort is stable, so items with an equal key retain their original
+// relative order.
+func SortDescending[T any](items []T, key func(T) uint64) {
 	slices.SortStableFunc(items, func(a, b T) int {
-		return cmp.Compare(weight(b), weight(a))
+		return cmp.Compare(key(b), key(a))
 	})
 }
 
