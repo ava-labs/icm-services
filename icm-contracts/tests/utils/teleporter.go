@@ -495,7 +495,8 @@ func DeployWarpAdapterContract(
 ) common.Address {
 	repoRoot, err := GetRepoRoot()
 	Expect(err).Should(BeNil())
-	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(filepath.Join(repoRoot, "out/WarpAdapter.sol/WarpAdapter.json"))
+	artifactPath := filepath.Join(repoRoot, "out/WarpAdapter.sol/WarpAdapter.json")
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(artifactPath)
 	Expect(err).Should(BeNil())
 
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
@@ -526,7 +527,8 @@ func DeployTeleporterV2(
 ) common.Address {
 	repoRoot, err := GetRepoRoot()
 	Expect(err).Should(BeNil())
-	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(filepath.Join(repoRoot, "out/TeleporterMessengerV2.sol/TeleporterMessengerV2.json"))
+	artifactPath := filepath.Join(repoRoot, "out/TeleporterMessengerV2.sol/TeleporterMessengerV2.json")
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(artifactPath)
 	Expect(err).Should(BeNil())
 
 	teleporterABI, err := teleportermessengerv2.TeleporterMessengerV2MetaData.GetAbi()
