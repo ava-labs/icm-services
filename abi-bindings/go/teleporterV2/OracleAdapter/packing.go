@@ -12,8 +12,18 @@ import (
 	"github.com/ava-labs/libevm/common"
 )
 
+// OracleMessage mirrors the Solidity OracleMessage struct in OracleAdapter.sol.
+type OracleMessage struct {
+	SourceType        string
+	SourceAddress     string
+	DestContract      common.Address
+	SourceBlockHeight uint64
+	Nonce             uint64
+	Payload           []byte
+}
+
 var (
-	oracleAttestationArgs abi.Arguments
+	oracleAttestationArgs  abi.Arguments
 	oracleMessageBytesArgs abi.Arguments
 )
 

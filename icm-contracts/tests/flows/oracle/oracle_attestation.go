@@ -434,14 +434,14 @@ func OracleAttestation(
 
 	gasFeeCap, gasTipCap, txNonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
 	deliveryTx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:    l1Info.EVMChainID,
-		Nonce:      txNonce,
-		To:         &teleporterAddress,
-		Gas:        500_000,
-		GasFeeCap:  gasFeeCap,
-		GasTipCap:  gasTipCap,
-		Value:      common.Big0,
-		Data:       callData,
+		ChainID:   l1Info.EVMChainID,
+		Nonce:     txNonce,
+		To:        &teleporterAddress,
+		Gas:       2_000_000, // requiredGasLimit(500K) + TeleporterV2/OracleAdapter overhead
+		GasFeeCap: gasFeeCap,
+		GasTipCap: gasTipCap,
+		Value:     common.Big0,
+		Data:      callData,
 		AccessList: icmutils.SignedWarpMessageToAccessList(signedMsg),
 	})
 	deliveryTx = utils.SignTransaction(deliveryTx, fundedKey, l1Info.EVMChainID)

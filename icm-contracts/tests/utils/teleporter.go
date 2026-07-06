@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"math/big"
 	"os"
+	"path/filepath"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
@@ -492,7 +493,9 @@ func DeployWarpAdapterContract(
 	testInfo testinfo.NetworkTestInfo,
 	fundedKey *ecdsa.PrivateKey,
 ) common.Address {
-	byteCode, err := deploymentUtils.ExtractByteCodeFromFile("./out/WarpAdapter.sol/WarpAdapter.json")
+	repoRoot, err := GetRepoRoot()
+	Expect(err).Should(BeNil())
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(filepath.Join(repoRoot, "out/WarpAdapter.sol/WarpAdapter.json"))
 	Expect(err).Should(BeNil())
 
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
@@ -521,7 +524,9 @@ func DeployTeleporterV2(
 	adapterAddress common.Address,
 	fundedKey *ecdsa.PrivateKey,
 ) common.Address {
-	byteCode, err := deploymentUtils.ExtractByteCodeFromFile("./out/TeleporterMessengerV2.sol/TeleporterMessengerV2.json")
+	repoRoot, err := GetRepoRoot()
+	Expect(err).Should(BeNil())
+	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(filepath.Join(repoRoot, "out/TeleporterMessengerV2.sol/TeleporterMessengerV2.json"))
 	Expect(err).Should(BeNil())
 
 	teleporterABI, err := teleportermessengerv2.TeleporterMessengerV2MetaData.GetAbi()

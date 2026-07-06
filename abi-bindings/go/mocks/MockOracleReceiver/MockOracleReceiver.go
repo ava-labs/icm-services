@@ -31,8 +31,8 @@ var (
 
 // MockOracleReceiverMetaData contains all meta data concerning the MockOracleReceiver contract.
 var MockOracleReceiverMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"oracleAdapter_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"caller\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"expected\",\"type\":\"address\"}],\"name\":\"OnlyOracleAdapter\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ZeroAddress\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"lastNonce\",\"outputs\":[{\"internalType\":\"uint64\",\"name\":\"\",\"type\":\"uint64\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"lastPayload\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"lastSourceAddress\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"lastSourceChainID\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"lastSourceType\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"oracleAdapter\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"receiveCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"sourceChainID\",\"type\":\"bytes32\"},{\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"},{\"internalType\":\"uint64\",\"name\":\"nonce\",\"type\":\"uint64\"},{\"internalType\":\"bytes\",\"name\":\"payload\",\"type\":\"bytes\"}],\"name\":\"receiveOracleMessage\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x60a060405234801561000f575f5ffd5b506040516106a93803806106a983398101604081905261002e91610066565b6001600160a01b0381166100555760405163d92e233d60e01b815260040160405180910390fd5b6001600160a01b0316608052610093565b5f60208284031215610076575f5ffd5b81516001600160a01b038116811461008c575f5ffd5b9392505050565b6080516105f16100b85f395f818160d3015281816101ea015261022c01526105f15ff3fe608060405234801561000f575f5ffd5b5060043610610085575f3560e01c806344c191391161005857806344c191391461010d5780634cc2aa3c1461011557806352631ab41461011d5780637ba855921461014a575f5ffd5b80630a4e00bf146100895780630d768691146100a45780631c67934b146100b95780633d9f3163146100ce575b5f5ffd5b6100915f5481565b6040519081526020015b60405180910390f35b6100ac610153565b60405161009b9190610321565b6100cc6100c736600461037f565b6101df565b005b6100f57f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200161009b565b6100ac6102c4565b6100ac6102d1565b6003546101319067ffffffffffffffff1681565b60405167ffffffffffffffff909116815260200161009b565b61009160055481565b6002805461016090610445565b80601f016020809104026020016040519081016040528092919081815260200182805461018c90610445565b80156101d75780601f106101ae576101008083540402835291602001916101d7565b820191905f5260205f20905b8154815290600101906020018083116101ba57829003601f168201915b505050505081565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461025d5760405163b091d6af60e01b81523360048201526001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016602482015260440160405180910390fd5b5f889055600161026e8789836104dd565b50600261027c8587836104dd565b506003805467ffffffffffffffff191667ffffffffffffffff851617905560046102a78284836104dd565b5060055f81546102b690610597565b909155505050505050505050565b6001805461016090610445565b6004805461016090610445565b5f81518084525f5b81811015610302576020818501810151868301820152016102e6565b505f602082860101526020601f19601f83011685010191505092915050565b602081525f61033360208301846102de565b9392505050565b5f5f83601f84011261034a575f5ffd5b50813567ffffffffffffffff811115610361575f5ffd5b602083019150836020828501011115610378575f5ffd5b9250929050565b5f5f5f5f5f5f5f5f60a0898b031215610396575f5ffd5b88359750602089013567ffffffffffffffff8111156103b3575f5ffd5b6103bf8b828c0161033a565b909850965050604089013567ffffffffffffffff8111156103de575f5ffd5b6103ea8b828c0161033a565b909650945050606089013567ffffffffffffffff8116811461040a575f5ffd5b9250608089013567ffffffffffffffff811115610425575f5ffd5b6104318b828c0161033a565b999c989b5096995094979396929594505050565b600181811c9082168061045957607f821691505b60208210810361047757634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b601f8211156104d857805f5260205f20601f840160051c810160208510156104b65750805b601f840160051c820191505b818110156104d5575f81556001016104c2565b50505b505050565b67ffffffffffffffff8311156104f5576104f561047d565b610509836105038354610445565b83610491565b5f601f84116001811461053a575f85156105235750838201355b5f19600387901b1c1916600186901b1783556104d5565b5f83815260208120601f198716915b828110156105695786850135825560209485019460019092019101610549565b5086821015610585575f1960f88860031b161c19848701351681555b505060018560011b0183555050505050565b5f600182016105b457634e487b7160e01b5f52601160045260245ffd5b506001019056fea26469706673582212203c3b4a62604216618acf52cb7ec32f864d02cb43d2a953a0f62412170205118464736f6c634300081e0033",
+	ABI: "[{\"type\":\"constructor\",\"inputs\":[{\"name\":\"teleporterMessenger_\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"lastNonce\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"lastPayload\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"lastSourceAddress\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"lastSourceBlockHeight\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"lastSourceChainID\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"lastSourceType\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"receiveCount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"receiveTeleporterMessage\",\"inputs\":[{\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"message\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"teleporterMessenger\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"error\",\"name\":\"OnlyTeleporterMessenger\",\"inputs\":[{\"name\":\"caller\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"expected\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"ZeroAddress\",\"inputs\":[]}]",
+	Bin: "0x60a060405234801561000f575f5ffd5b506040516107c33803806107c383398101604081905261002e91610066565b6001600160a01b0381166100555760405163d92e233d60e01b815260040160405180910390fd5b6001600160a01b0316608052610093565b5f60208284031215610076575f5ffd5b81516001600160a01b038116811461008c575f5ffd5b9392505050565b60805161070a6100b95f395f8181610114015281816102270152610269015261070a5ff3fe608060405234801561000f575f5ffd5b5060043610610090575f3560e01c806352631ab41161006357806352631ab4146100d45780637ba85592146101065780639b3e58031461010f578063b15f20941461014e578063c868efaa14610161575f5ffd5b80630a4e00bf146100945780630d768691146100af57806344c19139146100c45780634cc2aa3c146100cc575b5f5ffd5b61009c5f5481565b6040519081526020015b60405180910390f35b6100b7610176565b6040516100a69190610373565b6100b7610202565b6100b761020f565b6003546100ee90600160401b90046001600160401b031681565b6040516001600160401b0390911681526020016100a6565b61009c60055481565b6101367f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020016100a6565b6003546100ee906001600160401b031681565b61017461016f36600461038c565b61021c565b005b600280546101839061041a565b80601f01602080910402602001604051908101604052809291908181526020018280546101af9061041a565b80156101fa5780601f106101d1576101008083540402835291602001916101fa565b820191905f5260205f20905b8154815290600101906020018083116101dd57829003601f168201915b505050505081565b600180546101839061041a565b600480546101839061041a565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461029a576040516370931f1360e01b81523360048201526001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016602482015260440160405180910390fd5b5f808080806102ab86880188610514565b5f8e905593985091965094509250905060016102c7868261061f565b5060026102d4858261061f565b50600380546001600160401b03848116600160401b026fffffffffffffffffffffffffffffffff19909216908616171790556004610312828261061f565b5060055f8154610321906106d9565b90915550505050505050505050565b5f81518084525f5b8181101561035457602081850181015186830182015201610338565b505f602082860101526020601f19601f83011685010191505092915050565b602081525f6103856020830184610330565b9392505050565b5f5f5f5f6060858703121561039f575f5ffd5b8435935060208501356001600160a01b03811681146103bc575f5ffd5b925060408501356001600160401b038111156103d6575f5ffd5b8501601f810187136103e6575f5ffd5b80356001600160401b038111156103fb575f5ffd5b87602082840101111561040c575f5ffd5b949793965060200194505050565b600181811c9082168061042e57607f821691505b60208210810361044c57634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b5f5f6001600160401b0384111561047f5761047f610452565b50604051601f19601f85018116603f011681018181106001600160401b03821117156104ad576104ad610452565b6040528381529050808284018510156104c4575f5ffd5b838360208301375f60208583010152509392505050565b5f82601f8301126104ea575f5ffd5b61038583833560208501610466565b80356001600160401b038116811461050f575f5ffd5b919050565b5f5f5f5f5f60a08688031215610528575f5ffd5b85356001600160401b0381111561053d575f5ffd5b610549888289016104db565b95505060208601356001600160401b03811115610564575f5ffd5b610570888289016104db565b94505061057f604087016104f9565b925061058d606087016104f9565b915060808601356001600160401b038111156105a7575f5ffd5b8601601f810188136105b7575f5ffd5b6105c688823560208401610466565b9150509295509295909350565b601f82111561061a57805f5260205f20601f840160051c810160208510156105f85750805b601f840160051c820191505b81811015610617575f8155600101610604565b50505b505050565b81516001600160401b0381111561063857610638610452565b61064c81610646845461041a565b846105d3565b6020601f82116001811461067e575f83156106675750848201515b5f19600385901b1c1916600184901b178455610617565b5f84815260208120601f198516915b828110156106ad578785015182556020948501946001909201910161068d565b50848210156106ca57868401515f19600387901b60f8161c191681555b50505050600190811b01905550565b5f600182016106f657634e487b7160e01b5f52601160045260245ffd5b506001019056fea164736f6c634300081e000a",
 }
 
 // MockOracleReceiverABI is the input ABI used to generate the binding from.
@@ -44,7 +44,7 @@ var MockOracleReceiverABI = MockOracleReceiverMetaData.ABI
 var MockOracleReceiverBin = MockOracleReceiverMetaData.Bin
 
 // DeployMockOracleReceiver deploys a new Ethereum contract, binding an instance of MockOracleReceiver to it.
-func DeployMockOracleReceiver(auth *bind.TransactOpts, backend bind.ContractBackend, oracleAdapter_ common.Address) (common.Address, *types.Transaction, *MockOracleReceiver, error) {
+func DeployMockOracleReceiver(auth *bind.TransactOpts, backend bind.ContractBackend, teleporterMessenger_ common.Address) (common.Address, *types.Transaction, *MockOracleReceiver, error) {
 	parsed, err := MockOracleReceiverMetaData.GetAbi()
 	if err != nil {
 		return common.Address{}, nil, nil, err
@@ -53,7 +53,7 @@ func DeployMockOracleReceiver(auth *bind.TransactOpts, backend bind.ContractBack
 		return common.Address{}, nil, nil, errors.New("GetABI returned nil")
 	}
 
-	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(MockOracleReceiverBin), backend, oracleAdapter_)
+	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(MockOracleReceiverBin), backend, teleporterMessenger_)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
@@ -295,6 +295,37 @@ func (_MockOracleReceiver *MockOracleReceiverCallerSession) LastSourceAddress() 
 	return _MockOracleReceiver.Contract.LastSourceAddress(&_MockOracleReceiver.CallOpts)
 }
 
+// LastSourceBlockHeight is a free data retrieval call binding the contract method 0xb15f2094.
+//
+// Solidity: function lastSourceBlockHeight() view returns(uint64)
+func (_MockOracleReceiver *MockOracleReceiverCaller) LastSourceBlockHeight(opts *bind.CallOpts) (uint64, error) {
+	var out []interface{}
+	err := _MockOracleReceiver.contract.Call(opts, &out, "lastSourceBlockHeight")
+
+	if err != nil {
+		return *new(uint64), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(uint64)).(*uint64)
+
+	return out0, err
+
+}
+
+// LastSourceBlockHeight is a free data retrieval call binding the contract method 0xb15f2094.
+//
+// Solidity: function lastSourceBlockHeight() view returns(uint64)
+func (_MockOracleReceiver *MockOracleReceiverSession) LastSourceBlockHeight() (uint64, error) {
+	return _MockOracleReceiver.Contract.LastSourceBlockHeight(&_MockOracleReceiver.CallOpts)
+}
+
+// LastSourceBlockHeight is a free data retrieval call binding the contract method 0xb15f2094.
+//
+// Solidity: function lastSourceBlockHeight() view returns(uint64)
+func (_MockOracleReceiver *MockOracleReceiverCallerSession) LastSourceBlockHeight() (uint64, error) {
+	return _MockOracleReceiver.Contract.LastSourceBlockHeight(&_MockOracleReceiver.CallOpts)
+}
+
 // LastSourceChainID is a free data retrieval call binding the contract method 0x0a4e00bf.
 //
 // Solidity: function lastSourceChainID() view returns(bytes32)
@@ -357,37 +388,6 @@ func (_MockOracleReceiver *MockOracleReceiverCallerSession) LastSourceType() (st
 	return _MockOracleReceiver.Contract.LastSourceType(&_MockOracleReceiver.CallOpts)
 }
 
-// OracleAdapter is a free data retrieval call binding the contract method 0x3d9f3163.
-//
-// Solidity: function oracleAdapter() view returns(address)
-func (_MockOracleReceiver *MockOracleReceiverCaller) OracleAdapter(opts *bind.CallOpts) (common.Address, error) {
-	var out []interface{}
-	err := _MockOracleReceiver.contract.Call(opts, &out, "oracleAdapter")
-
-	if err != nil {
-		return *new(common.Address), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
-
-	return out0, err
-
-}
-
-// OracleAdapter is a free data retrieval call binding the contract method 0x3d9f3163.
-//
-// Solidity: function oracleAdapter() view returns(address)
-func (_MockOracleReceiver *MockOracleReceiverSession) OracleAdapter() (common.Address, error) {
-	return _MockOracleReceiver.Contract.OracleAdapter(&_MockOracleReceiver.CallOpts)
-}
-
-// OracleAdapter is a free data retrieval call binding the contract method 0x3d9f3163.
-//
-// Solidity: function oracleAdapter() view returns(address)
-func (_MockOracleReceiver *MockOracleReceiverCallerSession) OracleAdapter() (common.Address, error) {
-	return _MockOracleReceiver.Contract.OracleAdapter(&_MockOracleReceiver.CallOpts)
-}
-
 // ReceiveCount is a free data retrieval call binding the contract method 0x7ba85592.
 //
 // Solidity: function receiveCount() view returns(uint256)
@@ -419,23 +419,54 @@ func (_MockOracleReceiver *MockOracleReceiverCallerSession) ReceiveCount() (*big
 	return _MockOracleReceiver.Contract.ReceiveCount(&_MockOracleReceiver.CallOpts)
 }
 
-// ReceiveOracleMessage is a paid mutator transaction binding the contract method 0x1c67934b.
+// TeleporterMessenger is a free data retrieval call binding the contract method 0x9b3e5803.
 //
-// Solidity: function receiveOracleMessage(bytes32 sourceChainID, string sourceType, string sourceAddress, uint64 nonce, bytes payload) returns()
-func (_MockOracleReceiver *MockOracleReceiverTransactor) ReceiveOracleMessage(opts *bind.TransactOpts, sourceChainID [32]byte, sourceType string, sourceAddress string, nonce uint64, payload []byte) (*types.Transaction, error) {
-	return _MockOracleReceiver.contract.Transact(opts, "receiveOracleMessage", sourceChainID, sourceType, sourceAddress, nonce, payload)
+// Solidity: function teleporterMessenger() view returns(address)
+func (_MockOracleReceiver *MockOracleReceiverCaller) TeleporterMessenger(opts *bind.CallOpts) (common.Address, error) {
+	var out []interface{}
+	err := _MockOracleReceiver.contract.Call(opts, &out, "teleporterMessenger")
+
+	if err != nil {
+		return *new(common.Address), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+
+	return out0, err
+
 }
 
-// ReceiveOracleMessage is a paid mutator transaction binding the contract method 0x1c67934b.
+// TeleporterMessenger is a free data retrieval call binding the contract method 0x9b3e5803.
 //
-// Solidity: function receiveOracleMessage(bytes32 sourceChainID, string sourceType, string sourceAddress, uint64 nonce, bytes payload) returns()
-func (_MockOracleReceiver *MockOracleReceiverSession) ReceiveOracleMessage(sourceChainID [32]byte, sourceType string, sourceAddress string, nonce uint64, payload []byte) (*types.Transaction, error) {
-	return _MockOracleReceiver.Contract.ReceiveOracleMessage(&_MockOracleReceiver.TransactOpts, sourceChainID, sourceType, sourceAddress, nonce, payload)
+// Solidity: function teleporterMessenger() view returns(address)
+func (_MockOracleReceiver *MockOracleReceiverSession) TeleporterMessenger() (common.Address, error) {
+	return _MockOracleReceiver.Contract.TeleporterMessenger(&_MockOracleReceiver.CallOpts)
 }
 
-// ReceiveOracleMessage is a paid mutator transaction binding the contract method 0x1c67934b.
+// TeleporterMessenger is a free data retrieval call binding the contract method 0x9b3e5803.
 //
-// Solidity: function receiveOracleMessage(bytes32 sourceChainID, string sourceType, string sourceAddress, uint64 nonce, bytes payload) returns()
-func (_MockOracleReceiver *MockOracleReceiverTransactorSession) ReceiveOracleMessage(sourceChainID [32]byte, sourceType string, sourceAddress string, nonce uint64, payload []byte) (*types.Transaction, error) {
-	return _MockOracleReceiver.Contract.ReceiveOracleMessage(&_MockOracleReceiver.TransactOpts, sourceChainID, sourceType, sourceAddress, nonce, payload)
+// Solidity: function teleporterMessenger() view returns(address)
+func (_MockOracleReceiver *MockOracleReceiverCallerSession) TeleporterMessenger() (common.Address, error) {
+	return _MockOracleReceiver.Contract.TeleporterMessenger(&_MockOracleReceiver.CallOpts)
+}
+
+// ReceiveTeleporterMessage is a paid mutator transaction binding the contract method 0xc868efaa.
+//
+// Solidity: function receiveTeleporterMessage(bytes32 sourceBlockchainID, address , bytes message) returns()
+func (_MockOracleReceiver *MockOracleReceiverTransactor) ReceiveTeleporterMessage(opts *bind.TransactOpts, sourceBlockchainID [32]byte, arg1 common.Address, message []byte) (*types.Transaction, error) {
+	return _MockOracleReceiver.contract.Transact(opts, "receiveTeleporterMessage", sourceBlockchainID, arg1, message)
+}
+
+// ReceiveTeleporterMessage is a paid mutator transaction binding the contract method 0xc868efaa.
+//
+// Solidity: function receiveTeleporterMessage(bytes32 sourceBlockchainID, address , bytes message) returns()
+func (_MockOracleReceiver *MockOracleReceiverSession) ReceiveTeleporterMessage(sourceBlockchainID [32]byte, arg1 common.Address, message []byte) (*types.Transaction, error) {
+	return _MockOracleReceiver.Contract.ReceiveTeleporterMessage(&_MockOracleReceiver.TransactOpts, sourceBlockchainID, arg1, message)
+}
+
+// ReceiveTeleporterMessage is a paid mutator transaction binding the contract method 0xc868efaa.
+//
+// Solidity: function receiveTeleporterMessage(bytes32 sourceBlockchainID, address , bytes message) returns()
+func (_MockOracleReceiver *MockOracleReceiverTransactorSession) ReceiveTeleporterMessage(sourceBlockchainID [32]byte, arg1 common.Address, message []byte) (*types.Transaction, error) {
+	return _MockOracleReceiver.Contract.ReceiveTeleporterMessage(&_MockOracleReceiver.TransactOpts, sourceBlockchainID, arg1, message)
 }
