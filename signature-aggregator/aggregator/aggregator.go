@@ -65,7 +65,6 @@ type SignatureAggregator struct {
 	validatorClient         clients.CanonicalValidatorState
 	underfundedL1NodeCache  *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 	signatureRequestTimeout time.Duration
-	handlerID               uint64
 
 	subnetMapsLock sync.Mutex
 
@@ -97,7 +96,6 @@ func NewSignatureAggregator(
 		validatorClient:         validatorClient,
 		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
 		signatureRequestTimeout: signatureRequestTimeout,
-		handlerID:               networkP2P.SignatureRequestHandlerID,
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
 	sa.currentRequestID.Store(rand.Uint32() | 1)
@@ -108,15 +106,6 @@ func NewSignatureAggregator(
 // Mirrors validator.SignatureRequestHandlerID in
 // github.com/ava-labs/avalanchego/network/p2p/oracle/validator.
 const OracleHandlerID uint64 = 4
-
-// WithHandlerID returns a shallow copy of the aggregator that routes requests
-// to the given p2p handler ID instead of the default native-warp handler (ID 2).
-// Use this to build protocol-specific aggregators without creating a new type.
-func (s *SignatureAggregator) WithHandlerID(id uint64) *SignatureAggregator {
-	copy := *s
-	copy.handlerID = id
-	return &copy
-}
 
 func (s *SignatureAggregator) connectToQuorumValidators(
 	ctx context.Context,
@@ -512,6 +501,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	inputSigningSubnet ids.ID,
 	requiredQuorumPercentage uint64,
 	pchainHeight uint64,
+	handlerID uint64,
 ) (*avalancheWarp.Message, error) {
 	log = log.With(
 		zap.Uint64("requiredQuorumPercentage", requiredQuorumPercentage),
@@ -599,7 +589,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		))
 	}
 
-	reqBytes, err := s.marshalRequest(unsignedMessage, justification, sourceSubnet)
+	reqBytes, err := s.marshalRequest(unsignedMessage, justification, sourceSubnet, handlerID)
 	if err != nil {
 		msg := "Failed to marshal request bytes"
 		log.Error(msg, zap.Error(err))
@@ -950,6 +940,7 @@ func (s *SignatureAggregator) marshalRequest(
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	justification []byte,
 	sourceSubnet ids.ID,
+	handlerID uint64,
 ) ([]byte, error) {
 	messageBytes, err := proto.Marshal(
 		&sdk.SignatureRequest{
@@ -961,7 +952,7 @@ func (s *SignatureAggregator) marshalRequest(
 		return nil, err
 	}
 	return networkP2P.PrefixMessage(
-		networkP2P.ProtocolPrefix(s.handlerID),
+		networkP2P.ProtocolPrefix(handlerID),
 		messageBytes,
 	), nil
 }

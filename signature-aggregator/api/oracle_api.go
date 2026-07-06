@@ -32,6 +32,7 @@ func HandleOracleAggregateSignatures(
 			logger,
 			metricsInstance,
 			sigAggregator,
+			aggregator.OracleHandlerID,
 		),
 	)
 }

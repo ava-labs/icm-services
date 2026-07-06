@@ -185,7 +185,7 @@ func main() {
 	api.HandleOracleAggregateSignatures(
 		logger,
 		metricsInstance,
-		signatureAggregator.WithHandlerID(aggregator.OracleHandlerID),
+		signatureAggregator,
 	)
 
 	healthCheckSubnets := cfg.GetTrackedSubnets().List()

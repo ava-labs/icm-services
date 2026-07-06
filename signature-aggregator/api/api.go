@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
@@ -63,6 +64,7 @@ func HandleAggregateSignaturesByRawMsgRequest(
 			logger,
 			metrics,
 			signatureAggregator,
+			networkP2P.SignatureRequestHandlerID,
 		),
 	)
 }
@@ -97,6 +99,7 @@ func signatureAggregationAPIHandler(
 	logger logging.Logger,
 	metrics *metrics.SignatureAggregatorMetrics,
 	aggregator *aggregator.SignatureAggregator,
+	handlerID uint64,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metrics.AggregateSignaturesRequestCount.Inc()
@@ -207,6 +210,7 @@ func signatureAggregationAPIHandler(
 			signingSubnetID,
 			quorumPercentage,
 			pchainHeight,
+			handlerID,
 		)
 		if err != nil {
 			logger.Warn("Failed to aggregate signatures", zap.Error(err))
