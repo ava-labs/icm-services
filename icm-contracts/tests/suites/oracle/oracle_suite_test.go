@@ -112,7 +112,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 			log.Error("oracle-sidecar exited abnormally", zap.Error(waitErr))
 		}
 	}()
-	waitForTCP(mockEndpoint, 10*time.Second)
+	waitForTCP(ctx, mockEndpoint, 10*time.Second)
 	log.Info("Mock oracle sidecar is ready", zap.String("addr", mockEndpoint))
 
 	// When SOLANA_RPC_URL is set, also build and start the solanarpc sidecar on port 9901.
@@ -155,7 +155,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 				log.Error("solanarpc-sidecar exited abnormally", zap.Error(waitErr))
 			}
 		}()
-		waitForTCP(solanarpcEndpoint, 10*time.Second)
+		waitForTCP(ctx, solanarpcEndpoint, 10*time.Second)
 		log.Info("solanarpc sidecar is ready", zap.String("addr", solanarpcEndpoint))
 	}
 
@@ -221,18 +221,28 @@ func cleanup() {
 	}
 }
 
-// waitForTCP polls addr until a TCP connection succeeds or deadline is exceeded.
-func waitForTCP(addr string, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			return
+// waitForTCP polls addr until a TCP connection succeeds, the timeout elapses,
+// or the parent context is cancelled.
+func waitForTCP(ctx context.Context, addr string, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			Expect(ctx.Err()).ShouldNot(HaveOccurred(),
+				"process did not bind %s within %s", addr, timeout)
+		case <-ticker.C:
+			conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				return
+			}
 		}
-		time.Sleep(50 * time.Millisecond)
 	}
-	Expect(fmt.Errorf("process did not bind %s within %s", addr, timeout)).Should(BeNil())
 }
 
 var _ = ginkgo.AfterSuite(cleanup)
