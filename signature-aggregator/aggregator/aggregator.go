@@ -65,10 +65,7 @@ type SignatureAggregator struct {
 	validatorClient         clients.CanonicalValidatorState
 	underfundedL1NodeCache  *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 	signatureRequestTimeout time.Duration
-	// handlerID is the p2p protocol handler ID used when marshaling requests.
-	// Defaults to networkP2P.SignatureRequestHandlerID (native warp, ID 2).
-	// Override via newSignatureAggregatorWithHandlerID for oracle attestation (ID 4).
-	handlerID uint64
+	handlerID               uint64
 
 	subnetMapsLock sync.Mutex
 
@@ -107,31 +104,18 @@ func NewSignatureAggregator(
 	return &sa, nil
 }
 
-// newSignatureAggregatorWithHandlerID creates a SignatureAggregator that routes
-// requests to the given p2p handlerID instead of the default native-warp handler.
-// Use this to build protocol-specific aggregators (e.g. oracle attestation at ID 4).
-func newSignatureAggregatorWithHandlerID(
-	network *peers.AppRequestNetwork,
-	messageCreator message.Creator,
-	signatureCacheSize uint64,
-	aggregatorMetrics *metrics.SignatureAggregatorMetrics,
-	validatorClient clients.CanonicalValidatorState,
-	signatureRequestTimeout time.Duration,
-	handlerID uint64,
-) (*SignatureAggregator, error) {
-	sa, err := NewSignatureAggregator(
-		network,
-		messageCreator,
-		signatureCacheSize,
-		aggregatorMetrics,
-		validatorClient,
-		signatureRequestTimeout,
-	)
-	if err != nil {
-		return nil, err
-	}
-	sa.handlerID = handlerID
-	return sa, nil
+// OracleHandlerID is the p2p handler ID for oracle attestation requests.
+// Mirrors validator.SignatureRequestHandlerID in
+// github.com/ava-labs/avalanchego/network/p2p/oracle/validator.
+const OracleHandlerID uint64 = 4
+
+// WithHandlerID returns a shallow copy of the aggregator that routes requests
+// to the given p2p handler ID instead of the default native-warp handler (ID 2).
+// Use this to build protocol-specific aggregators without creating a new type.
+func (s *SignatureAggregator) WithHandlerID(id uint64) *SignatureAggregator {
+	copy := *s
+	copy.handlerID = id
+	return &copy
 }
 
 func (s *SignatureAggregator) connectToQuorumValidators(

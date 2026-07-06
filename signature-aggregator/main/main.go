@@ -177,19 +177,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	oracleSignatureAggregator, err := aggregator.NewOracleSignatureAggregator(
-		network,
-		messageCreator,
-		cfg.SignatureCacheSize,
-		metricsInstance,
-		validatorClient,
-		requestTimeout,
-	)
-	if err != nil {
-		logger.Fatal("Failed to create oracle signature aggregator", zap.Error(err))
-		os.Exit(1)
-	}
-
 	api.HandleAggregateSignaturesByRawMsgRequest(
 		logger,
 		metricsInstance,
@@ -198,7 +185,7 @@ func main() {
 	api.HandleOracleAggregateSignatures(
 		logger,
 		metricsInstance,
-		oracleSignatureAggregator,
+		signatureAggregator.WithHandlerID(aggregator.OracleHandlerID),
 	)
 
 	healthCheckSubnets := cfg.GetTrackedSubnets().List()

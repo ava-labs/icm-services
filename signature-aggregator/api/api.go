@@ -206,7 +206,7 @@ func signatureAggregationAPIHandler(
 			justification,
 			signingSubnetID,
 			quorumPercentage,
-			pchainHeight, // ACP-181: Use determined P-Chain height for validator set selection
+			pchainHeight,
 		)
 		if err != nil {
 			logger.Warn("Failed to aggregate signatures", zap.Error(err))

@@ -24,14 +24,14 @@ const OracleAPIPath = "/oracle/aggregate-signatures"
 func HandleOracleAggregateSignatures(
 	logger logging.Logger,
 	metricsInstance *metrics.SignatureAggregatorMetrics,
-	oracleAggregator *aggregator.OracleSignatureAggregator,
+	sigAggregator *aggregator.SignatureAggregator,
 ) {
 	http.Handle(
 		OracleAPIPath,
 		signatureAggregationAPIHandler(
 			logger,
 			metricsInstance,
-			oracleAggregator.SignatureAggregator,
+			sigAggregator,
 		),
 	)
 }
