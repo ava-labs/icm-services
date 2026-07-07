@@ -359,7 +359,6 @@ func (d *DiffSetUpdater) performFullSetUpdate(
 		justification[:],
 		signingSubnet,
 		defaultQuorumPercentage,
-		defaultQuorumPercentageBuf,
 		pChainHeight,
 	)
 	if err != nil {
@@ -454,7 +453,6 @@ func (d *DiffSetUpdater) performDiffUpdate(
 		justification[:],
 		signingSubnet,
 		defaultQuorumPercentage,
-		defaultQuorumPercentageBuf,
 		d.localPChainHeight,
 	)
 	if err != nil {

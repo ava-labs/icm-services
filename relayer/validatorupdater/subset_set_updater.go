@@ -28,10 +28,9 @@ import (
 )
 
 const (
-	DefaultPollInterval               = 10 * time.Second
-	defaultQuorumPercentage           = 67
-	defaultQuorumPercentageBuf        = 5
-	defaultShardSize           uint32 = 10
+	DefaultPollInterval            = 10 * time.Second
+	defaultQuorumPercentage        = 67
+	defaultShardSize        uint32 = 10
 )
 
 type SubsetSetUpdater struct {
@@ -292,7 +291,6 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		justification,
 		signingSubnet,
 		defaultQuorumPercentage,
-		defaultQuorumPercentageBuf,
 		onChainPChainHeight,
 	)
 	if err != nil {
