@@ -541,29 +541,6 @@ func (s *SignatureAggregator) collectSignatures(
 		return signedMsg, nil
 	}
 
-	// Process any responses that arrived without reaching quorum during the request, in case
-	// cached signatures plus the collected ones now suffice.
-	signedMsg, err = s.aggregateIfSufficientWeight(
-		log,
-		unsignedMessage,
-		signatureMap,
-		accumulatedSignatureWeight,
-		vdrs.ValidatorSet.Validators,
-		totalWeight,
-		requiredQuorumPercentage,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if signedMsg != nil {
-		log.Info(
-			"Created signed message.",
-			zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-			zap.Uint64("totalValidatorWeight", totalWeight),
-		)
-		return signedMsg, nil
-	}
-
 	// The caller logs this failure at error level, so don't log it again here.
 	return nil, errNotEnoughSignatures
 }
