@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
@@ -73,6 +74,7 @@ type signatureAggregator interface {
 		inputSigningSubnet ids.ID,
 		requiredQuorumPercentage uint64,
 		pchainHeight uint64,
+		handlerID uint64,
 	) (*avalancheWarp.Message, error)
 }
 
@@ -90,6 +92,7 @@ func HandleAggregateSignaturesByRawMsgRequest(
 			logger,
 			metrics,
 			signatureAggregator,
+			networkP2P.SignatureRequestHandlerID,
 		),
 	)
 }
@@ -152,6 +155,7 @@ func signatureAggregationAPIHandler(
 	logger logging.Logger,
 	metrics *metrics.SignatureAggregatorMetrics,
 	signatureAggregator signatureAggregator,
+	handlerID uint64,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metrics.AggregateSignaturesRequestCount.Inc()
@@ -272,7 +276,8 @@ func signatureAggregationAPIHandler(
 			justification,
 			signingSubnetID,
 			quorumPercentage,
-			pchainHeight, // ACP-181: Use determined P-Chain height for validator set selection
+			pchainHeight,
+			handlerID,
 		)
 		if err != nil {
 			// Never echo err itself to the caller; see classifyAggregationError.

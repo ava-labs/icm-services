@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
+	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -39,6 +40,7 @@ func (s *stubAggregator) CreateSignedMessage(
 	ids.ID,
 	uint64,
 	uint64,
+	uint64,
 ) (*avalancheWarp.Message, error) {
 	s.calls++
 	return nil, s.err
@@ -60,6 +62,7 @@ func postValidAggregationRequest(t *testing.T, agg signatureAggregator) *httptes
 		logging.NoLog{},
 		metrics.NewSignatureAggregatorMetrics(prometheus.NewRegistry()),
 		agg,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	req := httptest.NewRequest(http.MethodPost, APIPath, strings.NewReader(string(body)))
 	rec := httptest.NewRecorder()
