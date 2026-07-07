@@ -10,7 +10,7 @@
 pragma solidity ^0.8.30;
 
 import {AccessControl} from "@openzeppelin/contracts@5.1.0/access/AccessControl.sol";
-import {IRiscZeroVerifier} from "@risc0/IRiscZeroVerifier.sol"; 
+import {IRiscZeroVerifier} from "@risc0/IRiscZeroVerifier.sol";
 import {Consensus, Execution, Receipt} from "./StateManagerLibrary.sol";
 
 /**
