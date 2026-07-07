@@ -10,5 +10,6 @@
 @common=icm-contracts/common
 @ethereum=icm-contracts/ethereum
 @solidity-merkle-trees/=lib/solidity-merkle-trees/src/
-@solidity-merkle-trees-local/=icm-contracts/avalanche/verifiers/ethereum/external/solidity-merkle-trees/
-@sp1-contracts/=icm-contracts/ethereum/external/sp1-contracts/
+@solidity-merkle-trees-local/=lib/vendored/solidity-merkle-trees/
+@sp1-contracts/=lib/vendored/sp1-contracts/
+@risc0/=lib/vendored/risc0/
