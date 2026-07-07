@@ -55,6 +55,9 @@ var (
 	e2eFlags             *e2e.FlagVars
 	solanaRPCURL         string // non-empty when SOLANA_RPC_URL is set
 	solanarpcConfigPath  string // path to the solanarpc sidecar's config file; also read by the validator
+	solanaKeypairPath    string // non-empty when SOLANA_KEYPAIR is set (funded devnet keypair)
+	runObserverDemo      bool   // true when RUN_OBSERVER_DEMO is set
+	observerBinaryPath   string // path to the built solana-observer binary
 )
 
 func TestMain(m *testing.M) {
@@ -98,6 +101,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	utils.BuildAllExecutables(ctx, log)
 
 	solanaRPCURL = os.Getenv("SOLANA_RPC_URL")
+	solanaKeypairPath = os.Getenv("SOLANA_KEYPAIR")
+	runObserverDemo = os.Getenv("RUN_OBSERVER_DEMO") != ""
 
 	// Always start the mock gRPC sidecar on port 9900 (unconditional accept).
 	mockEndpoint := fmt.Sprintf("127.0.0.1:%d", oracleSidecarPort)
@@ -135,7 +140,14 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		Expect(buildErr).Should(BeNil())
 
 		solanarpcConfigPath = filepath.Join(repoRoot, "build/solanarpc-config.json")
-		configJSON := fmt.Sprintf(`{"verifiers": {"solana": {"rpc_url": %q}}}`, solanaRPCURL)
+		// Include allowed_programs listing the Memo program so the observer,
+		// which reads this same file for its subscription filter, has
+		// something to watch. Harmless when the observer isn't running.
+		configJSON := fmt.Sprintf(
+			`{"verifiers": {"solana": {"rpc_url": %q, "allowed_programs": [%q]}}}`,
+			solanaRPCURL,
+			"MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+		)
 		Expect(os.WriteFile(solanarpcConfigPath, []byte(configJSON), 0o600)).Should(BeNil())
 
 		solanarpcEndpoint := fmt.Sprintf("127.0.0.1:%d", solanarpcSidecarPort)
@@ -157,6 +169,19 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		}()
 		waitForTCP(ctx, solanarpcEndpoint, 10*time.Second)
 		log.Info("solanarpc sidecar is ready", zap.String("addr", solanarpcEndpoint))
+	}
+
+	// Build the solana-observer binary when the auto-relay demo is requested.
+	// The spec that consumes it is skipped unless RUN_OBSERVER_DEMO,
+	// SOLANA_RPC_URL, and SOLANA_KEYPAIR are all set.
+	if runObserverDemo {
+		observerBinaryPath = filepath.Join(repoRoot, "build/solana-observer")
+		log.Info("Building solana-observer", zap.String("path", observerBinaryPath))
+		buildCmd := exec.Command("go", "build", "-o", observerBinaryPath, "./solana-observer/")
+		buildCmd.Dir = repoRoot
+		buildOut, buildErr := buildCmd.CombinedOutput()
+		log.Info(string(buildOut))
+		Expect(buildErr).Should(BeNil())
 	}
 
 	// The validator's OracleSidecarConfig requires a sidecar-config-path from
@@ -274,5 +299,23 @@ var _ = ginkgo.Describe("[Oracle Attestation E2E Tests]", func() {
 			}
 			l1Infos := localNetworkInstance.GetL1Infos()
 			oracleFlows.OracleAttestation(ctx, log, localNetworkInstance, l1Infos[1], solanaRPCURL)
+		})
+
+	ginkgo.It("Auto-relay demo (solana-observer)",
+		ginkgo.Label(oracleLabel),
+		func(ctx context.Context) {
+			if !runObserverDemo {
+				ginkgo.Skip("RUN_OBSERVER_DEMO not set; skipping observer demo")
+			}
+			if solanaRPCURL == "" || solanaKeypairPath == "" {
+				ginkgo.Skip("observer demo requires SOLANA_RPC_URL and SOLANA_KEYPAIR")
+			}
+			l1Infos := localNetworkInstance.GetL1Infos()
+			oracleFlows.ObserverAttestation(
+				ctx, log, localNetworkInstance, l1Infos[1],
+				observerBinaryPath,
+				solanarpcConfigPath,
+				solanaKeypairPath,
+			)
 		})
 })
