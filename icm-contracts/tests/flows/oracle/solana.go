@@ -50,11 +50,16 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 		return out
 	}
 
-	// Step 1: find a recent Memo Program transaction.
+	// Step 1: fetch a batch of recent transactions that mention the Memo program.
+	// getSignaturesForAddress returns any tx where the address appears in any
+	// role (invoked, plain account, LUT-resolved, etc.), not just ones that
+	// actually invoke it as a program. We iterate through the batch until we
+	// find one that contains a real Memo instruction.
+	const candidateLimit = 20
 	sigsRaw := post(map[string]any{
 		"jsonrpc": "2.0", "id": 1,
 		"method": "getSignaturesForAddress",
-		"params": []any{memoProgram, map[string]any{"limit": 1}},
+		"params": []any{memoProgram, map[string]any{"limit": candidateLimit}},
 	})
 	var sigsResp struct {
 		Result []struct {
@@ -63,9 +68,32 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 	}
 	Expect(json.Unmarshal(sigsRaw, &sigsResp)).Should(BeNil())
 	Expect(sigsResp.Result).ShouldNot(BeEmpty(), "no recent Memo Program transactions at SOLANA_RPC_URL")
-	txSig := sigsResp.Result[0].Signature
 
-	// Step 2: fetch the full transaction.
+	// Step 2: for each candidate, fetch the tx and scan for a Memo instruction.
+	// Return the first match.
+	for _, cand := range sigsResp.Result {
+		txSig := cand.Signature
+		if data, slot, ok := tryExtractMemoInstruction(post, txSig); ok {
+			sigBytes, err := base58.Decode(txSig)
+			Expect(err).Should(BeNil())
+			return solanaTxData{
+				txSigBytes: sigBytes,
+				slot:       slot,
+				programID:  memoProgram,
+				instrData:  data,
+			}
+		}
+	}
+	Expect(false).To(BeTrue(), "no Memo instruction found in the %d most recent Memo-tagged transactions", candidateLimit)
+	return solanaTxData{}
+}
+
+// tryExtractMemoInstruction fetches the transaction with the given signature and
+// scans its top-level and inner instructions for one that invokes the Memo
+// program. Returns (data, slot, true) on the first match, or (nil, 0, false)
+// if the transaction contains no Memo invocation. The transaction must exist;
+// this helper does not retry lookup failures.
+func tryExtractMemoInstruction(post func(any) []byte, txSig string) ([]byte, uint64, bool) {
 	txRaw := post(map[string]any{
 		"jsonrpc": "2.0", "id": 1,
 		"method": "getTransaction",
@@ -96,7 +124,9 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 		} `json:"result"`
 	}
 	Expect(json.Unmarshal(txRaw, &txResp)).Should(BeNil())
-	Expect(txResp.Result).ShouldNot(BeNil(), "transaction not found for sig %s", txSig)
+	if txResp.Result == nil {
+		return nil, 0, false
+	}
 
 	// For versioned (v0) transactions, programIdIndex refers to the combined account
 	// list: static keys + loaded writable + loaded readonly. Programs resolved via
@@ -110,16 +140,12 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 		)...,
 	)
 
-	// Collect all instructions: top-level first, then inner.
-	// getSignaturesForAddress returns any tx that mentions a program (including CPI),
-	// so the Memo call may appear only in inner instructions.
 	allInstrs := make([]solanaInstr, 0, len(txResp.Result.Transaction.Message.Instructions))
 	allInstrs = append(allInstrs, txResp.Result.Transaction.Message.Instructions...)
 	for _, inner := range txResp.Result.Meta.InnerInstructions {
 		allInstrs = append(allInstrs, inner.Instructions...)
 	}
 
-	var instrData []byte
 	for _, instr := range allInstrs {
 		if instr.ProgramIDIndex < 0 || instr.ProgramIDIndex >= len(keys) {
 			continue
@@ -129,18 +155,7 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 		}
 		data, err := base58.Decode(instr.Data)
 		Expect(err).Should(BeNil())
-		instrData = data
-		break
+		return data, txResp.Result.Slot, true
 	}
-	Expect(instrData).ShouldNot(BeNil(), "could not find Memo instruction in transaction %s", txSig)
-
-	sigBytes, err := base58.Decode(txSig)
-	Expect(err).Should(BeNil())
-
-	return solanaTxData{
-		txSigBytes: sigBytes,
-		slot:       txResp.Result.Slot,
-		programID:  memoProgram,
-		instrData:  instrData,
-	}
+	return nil, 0, false
 }

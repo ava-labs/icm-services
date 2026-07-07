@@ -54,6 +54,7 @@ var (
 	solanarpcSidecar *exec.Cmd // solanarpc sidecar, non-nil only when SOLANA_RPC_URL set
 	e2eFlags             *e2e.FlagVars
 	solanaRPCURL         string // non-empty when SOLANA_RPC_URL is set
+	solanarpcConfigPath  string // path to the solanarpc sidecar's config file; also read by the validator
 )
 
 func TestMain(m *testing.M) {
@@ -133,9 +134,9 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		log.Info(string(buildOut))
 		Expect(buildErr).Should(BeNil())
 
-		configPath := filepath.Join(repoRoot, "build/solanarpc-config.json")
-		configJSON := fmt.Sprintf(`{"rpc_url": %q}`, solanaRPCURL)
-		Expect(os.WriteFile(configPath, []byte(configJSON), 0o600)).Should(BeNil())
+		solanarpcConfigPath = filepath.Join(repoRoot, "build/solanarpc-config.json")
+		configJSON := fmt.Sprintf(`{"verifiers": {"solana": {"rpc_url": %q}}}`, solanaRPCURL)
+		Expect(os.WriteFile(solanarpcConfigPath, []byte(configJSON), 0o600)).Should(BeNil())
 
 		solanarpcEndpoint := fmt.Sprintf("127.0.0.1:%d", solanarpcSidecarPort)
 		log.Info("Starting solanarpc sidecar",
@@ -144,8 +145,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		)
 		solanarpcSidecar = exec.Command(solanarpcBin,
 			"--addr", fmt.Sprintf(":%d", solanarpcSidecarPort),
-			"--verifier-type", "solanarpc",
-			"--config-path", configPath,
+			"--config-path", solanarpcConfigPath,
 		)
 		solanarpcSidecar.Stdout = os.Stdout
 		solanarpcSidecar.Stderr = os.Stderr
@@ -159,10 +159,20 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		log.Info("solanarpc sidecar is ready", zap.String("addr", solanarpcEndpoint))
 	}
 
+	// The validator's OracleSidecarConfig requires a sidecar-config-path from
+	// which it derives its allowed-source-type set. For the mock L1 the sidecar
+	// binary is a stub that ignores config, so we write a synthetic file just
+	// for the validator to read. For the solanarpc L1 we point the validator
+	// at the same file the real sidecar already consumes — that's the single
+	// source of truth this design is built around.
+	mockValidatorSidecarConfigPath := filepath.Join(repoRoot, "build/oracle-mock-validator-config.json")
+	Expect(os.WriteFile(mockValidatorSidecarConfigPath, []byte(`{"verifiers": {"solana": {}}}`), 0o600)).Should(BeNil())
+
 	// Build chain configs pointing each L1 at its sidecar.
 	mockChainConfig := utils.DefaultChainConfig()
 	mockChainConfig["oracle"] = map[string]any{
-		"endpoint": mockEndpoint,
+		"endpoint":            mockEndpoint,
+		"sidecar-config-path": mockValidatorSidecarConfigPath,
 	}
 
 	l1Specs := []network.L1Spec{
@@ -177,7 +187,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	if solanaRPCURL != "" {
 		solanarpcChainConfig := utils.DefaultChainConfig()
 		solanarpcChainConfig["oracle"] = map[string]any{
-			"endpoint": fmt.Sprintf("127.0.0.1:%d", solanarpcSidecarPort),
+			"endpoint":            fmt.Sprintf("127.0.0.1:%d", solanarpcSidecarPort),
+			"sidecar-config-path": solanarpcConfigPath,
 		}
 		l1Specs = append(l1Specs, network.L1Spec{
 			Name:        "solanarpc",

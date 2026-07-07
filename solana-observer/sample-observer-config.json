@@ -1,0 +1,26 @@
+{
+  "_comment": "Sample observer config. Fill in the ADDRESSES and BLOCKCHAIN_ID after deploying the OracleAdapter + TeleporterMessengerV2 on your L1 and reading its blockchain_id/network_id via avalanche-cli or platform.getBlockchains. The `sidecar_config_path` MUST point at the same file the validators consume so the program allowlist stays consistent across the pipeline.",
+
+  "solana": {
+    "ws_url": "wss://api.devnet.solana.com",
+    "rpc_url": "https://api.devnet.solana.com",
+    "commitment": "finalized"
+  },
+
+  "l1": {
+    "rpc_url": "http://127.0.0.1:9650/ext/bc/BLOCKCHAIN_ID/rpc",
+    "chain_id": 12345,
+    "blockchain_id": "REPLACE_WITH_L1_BLOCKCHAIN_ID_BASE58",
+    "network_id": 1337,
+    "teleporter_address": "0x0000000000000000000000000000000000000000",
+    "dest_contract": "0x0000000000000000000000000000000000000000",
+    "subnet_id": "REPLACE_WITH_SUBNET_ID_BASE58",
+    "delivery_private_key_hex": "REPLACE_WITH_FUNDED_HEX_PRIVATE_KEY"
+  },
+
+  "aggregator_url": "http://127.0.0.1:8080",
+
+  "sidecar_config_path": "/absolute/path/to/sidecar-config.json",
+
+  "nonce_file": "/absolute/path/to/observer-nonces.json"
+}
