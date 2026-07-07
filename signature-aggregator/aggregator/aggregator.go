@@ -109,6 +109,11 @@ func NewSignatureAggregator(
 	return &sa, nil
 }
 
+// OracleHandlerID is the p2p handler ID for oracle attestation requests.
+// Mirrors validator.SignatureRequestHandlerID in
+// github.com/ava-labs/avalanchego/network/p2p/oracle/validator.
+const OracleHandlerID uint64 = 4
+
 func (s *SignatureAggregator) connectToQuorumValidators(
 	ctx context.Context,
 	logger logging.Logger,
@@ -606,6 +611,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	inputSigningSubnet ids.ID,
 	requiredQuorumPercentage uint64,
 	pchainHeight uint64,
+	handlerID uint64,
 ) (*avalancheWarp.Message, error) {
 	log = log.With(
 		zap.Uint64("requiredQuorumPercentage", requiredQuorumPercentage),
@@ -1036,7 +1042,7 @@ func (s *SignatureAggregator) marshalRequest(
 		return nil, err
 	}
 	return networkP2P.PrefixMessage(
-		networkP2P.ProtocolPrefix(networkP2P.SignatureRequestHandlerID),
+		networkP2P.ProtocolPrefix(handlerID),
 		messageBytes,
 	), nil
 }

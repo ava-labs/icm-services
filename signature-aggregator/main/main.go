@@ -161,13 +161,16 @@ func main() {
 
 	metricsInstance := metrics.NewSignatureAggregatorMetrics(registries[sigAggMetricsPrefix])
 
+	validatorClient := clients.NewCanonicalValidatorClient(cfg.PChainAPI)
+	requestTimeout := 2 * utils.DefaultAppRequestTimeout
+
 	signatureAggregator, err := aggregator.NewSignatureAggregator(
 		network,
 		messageCreator,
 		cfg.SignatureCacheSize,
 		metricsInstance,
-		clients.NewCanonicalValidatorClient(cfg.PChainAPI),
-		2*utils.DefaultAppRequestTimeout,
+		validatorClient,
+		requestTimeout,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create signature aggregator", zap.Error(err))
@@ -175,6 +178,11 @@ func main() {
 	}
 
 	api.HandleAggregateSignaturesByRawMsgRequest(
+		logger,
+		metricsInstance,
+		signatureAggregator,
+	)
+	api.HandleOracleAggregateSignatures(
 		logger,
 		metricsInstance,
 		signatureAggregator,
