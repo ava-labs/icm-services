@@ -1,0 +1,9 @@
+[package]
+name = "zk-valset-program"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alloy-sol-types = "0.8"
+merkle-sig-verification = { path = "../lib" }
+sp1-zkvm = { workspace = true }
