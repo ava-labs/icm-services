@@ -16,23 +16,23 @@ import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 
 contract OracleAdapterTest is Test {
-    address constant WARP_PRECOMPILE = 0x0200000000000000000000000000000000000005;
-    bytes32 constant THIS_CHAIN_ID = bytes32(uint256(0xABCD));
-    string constant SOURCE_TYPE = "solana";
-    string constant SOURCE_ADDR = "So11111111111111111111111111111111111111112";
+    address private constant _WARP_PRECOMPILE = 0x0200000000000000000000000000000000000005;
+    bytes32 private constant _THIS_CHAIN_ID = bytes32(uint256(0xABCD));
+    string private constant _SOURCE_TYPE = "solana";
+    string private constant _SOURCE_ADDR = "So11111111111111111111111111111111111111112";
 
-    OracleAdapter adapter;
-    InlineOracleReceiver receiver;
+    OracleAdapter private _adapter;
+    InlineOracleReceiver private _receiver;
 
     function setUp() public {
         vm.mockCall(
-            WARP_PRECOMPILE,
+            _WARP_PRECOMPILE,
             abi.encodeCall(IWarpMessenger.getBlockchainID, ()),
-            abi.encode(THIS_CHAIN_ID)
+            abi.encode(_THIS_CHAIN_ID)
         );
-        adapter = new OracleAdapter(address(this));
-        receiver = new InlineOracleReceiver();
-        adapter.setAllowedSource(SOURCE_TYPE, SOURCE_ADDR, true);
+        _adapter = new OracleAdapter(address(this));
+        _receiver = new InlineOracleReceiver();
+        _adapter.setAllowedSource(_SOURCE_TYPE, _SOURCE_ADDR, true);
     }
 
     // -------------------------------------------------------------------------
@@ -43,14 +43,14 @@ contract OracleAdapterTest is Test {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         _mockWarp(0, oracleMsg, true);
 
-        vm.expectEmit(true, true, false, true, address(adapter));
+        vm.expectEmit(true, true, false, true, address(_adapter));
         emit OracleAdapter.OracleMessageVerified(
             oracleMsg.nonce, oracleMsg.sourceType, oracleMsg.sourceAddress, oracleMsg.destContract
         );
 
-        bool result = adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
+        bool result = _adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
         assertTrue(result);
-        assertTrue(adapter.isProcessed(oracleMsg.nonce));
+        assertTrue(_adapter.isProcessed(oracleMsg.nonce));
     }
 
     // -------------------------------------------------------------------------
@@ -62,7 +62,7 @@ contract OracleAdapterTest is Test {
         _mockWarp(0, oracleMsg, false);
 
         vm.expectRevert(OracleAdapter.InvalidWarpMessage.selector);
-        adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
+        _adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
     }
 
     function testVerifyMessageWrongSourceChain() public {
@@ -75,17 +75,17 @@ contract OracleAdapterTest is Test {
             payload: _oracleMsgPayload(oracleMsg)
         });
         vm.mockCall(
-            WARP_PRECOMPILE,
+            _WARP_PRECOMPILE,
             abi.encodeCall(IWarpMessenger.getVerifiedWarpMessage, (0)),
             abi.encode(warpMsg, true)
         );
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                OracleAdapter.WrongSourceChain.selector, wrongChainID, THIS_CHAIN_ID
+                OracleAdapter.WrongSourceChain.selector, wrongChainID, _THIS_CHAIN_ID
             )
         );
-        adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
+        _adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
     }
 
     function testVerifyMessageSourceNotAllowed() public {
@@ -101,18 +101,20 @@ contract OracleAdapterTest is Test {
                 oracleMsg.sourceAddress
             )
         );
-        adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
+        _adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
     }
 
     function testVerifyMessageAlreadyProcessed() public {
         OracleMessage memory oracleMsg = _defaultOracleMsg();
         _mockWarp(0, oracleMsg, true);
-        adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
+        _adapter.verifyMessage(_buildICMMsg(0, oracleMsg));
 
         // Second delivery: different warp index, same global nonce.
         _mockWarp(1, oracleMsg, true);
-        vm.expectRevert(abi.encodeWithSelector(OracleAdapter.AlreadyProcessed.selector, oracleMsg.nonce));
-        adapter.verifyMessage(_buildICMMsg(1, oracleMsg));
+        vm.expectRevert(
+            abi.encodeWithSelector(OracleAdapter.AlreadyProcessed.selector, oracleMsg.nonce)
+        );
+        _adapter.verifyMessage(_buildICMMsg(1, oracleMsg));
     }
 
     // -------------------------------------------------------------------------
@@ -124,15 +126,15 @@ contract OracleAdapterTest is Test {
         bytes memory expectedPayload = abi.encode(teleporterMsg);
 
         vm.mockCall(
-            WARP_PRECOMPILE,
+            _WARP_PRECOMPILE,
             abi.encodeCall(IWarpMessenger.sendWarpMessage, (expectedPayload)),
             abi.encode(bytes32(0))
         );
         vm.expectCall(
-            WARP_PRECOMPILE, abi.encodeCall(IWarpMessenger.sendWarpMessage, (expectedPayload))
+            _WARP_PRECOMPILE, abi.encodeCall(IWarpMessenger.sendWarpMessage, (expectedPayload))
         );
 
-        adapter.sendMessage(teleporterMsg);
+        _adapter.sendMessage(teleporterMsg);
     }
 
     // -------------------------------------------------------------------------
@@ -142,46 +144,46 @@ contract OracleAdapterTest is Test {
     function testSetAllowedSourceOnlyOwner() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(OracleAdapter.Unauthorized.selector);
-        adapter.setAllowedSource("solana", "addr", true);
+        _adapter.setAllowedSource("solana", "addr", true);
     }
 
     function testTransferOwnershipOnlyOwner() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(OracleAdapter.Unauthorized.selector);
-        adapter.transferOwnership(address(0xDEAD));
+        _adapter.transferOwnership(address(0xDEAD));
     }
 
     function testTransferOwnershipZeroAddress() public {
         vm.expectRevert(OracleAdapter.ZeroAddress.selector);
-        adapter.transferOwnership(address(0));
+        _adapter.transferOwnership(address(0));
     }
 
     // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
 
-    function _defaultOracleMsg() internal view returns (OracleMessage memory) {
-        return OracleMessage({
-            sourceType: SOURCE_TYPE,
-            sourceAddress: SOURCE_ADDR,
-            destContract: address(receiver),
-            sourceBlockHeight: 1_000_000,
-            nonce: 1,
-            payload: hex"cafebabe"
-        });
-    }
-
     function _mockWarp(uint32 warpIndex, OracleMessage memory oracleMsg, bool valid) internal {
         WarpMessage memory warpMsg = WarpMessage({
-            sourceChainID: THIS_CHAIN_ID,
+            sourceChainID: _THIS_CHAIN_ID,
             originSenderAddress: address(0),
             payload: _oracleMsgPayload(oracleMsg)
         });
         vm.mockCall(
-            WARP_PRECOMPILE,
+            _WARP_PRECOMPILE,
             abi.encodeCall(IWarpMessenger.getVerifiedWarpMessage, (warpIndex)),
             abi.encode(warpMsg, valid)
         );
+    }
+
+    function _defaultOracleMsg() internal view returns (OracleMessage memory) {
+        return OracleMessage({
+            sourceType: _SOURCE_TYPE,
+            sourceAddress: _SOURCE_ADDR,
+            destContract: address(_receiver),
+            sourceBlockHeight: 1_000_000,
+            nonce: 1,
+            payload: hex"cafebabe"
+        });
     }
 
     function _oracleMsgPayload(
@@ -208,7 +210,7 @@ contract OracleAdapterTest is Test {
                 messageNonce: oracleMsg.nonce,
                 originSenderAddress: address(0),
                 originTeleporterAddress: address(0),
-                destinationBlockchainID: THIS_CHAIN_ID,
+                destinationBlockchainID: _THIS_CHAIN_ID,
                 destinationAddress: oracleMsg.destContract,
                 requiredGasLimit: 0,
                 allowedRelayerAddresses: relayers,
@@ -216,7 +218,7 @@ contract OracleAdapterTest is Test {
                 message: hex""
             }),
             sourceNetworkID: 1,
-            sourceBlockchainID: THIS_CHAIN_ID,
+            sourceBlockchainID: _THIS_CHAIN_ID,
             attestation: abi.encode(warpIndex)
         });
     }

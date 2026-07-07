@@ -87,10 +87,7 @@ contract OracleAdapter is IAdapter {
      * @param destContract  Destination contract that will receive the payload.
      */
     event OracleMessageVerified(
-        uint64 indexed nonce,
-        string sourceType,
-        string sourceAddress,
-        address indexed destContract
+        uint64 indexed nonce, string sourceType, string sourceAddress, address indexed destContract
     );
 
     /**
