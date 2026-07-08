@@ -22,11 +22,13 @@ echo "Ethereum Solidity Version: $ETHEREUM_SOLIDITY_VERSION"
 DEFAULT_AVALANCHE_CONTRACT_LIST="TeleporterMessenger TeleporterRegistry WarpAdapter ExampleERC20 ExampleRewardCalculator TestMessenger ValidatorSetSig NativeTokenStakingManager ERC20TokenStakingManager
 TokenHome TokenRemote ERC20TokenHome ERC20TokenHomeUpgradeable ERC20TokenRemote ERC20TokenRemoteUpgradeable NativeTokenHome NativeTokenHomeUpgradeable NativeTokenRemote NativeTokenRemoteUpgradeable
 WrappedNativeToken MockERC20SendAndCallReceiver MockNativeSendAndCallReceiver ExampleERC20Decimals IStakingManager ACP99Manager ValidatorManager PoAManager BatchCrossChainMessenger INativeMinter
-ECDSAVerifier ZKStateManager ZKAdapter RiscZeroGroth16Verifier"
+ECDSAVerifier ZKStateManager ZKAdapter"
 
 DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2 Adapter"
 
-DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater MerkleValidatorSetRegistry ZKValidatorSetRegistry SP1VerifierGroth16"
+DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater MerkleValidatorSetRegistry ZKValidatorSetRegistry"
+
+VENDORED_CONTRACT_LIST="RiscZeroGroth16Verifier SP1VerifierGroth16"
 
 PROXY_LIST="TransparentUpgradeableProxy ProxyAdmin"
 ACCESS_LIST="OwnableUpgradeable"
@@ -214,6 +216,10 @@ generate_bindings "$COMMON_EVM_VERSION" "" "${contract_names[@]}"
 
 contract_names=(${ETHEREUM_CONTRACT_LIST[@]})
 cd $ETHEREUM_ICM_PATH
+generate_bindings "$ETHEREUM_EVM_VERSION" "" "${contract_names[@]}"
+
+contract_names=($VENDORED_CONTRACT_LIST)
+cd $REPO_PATH/lib/vendored
 generate_bindings "$ETHEREUM_EVM_VERSION" "" "${contract_names[@]}"
 
 contract_names=($PROXY_LIST)
