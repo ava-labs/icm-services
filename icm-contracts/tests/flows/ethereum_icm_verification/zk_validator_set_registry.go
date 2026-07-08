@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	zkregistry "github.com/ava-labs/icm-services/abi-bindings/go/ZKValidatorSetRegistry"
-	sp1verifier "github.com/ava-labs/icm-services/abi-bindings/go/external/sp1-contracts/v6.1.0/SP1VerifierGroth16"
+	sp1verifier "github.com/ava-labs/icm-services/abi-bindings/go/sp1-contracts/v6.1.0/SP1VerifierGroth16"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/libevm/accounts/abi"
