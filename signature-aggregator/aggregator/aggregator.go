@@ -516,7 +516,7 @@ func (s *SignatureAggregator) collectSignatures(
 		zap.Int("queryNodes", queryNodes.Len()),
 	)
 
-	signedMsg, err := s.requestSignatures(
+	return s.requestSignatures(
 		ctx,
 		log,
 		unsignedMessage,
@@ -529,25 +529,11 @@ func (s *SignatureAggregator) collectSignatures(
 		accumulatedSignatureWeight,
 		requiredQuorumPercentage,
 	)
-	if err != nil {
-		return nil, err
-	}
-	if signedMsg != nil {
-		log.Info(
-			"Created signed message.",
-			zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
-			zap.Uint64("totalValidatorWeight", totalWeight),
-		)
-		return signedMsg, nil
-	}
-
-	// The caller logs this failure at error level, so don't log it again here.
-	return nil, errNotEnoughSignatures
 }
 
 // requestSignatures sends a single request to [queryNodes] and processes responses as they
 // arrive, returning a signed message once [quorumPercentage] of stake is accumulated, or
-// (nil, nil) if the threshold isn't reached before all responses are in or the context ends.
+// [errNotEnoughSignatures] if the threshold isn't reached before all responses are in.
 func (s *SignatureAggregator) requestSignatures(
 	ctx context.Context,
 	log logging.Logger,
@@ -572,7 +558,7 @@ func (s *SignatureAggregator) requestSignatures(
 		return nil, err
 	}
 	if responseChan == nil {
-		return nil, nil
+		return nil, errNotEnoughSignatures
 	}
 	// Drain unprocessed responses in the background so returning early (on quorum or
 	// timeout) doesn't block, while still finishing every response's handler.
@@ -584,7 +570,7 @@ func (s *SignatureAggregator) requestSignatures(
 			return nil, ctx.Err()
 		case response, ok := <-responseChan:
 			if !ok {
-				return nil, nil
+				return nil, errNotEnoughSignatures
 			}
 			signedMsg, err := s.handleResponse(
 				log,
@@ -600,11 +586,16 @@ func (s *SignatureAggregator) requestSignatures(
 				return nil, fmt.Errorf("failed to handle response: %w", err)
 			}
 			if signedMsg != nil {
+				log.Info(
+					"Created signed message.",
+					zap.Uint64("signatureWeight", accumulatedSignatureWeight.Uint64()),
+					zap.Uint64("totalValidatorWeight", vdrs.ValidatorSet.TotalWeight),
+				)
 				return signedMsg, nil
 			}
 		}
 	}
-	return nil, nil
+	return nil, errNotEnoughSignatures
 }
 
 func (s *SignatureAggregator) CreateSignedMessage(
