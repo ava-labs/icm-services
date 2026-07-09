@@ -61,7 +61,10 @@ contract ZKStateManager is AccessControl {
     bytes32 public constant UNDEFINED_ROOT = bytes32(0);
 
     /// @notice Number of slots per epoch in the beacon chain
-    uint64 public constant SLOT_PER_EPOCH = 32; // TODO: Currently unused, but should be used in _permissibleTimespan
+    uint64 public constant SLOT_PER_EPOCH = 32;
+
+    /// @notice Seconds per slot on the Ethereum beacon chain
+    uint64 public constant SECONDS_PER_SLOT = 12;
 
     uint256 public immutable sourceChainId;
 
@@ -302,11 +305,25 @@ contract ZKStateManager is AccessControl {
         IRiscZeroVerifier(verifier).verify(consensus.seal, imageID, journalHash);
     }
 
+    /**
+     * @notice Checks that a transition advances finality and does not span more chain time
+     * than `permissibleTimespan`.
+     * @dev The chain time covered by the transition is the epoch distance between the pre-
+     * and post-state finalized checkpoints, converted to seconds via SLOT_PER_EPOCH and
+     * SECONDS_PER_SLOT. Bounding it forces updates to be applied regularly. A proof that
+     * jumps the contract across a long-stale gap in a single transition is rejected.
+     */
     function _permissibleTransition(
-        Consensus.State memory,
-        Consensus.State memory
-    ) internal pure returns (bool) {
-        // TODO: Add permissible transition check to prevent stale state transitions. Issue https://github.com/ava-labs/icm-services/issues/1360
-        return true;
+        Consensus.State memory preState,
+        Consensus.State memory postState
+    ) internal view returns (bool) {
+        uint64 preEpoch = preState.finalizedCheckpoint.epoch;
+        uint64 postEpoch = postState.finalizedCheckpoint.epoch;
+        if (postEpoch <= preEpoch) {
+            return false;
+        }
+        uint256 transitionTimespan =
+            uint256(postEpoch - preEpoch) * SLOT_PER_EPOCH * SECONDS_PER_SLOT;
+        return transitionTimespan <= permissibleTimespan;
     }
 }
