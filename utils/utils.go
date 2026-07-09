@@ -4,10 +4,12 @@
 package utils
 
 import (
+	"cmp"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 
@@ -87,6 +89,15 @@ func SignedWarpMessageToAccessList(signedMessage *avalancheWarp.Message) types.A
 			StorageKeys: predicate,
 		},
 	}
+}
+
+// SortDescending sorts [items] in place by descending key, using [key] to extract each
+// item's sort value. The sort is stable, so items with an equal key retain their original
+// relative order.
+func SortDescending[T any](items []T, key func(T) uint64) {
+	slices.SortStableFunc(items, func(a, b T) int {
+		return cmp.Compare(key(b), key(a))
+	})
 }
 
 //
