@@ -321,10 +321,10 @@ func (m *messageHandler) SendMessage(
 
 	// The transaction reverted. A common benign cause is that the message was already delivered
 	// by another relayer, so check delivery status before treating the revert as a failure.
-	teleporterMessenger, msgErr := m.getTeleporterMessenger()
-	if msgErr == nil {
-		delivered, derr := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
-		if derr == nil && delivered {
+	teleporterMessenger, err := m.getTeleporterMessenger()
+	if err == nil {
+		delivered, err := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+		if err == nil && delivered {
 			log.Info("Execution reverted: message already delivered to destination.")
 			return txHash, nil
 		}
