@@ -3,18 +3,16 @@
 
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 
-pragma solidity 0.8.30;
+pragma solidity ^0.8.30;
 
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 
 /**
  * @dev Test receiver for oracle E2E tests. Records the last delivered oracle message
- *      so tests can assert on payload correctness.
- *
- *      Implements ITeleporterReceiver; decodes oracle fields from the message bytes.
- *      message is abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload).
- *
- *      NOT FOR PRODUCTION USE.
+ * so tests can assert on payload correctness.
+ * Implements ITeleporterReceiver; decodes oracle fields from the message bytes.
+ * message is abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload).
+ * NOT FOR PRODUCTION USE.
  */
 contract MockOracleReceiver is ITeleporterReceiver {
     address public immutable teleporterMessenger;

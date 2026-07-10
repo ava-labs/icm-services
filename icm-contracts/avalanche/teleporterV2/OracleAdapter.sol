@@ -34,9 +34,9 @@ struct OracleMessage {
     // Destination contract on this L1 that receives the decoded payload.
     address destContract;
     // Block or slot number on the source chain at which the event occurred.
-    uint64 sourceBlockHeight;
+    uint256 sourceBlockHeight;
     // Monotonically increasing globally across all oracle sources. Enforces replay protection.
-    uint64 nonce;
+    uint256 nonce;
     // Application-level data from the source chain event.
     bytes payload;
 }
@@ -73,7 +73,7 @@ contract OracleAdapter is IAdapter {
     // global oracle nonce => delivered
     // Kept alongside Teleporter's own replay protection as defense-in-depth: guards
     // against direct verifyMessage calls made outside of TeleporterMessengerV2.
-    mapping(uint64 => bool) private _processedMessages;
+    mapping(uint256 => bool) private _processedMessages;
 
     // -------------------------------------------------------------------------
     // Events
@@ -87,7 +87,7 @@ contract OracleAdapter is IAdapter {
      * @param destContract  Destination contract that will receive the payload.
      */
     event OracleMessageVerified(
-        uint64 indexed nonce, string sourceType, string sourceAddress, address indexed destContract
+        uint256 indexed nonce, string sourceType, string sourceAddress, address indexed destContract
     );
 
     /**
@@ -107,7 +107,7 @@ contract OracleAdapter is IAdapter {
     error InvalidWarpMessage();
     error WrongSourceChain(bytes32 got, bytes32 want);
     error SourceNotAllowed(string sourceType, string sourceAddress);
-    error AlreadyProcessed(uint64 nonce);
+    error AlreadyProcessed(uint256 nonce);
     error Unauthorized();
     error ZeroAddress();
 
@@ -149,11 +149,10 @@ contract OracleAdapter is IAdapter {
      * @notice Verify a validator-attested oracle message.
      *
      * @dev The calling transaction MUST include the signed warp oracle message in its
-     *      access list. The warp precompile verifies the BLS aggregate during block
-     *      execution before this function runs.
-     *
-     *      message.attestation must be abi.encode(uint32 warpIndex, OracleMessage oracleMsg).
-     *      message.sourceBlockchainID must equal this chain's blockchain ID.
+     * access list. The warp precompile verifies the BLS aggregate during block
+     * execution before this function runs.
+     * message.attestation must be abi.encode(uint32 warpIndex, OracleMessage oracleMsg).
+     * message.sourceBlockchainID must equal this chain's blockchain ID.
      *
      * @inheritdoc IMessageVerifier
      */
@@ -182,10 +181,10 @@ contract OracleAdapter is IAdapter {
                 string memory sourceType,
                 string memory sourceAddress,
                 address destContract,
-                uint64 sourceBlockHeight,
-                uint64 nonce,
+                uint256 sourceBlockHeight,
+                uint256 nonce,
                 bytes memory msgPayload
-            ) = abi.decode(warp.payload, (string, string, address, uint64, uint64, bytes));
+            ) = abi.decode(warp.payload, (string, string, address, uint256, uint256, bytes));
             oracleMsg = OracleMessage({
                 sourceType: sourceType,
                 sourceAddress: sourceAddress,
@@ -261,7 +260,7 @@ contract OracleAdapter is IAdapter {
      * @notice Returns true if the global oracle nonce has already been delivered.
      */
     function isProcessed(
-        uint64 nonce
+        uint256 nonce
     ) external view returns (bool) {
         return _processedMessages[nonce];
     }
