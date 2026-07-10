@@ -668,6 +668,7 @@ func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
 		t.Context(), logging.NoLog{}, msg, nil, subnetID,
 		51, // 51% required quorum.
 		pchainapi.ProposedHeight,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	require.NoError(t, err)
 	require.NoError(t, signedMessage.Signature.Verify(
@@ -761,6 +762,7 @@ func TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent(t *testin
 		t.Context(), logging.NoLog{}, msg, nil, subnetID,
 		40, // 40% required quorum.
 		pchainapi.ProposedHeight,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	require.NoError(t, err)
 	require.NoError(t, signedMessage.Signature.Verify(
