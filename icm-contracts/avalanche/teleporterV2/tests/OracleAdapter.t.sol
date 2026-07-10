@@ -6,7 +6,7 @@
 pragma solidity 0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
-import {OracleAdapter, OracleMessage} from "./OracleAdapter.sol";
+import {OracleAdapter, OracleMessage} from "../OracleAdapter.sol";
 import {
     TeleporterICMMessage,
     TeleporterMessageV2,

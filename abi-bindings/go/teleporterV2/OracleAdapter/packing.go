@@ -17,8 +17,8 @@ type OracleMessage struct {
 	SourceType        string
 	SourceAddress     string
 	DestContract      common.Address
-	SourceBlockHeight uint64
-	Nonce             uint64
+	SourceBlockHeight *big.Int
+	Nonce             *big.Int
 	Payload           []byte
 }
 
@@ -36,9 +36,9 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("oracle packing: failed to create uint32 type: %v", err))
 	}
-	uint64T, err := abi.NewType("uint64", "", nil)
+	uint256T, err := abi.NewType("uint256", "", nil)
 	if err != nil {
-		panic(fmt.Sprintf("oracle packing: failed to create uint64 type: %v", err))
+		panic(fmt.Sprintf("oracle packing: failed to create uint256 type: %v", err))
 	}
 	bytesT, err := abi.NewType("bytes", "", nil)
 	if err != nil {
@@ -55,8 +55,8 @@ func init() {
 	oracleMessageBytesArgs = abi.Arguments{
 		{Name: "sourceType", Type: stringT},
 		{Name: "sourceAddress", Type: stringT},
-		{Name: "sourceBlockHeight", Type: uint64T},
-		{Name: "nonce", Type: uint64T},
+		{Name: "sourceBlockHeight", Type: uint256T},
+		{Name: "nonce", Type: uint256T},
 		{Name: "payload", Type: bytesT},
 	}
 }
@@ -70,7 +70,7 @@ func PackOracleAttestation(warpIndex uint32) ([]byte, error) {
 
 // PackOracleMessageBytes encodes oracle fields into the message bytes stored in
 // TeleporterMessageV2.message. Destination contracts decode these fields via
-// abi.decode(message, (string, string, uint64, uint64, bytes)).
+// abi.decode(message, (string, string, uint256, uint256, bytes)).
 func PackOracleMessageBytes(oracleMsg OracleMessage) ([]byte, error) {
 	return oracleMessageBytesArgs.Pack(
 		oracleMsg.SourceType,
@@ -110,7 +110,7 @@ func BuildOracleICMMessage(
 
 	return teleportermessengerv2.TeleporterICMMessage{
 		Message: teleportermessengerv2.TeleporterMessageV2{
-			MessageNonce:            new(big.Int).SetUint64(oracleMsg.Nonce),
+			MessageNonce:            oracleMsg.Nonce,
 			OriginSenderAddress:     common.Address{}, // address(0) — no EVM sender for oracle messages
 			OriginTeleporterAddress: teleporterAddress,
 			DestinationBlockchainID: thisChainID,
