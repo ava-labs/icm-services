@@ -121,18 +121,11 @@ contract OracleAdapterTest is Test {
     // sendMessage
     // -------------------------------------------------------------------------
 
-    function testSendMessageCallsWarpPrecompile() public {
+    function testSendMessageEmitsEvent() public {
         TeleporterMessageV2 memory teleporterMsg = _emptyTeleporterMsg();
-        bytes memory expectedPayload = abi.encode(teleporterMsg);
 
-        vm.mockCall(
-            _WARP_PRECOMPILE,
-            abi.encodeCall(IWarpMessenger.sendWarpMessage, (expectedPayload)),
-            abi.encode(bytes32(0))
-        );
-        vm.expectCall(
-            _WARP_PRECOMPILE, abi.encodeCall(IWarpMessenger.sendWarpMessage, (expectedPayload))
-        );
+        vm.expectEmit(false, false, false, true, address(_adapter));
+        emit OracleAdapter.OracleMessageSent(teleporterMsg);
 
         _adapter.sendMessage(teleporterMsg);
     }

@@ -96,6 +96,11 @@ contract OracleAdapter is IAdapter {
     event AllowedSourceUpdated(string sourceType, string sourceAddress, bool allowed);
 
     /**
+     * @notice Emitted in place of a warp send; consumed by off-chain relayers.
+     */
+    event OracleMessageSent(TeleporterMessageV2 message);
+
+    /**
      * @notice Emitted when ownership is transferred.
      */
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -139,8 +144,6 @@ contract OracleAdapter is IAdapter {
     /**
      * @inheritdoc IMessageSender
      */
-    event OracleMessageSent(TeleporterMessageV2 message);
-
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external override {
