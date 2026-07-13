@@ -123,8 +123,8 @@ func (r *Relay) Deliver(ctx context.Context, tx *SolanaTx) error {
 		oracleMsg.SourceType,
 		oracleMsg.SourceAddress,
 		oracleMsg.DestContract,
-		oracleMsg.SourceBlockHeight,
-		oracleMsg.Nonce,
+		oracleMsg.SourceBlockHeight.Uint64(),
+		oracleMsg.Nonce.Uint64(),
 		oracleMsg.Payload,
 	)
 	if err != nil {

@@ -164,14 +164,22 @@ func ObserverAttestation(
 		solanaAddress, "0.00001",
 	)
 
-	ginkgo.By("Step 8: Poll MockOracleReceiver.LastPayload until memo delivered (up to 3m)")
+	ginkgo.By("Step 8: Poll MockOracleReceiver events until memo delivered (up to 3m)")
 	pollDeadline := time.Now().Add(3 * time.Minute)
 	want := []byte(memoText)
 	for time.Now().Before(pollDeadline) {
-		got, callErr := mockContract.LastPayload(&bind.CallOpts{Context: ctx})
-		if callErr == nil && bytes.Equal(got, want) {
-			log.Info("Auto-relay delivered", zap.String("memo", memoText))
-			return
+		iter, filterErr := mockContract.FilterOracleMessageReceived(
+			&bind.FilterOpts{Context: ctx, Start: 0}, nil,
+		)
+		if filterErr == nil {
+			for iter.Next() {
+				if bytes.Equal(iter.Event.Payload, want) {
+					log.Info("Auto-relay delivered", zap.String("memo", memoText))
+					iter.Close()
+					return
+				}
+			}
+			iter.Close()
 		}
 		select {
 		case <-ctx.Done():
