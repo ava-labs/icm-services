@@ -165,7 +165,11 @@ func (r *Relay) Deliver(ctx context.Context, tx *SolanaTx) error {
 	return nil
 }
 
-func (r *Relay) aggregate(ctx context.Context, unsigned *avalancheWarp.UnsignedMessage, justification []byte) (*avalancheWarp.Message, error) {
+func (r *Relay) aggregate(
+	ctx context.Context,
+	unsigned *avalancheWarp.UnsignedMessage,
+	justification []byte,
+) (*avalancheWarp.Message, error) {
 	body := api.AggregateSignatureRequest{
 		Message:         "0x" + hex.EncodeToString(unsigned.Bytes()),
 		Justification:   hex.EncodeToString(justification),
@@ -207,7 +211,11 @@ func (r *Relay) aggregate(ctx context.Context, unsigned *avalancheWarp.UnsignedM
 	return avalancheWarp.ParseMessage(decoded)
 }
 
-func (r *Relay) submitL1(ctx context.Context, signed *avalancheWarp.Message, oracleMsg oracleadapter.OracleMessage) error {
+func (r *Relay) submitL1(
+	ctx context.Context,
+	signed *avalancheWarp.Message,
+	oracleMsg oracleadapter.OracleMessage,
+) error {
 	icmMsg, err := oracleadapter.BuildOracleICMMessage(
 		0,
 		oracleMsg,
