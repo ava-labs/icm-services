@@ -114,8 +114,8 @@ func (r *Relay) Deliver(ctx context.Context, tx *SolanaTx) error {
 		SourceType:        sourceType,
 		SourceAddress:     tx.Program,
 		DestContract:      r.cfg.L1.DestContract,
-		SourceBlockHeight: tx.Slot,
-		Nonce:             nonce,
+		SourceBlockHeight: new(big.Int).SetUint64(tx.Slot),
+		Nonce:             new(big.Int).SetUint64(nonce),
 		Payload:           tx.InstrData,
 	}
 

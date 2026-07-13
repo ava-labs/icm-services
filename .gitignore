@@ -55,3 +55,6 @@ icm-contracts/coverage/
 
 TeleporterRegistryAddress.json
 ValidatorAddresses.json
+
+# Sidecar Solana binary
+solana-observer/solana-observer
