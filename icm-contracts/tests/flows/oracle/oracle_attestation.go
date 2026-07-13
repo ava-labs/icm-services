@@ -21,9 +21,9 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	mockoraclereceiver "github.com/ava-labs/icm-services/abi-bindings/go/mocks/MockOracleReceiver"
 	oracleadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/OracleAdapter"
-	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
@@ -37,7 +37,6 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 )
-
 
 // oracleMsgABI encodes the oracle message payload that OracleVerifier expects.
 // Layout mirrors OracleMessage in network/p2p/oracle/message.go on the
@@ -298,14 +297,14 @@ func OracleAttestation(
 
 	gasFeeCap, gasTipCap, txNonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
 	deliveryTx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   l1Info.EVMChainID,
-		Nonce:     txNonce,
-		To:        &teleporterAddress,
-		Gas:       2_000_000, // requiredGasLimit(500K) + TeleporterV2/OracleAdapter overhead
-		GasFeeCap: gasFeeCap,
-		GasTipCap: gasTipCap,
-		Value:     common.Big0,
-		Data:      callData,
+		ChainID:    l1Info.EVMChainID,
+		Nonce:      txNonce,
+		To:         &teleporterAddress,
+		Gas:        2_000_000, // requiredGasLimit(500K) + TeleporterV2/OracleAdapter overhead
+		GasFeeCap:  gasFeeCap,
+		GasTipCap:  gasTipCap,
+		Value:      common.Big0,
+		Data:       callData,
 		AccessList: icmutils.SignedWarpMessageToAccessList(signedMsg),
 	})
 	deliveryTx = utils.SignTransaction(deliveryTx, fundedKey, l1Info.EVMChainID)
