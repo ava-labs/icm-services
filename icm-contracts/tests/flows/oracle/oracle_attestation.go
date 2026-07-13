@@ -47,15 +47,15 @@ var oracleMsgABI abi.Arguments
 func init() {
 	stringT, _ := abi.NewType("string", "", nil)
 	addrT, _ := abi.NewType("address", "", nil)
-	uint64T, _ := abi.NewType("uint64", "", nil)
+	uint256T, _ := abi.NewType("uint256", "", nil)
 	bytesT, _ := abi.NewType("bytes", "", nil)
 
 	oracleMsgABI = abi.Arguments{
 		{Type: stringT, Name: "sourceType"},
 		{Type: stringT, Name: "sourceAddress"},
 		{Type: addrT, Name: "destContract"},
-		{Type: uint64T, Name: "sourceBlockHeight"},
-		{Type: uint64T, Name: "nonce"},
+		{Type: uint256T, Name: "sourceBlockHeight"},
+		{Type: uint256T, Name: "nonce"},
 		{Type: bytesT, Name: "payload"},
 	}
 }
@@ -131,7 +131,7 @@ func OracleAttestation(
 	// Choose oracle message source: real Solana tx or dummy data.
 	var (
 		sourceAddress string
-		blockHeight   uint64
+		blockHeight   *big.Int
 		msgPayload    []byte
 		justification []byte
 	)
@@ -139,18 +139,18 @@ func OracleAttestation(
 		ginkgo.By("Step 3: Fetch real Memo Program transaction from Solana devnet")
 		txData := fetchSolanaMemoTx(ctx, solanaRPCURL)
 		sourceAddress = txData.programID
-		blockHeight = txData.slot
+		blockHeight = new(big.Int).SetUint64(txData.slot)
 		msgPayload = txData.instrData
 		justification = txData.txSigBytes
 		log.Info("Using real Solana transaction",
 			zap.String("program", sourceAddress),
-			zap.Uint64("slot", blockHeight),
+			zap.Stringer("slot", blockHeight),
 			zap.Int("payloadBytes", len(msgPayload)),
 		)
 	} else {
 		ginkgo.By("Step 3: Using mock oracle data (no SOLANA_RPC_URL set)")
 		sourceAddress = "4oracle1testaddr"
-		blockHeight = 100
+		blockHeight = big.NewInt(100)
 		msgPayload = []byte("e2e-test-payload")
 		justification = []byte("dummy-solana-tx-signature")
 	}
@@ -166,7 +166,7 @@ func OracleAttestation(
 		sourceAddress,
 		mockAddress,
 		blockHeight,
-		uint64(1), // nonce
+		big.NewInt(1), // nonce
 		msgPayload,
 	)
 	Expect(err).Should(BeNil())
@@ -270,7 +270,7 @@ func OracleAttestation(
 		SourceAddress:     sourceAddress,
 		DestContract:      mockAddress,
 		SourceBlockHeight: blockHeight,
-		Nonce:             1,
+		Nonce:             big.NewInt(1),
 		Payload:           msgPayload,
 	})
 	restoreTx, restoreErr := adapterContract.SetAllowedSource(deployOpts, "solana", sourceAddress, true)
@@ -283,7 +283,7 @@ func OracleAttestation(
 		SourceAddress:     sourceAddress,
 		DestContract:      mockAddress,
 		SourceBlockHeight: blockHeight,
-		Nonce:             1,
+		Nonce:             big.NewInt(1),
 		Payload:           msgPayload,
 	})
 	Expect(err).Should(BeNil())
@@ -346,7 +346,7 @@ func OracleAttestation(
 		SourceAddress:     sourceAddress,
 		DestContract:      mockAddress,
 		SourceBlockHeight: blockHeight,
-		Nonce:             1,
+		Nonce:             big.NewInt(1),
 		Payload:           msgPayload,
 	})
 }
