@@ -19,8 +19,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
-	oracleadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/OracleAdapter"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
+	oracleadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/OracleAdapter"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	icmutils "github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/accounts/abi"
@@ -57,14 +57,14 @@ func init() {
 // signature-aggregator, and submits the resulting warp message as the access
 // list of a TeleporterMessengerV2 delivery call.
 type Relay struct {
-	log        logging.Logger
-	cfg        *Config
-	nonces     *NonceStore
-	l1         *ethclient.Client
-	l1ChainID  *big.Int
+	log          logging.Logger
+	cfg          *Config
+	nonces       *NonceStore
+	l1           *ethclient.Client
+	l1ChainID    *big.Int
 	blockchainID [32]byte
-	fromAddr   common.Address
-	fromKeyHex string
+	fromAddr     common.Address
+	fromKeyHex   string
 }
 
 // NewRelay wires up L1 connectivity and the on-disk nonce store.

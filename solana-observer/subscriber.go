@@ -115,8 +115,8 @@ func subscribeOnce(
 						Slot uint64 `json:"slot"`
 					} `json:"context"`
 					Value struct {
-						Signature string  `json:"signature"`
-						Err       any     `json:"err"`
+						Signature string   `json:"signature"`
+						Err       any      `json:"err"`
 						Logs      []string `json:"logs"`
 					} `json:"value"`
 				} `json:"result"`
