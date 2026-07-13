@@ -20,12 +20,21 @@ contract MockOracleReceiver is ITeleporterReceiver {
     bytes32 public lastSourceChainID;
     string public lastSourceType;
     string public lastSourceAddress;
-    uint64 public lastSourceBlockHeight;
-    uint64 public lastNonce;
+    uint256 public lastSourceBlockHeight;
+    uint256 public lastNonce;
     bytes public lastPayload;
     uint256 public receiveCount;
 
-    error OnlyTeleporterMessenger(address caller, address expected);
+    event OracleMessageReceived(
+        bytes32 indexed sourceBlockchainID,
+        string sourceType,
+        string sourceAddress,
+        uint256 sourceBlockHeight,
+        uint256 nonce,
+        bytes payload
+    );
+
+    error UnauthorizedSender(address caller, address expected);
     error ZeroAddress();
 
     constructor(
@@ -44,16 +53,16 @@ contract MockOracleReceiver is ITeleporterReceiver {
         bytes calldata message
     ) external override {
         if (msg.sender != teleporterMessenger) {
-            revert OnlyTeleporterMessenger(msg.sender, teleporterMessenger);
+            revert UnauthorizedSender(msg.sender, teleporterMessenger);
         }
 
         (
             string memory sourceType,
             string memory sourceAddress,
-            uint64 sourceBlockHeight,
-            uint64 nonce,
+            uint256 sourceBlockHeight,
+            uint256 nonce,
             bytes memory oraclePayload
-        ) = abi.decode(message, (string, string, uint64, uint64, bytes));
+        ) = abi.decode(message, (string, string, uint256, uint256, bytes));
 
         lastSourceChainID = sourceBlockchainID;
         lastSourceType = sourceType;
@@ -62,5 +71,13 @@ contract MockOracleReceiver is ITeleporterReceiver {
         lastNonce = nonce;
         lastPayload = oraclePayload;
         ++receiveCount;
+        emit OracleMessageReceived({
+            sourceBlockchainID: sourceBlockchainID,
+            sourceType: sourceType,
+            sourceAddress: sourceAddress,
+            sourceBlockHeight: sourceBlockHeight,
+            nonce: nonce,
+            payload: oraclePayload
+        });
     }
 }
