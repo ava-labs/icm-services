@@ -139,10 +139,12 @@ contract OracleAdapter is IAdapter {
     /**
      * @inheritdoc IMessageSender
      */
+    event OracleMessageSent(TeleporterMessageV2 message);
+
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external override {
-        WARP_MESSENGER.sendWarpMessage(abi.encode(message));
+        emit OracleMessageSent(message);
     }
 
     /**
