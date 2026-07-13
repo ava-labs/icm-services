@@ -50,8 +50,8 @@ const (
 var (
 	log                  logging.Logger
 	localNetworkInstance *network.LocalAvalancheNetwork
-	oracleSidecar    *exec.Cmd // mock gRPC sidecar, always running
-	solanarpcSidecar *exec.Cmd // solanarpc sidecar, non-nil only when SOLANA_RPC_URL set
+	oracleSidecar        *exec.Cmd // mock gRPC sidecar, always running
+	solanarpcSidecar     *exec.Cmd // solanarpc sidecar, non-nil only when SOLANA_RPC_URL set
 	e2eFlags             *e2e.FlagVars
 	solanaRPCURL         string // non-empty when SOLANA_RPC_URL is set
 	solanarpcConfigPath  string // path to the solanarpc sidecar's config file; also read by the validator
