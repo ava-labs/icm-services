@@ -156,7 +156,7 @@ contract OracleAdapter is IAdapter {
      * @dev The calling transaction MUST include the signed warp oracle message in its
      * access list. The warp precompile verifies the BLS aggregate during block
      * execution before this function runs.
-     * message.attestation must be abi.encode(uint32 warpIndex, OracleMessage oracleMsg).
+     * message.attestation must be abi.encode(uint32 warpIndex).
      * message.sourceBlockchainID must equal this chain's blockchain ID.
      *
      * @inheritdoc IMessageVerifier
