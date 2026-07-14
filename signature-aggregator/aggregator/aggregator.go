@@ -693,7 +693,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		))
 	}
 
-	reqBytes, err := s.marshalRequest(unsignedMessage, justification, sourceSubnet)
+	reqBytes, err := s.marshalRequest(unsignedMessage, justification)
 	if err != nil {
 		msg := "Failed to marshal request bytes"
 		log.Error(msg, zap.Error(err))
@@ -1025,7 +1025,6 @@ func (s *SignatureAggregator) aggregateSignatures(
 func (s *SignatureAggregator) marshalRequest(
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	justification []byte,
-	sourceSubnet ids.ID,
 ) ([]byte, error) {
 	messageBytes, err := proto.Marshal(
 		&sdk.SignatureRequest{
