@@ -43,12 +43,18 @@ func main() {
 		log.Fatalf("failed to load observer config: %v", err)
 	}
 
-	programs, err := loadProgramAllowlist(cfg.SidecarConfigPath)
-	if err != nil {
-		log.Fatalf("failed to read program allowlist from sidecar config %s: %v", cfg.SidecarConfigPath, err)
-	}
-	if len(programs) == 0 {
-		log.Fatalf("sidecar config %s has no solana programs to watch", cfg.SidecarConfigPath)
+	var programs []string
+	if len(cfg.SubscriptionPrograms) > 0 {
+		programs = cfg.SubscriptionPrograms
+	} else {
+		var err error
+		programs, err = loadProgramAllowlist(cfg.SidecarConfigPath)
+		if err != nil {
+			log.Fatalf("failed to read program allowlist from sidecar config %s: %v", cfg.SidecarConfigPath, err)
+		}
+		if len(programs) == 0 {
+			log.Fatalf("sidecar config %s has no solana programs to watch", cfg.SidecarConfigPath)
+		}
 	}
 
 	logger := logging.NewLogger("solana-observer", logging.NewWrappedCore(
@@ -81,12 +87,22 @@ func main() {
 	events := make(chan LogEvent, 32)
 	runSubscriber(ctx, logger, cfg.Solana.WSURL, cfg.Solana.Commitment, programs, events)
 
+	// seenTxSigs deduplicates logsSubscribe notifications. Solana's WebSocket
+	// can replay the same transaction after a reconnect; without deduplication
+	// the same Solana tx would mint tokens twice.
+	seenTxSigs := make(map[string]struct{})
+
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Info("observer stopped")
 			return
 		case ev := <-events:
+			if _, already := seenTxSigs[ev.TxSig]; already {
+				logger.Info("skipping duplicate tx", zap.String("sig", ev.TxSig))
+				continue
+			}
+			seenTxSigs[ev.TxSig] = struct{}{}
 			handleEvent(ctx, logger, cfg, relay, ev)
 		}
 	}

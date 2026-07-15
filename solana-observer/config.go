@@ -31,8 +31,15 @@ type Config struct {
 
 	// SidecarConfigPath is the path to the same sidecar config file the
 	// validators consume. The observer reads the `verifiers.solana.allowed_programs`
-	// list out of it to decide which Solana program IDs to subscribe to.
+	// list out of it to decide which Solana program IDs to subscribe to,
+	// unless SubscriptionPrograms is set.
 	SidecarConfigPath string `json:"sidecar_config_path"`
+
+	// SubscriptionPrograms, if non-empty, overrides the subscription program list
+	// derived from the sidecar config. Use this when the programs you want to
+	// watch (e.g. an escrow program) differ from the programs the sidecar
+	// verifies (e.g. the Memo program whose instruction data carries the payload).
+	SubscriptionPrograms []string `json:"subscription_programs,omitempty"`
 
 	// NonceFile is a path where the observer persists the next OracleMessage
 	// nonce per (source_type, source_address) tuple, so restarts don't collide

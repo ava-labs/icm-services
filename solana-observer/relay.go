@@ -110,6 +110,11 @@ func (r *Relay) Deliver(ctx context.Context, tx *SolanaTx) error {
 	sourceType := "solana"
 	nonce := r.nonces.Next(sourceType, tx.Program)
 
+	// InstrData is the raw Memo instruction bytes — the ASCII hex string that the
+	// Anchor program wrote via CPI. We must NOT hex-decode here: the sidecar
+	// verifies base58.Decode(instruction_data) == msg.Payload, so the payload
+	// must equal the raw Memo instruction bytes (the ASCII hex). OracleToken
+	// hex-decodes and ABI-decodes on the L1 side.
 	oracleMsg := oracleadapter.OracleMessage{
 		SourceType:        sourceType,
 		SourceAddress:     tx.Program,

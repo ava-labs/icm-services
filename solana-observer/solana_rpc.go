@@ -14,6 +14,10 @@ import (
 	"github.com/mr-tron/base58"
 )
 
+// memoProgram is the SPL Memo program ID. The Anchor escrow program hex-encodes
+// the ABI payload into a Memo CPI so it's valid UTF-8; the relay hex-decodes it.
+const memoProgram = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+
 // SolanaTx is the fully resolved view of a Solana transaction the observer
 // needs to construct an OracleMessage. It is a strict subset of what the JSON-RPC
 // getTransaction endpoint returns.
@@ -109,11 +113,33 @@ func fetchTx(ctx context.Context, rpcURL, txSig, program string) (*SolanaTx, boo
 		allInstrs = append(allInstrs, inner.Instructions...)
 	}
 
+	// Confirm the subscription program is present in the transaction.
+	found := false
+	for _, instr := range allInstrs {
+		if instr.ProgramIDIndex >= 0 && instr.ProgramIDIndex < len(keys) && keys[instr.ProgramIDIndex] == program {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, false, nil
+	}
+
+	// The ABI payload always lives in the Memo instruction. When subscribing to
+	// the escrow program the Memo CPI is an inner instruction; when subscribing
+	// directly to Memo it's the top-level instruction. Either way we want the
+	// Memo instruction data.
+	dataProgram := memoProgram
+	if program == memoProgram {
+		// Already subscribed directly to Memo — keep original behaviour.
+		dataProgram = memoProgram
+	}
+
 	for _, instr := range allInstrs {
 		if instr.ProgramIDIndex < 0 || instr.ProgramIDIndex >= len(keys) {
 			continue
 		}
-		if keys[instr.ProgramIDIndex] != program {
+		if keys[instr.ProgramIDIndex] != dataProgram {
 			continue
 		}
 		data, err := base58.Decode(instr.Data)
@@ -126,7 +152,7 @@ func fetchTx(ctx context.Context, rpcURL, txSig, program string) (*SolanaTx, boo
 		}
 		return &SolanaTx{
 			Slot:      out.Result.Slot,
-			Program:   program,
+			Program:   dataProgram, // always the Memo program — sidecar verifies Memo instruction
 			InstrData: data,
 			SigBytes:  sigBytes,
 		}, true, nil
