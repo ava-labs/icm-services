@@ -330,7 +330,11 @@ func (m *messageHandler) SendMessage(
 	}
 
 	delivered, err := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
-	if err == nil && delivered {
+	if err != nil {
+		log.Error("Transaction failed", zap.Error(err))
+		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
+	}
+	if delivered {
 		log.Info("Execution reverted: message already delivered to destination.")
 		return txHash, nil
 	}
