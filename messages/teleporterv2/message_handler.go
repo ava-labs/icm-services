@@ -150,19 +150,21 @@ func (f *factory) GetMessageRoutingInfo(
 	return messages.MessageRoutingInfo{
 		SourceChainID:      unsignedMessage.SourceChainID,
 		SenderAddress:      teleporterMessage.OriginSenderAddress,
-		DestinationChainID: ids.ID(teleporterMessage.DestinationBlockchainID),
+		DestinationChainID: teleporterMessage.DestinationBlockchainID,
 		DestinationAddress: teleporterMessage.DestinationAddress,
 	}, nil
 }
 
 // ShouldSendMessage returns true if the message should be relayed to the destination chain.
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
-	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
+	// RequiredGasLimit is a Solidity uint256 (*big.Int). Calling Uint64() on a value that does not
+	// fit in 64 bits is undefined, so treat any non-uint64 value as exceeding the block gas limit.
 	destBlockGasLimit := m.destinationClient.BlockGasLimit()
-	if requiredGasLimit > destBlockGasLimit {
+	if !m.teleporterMessage.RequiredGasLimit.IsUint64() ||
+		m.teleporterMessage.RequiredGasLimit.Uint64() > destBlockGasLimit {
 		m.logger.Info(
 			"Gas limit exceeds maximum threshold",
-			zap.Uint64("requiredGasLimit", requiredGasLimit),
+			zap.Stringer("requiredGasLimit", m.teleporterMessage.RequiredGasLimit),
 			zap.Uint64("blockGasLimit", destBlockGasLimit),
 		)
 		return false, nil
@@ -322,13 +324,17 @@ func (m *messageHandler) SendMessage(
 	// The transaction reverted. A common benign cause is that the message was already delivered
 	// by another relayer, so check delivery status before treating the revert as a failure.
 	teleporterMessenger, err := m.getTeleporterMessenger()
-	if err == nil {
-		delivered, err := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
-		if err == nil && delivered {
-			log.Info("Execution reverted: message already delivered to destination.")
-			return txHash, nil
-		}
+	if err != nil {
+		log.Error("Transaction failed", zap.Error(err))
+		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
 	}
+
+	delivered, err := teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+	if err == nil && delivered {
+		log.Info("Execution reverted: message already delivered to destination.")
+		return txHash, nil
+	}
+
 	log.Error("Transaction failed")
 	return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
 }
@@ -452,10 +458,10 @@ func isAllowedRelayer(allowedRelayers []common.Address, eoa common.Address) bool
 }
 
 func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Address) bool {
-	for _, eoa := range eoas {
-		if isAllowedRelayer(allowedRelayers, eoa) {
-			return true
-		}
+	if len(allowedRelayers) == 0 {
+		return true
 	}
-	return false
+	return slices.ContainsFunc(eoas, func(eoa common.Address) bool {
+		return slices.Contains(allowedRelayers, eoa)
+	})
 }

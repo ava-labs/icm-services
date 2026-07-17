@@ -1,4 +1,4 @@
-// Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package tests
@@ -166,6 +166,21 @@ func MerkleMessageRelay(
 				zap.Uint64("pChainHeight", cmt.PChainHeight),
 				zap.String("root", hex.EncodeToString(cmt.Root[:])),
 			)
+
+			// Assert the on-chain commitment matches the expected L1 validator set at the recorded
+			// P-chain height, not merely that some non-empty set was registered.
+			expectedValidators := fetchSortedL1ValidatorsAtHeight(
+				ctx, pChainClient, l1Info.SubnetID, cmt.PChainHeight,
+			)
+			expectedRoot := validatorupdater.BuildMerkleRoot(expectedValidators)
+			var expectedWeight uint64
+			for _, v := range expectedValidators {
+				expectedWeight += v.Weight
+			}
+			Expect(cmt.Root).Should(Equal(expectedRoot),
+				"Merkle root should match the L1 validator set at the recorded P-chain height")
+			Expect(cmt.TotalWeight).Should(Equal(expectedWeight),
+				"Total weight should match the sum of L1 validator weights")
 		},
 	)
 
@@ -233,6 +248,17 @@ func MerkleMessageRelay(
 			}
 		}
 	}
+
+	// Explicitly filter for the ReceiveCrossChainMessage log emitted by the relayer's delivery and
+	// assert the delivered message matches what was sent from the L1.
+	receiveIter, err := ethTeleporter.FilterReceiveCrossChainMessage(
+		&bind.FilterOpts{Context: ctx}, [][32]byte{messageID}, nil, nil,
+	)
+	Expect(err).Should(BeNil())
+	defer receiveIter.Close()
+	Expect(receiveIter.Next()).Should(BeTrue(),
+		"expected a ReceiveCrossChainMessage log for the delivered message")
+	Expect(receiveIter.Event.Message.Message).Should(Equal(input.Message))
 
 	log.Info("MerkleMessageRelay e2e test PASSED: relayer delivered L1 -> Ethereum message")
 }
