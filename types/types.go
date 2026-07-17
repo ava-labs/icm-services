@@ -56,6 +56,13 @@ func NewICMBlockInfo(
 		err  error
 	)
 	// Check if the block contains warp logs, and fetch them from the client if it does
+	logger.Info("bloom debug",
+		zap.Uint64("blockNumber", header.Number.Uint64()),
+		zap.String("blockHash", header.Hash().Hex()),
+		zap.String("bloom", common.Bytes2Hex(header.Bloom[:])),
+		zap.String("topicWanted", common.Bytes2Hex(TeleporterPrecompileLogFilter)),
+		zap.Bool("bloomTest", header.Bloom.Test(TeleporterPrecompileLogFilter[:])),
+	)
 	if header.Bloom.Test(TeleporterPrecompileLogFilter[:]) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
