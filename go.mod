@@ -9,9 +9,9 @@ tool (
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
-	github.com/ava-labs/avalanchego v1.14.3-0.20260522103411-a295be69028b
-	github.com/ava-labs/avalanchego/graft/subnet-evm v1.14.2
-	github.com/ava-labs/libevm v1.13.15-0.20251215154636-865e03ca6a28
+	github.com/ava-labs/avalanchego v1.15.0-fuji.0.20260722151048-7093cca1b389
+	github.com/ava-labs/avalanchego/graft/subnet-evm v1.15.0-fuji-rc.0
+	github.com/ava-labs/libevm v1.13.15-0.20260721184559-5557c68d296b
 	github.com/aws/aws-sdk-go-v2 v1.42.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.30
 	github.com/aws/aws-sdk-go-v2/service/kms v1.54.1
@@ -40,14 +40,14 @@ require (
 
 // This is a placeholder require directive since the replacement below is necessary and for replacement to work, the require directive must be present. Separating it out here since it's an indirect requirement.
 
-require github.com/ava-labs/avalanchego/graft/evm v1.14.2 // indirect
+require github.com/ava-labs/avalanchego/graft/evm v1.15.0-fuji-rc.0 // indirect
 
 // These are manual replacements pointing to the same commit as the avalanchego module. They must be updated whenever the avalanchego version is updated. Version is ignored but the short commit hash and the timestamp must be accepted by go mod tidy.
-replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260513215209-0b97f502fc1b
+replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260722151048-7093cca1b389
 
-replace github.com/ava-labs/avalanchego/graft/evm => github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260513215209-0b97f502fc1b
+replace github.com/ava-labs/avalanchego/graft/evm => github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260722151048-7093cca1b389
 
-replace github.com/ava-labs/avalanchego/graft/coreth => github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260513215209-0b97f502fc1b
+replace github.com/ava-labs/avalanchego/graft/coreth => github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260722151048-7093cca1b389
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
@@ -94,8 +94,8 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
-	github.com/ava-labs/avalanchego/graft/coreth v1.14.2 // indirect
-	github.com/ava-labs/firewood-go-ethhash/ffi v0.3.1 // indirect
+	github.com/ava-labs/avalanchego/graft/coreth v1.15.0-fuji-rc.0 // indirect
+	github.com/ava-labs/firewood-go-ethhash/ffi v0.8.0 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.29 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.30 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.30 // indirect
