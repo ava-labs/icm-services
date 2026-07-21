@@ -436,13 +436,23 @@ func createMessageHandlerFactories(
 	globalConfig *config.Config,
 	deciderConnection *grpc.ClientConn,
 ) (map[ids.ID]map[common.Address]messages.MessageHandlerFactory, error) {
+	// Shared P-Chain client used by message handlers that need to fetch validator sets
+	// (e.g. the TeleporterV2 Merkle verification path).
+	pChainClient := clients.NewCanonicalValidatorClient(globalConfig.PChainAPI)
+
 	messageHandlerFactories := make(map[ids.ID]map[common.Address]messages.MessageHandlerFactory)
 	for _, sourceBlockchain := range globalConfig.SourceBlockchains {
 		messageHandlerFactoriesForSource := make(map[common.Address]messages.MessageHandlerFactory)
 		// Create message handler factories for each supported message protocol
 		for addressStr, cfg := range sourceBlockchain.MessageContracts {
 			address := common.HexToAddress(addressStr)
-			m, err := relayer.NewMessageHandlerFactory(address, cfg, deciderConnection)
+			m, err := relayer.NewMessageHandlerFactory(
+				address,
+				cfg,
+				deciderConnection,
+				pChainClient,
+				sourceBlockchain.GetSubnetID(),
+			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create message handler factory: %w", err)
 			}

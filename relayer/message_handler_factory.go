@@ -6,9 +6,12 @@ package relayer
 import (
 	"fmt"
 
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/icm-services/messages"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/messages/teleporter"
+	teleporterv2 "github.com/ava-labs/icm-services/messages/teleporterv2"
+	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
 	"google.golang.org/grpc"
@@ -20,6 +23,8 @@ func NewMessageHandlerFactory(
 	address common.Address,
 	cfg config.MessageProtocolConfig,
 	deciderConnection *grpc.ClientConn,
+	pChainClient clients.CanonicalValidatorState,
+	sourceSubnetID ids.ID,
 ) (messages.MessageHandlerFactory, error) {
 	switch config.ParseMessageProtocol(cfg.MessageFormat) {
 	case config.TELEPORTER:
@@ -27,7 +32,7 @@ func NewMessageHandlerFactory(
 	case config.OFF_CHAIN_REGISTRY:
 		return offchainregistry.NewMessageHandlerFactory(cfg)
 	case config.TELEPORTER_V2:
-		return nil, fmt.Errorf("teleporter v2 is not yet supported")
+		return teleporterv2.NewMessageHandlerFactory(address, cfg, pChainClient, sourceSubnetID)
 	default:
 		return nil, fmt.Errorf("invalid message format %s", cfg.MessageFormat)
 	}

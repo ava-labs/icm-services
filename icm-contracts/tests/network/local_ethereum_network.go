@@ -17,7 +17,9 @@ import (
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/log"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
 	. "github.com/onsi/gomega"
@@ -102,6 +104,34 @@ func (n *LocalEthereumNetwork) GetFundedAccountInfo() (common.Address, *ecdsa.Pr
 	ecdsaKey := n.globalFundedKey.ToECDSA()
 	fundedAddress := crypto.PubkeyToAddress(ecdsaKey.PublicKey)
 	return fundedAddress, ecdsaKey
+}
+
+// FundAccount transfers amount wei from the network's globally-funded account to addr and
+// waits for the transfer to be mined. It is used to seed additional sender accounts (e.g. a
+// separate message-delivery key) so components do not have to share a single funded account.
+func (n *LocalEthereumNetwork) FundAccount(ctx context.Context, addr common.Address, amount *big.Int) {
+	fundedKey := n.globalFundedKey.ToECDSA()
+	fundedAddr := crypto.PubkeyToAddress(fundedKey.PublicKey)
+
+	nonce, err := n.EthClient.PendingNonceAt(ctx, fundedAddr)
+	Expect(err).Should(BeNil())
+	gasPrice, err := n.EthClient.SuggestGasPrice(ctx)
+	Expect(err).Should(BeNil())
+
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    nonce,
+		To:       &addr,
+		Value:    amount,
+		Gas:      21000,
+		GasPrice: gasPrice,
+	})
+	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(n.ChainID), fundedKey)
+	Expect(err).Should(BeNil())
+	Expect(n.EthClient.SendTransaction(ctx, signedTx)).Should(BeNil())
+
+	_, err = bind.WaitMined(ctx, n.EthClient, signedTx)
+	Expect(err).Should(BeNil())
+	log.Info(fmt.Sprintf("Funded account %s with %s wei", addr.Hex(), amount.String()))
 }
 
 func (n *LocalEthereumNetwork) EthereumTestInfo() *testinfo.EthereumTestInfo {

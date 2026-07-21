@@ -101,6 +101,29 @@ func PackReceiveCrossChainMessageV2(
 	}, relayerRewardAddress)
 }
 
+// PackReceiveCrossChainMessageMerkle packs a call to receiveCrossChainMessage for the merkle
+// verification path. Unlike PackReceiveCrossChainMessageV2 it sets SourceNetworkID, which the
+// MerkleValidatorSetRegistry verifier requires to match its configured Avalanche network ID.
+func PackReceiveCrossChainMessageMerkle(
+	teleporterMessage TeleporterMessageV2,
+	sourceNetworkID uint32,
+	sourceBlockchainID ids.ID,
+	attestation []byte,
+	relayerRewardAddress common.Address,
+) ([]byte, error) {
+	tabi, err := TeleporterMessengerV2MetaData.GetAbi()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get abi")
+	}
+
+	return tabi.Pack("receiveCrossChainMessage", TeleporterICMMessage{
+		Message:            teleporterMessage,
+		SourceNetworkID:    sourceNetworkID,
+		SourceBlockchainID: sourceBlockchainID,
+		Attestation:        attestation,
+	}, relayerRewardAddress)
+}
+
 // PackCalculateMessageID packs input to form a call to the calculateMessageID function
 func PackCalculateMessageID(
 	sourceBlockchainID [32]byte,
