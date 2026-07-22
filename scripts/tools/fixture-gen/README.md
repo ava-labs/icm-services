@@ -10,47 +10,90 @@ Note that to mitigate supply-chain attack risk, it is recommended to run these s
 ## Prerequisites
 
 - Node.js v24+ (https://nodejs.org/en/download)
-- A Sepolia execution layer RPC endpoint (e.g., Infura)
-- A Sepolia beacon node API endpoint with access to recent state history (e.g., QuickNode)
+- An Ethereum mainnet execution layer RPC endpoint (e.g., Infura)
+- An Ethereum mainnet beacon node API endpoint with access to recent state history and
+  the `eth/v2/debug/beacon/states` endpoint (e.g., QuickNode)
 
 **Note:** The beacon node must have the state for the target slot available. Standard nodes
 only retain states for the last few epochs (~50 slots). Use a recent transaction to stay
-within this window, or use an archive beacon node for any historical transaction.
+within this window, or use an archive beacon node for any historical transaction. Mainnet
+beacon states are large; increase Node's heap via `--max-old-space-size` if needed.
 
 ## Setup
 ```bash
 npm install
 ```
+## Background
+
+The ZKAdapter verifies Ethereum events on Avalanche in two stages: a Boundless ZK proof
+establishes a trusted finalized beacon block root on-chain (the anchor), then Merkle proofs
+link that anchor to a specific transaction's event log.
+
+Key terms:
+
+- `finalizedSlot` / `anchorSlot` — the slot of the trusted anchor; must match across both fixtures
+- `journalData`, `seal` — the Boundless ZK proof, verified on-chain to store the anchor
+- `executionProof` — SSZ Merkle proofs linking the anchor to the target slot's receipts root
+- `receiptProof` — MPT proof that the transaction receipt (and its event log) is in the receipts trie
 
 ## Generating the Boundless fixture
 
-Boundless ZK consensus proofs can be queried from the Signal Ethereum subgraph. To deploy your own subgraph instance, see https://github.com/austinabell/signal-ethereum-subgraph.
+Boundless ZK consensus proofs can be queried from the Signal Ethereum subgraph. To deploy your own subgraph instance, see https://github.com/austinabell/signal-ethereum-subgraph. Note the subgraph indexes the Boundless Marketplace contract on **Base**, where Signal Ethereum mainnet proofs are delivered.
 
-The Signal ZK proof orders for Sepolia on Boundless can be seen here: https://explorer.boundless.network/requestors/0xe30260d1dc14e70b17951e97719a9d81e768d2c1
-The `SIGNAL_ETHEREUM_IMAGE_ID` should match the latest image ID on the explorer link above. Currently, this is `0x496f08eb75c83402975107a1a8b35a1c935bd6edf73b7a49e2d00ea180516b78`.
+The Signal ZK proof orders for Ethereum mainnet on Boundless can be seen here: https://explorer.boundless.network/base/requestors/0x734df7809c4ef94da037449c287166d114503198
+The `SIGNAL_ETHEREUM_IMAGE_ID` should match the latest image ID on the explorer link above. 
+This can be seen by clicking on a request, viewing its details, and copying the image ID. 
+Currently, this is `0x0ccb3d146a7f64e78cc1d146acc26912138ea39bb79b4ca74423389d61b2c30e`.
 
-The fixture must contain `preState`, `postState`, `journalData`, `seal`, and `finalizedSlot`. The `finalizedSlot` determines which beacon block root gets stored on-chain, and the Ethereum fixture must be generated against a slot within an appropriate range of this value. 
+To generate the fixture, set the required environment variables and run the polling script, which waits until a proof covering the target transaction's slot is available:
+
+```bash
+export SUBGRAPH_URL=...   # Signal Ethereum subgraph GraphQL endpoint
+export ETH_RPC_URL=...    # Ethereum mainnet execution RPC
+export TX_HASH=0x...      # Transaction the proof must cover
+
+node poll_boundless_proofs.mts   # writes to testdata/boundless_fixture.json
+```
+
+The fixture must contain `preState`, `postState`, `journalData`, `seal`, and `finalizedSlot`. The `finalizedSlot` determines which beacon block root gets stored on-chain, and the Ethereum fixture must be generated against a slot within an appropriate range of this value.
 
 Move the fixture to `tests/testdata/boundless_fixture.json` before running the e2e tests.
 
 ## Generating the Ethereum fixture
 
-The Ethereum fixture must be aligned with the Boundless fixture. The `anchorSlot` in the Ethereum fixture must equal the `finalizedSlot` from the Boundless fixture, and the `targetSlot` must be below the `anchorSlot` (within 8192 slots).
+The Ethereum fixture must be aligned with the Boundless fixture: the `anchorSlot` must equal the `finalizedSlot` from the Boundless fixture, and the `targetSlot` (the transaction's slot) must be below the `anchorSlot`, within 8192 slots.
 
-To achieve this, pick a transaction at a slot that is exactly 64 slots below the `finalizedSlot`. This way the script's default `anchorSlot = targetSlot + 64` will produce the correct anchor.
+Set `ANCHOR_SLOT` from the Boundless fixture, then run:
 
-Set the required environment variables and run:
 ```bash
 export BEACON_API_URL=...
 export ETH_RPC_URL=...
-export TX_HASH=0x...
+export TX_HASH=0x...      # Same transaction used for the Boundless fixture
+export ANCHOR_SLOT=$(jq -r '.finalizedSlot' testdata/boundless_fixture.json)
 
-NODE_OPTIONS="--max-old-space-size=8192" node generate_fixtures.mts
+NODE_OPTIONS="--max-old-space-size=8192" node generate_fixture.mts
 ```
 
-Move the fixture to `tests/testdata/sepolia_fixture.json` before running the e2e tests. The fixture output includes:
+## Running the e2e tests
 
-- `anchorBeaconBlockRoot` — the beacon block root used as the trusted anchor
-- `metadata` — transaction and slot information for reference (not used by the e2e test)
-- `executionProof` — SSZ Merkle proofs linking the beacon state to the execution payload
-- `receiptProof` — MPT proof for the target transaction receipt
+The Go e2e test loads the fixtures from paths given by the `ETHEREUM_FIXTURE_PATH` and
+`BOUNDLESS_FIXTURE_PATH` environment variables, defaulting to
+`./tests/testdata/ethereum_fixture.json` and `./tests/testdata/boundless_fixture.json`
+(relative to the repo root).
+
+Either copy the generated fixtures to those default locations:
+
+```bash
+cp testdata/boundless_fixture.json ../../../tests/testdata/
+cp testdata/ethereum_fixture.json ../../../tests/testdata/
+```
+
+or point the variables at them directly:
+
+```bash
+cd ../../..   # or the repo root
+ETHEREUM_FIXTURE_PATH=scripts/tools/fixture-gen/testdata/ethereum_fixture.json \
+BOUNDLESS_FIXTURE_PATH=scripts/tools/fixture-gen/testdata/boundless_fixture.json \
+GINKGO_FOCUS="ZKAdapter" ./scripts/e2e_test.sh 
+```
+

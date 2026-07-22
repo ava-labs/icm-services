@@ -1,11 +1,11 @@
 /**
- * Sends a TeleporterMessageV2 via an ECDSAVerifier contract on Sepolia.
+ * Sends a TeleporterMessageV2 via an ECDSAVerifier contract on Ethereum.
  * The contract must already be deployed and initialized.
  * 
  * Required env vars:
- *   ETH_RPC_URL        - Sepolia execution layer RPC
- *   SENDER_PRIVATE_KEY - Private key for the Sepolia account
- *   SENDER_CONTRACT    - Address of the deployed ECDSAVerifier on Sepolia
+ *   ETH_RPC_URL        - Ethereum execution layer RPC
+ *   SENDER_PRIVATE_KEY - Private key for the Ethereum account
+ *   SENDER_CONTRACT    - Address of the deployed ECDSAVerifier on Ethereum
  *
  * Output:
  *   testdata/tx_info.json — TX hash, log index, emitter, and event topic
@@ -22,6 +22,7 @@ const __dirname = path.dirname(__filename);
 const ETH_RPC_URL = process.env.ETH_RPC_URL;
 const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY;
 const SENDER_CONTRACT = process.env.SENDER_CONTRACT;
+const MAX_FEE_GWEI = process.env.MAX_FEE_GWEI ?? "30";
 
 if (!ETH_RPC_URL || !SENDER_PRIVATE_KEY || !SENDER_CONTRACT) {
   console.error("Required env vars: ETH_RPC_URL, SENDER_PRIVATE_KEY, SENDER_CONTRACT");
@@ -44,8 +45,26 @@ async function main() {
   const provider = new ethers.providers.JsonRpcProvider(ETH_RPC_URL);
   const wallet = new ethers.Wallet(SENDER_PRIVATE_KEY, provider);
   const contract = new ethers.Contract(SENDER_CONTRACT, ECDSA_VERIFIER_ABI, wallet);
+  const balance = await wallet.getBalance();
 
-  console.log("=== Sending message on Sepolia ===");
+   // Check the network
+  const network = await provider.getNetwork();
+  if (network.chainId !== 1) {
+    throw new Error(`Expected mainnet (chainId 1), got chainId ${network.chainId}`);
+  }
+
+  console.log(`Sender balance: ${ethers.utils.formatEther(balance)} ETH`);
+
+  // Set a max fee for the transaction
+  const feeData = await provider.getFeeData();
+  const maxFee = ethers.utils.parseUnits(MAX_FEE_GWEI, "gwei");
+  if (feeData.maxFeePerGas && feeData.maxFeePerGas.gt(maxFee)) {
+    throw new Error(
+      `Current maxFeePerGas ${ethers.utils.formatUnits(feeData.maxFeePerGas, "gwei")} gwei exceeds cap ${MAX_FEE_GWEI} gwei; skipping run`
+    );
+  }
+
+  console.log("=== Sending message on Ethereum ===");
   console.log(`Sender:   ${wallet.address}`);
   console.log(`Contract: ${SENDER_CONTRACT}`);
 
@@ -58,10 +77,13 @@ async function main() {
     requiredGasLimit: 100000,
     allowedRelayerAddresses: [],
     receipts: [],
-    message: ethers.utils.hexlify(ethers.utils.toUtf8Bytes("hello from sepolia")),
+    message: ethers.utils.hexlify(ethers.utils.toUtf8Bytes("hello from ethereum")),
   };
 
-  const tx = await contract.sendMessage(message);
+  const tx = await contract.sendMessage(message, {
+    maxFeePerGas: maxFee,
+    maxPriorityFeePerGas: ethers.utils.parseUnits("1", "gwei"),
+  });
   console.log(`Tx submitted: ${tx.hash}`);
   console.log("Waiting for confirmation...");
 

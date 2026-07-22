@@ -3,22 +3,22 @@ set -euo pipefail
 
 # Nightly ZK integration test
 #
-# Sends a message on Sepolia and polls the Boundless subgraph until a ZK consensus proof
+# Sends a message on Ethereum and polls the Boundless subgraph until a ZK consensus proof
 # covering the transaction is available.
 #
 #
 # Required env vars:
-#   ETH_RPC_URL        - Sepolia execution layer RPC
-#   SENDER_PRIVATE_KEY - Private key for the funded Sepolia account
-#   SENDER_CONTRACT    - Address of the ECDSAVerifier on Sepolia
+#   ETH_RPC_URL        - Ethereum execution layer RPC
+#   SENDER_PRIVATE_KEY - Private key for the funded Ethereum account
+#   SENDER_CONTRACT    - Address of the ECDSAVerifier on Ethereum
 #   SUBGRAPH_URL       - Boundless subgraph GraphQL endpoint
-#   BEACON_API_URL     - Sepolia beacon API endpoint 
+#   BEACON_API_URL     - Ethereum beacon API endpoint 
 
-: "${ETH_RPC_URL:?Set ETH_RPC_URL to a Sepolia execution RPC}"
-: "${SENDER_PRIVATE_KEY:?Set SENDER_PRIVATE_KEY to a funded Sepolia private key}"
-: "${SENDER_CONTRACT:?Set SENDER_CONTRACT to the ECDSAVerifier address on Sepolia}"
+: "${ETH_RPC_URL:?Set ETH_RPC_URL to a Ethereum execution RPC}"
+: "${SENDER_PRIVATE_KEY:?Set SENDER_PRIVATE_KEY to a funded Ethereum private key}"
+: "${SENDER_CONTRACT:?Set SENDER_CONTRACT to the ECDSAVerifier address on Ethereum}"
 : "${SUBGRAPH_URL:?Set SUBGRAPH_URL to the Boundless subgraph endpoint}"
-: "${BEACON_API_URL:?Set BEACON_API_URL to a Sepolia beacon API}"
+: "${BEACON_API_URL:?Set BEACON_API_URL to a Ethereum beacon API}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -36,14 +36,14 @@ echo "Building Docker image."
 docker build -t fixture-gen "$FIXTURE_DIR"
 echo ""
 
-# Send message on Sepolia
-echo " Sending message from ECDSAVerifier contract on Sepolia"
+# Send message on Ethereum
+echo " Sending message from ECDSAVerifier contract on Ethereum"
 docker run --rm \
   -e ETH_RPC_URL="$ETH_RPC_URL" \
   -e SENDER_PRIVATE_KEY="$SENDER_PRIVATE_KEY" \
   -e SENDER_CONTRACT="$SENDER_CONTRACT" \
   -v "$TESTDATA:/app/testdata" \
-  fixture-gen node send_sepolia_message.mts
+  fixture-gen node send_ethereum_message.mts
 
 TX_HASH=$(jq -r '.txHash' "$TESTDATA/tx_info.json")
 echo "Transaction hash: $TX_HASH"
@@ -77,13 +77,13 @@ docker run --rm \
   -e LOG_INDEX="$LOG_INDEX" \
   -e ANCHOR_SLOT="$ANCHOR_SLOT" \
   -v "$TESTDATA:/app/testdata" \
-  fixture-gen node --max-old-space-size=8192 generate_fixture.mts # writes nightly/sepolia_fixture.json 
+  fixture-gen node --max-old-space-size=8192 generate_fixture.mts # writes nightly/ethereum_fixture.json 
 echo ""
 
 # Run Go e2e test
 echo "=== Step 5: Running Go e2e test ==="
 cd "$ROOT_DIR"
-ETHEREUM_FIXTURE_PATH="$TESTDATA/sepolia_fixture.json" \
+ETHEREUM_FIXTURE_PATH="$TESTDATA/ethereum_fixture.json" \
 BOUNDLESS_FIXTURE_PATH="$TESTDATA/boundless_fixture.json" \
 GINKGO_FOCUS="ZKAdapter" ./scripts/e2e_test.sh --components ethereum-icm-verification
 
