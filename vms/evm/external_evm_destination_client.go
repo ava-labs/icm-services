@@ -13,8 +13,10 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
+	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
@@ -60,6 +62,15 @@ type ExternalEVMDestinationClient struct {
 
 	// Concurrent senders for transaction processing
 	concurrentSenders []*readonlyConcurrentSigner
+
+	// Message-delivery routing/verification context
+	// destinationBlockchainID is the ID by which TeleporterV2 messages address this chain.
+	destinationBlockchainID ids.ID
+	// sourceBlockchainID is the Avalanche chain whose registered commitment height is used
+	// to pin the signing height for delivered messages (Merkle path).
+	sourceBlockchainID ids.ID
+	// contractType selects how the committed P-chain height is read ("merkle" vs default).
+	contractType string
 }
 
 // NewExternalEVMDestinationClient creates a new external EVM destination client.
@@ -74,6 +85,9 @@ func NewExternalEVMDestinationClient(
 	suggestedPriorityFeeBuffer *big.Int,
 	maxPriorityFeePerGas *big.Int,
 	txInclusionTimeoutSeconds uint64,
+	destinationBlockchainID ids.ID,
+	sourceBlockchainID ids.ID,
+	contractType string,
 ) (*ExternalEVMDestinationClient, error) {
 	logger = logger.With(
 		zap.String("chainID", chainID),
@@ -117,6 +131,10 @@ func NewExternalEVMDestinationClient(
 		blockGasLimit:      blockGasLimit,
 		gasFeeConfig:       gasFeeData,
 		txInclusionTimeout: time.Duration(txInclusionTimeoutSeconds) * time.Second,
+
+		destinationBlockchainID: destinationBlockchainID,
+		sourceBlockchainID:      sourceBlockchainID,
+		contractType:            contractType,
 	}
 
 	// Initialize concurrent senders from private keys
@@ -210,7 +228,7 @@ func (c *ExternalEVMDestinationClient) Client() Client {
 // External chains don't have Avalanche blockchain IDs.
 // This method is required by the interface but not used for external EVMs.
 func (c *ExternalEVMDestinationClient) DestinationBlockchainID() ids.ID {
-	return ids.Empty
+	return c.destinationBlockchainID
 }
 
 // BlockGasLimit returns the configured gas limit for transactions.
@@ -232,6 +250,23 @@ func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
 func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
 ) (uint64, error) {
+	// For the Merkle registry the committed P-chain height is read directly from the
+	// per-source commitment, so delivered-message signatures are gathered at the exact
+	// height the stored Merkle root was built from.
+	if c.contractType == "merkle" {
+		registry, err := merkleregistry.NewMerkleValidatorSetRegistry(c.registryAddress, c.ethClient)
+		if err != nil {
+			return 0, fmt.Errorf("failed to bind merkle registry: %w", err)
+		}
+		commitment, err := registry.GetValidatorSetCommitment(
+			&bind.CallOpts{Context: ctx}, c.sourceBlockchainID,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read merkle commitment: %w", err)
+		}
+		return commitment.PChainHeight, nil
+	}
+
 	// Get the current validator set to find its P-chain height
 	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
 	if err != nil {

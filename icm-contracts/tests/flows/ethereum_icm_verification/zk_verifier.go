@@ -125,7 +125,7 @@ var fuluBeaconConfig = zkstatemanager.ExecutionBeaconConfig{
 
 // ZKAdapterVerifier tests the full ZKAdapter verification flow:
 // 1. Deploy ZKAdapter on Avalanche C-Chain
-// 2. Submit a trusted beacon block root into the contract state via manualTransition (calleable by admin)
+// 2. Submit a trusted beacon block root into the contract state via transition 
 // 3. Verify an Ethereum event using pre-generated SSZ and MPT Merkle proofs from test fixtures
 func ZKAdapterVerifier(
 	ctx context.Context,
@@ -165,16 +165,16 @@ func ZKAdapterVerifier(
 	zkAdapterABI, err := zkadapter.ZKAdapterMetaData.GetAbi()
 	Expect(err).Should(BeNil())
 
-	var signalSepoliaImageID = common.HexToHash("0x496f08eb75c83402975107a1a8b35a1c935bd6edf73b7a49e2d00ea180516b78")
+	var signalImageID = common.HexToHash("0x0ccb3d146a7f64e78cc1d146acc26912138ea39bb79b4ca74423389d61b2c30e")
 	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
 		zkAdapterABI,
 		byteCode,
-		big.NewInt(11155111), // Sepolia
+		big.NewInt(1), // Ethereum Mainnet
 		startingState,
 		fuluBeaconConfig,
 		big.NewInt(86400),
 		riscZeroVerifierAddress,
-		signalSepoliaImageID,
+		signalImageID,
 		fundedAddress,
 		fundedAddress,
 	)

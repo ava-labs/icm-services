@@ -1,11 +1,11 @@
 /**
- * Given a Sepolia tx hash, polls the Boundless subgraph
+ * Given an Ethereum mainnet tx hash, polls the Boundless subgraph
  * until a ZK proof covers the tx's slot, then writes the Boundless fixture.
  * 
  * Required env vars:
  *   SUBGRAPH_URL   - Boundless subgraph GraphQL endpoint
- *   ETH_RPC_URL    - Sepolia execution layer RPC
- *   TX_HASH        - Sepolia tx hash to look for
+ *   ETH_RPC_URL    - Ethereum execution layer RPC
+ *   TX_HASH        - Ethereum tx hash to look for
  *
  * Output:
  *   testdata/boundless_fixture.json
@@ -27,7 +27,7 @@ if (!SUBGRAPH_URL || !ETH_RPC_URL) {
   process.exit(1);
 }
 
-const SEPOLIA_BEACON_GENESIS_TIME = 1655733600;
+const BEACON_GENESIS_TIME = 1606824023;
 const SECONDS_PER_SLOT = 12;
 
 // How long to wait for a proof before giving up (3 hours)
@@ -35,7 +35,7 @@ const MAX_WAIT_MS = 180 * 60 * 1000;
 // How often to poll the subgraph (1 minute)
 const POLL_INTERVAL_MS = 60 * 1000;
 
-// Resolve tx hash from env var or from tx_info.json (written by send_sepolia_message.mts)
+// Resolve tx hash from env var or from tx_info.json (written by send_ethereum_message.mts)
 function resolveTxHash(): string {
   if (process.env.TX_HASH) return process.env.TX_HASH;
   
@@ -51,7 +51,7 @@ function resolveTxHash(): string {
 }
 
 function blockTimestampToSlot(timestamp: number): number {
-  return Math.floor((timestamp - SEPOLIA_BEACON_GENESIS_TIME) / SECONDS_PER_SLOT);
+  return Math.floor((timestamp - BEACON_GENESIS_TIME) / SECONDS_PER_SLOT);
 }
 
 function sleep(ms: number): Promise<void> {
