@@ -125,7 +125,7 @@ var fuluBeaconConfig = zkstatemanager.ExecutionBeaconConfig{
 
 // ZKAdapterVerifier tests the full ZKAdapter verification flow:
 // 1. Deploy ZKAdapter on Avalanche C-Chain
-// 2. Submit a trusted beacon block root into the contract state via transition 
+// 2. Submit a trusted beacon block root into the contract state via transition
 // 3. Verify an Ethereum event using pre-generated SSZ and MPT Merkle proofs from test fixtures
 func ZKAdapterVerifier(
 	ctx context.Context,
