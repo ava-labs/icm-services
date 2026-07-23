@@ -67,7 +67,7 @@ contract OracleAdapter is IAdapter {
 
     address public owner;
 
-    // keccak256(abi.encode(sourceType, sourceAddress)) => allowed
+    // sourceType => sourceAddress => allowed
     mapping(string => mapping(string => bool)) private _allowedSources;
 
     // global oracle nonce => delivered
