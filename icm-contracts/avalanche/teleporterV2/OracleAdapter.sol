@@ -143,6 +143,8 @@ contract OracleAdapter is IAdapter {
 
     /**
      * @inheritdoc IMessageSender
+     * @dev OracleAdapter is receive-only on-chain; off-chain validators handle
+     *      origination. The emitted event is the sole artifact of a "send."
      */
     function sendMessage(
         TeleporterMessageV2 calldata message
