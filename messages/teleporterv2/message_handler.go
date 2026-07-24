@@ -207,6 +207,11 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 			m.metrics.IncFailedRelayMessageCount("failed to send warp message")
 			return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)
 		}
+		m.logger.Info(
+			"Finished relaying message to destination chain",
+			zap.Stringer("txID", txHash),
+		)
+		m.metrics.IncSuccessfulRelayMessageCount()
 		return txHash, nil
 	})
 }
