@@ -50,41 +50,32 @@ func NewICMBlockInfo(
 	ethClient ethereum.LogFilterer,
 	topics [][]common.Hash,
 ) (*ICMBlockInfo, error) {
-	var (
-		logs []types.Log
-		err  error
-	)
-	// Only fetch logs when the block's bloom filter indicates that one of the event
-	// topics we filter for (topics[0]) is present. A bloom match may be a false
-	// positive; the FilterLogs call below performs the precise filtering.
-	if bloomContainsAnyEventTopic(header.Bloom, topics) {
-		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-		defer cancel()
-		operation := func() (err error) {
-			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
-				Topics:    topics,
-				FromBlock: header.Number,
-				ToBlock:   header.Number,
-			})
-			return err
-		}
-		notify := func(err error, duration time.Duration) {
-			logger.Info(
-				"getting ICM block from logs failed, retrying...",
-				zap.Duration("retryIn", duration),
-				zap.Error(err),
-			)
-		}
+	var logs []types.Log
+	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer cancel()
+	operation := func() (err error) {
+		logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
+			Topics:    topics,
+			FromBlock: header.Number,
+			ToBlock:   header.Number,
+		})
+		return err
+	}
+	notify := func(err error, duration time.Duration) {
+		logger.Info(
+			"getting ICM block from logs failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
 
-		// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
-		// where the block header is received via websocket subscription before the block's
-		// logs are available via RPC. This is a known behavior in EVM nodes due to
-		// asynchronous log/index processing after a block becomes canonical.
-		timeout := utils.DefaultRPCTimeout * 6
-		err = utils.WithRetriesTimeout(operation, notify, timeout)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get logs for block: %w", err)
-		}
+	// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
+	// where the block header is received via websocket subscription before the block's
+	// logs are available via RPC. This is a known behavior in EVM nodes due to
+	// asynchronous log/index processing after a block becomes canonical.
+	timeout := utils.DefaultRPCTimeout * 6
+	if err := utils.WithRetriesTimeout(operation, notify, timeout); err != nil {
+		return nil, fmt.Errorf("failed to get logs for block: %w", err)
 	}
 
 	return &ICMBlockInfo{
@@ -92,23 +83,6 @@ func NewICMBlockInfo(
 		Logs:        logs,
 		IsCatchup:   false,
 	}, nil
-}
-
-// bloomContainsAnyEventTopic reports whether the block's bloom filter indicates the presence of at
-// least one of the event-signature topics being filtered for (the first topic position, topics[0]).
-// If no event-signature topics are provided, it conservatively returns true so that logs are still
-// fetched. A positive result may be a false positive due to the probabilistic nature of bloom
-// filters; callers must perform precise filtering afterwards.
-func bloomContainsAnyEventTopic(bloom types.Bloom, topics [][]common.Hash) bool {
-	if len(topics) == 0 || len(topics[0]) == 0 {
-		return true
-	}
-	for _, eventTopic := range topics[0] {
-		if bloom.Test(eventTopic[:]) {
-			return true
-		}
-	}
-	return false
 }
 
 // Extract the Warp message information from the raw log
