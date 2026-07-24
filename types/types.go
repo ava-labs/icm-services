@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ava-labs/avalanchego/graft/coreth/plugin/evm/customtypes"
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -51,44 +50,32 @@ func NewICMBlockInfo(
 	ethClient ethereum.LogFilterer,
 	topics [][]common.Hash,
 ) (*ICMBlockInfo, error) {
-	var (
-		logs []types.Log
-		err  error
-	)
-	// On SAE-enabled chains (Helicon+), header.LogsBloom summarises the block's
-	// newly-settled predecessor range rather than the block's own receipts (see
-	// ACP-194 and avalanchego/vms/saevm/sae/rpc/indexing.go's bloomOverrider),
-	// so the shortcut would silently miss events. On classic subnet-evm the
-	// shortcut is safe. Detect SAE per-header via the settlement marker in the
-	// customtypes header extra data, and always fetch when it's present.
-	if isSAEHeader(header) || bloomContainsAnyEventTopic(header.Bloom, topics) {
-		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-		defer cancel()
-		operation := func() (err error) {
-			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
-				Topics:    topics,
-				FromBlock: header.Number,
-				ToBlock:   header.Number,
-			})
-			return err
-		}
-		notify := func(err error, duration time.Duration) {
-			logger.Info(
-				"getting ICM block from logs failed, retrying...",
-				zap.Duration("retryIn", duration),
-				zap.Error(err),
-			)
-		}
+	var logs []types.Log
+	cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer cancel()
+	operation := func() (err error) {
+		logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
+			Topics:    topics,
+			FromBlock: header.Number,
+			ToBlock:   header.Number,
+		})
+		return err
+	}
+	notify := func(err error, duration time.Duration) {
+		logger.Info(
+			"getting ICM block from logs failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
 
-		// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
-		// where the block header is received via websocket subscription before the block's
-		// logs are available via RPC. This is a known behavior in EVM nodes due to
-		// asynchronous log/index processing after a block becomes canonical.
-		timeout := utils.DefaultRPCTimeout * 6
-		err = utils.WithRetriesTimeout(operation, notify, timeout)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get logs for block: %w", err)
-		}
+	// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
+	// where the block header is received via websocket subscription before the block's
+	// logs are available via RPC. This is a known behavior in EVM nodes due to
+	// asynchronous log/index processing after a block becomes canonical.
+	timeout := utils.DefaultRPCTimeout * 6
+	if err := utils.WithRetriesTimeout(operation, notify, timeout); err != nil {
+		return nil, fmt.Errorf("failed to get logs for block: %w", err)
 	}
 
 	return &ICMBlockInfo{
@@ -96,39 +83,6 @@ func NewICMBlockInfo(
 		Logs:        logs,
 		IsCatchup:   false,
 	}, nil
-}
-
-// isSAEHeader reports whether the given header was produced by an SAE-enabled
-// chain (per ACP-194). On SAE, the block builder encodes settlement metadata
-// into HeaderExtra via customtypes; the presence of SettledHeight is a
-// sufficient marker. On classic subnet-evm the field is nil.
-//
-// Referencing customtypes.HeaderExtra directly (rather than parsing raw extra
-// bytes) means any upstream rename or type change surfaces at compile time.
-func isSAEHeader(h *types.Header) bool {
-	return customtypes.GetHeaderExtra(h).SettledHeight != nil
-}
-
-// bloomContainsAnyEventTopic reports whether the header's bloom indicates the
-// presence of at least one of the event-signature topics being filtered for
-// (topics[0]). Only meaningful on classic subnet-evm; on SAE, callers must
-// bypass this check because header.Bloom refers to the settled predecessor
-// range rather than this block's own receipts.
-//
-// If no event-signature topics are provided, conservatively returns true so
-// logs are still fetched. A positive result may be a false positive due to
-// the probabilistic nature of bloom filters; callers must perform precise
-// filtering afterwards.
-func bloomContainsAnyEventTopic(bloom types.Bloom, topics [][]common.Hash) bool {
-	if len(topics) == 0 || len(topics[0]) == 0 {
-		return true
-	}
-	for _, eventTopic := range topics[0] {
-		if bloom.Test(eventTopic[:]) {
-			return true
-		}
-	}
-	return false
 }
 
 // Extract the Warp message information from the raw log

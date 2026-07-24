@@ -10,7 +10,6 @@ tool (
 require (
 	github.com/alexliesenfeld/health v0.8.1
 	github.com/ava-labs/avalanchego v1.15.0-fuji.0.20260722151048-7093cca1b389
-	github.com/ava-labs/avalanchego/graft/coreth v1.15.0-fuji-rc.0
 	github.com/ava-labs/avalanchego/graft/subnet-evm v1.15.0-fuji-rc.0
 	github.com/ava-labs/libevm v1.13.15-0.20260721184559-5557c68d296b
 	github.com/aws/aws-sdk-go-v2 v1.42.1
@@ -95,6 +94,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
+	github.com/ava-labs/avalanchego/graft/coreth v1.15.0-fuji-rc.0 // indirect
 	github.com/ava-labs/firewood-go-ethhash/ffi v0.8.0 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.29 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.30 // indirect
