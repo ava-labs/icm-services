@@ -67,6 +67,7 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 	subscriber := NewSubscriber(
 		logging.NoLog{},
 		blockchainID,
+		false,
 		stubRPCClient,
 		stubRPCClient,
 		errChan,
