@@ -35,13 +35,14 @@ type SubscriberWSClient interface {
 }
 
 type Subscriber struct {
-	wsClient     SubscriberWSClient
-	rpcClient    SubscriberRPCClient
-	blockchainID ids.ID
-	topics       [][]common.Hash
-	headers      chan *types.Header
-	icmBlocks    chan *relayerTypes.ICMBlockInfo
-	sub          ethereum.Subscription
+	wsClient         SubscriberWSClient
+	rpcClient        SubscriberRPCClient
+	blockchainID     ids.ID
+	isPrimaryNetwork bool
+	topics           [][]common.Hash
+	headers          chan *types.Header
+	icmBlocks        chan *relayerTypes.ICMBlockInfo
+	sub              ethereum.Subscription
 
 	errChan chan error
 
@@ -52,20 +53,22 @@ type Subscriber struct {
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
+	isPrimaryNetwork bool,
 	wsClient SubscriberWSClient,
 	rpcClient SubscriberRPCClient,
 	errChan chan error,
 	topics [][]common.Hash,
 ) *Subscriber {
 	subscriber := &Subscriber{
-		blockchainID: blockchainID,
-		topics:       topics,
-		wsClient:     wsClient,
-		rpcClient:    rpcClient,
-		logger:       logger,
-		icmBlocks:    make(chan *relayerTypes.ICMBlockInfo, maxClientSubscriptionBuffer),
-		headers:      make(chan *types.Header, maxClientSubscriptionBuffer),
-		errChan:      errChan,
+		blockchainID:     blockchainID,
+		isPrimaryNetwork: isPrimaryNetwork,
+		topics:           topics,
+		wsClient:         wsClient,
+		rpcClient:        rpcClient,
+		logger:           logger,
+		icmBlocks:        make(chan *relayerTypes.ICMBlockInfo, maxClientSubscriptionBuffer),
+		headers:          make(chan *types.Header, maxClientSubscriptionBuffer),
+		errChan:          errChan,
 	}
 	go subscriber.blocksInfoFromHeaders()
 	return subscriber
@@ -198,7 +201,7 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 // and writes them to the blocks channel consumed by the listener
 func (s *Subscriber) blocksInfoFromHeaders() {
 	for header := range s.headers {
-		block, err := relayerTypes.NewICMBlockInfo(s.logger, header, s.rpcClient, s.topics)
+		block, err := relayerTypes.NewICMBlockInfo(s.logger, header, s.rpcClient, s.topics, s.isPrimaryNetwork)
 		if err != nil {
 			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return
