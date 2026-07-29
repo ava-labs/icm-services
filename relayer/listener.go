@@ -13,10 +13,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/relayer/config"
-	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm"
-	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -28,27 +26,6 @@ const (
 	// refresh the chain config on reconnect.
 	retryResubscribeTimeout = 10 * time.Second
 )
-
-// EventFilterForProtocol returns the ethereum log filter topics for the given protocol and contract address.
-func EventFilterForProtocol(protocol config.Protocol) [][]common.Hash {
-	switch protocol.Type {
-	case config.TELEPORTER, config.TELEPORTER_V2:
-		// Both Teleporter and TeleporterV2 emit messages via the Warp precompile, so we
-		// filter on the SendWarpMessage event with the configured protocol address as the
-		// sender topic.
-		//
-		// NOTE: not every TeleporterV2 contract emits a Warp log. The Merkle validator-set
-		// registry delivery path, for example, does not go through the Warp precompile, so
-		// this filter would not pick up its messages. We may want a dedicated protocol enum
-		// for the Merkle validator registry rather than overloading TELEPORTER_V2 here.
-		return [][]common.Hash{
-			{types.WarpPrecompileLogFilter},
-			{common.BytesToHash(protocol.Address[:])},
-		}
-	default:
-		panic("unsupported protocol")
-	}
-}
 
 // Listener handles all messages sent from a given source chain
 type Listener struct {
@@ -124,6 +101,24 @@ func newListener(
 		return nil, fmt.Errorf("invalid blockchainID provided to subscriber: %w", err)
 	}
 
+	// The message protocol decides which source chain logs carry its messages, so the filter the
+	// subscriber uses comes from the protocol's message handler factory.
+	messageHandlerFactory, ok := messageCoordinator.messageHandlerFactories[blockchainID][protocol.Address]
+	if !ok {
+		return nil, fmt.Errorf(
+			"no message handler configured for protocol address %s on blockchain %s",
+			protocol.Address,
+			blockchainID,
+		)
+	}
+	eventFilter := messageHandlerFactory.EventFilter()
+	if len(eventFilter) == 0 {
+		return nil, fmt.Errorf(
+			"message protocol %s does not send messages on a source chain",
+			protocol.Type,
+		)
+	}
+
 	ethWSClient, err := utils.NewEthClientWithConfig(
 		ctx,
 		sourceBlockchain.WSEndpoint.BaseURL,
@@ -142,7 +137,7 @@ func newListener(
 		ethWSClient,
 		ethRPCClient,
 		errChan,
-		EventFilterForProtocol(protocol),
+		eventFilter,
 	)
 
 	logger.Info("Creating relayer")
@@ -200,6 +195,7 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			go lstnr.messageCoordinator.ProcessBlock(
 				icmBlockInfo,
 				lstnr.sourceBlockchainID,
+				lstnr.protocol.Address,
 				lstnr.errChan,
 			)
 		case subError := <-lstnr.Subscriber.SubscribeErr():
