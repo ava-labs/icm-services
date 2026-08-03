@@ -1,0 +1,149 @@
+# Manually-triggered load test of the relayer against Fuji (C-Chain / Echo / Dispatch).
+#
+# What it does:
+#   1. Builds the relayer from source at the dispatched ref.
+#   2. Checks out ava-labs/icm-relayer-load-simulator at the `load-sim-ref` input
+#      (private repo; LOAD_SIM_CHECKOUT_TOKEN secret must grant read access).
+#   3. Renders configs from that repo's config/fuji/*.template.json: RPC tokens
+#      via envsubst, load wallets via jq, then filters the relayer config down to
+#      the source/destination pair for this run.
+#   4. Runs the simulator, which starts the relayer, sends messages via its
+#      Sender/Receiver contracts on Fuji, and tracks deliveries in relayer logs.
+#   5. Fails if any sent message is not delivered. Verdict and latency table go
+#      to the step summary; raw CSVs and logs are uploaded as an artifact.
+#
+# Config schema, secret descriptions, and contract deployment steps live with
+# the simulator: icm-relayer-load-simulator/config/fuji/README.md.
+# Wallets and funding are shared state, so concurrent runs are queued.
+
+name: Relayer Fuji Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source chain (where messages are sent from)"
+        type: choice
+        options: [c-chain, echo, dispatch]
+        default: c-chain
+      destination:
+        description: "Destination chain (where messages are delivered)"
+        type: choice
+        options: [c-chain, echo, dispatch]
+        default: echo
+      count:
+        description: "Total number of messages to send"
+        type: number
+        default: 20
+      rate:
+        description: "Messages to send per second"
+        type: number
+        default: 2
+      timeout:
+        description: "Seconds to wait for all deliveries before failing"
+        type: number
+        default: 600
+      load-sim-ref:
+        description: "Branch/tag/SHA of icm-relayer-load-simulator to use"
+        type: string
+        default: main
+
+# The load wallets and relayer EOA are shared resources: two concurrent runs
+# would collide on nonces. Queue runs instead.
+concurrency:
+  group: relayer-fuji-load-test
+  cancel-in-progress: false
+
+jobs:
+  load-test:
+    name: Load test relayer against Fuji
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout icm-services
+        uses: actions/checkout@v7
+
+      - name: Checkout load simulator
+        uses: actions/checkout@v7
+        with:
+          repository: ava-labs/icm-relayer-load-simulator
+          ref: ${{ inputs.load-sim-ref }}
+          token: ${{ secrets.LOAD_SIM_CHECKOUT_TOKEN }}
+          path: load-sim
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+
+      - name: Build relayer
+        # constants.sh sets the repo's standard build environment; sourcing it
+        # matches how the release workflow builds the same binary.
+        run: |
+          source ./scripts/constants.sh
+          ./scripts/build_relayer.sh
+          ./build/icm-relayer --version
+
+      - name: Render configs
+        env:
+          FUJI_API_TOKEN: ${{ secrets.FUJI_API_TOKEN }}
+          ECHO_RPC_TOKEN: ${{ secrets.ECHO_RPC_TOKEN }}
+          DISPATCH_RPC_TOKEN: ${{ secrets.DISPATCH_RPC_TOKEN }}
+          FUJI_LOAD_WALLETS: ${{ secrets.FUJI_LOAD_WALLETS }}
+        run: |
+          for var in FUJI_API_TOKEN ECHO_RPC_TOKEN DISPATCH_RPC_TOKEN FUJI_LOAD_WALLETS; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Required secret $var is not set"
+              exit 1
+            fi
+          done
+          envsubst '$FUJI_API_TOKEN $ECHO_RPC_TOKEN $DISPATCH_RPC_TOKEN' \
+            < load-sim/config/fuji/load_config.template.json \
+            | jq --argjson wallets "$FUJI_LOAD_WALLETS" '.wallets = $wallets' \
+            > load-sim/load_config.json
+          # The relayer validates every configured chain at startup, so an
+          # unrelated-but-unhealthy chain would kill the run. Keep only the
+          # two chains this run uses.
+          SRC_ID=$(jq -r --arg c "${{ inputs.source }}" '."chain-info"[$c].blockchain_id' load-sim/load_config.json)
+          DEST_ID=$(jq -r --arg c "${{ inputs.destination }}" '."chain-info"[$c].blockchain_id' load-sim/load_config.json)
+          envsubst '$FUJI_API_TOKEN $ECHO_RPC_TOKEN $DISPATCH_RPC_TOKEN' \
+            < load-sim/config/fuji/relayer_config.template.json \
+            | jq --arg src "$SRC_ID" --arg dest "$DEST_ID" '
+                .["source-blockchains"]      |= map(select(.["blockchain-id"] == $src)) |
+                .["destination-blockchains"] |= map(select(.["blockchain-id"] == $dest))' \
+            > load-sim/relayer_config.json
+
+      - name: Run load test
+        working-directory: load-sim
+        env:
+          # Signing key for the relayer's delivery transactions on the destination chain
+          ACCOUNT_PRIVATE_KEY: ${{ secrets.FUJI_RELAYER_PRIVATE_KEY }}
+        run: |
+          set -o pipefail
+          mkdir -p results
+          go run . \
+            --sender="${{ inputs.source }}" \
+            --receiver="${{ inputs.destination }}" \
+            --count="${{ inputs.count }}" \
+            --rate="${{ inputs.rate }}" \
+            --timeout="${{ inputs.timeout }}" \
+            --run-relayer \
+            --relayer-exe="$GITHUB_WORKSPACE/build/icm-relayer" \
+            --relayer-config=./relayer_config.json \
+            --load-config=./load_config.json \
+            --output=./results \
+            --report=ci \
+            --message="gh-run=${{ github.run_id }}" \
+            2>&1 | tee results/run.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results-${{ github.run_id }}
+          path: |
+            load-sim/results/
+            !load-sim/results/**/*.prof
+          if-no-files-found: warn
+          retention-days: 30
