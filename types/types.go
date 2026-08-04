@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
 )
@@ -33,6 +34,16 @@ type ICMBlockInfo struct {
 	IsCatchup   bool
 }
 
+// BlockHead is the subset of a newHeads notification the relayer uses. The
+// node-reported hash is kept verbatim: recomputing it client-side is not
+// reliable for chains whose headers carry fields this client does not know
+// about (e.g. SAE chains).
+type BlockHead struct {
+	Hash   common.Hash  `json:"hash"`
+	Number *hexutil.Big `json:"number"`
+	Bloom  types.Bloom  `json:"logsBloom"`
+}
+
 // WarpMessageInfo describes the transaction information for the Warp message
 // sent on the source chain.
 // WarpMessageInfo instances are either derived from the logs of a block or
@@ -46,7 +57,7 @@ type WarpMessageInfo struct {
 // Extract Warp logs from the block, if they exist.
 func NewICMBlockInfo(
 	logger logging.Logger,
-	header *types.Header,
+	head *BlockHead,
 	ethClient ethereum.LogFilterer,
 	topics [][]common.Hash,
 	isPrimaryNetwork bool,
@@ -63,11 +74,11 @@ func NewICMBlockInfo(
 	// as a shortcut: it summarises a settled predecessor range rather than the
 	// block's own receipts, so the shortcut would silently miss events. Bypass the
 	// bloom check there and always fetch the logs.
-	if isPrimaryNetwork || bloomContainsAnyEventTopic(header.Bloom, topics) {
+	if isPrimaryNetwork || bloomContainsAnyEventTopic(head.Bloom, topics) {
 		// Query by hash: a node that doesn't know the block errors ("unknown
 		// block") and is retried below, whereas a by-number query would return
 		// empty logs with no error and the block would be silently skipped.
-		blockHash := header.Hash()
+		blockHash := head.Hash
 		operation := func() (err error) {
 			// Fresh context per attempt so retries aren't killed by an
 			// already-expired deadline.
@@ -98,7 +109,7 @@ func NewICMBlockInfo(
 	}
 
 	return &ICMBlockInfo{
-		BlockNumber: header.Number.Uint64(),
+		BlockNumber: head.Number.ToInt().Uint64(),
 		Logs:        logs,
 		IsCatchup:   false,
 	}, nil
