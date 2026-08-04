@@ -2,7 +2,6 @@ package validatorupdater
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
+	"github.com/ava-labs/libevm/crypto"
 )
 
 // ValidatorSetMerkleCommitment is the warp payload for Merkle validator set
@@ -172,7 +172,7 @@ func NewValidatorSetMerkleAttestation(
 		nextLayer := make([]Node, nextLen)
 		for i := 0; i < nextLen; i++ {
 			left, right := layer[2*i], layer[2*i+1]
-			nextHash := sha256Pair(left.Hash, right.Hash)
+			nextHash := keccakPair(left.Hash, right.Hash)
 			onPath := left.OnPath || right.OnPath
 			nextLayer[i] = Node{Hash: nextHash, OnPath: onPath}
 			if onPath {
@@ -240,12 +240,12 @@ func (v *ValidatorSetMerkleAttestation) Bytes() []byte {
 }
 
 // nullLeafHash is the leaf hash used to pad the validator set to the next power
-// of two. It matches sha256Validator(Validator{blsPublicKey: zeroes, weight: 0})
-// in ValidatorSets.sol: sha256(uint256(1) ++ 128-zero padded key ++ 8-zero weight).
+// of two. It matches keccakValidator(Validator{blsPublicKey: zeroes, weight: 0})
+// in ValidatorSets.sol: keccak256(uint256(1) ++ 128-zero padded key ++ 8-zero weight).
 var nullLeafHash = func() [32]byte {
 	var buf [168]byte
 	buf[31] = 1 // uint256(1) leaf domain separator
-	return sha256.Sum256(buf[:])
+	return [32]byte(crypto.Keccak256(buf[:]))
 }()
 
 // nextPow2 returns the smallest power of two >= n (minimum 1).
@@ -277,7 +277,7 @@ func BuildMerkleRoot(validators []*Validator) [32]byte {
 		nextLen := len(layer) / 2 // always even — no promotion needed
 		nextLayer := make([][32]byte, nextLen)
 		for i := 0; i < nextLen; i++ {
-			nextLayer[i] = sha256Pair(layer[2*i], layer[2*i+1])
+			nextLayer[i] = keccakPair(layer[2*i], layer[2*i+1])
 		}
 		layer = nextLayer
 	}
@@ -285,7 +285,7 @@ func BuildMerkleRoot(validators []*Validator) [32]byte {
 }
 
 // validatorHash computes the Merkle leaf hash for a validator, matching
-// Solidity's sha256Validator: sha256(abi.encodePacked(uint256(1), blsPublicKey, weight)).
+// Solidity's hashValidator: keccak256(abi.encodePacked(uint256(1), blsPublicKey, weight)).
 // The padded key format is [16 zeros][48 bytes X][16 zeros][48 bytes Y] (128 bytes),
 // so the full input is 32 + 128 + 8 = 168 bytes.
 func validatorHash(validator *Validator) [32]byte {
@@ -296,18 +296,18 @@ func validatorHash(validator *Validator) [32]byte {
 	// Y coordinate (bytes 48-95 of uncompressed key) → bytes 112-159 of buf
 	copy(buf[112:160], validator.UncompressedPublicKeyBytes[48:96])
 	binary.BigEndian.PutUint64(buf[160:], validator.Weight)
-	return sha256.Sum256(buf[:])
+	return [32]byte(crypto.Keccak256(buf[:]))
 }
 
-// sha256Pair hashes two 32-byte values together, matching Solidity's
-// sha256InternalPair: sha256(abi.encodePacked(uint256(0), smaller, larger)).
+// keccakPair hashes two 32-byte values together, matching Solidity's
+// keccakInternalPair: keccak256(abi.encodePacked(uint256(0), smaller, larger)).
 // The uint256(0) prefix is the internal-node domain separator.
-func sha256Pair(a, b [32]byte) [32]byte {
+func keccakPair(a, b [32]byte) [32]byte {
 	if bytes.Compare(a[:], b[:]) > 0 {
 		a, b = b, a
 	}
 	var buf [96]byte // 32 bytes uint256(0) + 32 bytes smaller + 32 bytes larger
 	copy(buf[32:64], a[:])
 	copy(buf[64:96], b[:])
-	return sha256.Sum256(buf[:])
+	return [32]byte(crypto.Keccak256(buf[:]))
 }

@@ -270,7 +270,7 @@ library ValidatorSets {
         // TODO: Switch to multiProofVerifyCalldata once parseMerkleAttestation returns calldata slice offsets instead of a memory struct for additional gas savings
         if (
             !MerkleProof.multiProofVerify(
-                att.proof, att.proofFlags, comm.root, leaves, sha256InternalPair
+                att.proof, att.proofFlags, comm.root, leaves, keccakInternalPair
             )
         ) {
             return false;
@@ -925,10 +925,10 @@ library ValidatorSets {
         );
     }
 
-    function sha256InternalPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+    function keccakInternalPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
         return a < b
-            ? sha256(abi.encodePacked(uint256(0), a, b))
-            : sha256(abi.encodePacked(uint256(0), b, a));
+            ? keccak256(abi.encodePacked(uint256(0), a, b))
+            : keccak256(abi.encodePacked(uint256(0), b, a));
     }
 
     /*
@@ -939,6 +939,6 @@ library ValidatorSets {
     function hashValidator(
         Validator memory val
     ) internal pure returns (bytes32) {
-        return sha256(abi.encodePacked(uint256(1), val.blsPublicKey, val.weight));
+        return keccak256(abi.encodePacked(uint256(1), val.blsPublicKey, val.weight));
     }
 }
