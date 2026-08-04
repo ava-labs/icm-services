@@ -64,13 +64,18 @@ func NewICMBlockInfo(
 	// block's own receipts, so the shortcut would silently miss events. Bypass the
 	// bloom check there and always fetch the logs.
 	if isPrimaryNetwork || bloomContainsAnyEventTopic(header.Bloom, topics) {
-		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-		defer cancel()
+		// Query by hash: a node that doesn't know the block errors ("unknown
+		// block") and is retried below, whereas a by-number query would return
+		// empty logs with no error and the block would be silently skipped.
+		blockHash := header.Hash()
 		operation := func() (err error) {
+			// Fresh context per attempt so retries aren't killed by an
+			// already-expired deadline.
+			cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+			defer cancel()
 			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
 				Topics:    topics,
-				FromBlock: header.Number,
-				ToBlock:   header.Number,
+				BlockHash: &blockHash,
 			})
 			return err
 		}
@@ -82,10 +87,9 @@ func NewICMBlockInfo(
 			)
 		}
 
-		// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
-		// where the block header is received via websocket subscription before the block's
-		// logs are available via RPC. This is a known behavior in EVM nodes due to
-		// asynchronous log/index processing after a block becomes canonical.
+		// Headers arrive via WS before every node behind a load-balanced RPC
+		// endpoint knows the block, so allow several retries for the "unknown
+		// block" case above.
 		timeout := utils.DefaultRPCTimeout * 6
 		err = utils.WithRetriesTimeout(operation, notify, timeout)
 		if err != nil {
