@@ -34,14 +34,55 @@ type ICMBlockInfo struct {
 	IsCatchup   bool
 }
 
-// BlockHead is the subset of a newHeads notification the relayer uses. The
-// node-reported hash is kept verbatim: recomputing it client-side is not
-// reliable for chains whose headers carry fields this client does not know
-// about (e.g. SAE chains).
+// BlockHead carries every field a newHeads notification may include across
+// the chain families the relayer supports: the standard geth header fields,
+// the coreth and subnet-evm extras, and the SAE settlement fields (see
+// HeaderSerializable in avalanchego's plugin/evm/customtypes). All fields are
+// optional so notifications from chains that omit some of them still decode;
+// the upstream serializable types cannot be reused here because each chain
+// family's generated decoder requires fields the other family omits, and
+// their "hash" is a marshal-only computed field that is dropped on unmarshal.
+//
+// The node-reported hash is kept verbatim: recomputing it client-side is not
+// reliable for chains whose headers carry fields this client cannot encode
+// (e.g. SAE chains).
 type BlockHead struct {
-	Hash   common.Hash  `json:"hash"`
-	Number *hexutil.Big `json:"number"`
-	Bloom  types.Bloom  `json:"logsBloom"`
+	Hash             common.Hash      `json:"hash"`
+	ParentHash       common.Hash      `json:"parentHash"`
+	UncleHash        common.Hash      `json:"sha3Uncles"`
+	Coinbase         common.Address   `json:"miner"`
+	Root             common.Hash      `json:"stateRoot"`
+	TxHash           common.Hash      `json:"transactionsRoot"`
+	ReceiptHash      common.Hash      `json:"receiptsRoot"`
+	Bloom            types.Bloom      `json:"logsBloom"`
+	Difficulty       *hexutil.Big     `json:"difficulty"`
+	Number           *hexutil.Big     `json:"number"`
+	GasLimit         hexutil.Uint64   `json:"gasLimit"`
+	GasUsed          hexutil.Uint64   `json:"gasUsed"`
+	Time             hexutil.Uint64   `json:"timestamp"`
+	Extra            hexutil.Bytes    `json:"extraData"`
+	MixDigest        common.Hash      `json:"mixHash"`
+	Nonce            types.BlockNonce `json:"nonce"`
+	BaseFee          *hexutil.Big     `json:"baseFeePerGas"`
+	WithdrawalsHash  *common.Hash     `json:"withdrawalsRoot"`
+	BlobGasUsed      *hexutil.Uint64  `json:"blobGasUsed"`
+	ExcessBlobGas    *hexutil.Uint64  `json:"excessBlobGas"`
+	ParentBeaconRoot *common.Hash     `json:"parentBeaconBlockRoot"`
+
+	// Avalanche extras (coreth and/or subnet-evm).
+	ExtDataHash      common.Hash     `json:"extDataHash"`
+	ExtDataGasUsed   *hexutil.Big    `json:"extDataGasUsed"`
+	BlockGasCost     *hexutil.Big    `json:"blockGasCost"`
+	TimeMilliseconds *hexutil.Uint64 `json:"timestampMilliseconds"`
+	MinDelayExcess   *hexutil.Uint64 `json:"minDelayExcess"`
+	TargetExponent   *hexutil.Uint64 `json:"targetExponent"`
+	MinPriceExponent *hexutil.Uint64 `json:"minPriceExponent"`
+
+	// SAE settlement fields (ACP-194).
+	SettledHeight       *hexutil.Uint64 `json:"settledHeight"`
+	SettledGasUnix      *hexutil.Uint64 `json:"settledGasUnix"`
+	SettledGasNumerator *hexutil.Uint64 `json:"settledGasNumerator"`
+	SettledExcess       *hexutil.Uint64 `json:"settledExcess"`
 }
 
 // WarpMessageInfo describes the transaction information for the Warp message
