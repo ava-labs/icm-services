@@ -120,6 +120,9 @@ pub fn derive_pack(
         let code = pack_struct(ctx, struct_def, arg, &type_name)
             .map_err(foundry_compilers::error::SolcError::msg)?;
 
+        let text = format!("\n\n{code}\n");
+        let location =
+            crate::attribution::trigger_location(ctx, struct_def.source, struct_def.span, "#[pack(");
         let path = ctx
             .sources
             .get(target_source_id)
@@ -128,7 +131,9 @@ pub fn derive_pack(
             .name
             .as_real()
             .unwrap();
-        data.insert(path, insertion_offset, format!("\n\n{code}\n"));
+        data.entry(path, &text)
+            .with("pack", location)
+            .insert(insertion_offset);
     }
 
     for enum_def in ctx.hir.enums() {
@@ -152,6 +157,9 @@ pub fn derive_pack(
             qualified_type_name(ctx, enum_def.name.as_str(), enum_def.contract, arg.contract);
         let code = pack_enum(enum_def, arg, &type_name);
 
+        let text = format!("\n\n{code}\n");
+        let location =
+            crate::attribution::trigger_location(ctx, enum_def.source, enum_def.span, "#[pack(");
         let path = ctx
             .sources
             .get(target_source_id)
@@ -160,7 +168,9 @@ pub fn derive_pack(
             .name
             .as_real()
             .unwrap();
-        data.insert(path, insertion_offset, format!("\n\n{code}\n"));
+        data.entry(path, &text)
+            .with("pack", location)
+            .insert(insertion_offset);
     }
     Ok(())
 }

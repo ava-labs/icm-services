@@ -1,3 +1,4 @@
+mod attribution;
 mod pack;
 mod unpack;
 
