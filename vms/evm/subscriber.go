@@ -32,6 +32,9 @@ type SubscriberRPCClient interface {
 
 type SubscriberWSClient interface {
 	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+	// Used to fetch logs for live blocks; see blocksInfoFromHeaders for why
+	// these fetches must use the WS connection.
+	ethereum.LogFilterer
 }
 
 type Subscriber struct {
@@ -201,7 +204,14 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 // and writes them to the blocks channel consumed by the listener
 func (s *Subscriber) blocksInfoFromHeaders() {
 	for header := range s.headers {
-		block, err := relayerTypes.NewICMBlockInfo(s.logger, header, s.rpcClient, s.topics, s.isPrimaryNetwork)
+		// Fetch logs over the WS connection rather than the HTTP client: the
+		// node that emitted this head is guaranteed to have the block's
+		// receipts on disk, whereas an HTTP request may be routed to a
+		// different node behind a load balancer that has not yet executed the
+		// block. On SAE chains such a node returns empty logs without an
+		// error, which would cause this block's messages to be silently
+		// skipped.
+		block, err := relayerTypes.NewICMBlockInfo(s.logger, header, s.wsClient, s.topics, s.isPrimaryNetwork)
 		if err != nil {
 			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return
