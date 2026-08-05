@@ -45,9 +45,9 @@ func (c *subscriberClientStub) SubscribeFilterLogs(
 	return nil, nil
 }
 
-func (c *subscriberClientStub) SubscribeNewHead(
+func (c *subscriberClientStub) SubscribeNewHeads(
 	ctx context.Context,
-	ch chan<- *types.Header,
+	ch chan<- *stypes.BlockHead,
 ) (ethereum.Subscription, error) {
 	return nil, nil
 }

@@ -16,6 +16,8 @@ import (
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/ethclient"
+	"github.com/ava-labs/libevm/rpc"
 	"go.uber.org/zap"
 )
 
@@ -31,10 +33,37 @@ type SubscriberRPCClient interface {
 }
 
 type SubscriberWSClient interface {
-	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+	SubscribeNewHeads(ctx context.Context, ch chan<- *relayerTypes.BlockHead) (ethereum.Subscription, error)
 	// Used to fetch logs for live blocks; see blocksInfoFromHeaders for why
 	// these fetches must use the WS connection.
 	ethereum.LogFilterer
+}
+
+// WSHeadClient adapts a raw rpc.Client to SubscriberWSClient. It decodes
+// newHeads notifications into BlockHead, keeping the node-reported block hash,
+// which cannot be recomputed client-side for chains whose headers carry fields
+// unknown to this client (e.g. SAE chains).
+//
+// The embedded ethclient.Client wraps the same rpc.Client, so log fetches are
+// issued over the same connection as the newHeads notification that triggered
+// them, and therefore reach the same node.
+type WSHeadClient struct {
+	client *rpc.Client
+	*ethclient.Client
+}
+
+func NewWSHeadClient(client *rpc.Client) WSHeadClient {
+	return WSHeadClient{
+		client: client,
+		Client: ethclient.NewClient(client),
+	}
+}
+
+func (w WSHeadClient) SubscribeNewHeads(
+	ctx context.Context,
+	ch chan<- *relayerTypes.BlockHead,
+) (ethereum.Subscription, error) {
+	return w.client.EthSubscribe(ctx, ch, "newHeads")
 }
 
 type Subscriber struct {
@@ -43,7 +72,7 @@ type Subscriber struct {
 	blockchainID     ids.ID
 	isPrimaryNetwork bool
 	topics           [][]common.Hash
-	headers          chan *types.Header
+	headers          chan *relayerTypes.BlockHead
 	icmBlocks        chan *relayerTypes.ICMBlockInfo
 	sub              ethereum.Subscription
 
@@ -70,7 +99,7 @@ func NewSubscriber(
 		rpcClient:        rpcClient,
 		logger:           logger,
 		icmBlocks:        make(chan *relayerTypes.ICMBlockInfo, maxClientSubscriptionBuffer),
-		headers:          make(chan *types.Header, maxClientSubscriptionBuffer),
+		headers:          make(chan *relayerTypes.BlockHead, maxClientSubscriptionBuffer),
 		errChan:          errChan,
 	}
 	go subscriber.blocksInfoFromHeaders()
@@ -180,7 +209,7 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
-		sub, err = s.wsClient.SubscribeNewHead(cctx, s.headers)
+		sub, err = s.wsClient.SubscribeNewHeads(cctx, s.headers)
 		return err
 	}
 	notify := func(err error, duration time.Duration) {
@@ -203,7 +232,7 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 // blocksInfoFromHeaders listens to the header channel and converts the headers to [relayerTypes.ICMBlockInfo]
 // and writes them to the blocks channel consumed by the listener
 func (s *Subscriber) blocksInfoFromHeaders() {
-	for header := range s.headers {
+	for head := range s.headers {
 		// Fetch logs over the WS connection rather than the HTTP client: the
 		// node that emitted this head is guaranteed to have the block's
 		// receipts on disk, whereas an HTTP request may be routed to a
@@ -211,7 +240,7 @@ func (s *Subscriber) blocksInfoFromHeaders() {
 		// block. On SAE chains such a node returns empty logs without an
 		// error, which would cause this block's messages to be silently
 		// skipped.
-		block, err := relayerTypes.NewICMBlockInfo(s.logger, header, s.wsClient, s.topics, s.isPrimaryNetwork)
+		block, err := relayerTypes.NewICMBlockInfo(s.logger, head, s.wsClient, s.topics, s.isPrimaryNetwork)
 		if err != nil {
 			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return
