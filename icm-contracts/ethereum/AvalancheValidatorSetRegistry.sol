@@ -76,9 +76,8 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
-        IWarpMessenger(_WARP_PRECOMPILE_ADDRESS).sendWarpMessage(
-            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message)
-        );
+        IWarpMessenger(_WARP_PRECOMPILE_ADDRESS)
+            .sendWarpMessage(TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message));
     }
 
     function verifyMessage(
@@ -168,11 +167,11 @@ contract AvalancheValidatorSetRegistry is IAvalancheValidatorSetRegistry, IAdapt
 
             if (!isRegistered(avalancheBlockchainID)) {
                 _validatorSets[validatorSetMetadata.avalancheBlockchainID].avalancheBlockchainID =
-                    validatorSetMetadata.avalancheBlockchainID;
+                validatorSetMetadata.avalancheBlockchainID;
                 _partialValidatorSets[avalancheBlockchainID].pChainHeight =
-                    validatorSetMetadata.pChainHeight;
+                validatorSetMetadata.pChainHeight;
                 _partialValidatorSets[avalancheBlockchainID].pChainTimestamp =
-                    validatorSetMetadata.pChainTimestamp;
+                validatorSetMetadata.pChainTimestamp;
             }
         } else {
             // This branch is reached both on first registration and on

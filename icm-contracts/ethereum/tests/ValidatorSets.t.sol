@@ -232,7 +232,10 @@ contract ValidatorSetsTest is Test {
     /*
      * @dev Test to make sure a round trip of serialization is a no-op
      */
-    function testRoundTripValidatorChange(uint64 weight, uint256 secretKey) public view {
+    function testRoundTripValidatorChange(
+        uint64 weight,
+        uint256 secretKey
+    ) public view {
         ValidatorChange memory valChange =
             ValidatorChange({blsPublicKey: BLST.getPublicKeyFromSecret(secretKey), weight: weight});
         bytes memory serialized = ValidatorSets.serializeValidatorChange(valChange);
@@ -320,8 +323,7 @@ contract ValidatorSetsTest is Test {
         bytes32 avalancheBlockchainID
     ) public view {
         ValidatorSetShard memory validatorSetShard = ValidatorSetShard({
-            shardNumber: shardNumber,
-            avalancheBlockchainID: avalancheBlockchainID
+            shardNumber: shardNumber, avalancheBlockchainID: avalancheBlockchainID
         });
         bytes memory serialized = ValidatorSets.serializeValidatorSetShard(validatorSetShard);
         ValidatorSetShard memory deserialized = _harness.parseValidatorSetShard(serialized);
@@ -362,10 +364,7 @@ contract ValidatorSetsTest is Test {
             aggregateBlsSig[i] = bytes1(uint8(i & 0xff));
         }
         ValidatorSetMerkleAttestation memory attestation = ValidatorSetMerkleAttestation({
-            signers: signers,
-            proof: proof,
-            proofFlags: proofFlags,
-            aggregateBlsSig: aggregateBlsSig
+            signers: signers, proof: proof, proofFlags: proofFlags, aggregateBlsSig: aggregateBlsSig
         });
         // Serialize
         bytes memory serialized = ValidatorSets.serializeMerkleAttestation(attestation);

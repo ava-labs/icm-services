@@ -39,7 +39,11 @@ contract NonReentrantUpgradeableApp is TeleporterRegistryAppUpgradeable {
     // The Warp Precompile is mocked to return a message that will call
     // TeleporterRegistryAppUpgradeable.receiveTeleporterMessage which should revert because it is
     // non-reentrant.
-    function _receiveTeleporterMessage(bytes32, address, bytes memory) internal override {
+    function _receiveTeleporterMessage(
+        bytes32,
+        address,
+        bytes memory
+    ) internal override {
         // Call `receiveCrossChainMessage` of the latest version of Teleporter
         getTeleporterMessenger().receiveCrossChainMessage(warpMessageIndex, address(this));
     }
@@ -92,9 +96,10 @@ abstract contract NonReentrantTest is BaseTeleporterRegistryAppTest {
         // Same index as in NonreentrantUpgradeableApp._receiveTeleporterMessage()
         _mockGetVerifiedWarpMessage(warpMessageIndex, warpMessage, true);
 
-        bytes32 messageID = TeleporterMessenger(teleporterAddress).calculateMessageID(
-            DEFAULT_SOURCE_BLOCKCHAIN_ID, MOCK_BLOCK_CHAIN_ID, messageToReceive.messageNonce
-        );
+        bytes32 messageID = TeleporterMessenger(teleporterAddress)
+            .calculateMessageID(
+                DEFAULT_SOURCE_BLOCKCHAIN_ID, MOCK_BLOCK_CHAIN_ID, messageToReceive.messageNonce
+            );
 
         vm.expectEmit(true, true, true, true, address(teleporterAddress));
         emit MessageExecutionFailed(messageID, DEFAULT_SOURCE_BLOCKCHAIN_ID, messageToReceive);
@@ -137,9 +142,10 @@ abstract contract NonReentrantTest is BaseTeleporterRegistryAppTest {
             )
         );
 
-        bytes32 messageID = TeleporterMessenger(teleporterV2).calculateMessageID(
-            DEFAULT_SOURCE_BLOCKCHAIN_ID, MOCK_BLOCK_CHAIN_ID, messageToReceive.messageNonce
-        );
+        bytes32 messageID = TeleporterMessenger(teleporterV2)
+            .calculateMessageID(
+                DEFAULT_SOURCE_BLOCKCHAIN_ID, MOCK_BLOCK_CHAIN_ID, messageToReceive.messageNonce
+            );
 
         vm.expectEmit(true, true, true, true, address(teleporterV2));
         emit MessageExecutionFailed(messageID, DEFAULT_SOURCE_BLOCKCHAIN_ID, messageToReceive);

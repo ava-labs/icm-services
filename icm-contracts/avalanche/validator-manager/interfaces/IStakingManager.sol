@@ -190,7 +190,10 @@ interface IStakingManager {
      * @param validationID The ID of the validation period
      * @param messageIndex The index of the ICM message to be received providing the uptime proof
      */
-    function submitUptimeProof(bytes32 validationID, uint32 messageIndex) external;
+    function submitUptimeProof(
+        bytes32 validationID,
+        uint32 messageIndex
+    ) external;
 
     /**
      * @notice Completes validator registration by dispatching to the IValidatorManager to update the validator status,
@@ -261,7 +264,10 @@ interface IStakingManager {
      * @param delegationID The ID of the delegation being registered.
      * @param messageIndex The index of the ICM message to be received providing the acknowledgement.
      */
-    function completeDelegatorRegistration(bytes32 delegationID, uint32 messageIndex) external;
+    function completeDelegatorRegistration(
+        bytes32 delegationID,
+        uint32 messageIndex
+    ) external;
 
     /**
      * @notice Begins the process of removing a delegator from a validation period, and reverts if the delegation is not eligible for rewards.
@@ -323,7 +329,10 @@ interface IStakingManager {
      * @param delegationID The ID of the delegation being removed.
      * @param messageIndex The index of the ICM message to be received providing the acknowledgement.
      */
-    function completeDelegatorRemoval(bytes32 delegationID, uint32 messageIndex) external;
+    function completeDelegatorRemoval(
+        bytes32 delegationID,
+        uint32 messageIndex
+    ) external;
 
     /**
      * @notice Withdraws the delegation fees from completed delegations to the owner of the validator.
@@ -338,12 +347,18 @@ interface IStakingManager {
      * @param validationID The ID of the validation period being ended.
      * @param recipient The address to receive the rewards.
      */
-    function changeValidatorRewardRecipient(bytes32 validationID, address recipient) external;
+    function changeValidatorRewardRecipient(
+        bytes32 validationID,
+        address recipient
+    ) external;
 
     /**
      * @notice Changes the address of the recipient of the delegator's rewards for a delegation period.
      * @param delegationID The ID of the validation period being ended.
      * @param recipient The address to receive the rewards.
      */
-    function changeDelegatorRewardRecipient(bytes32 delegationID, address recipient) external;
+    function changeDelegatorRewardRecipient(
+        bytes32 delegationID,
+        address recipient
+    ) external;
 }

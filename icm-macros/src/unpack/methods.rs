@@ -1,0 +1,511 @@
+//! This module contains the Solidity templates for the unpacking methods.
+//!
+//! **Convention**: all generated unpacking functions receive their input buffer as a parameter
+//! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
+//! name unconditionally — callers must not rename it.
+
+use crate::unpack::hooks::UnpackArgs;
+use solar::ast::{ElementaryType, StateMutability};
+use solar::sema::Gcx;
+use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
+
+/// Generates the code to unpack an elementary Solidity type from the front of `data`.
+/// The result is stored in a freshly declared local named `output`.
+///
+/// The `calldata` flag selects whether `data` is `bytes calldata` or `bytes memory`.
+///
+/// Only the bytes consumed by this type are removed from `data`; the rest remains available
+/// for subsequent unpacking calls.
+pub fn unpack_elementary(output: &str, ty: ElementaryType, calldata: bool) -> String {
+    let output = sanitize_local(output);
+    match ty {
+        ElementaryType::Bytes | ElementaryType::String => {
+            let type_name = elementary_type_name(ty);
+            if calldata {
+                format!(
+                    "\n{type_name} memory {output};\
+                \n{{\
+                \n    uint256 length = uint256(bytes32(data[0:32]));\
+                \n    {output} = {type_name}(data[32:length + 32]);\
+                \n    data = data[32 + length:];\
+                \n}}"
+                )
+            } else {
+                let alloc = match ty {
+                    ElementaryType::Bytes => "new bytes(data_length)".to_string(),
+                    _ => "string(new bytes(data_length))".to_string(),
+                };
+                format!(
+                    "\n{type_name} memory {output};\
+                \n{{\
+                \n    uint256 data_length;\
+                \n    assembly {{ data_length := mload(add(data, 32)) }}\
+                \n    {output} = {alloc};\
+                \n    assembly {{\
+                \n        mcopy(add({output}, 32), add(data, 64), data_length)\
+                \n        let _data_orig_len := mload(data)\
+                \n        data := add(data, add(32, data_length))\
+                \n        mstore(data, sub(_data_orig_len, add(32, data_length)))\
+                \n    }}\
+                \n}}"
+                )
+            }
+        }
+        _ => {
+            let size = packed_size(ty);
+            let shift = (32 - size) * 8;
+            let type_name = elementary_type_name(ty);
+            if calldata {
+                let decode = calldata_decode("data", ty, size);
+                format!(
+                    "\n{type_name} {output} = {decode};\
+                     \ndata = data[{size}:];"
+                )
+            } else {
+                let read = match ty {
+                    ElementaryType::Int(_) => {
+                        format!("sar({shift}, mload(add(data, 32)))")
+                    }
+                    ElementaryType::FixedBytes(_) => {
+                        format!("and(mload(add(data, 32)), shl({shift}, not(0)))")
+                    }
+                    _ => format!("shr({shift}, mload(add(data, 32)))"),
+                };
+                let slice = slice_memory(
+                    "data",
+                    &size.to_string(),
+                    &format!("sub(mload(data), {size})"),
+                );
+                format!(
+                    "\n{type_name} {output};\
+                    \nassembly {{\
+                    \n    {output} := {read}\
+                    \n}}\
+                    \n{slice}"
+                )
+            }
+        }
+    }
+}
+
+pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> String {
+    let fn_name = args
+        .name
+        .unwrap_or_else(|| format!("unpack{}", enum_def.name));
+    let input = if args.calldata {
+        "bytes calldata data"
+    } else {
+        "bytes memory data"
+    };
+    let vis = vis_prefix(&args.visibility);
+    let body = format!(
+        "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\n    return (1, {type_name}(uint8(data[0])));\n}}"
+    );
+    if args.solhint_disable {
+        format!(
+            "// solhint-disable no-inline-assembly\n{body}\n// solhint-enable no-inline-assembly"
+        )
+    } else {
+        body
+    }
+}
+
+pub fn unpack_struct(
+    ctx: &Gcx,
+    struct_def: &Struct,
+    args: UnpackArgs,
+    type_name: &str,
+) -> eyre::Result<String> {
+    let fn_name = args
+        .name
+        .unwrap_or_else(|| format!("unpack{}", struct_def.name));
+    let input = if args.calldata {
+        "bytes calldata data"
+    } else {
+        "bytes memory data"
+    };
+    let (length_tracking, pre_return, bytes_read) = if args.calldata {
+        (
+            "uint256 _initial_length = data.length;".to_string(),
+            String::new(),
+            "_initial_length - data.length".to_string(),
+        )
+    } else {
+        (
+            "uint256 _initial_length;\nassembly { _initial_length := mload(data) }".to_string(),
+            "uint256 _final_length;\nassembly { _final_length := mload(data) }".to_string(),
+            "_initial_length - _final_length".to_string(),
+        )
+    };
+    let target_contract = args.contract.or(struct_def.contract);
+    let mut body = String::new();
+    for (&field_id, field_args) in struct_def.fields.iter().zip(args.fields.iter()) {
+        if field_args.default {
+            continue;
+        }
+        let field = ctx.hir.variable(field_id);
+        let field_type = get_type_name(ctx, &field.ty.kind, target_contract)?;
+        let field_name = field.name.unwrap();
+        let local_name = sanitize_local(field_name.as_str());
+        let declaration = if field_args.memory {
+            format!("{field_type} memory {local_name};")
+        } else {
+            format!("{field_type} {local_name};")
+        };
+        let deserialize_field_code = if let Some(method) = &field_args.method {
+            if args.calldata {
+                format!(
+                    "\n{declaration}\
+                    \n{{\
+                    \n    uint256 read;\
+                    \n    (read, {local_name}) = {method}(data);\
+                    \n    data = data[read:];\
+                    \n}}"
+                )
+            } else {
+                format!(
+                    "\n{declaration}\
+                    \n{{\
+                    \n    uint256 _len_before;\
+                    \n    assembly {{ _len_before := mload(data) }}\
+                    \n    uint256 read;\
+                    \n    (read, {local_name}) = {method}(data);\
+                    \n    assembly {{\
+                    \n        data := add(data, read)\
+                    \n        mstore(data, sub(_len_before, read))\
+                    \n    }}\
+                    \n}}"
+                )
+            }
+        } else {
+            let node = UnpackingTreeNode {
+                depth: 0,
+                output: local_name.clone(),
+                ty: &field.ty.kind,
+            };
+            inline_unpack(ctx, args.calldata, target_contract, node)?
+        };
+        body.push_str(&deserialize_field_code);
+        body.push_str(&format!("\nresult.{field_name} = {local_name};"));
+    }
+    let vis = vis_prefix(&args.visibility);
+    let func = format!(
+        "function {fn_name}({input}) {vis}pure returns (uint256, {type_name} memory) {{\
+        \n    {length_tracking}\
+        \n    {type_name} memory result;\
+        \n    {body}\
+        \n    {pre_return}\
+        \n    return ({bytes_read}, result);\
+        \n}}"
+    );
+    Ok(if args.solhint_disable {
+        format!(
+            "// solhint-disable no-inline-assembly\n{func}\n// solhint-enable no-inline-assembly"
+        )
+    } else {
+        func
+    })
+}
+
+/// A struct that tracks a recursive enumeration through a type to fully
+/// expand its packing algorithm. Modelled as a node in a tree
+struct UnpackingTreeNode<'a> {
+    /// The level of recursion in the type
+    depth: u8,
+    /// The variable which will store the result at this
+    /// level of the tree
+    output: String,
+    /// The type of this node
+    ty: &'a TypeKind<'a>,
+}
+
+fn inline_unpack(
+    ctx: &Gcx,
+    calldata: bool,
+    target_contract: Option<ContractId>,
+    node: UnpackingTreeNode<'_>,
+) -> eyre::Result<String> {
+    Ok(match node.ty {
+        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata),
+        TypeKind::Array(arr) => {
+            let type_name = get_type_name(ctx, &arr.element.kind, target_contract)?;
+            let next_output = format!("{}_{}", node.output, node.depth + 1);
+            let next_node = UnpackingTreeNode {
+                depth: node.depth + 1,
+                output: next_output.clone(),
+                ty: &arr.element.kind,
+            };
+            let output = sanitize_local(&node.output);
+            let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
+            let (read_length, advance_past_count) = if calldata {
+                (
+                    "uint256 length = uint256(bytes32(data[0:32]));".to_string(),
+                    "data = data[32:];".to_string(),
+                )
+            } else {
+                (
+                    "uint256 length; assembly { length := mload(add(data, 32)) }".to_string(),
+                    slice_memory("data", "32", "sub(mload(data), 32)"),
+                )
+            };
+            format!(
+                "\n{type_name}[] memory {output};\
+                \n{{\
+                \n    {read_length}\
+                \n    {advance_past_count}\
+                \n    {output} = new {type_name}[](length);\
+                \n    for (uint256 i = 0; i < length;){{\
+                \n        {inner}\
+                \n        {output}[i] = {next_output};\
+                \n        unchecked {{ ++i;}}\
+                \n    }}\
+                \n}}"
+            )
+        }
+        TypeKind::Custom(item_id) => {
+            let type_name = custom_type_name(ctx, *item_id);
+            let output = sanitize_local(&node.output);
+            let is_enum = matches!(item_id, ItemId::Enum(_));
+            let decl = if is_enum {
+                format!("{type_name} {output};")
+            } else {
+                format!("{type_name} memory {output};")
+            };
+            if calldata {
+                format!(
+                    "\n{decl}\
+                    \n{{\
+                    \n    uint256 read;\
+                    \n    (read, {output}) = unpack{type_name}(data);\
+                    \n    data = data[read:];\
+                    \n}}"
+                )
+            } else {
+                format!(
+                    "\n{decl}\
+                    \n{{\
+                    \n    uint256 _len_before;\
+                    \n    assembly {{ _len_before := mload(data) }}\
+                    \n    uint256 read;\
+                    \n    (read, {output}) = unpack{type_name}(data);\
+                    \n    assembly {{\
+                    \n        data := add(data, read)\
+                    \n        mstore(data, sub(_len_before, read))\
+                    \n    }}\
+                    \n}}"
+                )
+            }
+        }
+        TypeKind::Function(_) => eyre::bail!("Cannot unpack function types without custom methods"),
+        TypeKind::Mapping(_) => eyre::bail!("Cannot unpack mapping types without custom methods"),
+        TypeKind::Err(_) => eyre::bail!("Cannot unpack error types without custom methods"),
+    })
+}
+
+/// Returns the Solidity type name for an elementary type.
+fn elementary_type_name(ty: ElementaryType) -> String {
+    match ty {
+        ElementaryType::Bool => "bool".to_string(),
+        ElementaryType::Address(false) => "address".to_string(),
+        ElementaryType::Address(true) => "address payable".to_string(),
+        ElementaryType::UInt(s) => format!("uint{}", s.bits()),
+        ElementaryType::Int(s) => format!("int{}", s.bits()),
+        ElementaryType::FixedBytes(s) => format!("bytes{}", s.bytes()),
+        ElementaryType::Bytes => "bytes".to_string(),
+        ElementaryType::String => "string".to_string(),
+        ElementaryType::Fixed(s, f) => format!("fixed{}x{}", s.bytes(), f.get()),
+        ElementaryType::UFixed(s, f) => format!("ufixed{}x{}", s.bytes(), f.get()),
+    }
+}
+
+fn custom_type_name(ctx: &Gcx, item_id: ItemId) -> String {
+    match item_id {
+        ItemId::Struct(id) => ctx.hir.strukt(id).name.to_string(),
+        ItemId::Enum(id) => ctx.hir.enumm(id).name.to_string(),
+        ItemId::Udvt(id) => ctx.hir.udvt(id).name.to_string(),
+        _ => unreachable!("unexpected ItemId in custom type position"),
+    }
+}
+
+/// Qualifies `name` with its owning contract's name when that contract differs from
+/// `target_contract`. Returns the bare name when no qualification is needed.
+fn qualify_type_name(
+    ctx: &Gcx,
+    name: &str,
+    item_contract: Option<ContractId>,
+    target_contract: Option<ContractId>,
+) -> String {
+    match item_contract {
+        Some(c) if Some(c) != target_contract => {
+            format!("{}.{}", ctx.hir.contract(c).name, name)
+        }
+        _ => name.to_string(),
+    }
+}
+
+/// Returns the Solidity type name for a HIR type kind, qualifying cross-contract custom types
+/// relative to `target_contract`.
+fn get_type_name(
+    ctx: &Gcx<'_>,
+    kind: &TypeKind<'_>,
+    target_contract: Option<ContractId>,
+) -> eyre::Result<String> {
+    Ok(match kind {
+        TypeKind::Elementary(e) => elementary_type_name(*e),
+        TypeKind::Array(arr) => {
+            let elem = get_type_name(ctx, &arr.element.kind, target_contract)?;
+            match arr.size {
+                None => format!("{elem}[]"),
+                Some(expr) => {
+                    let size_str = match &expr.kind {
+                        ExprKind::Lit(lit) => lit.symbol.as_str().to_string(),
+                        _ => eyre::bail!(
+                            "array size is not a literal and cannot be used in a type declaration"
+                        ),
+                    };
+                    format!("{elem}[{size_str}]")
+                }
+            }
+        }
+        TypeKind::Custom(ItemId::Struct(id)) => {
+            let s = ctx.hir.strukt(*id);
+            qualify_type_name(ctx, s.name.as_str(), s.contract, target_contract)
+        }
+        TypeKind::Custom(ItemId::Enum(id)) => {
+            let e = ctx.hir.enumm(*id);
+            qualify_type_name(ctx, e.name.as_str(), e.contract, target_contract)
+        }
+        TypeKind::Custom(ItemId::Udvt(id)) => {
+            let u = ctx.hir.udvt(*id);
+            qualify_type_name(ctx, u.name.as_str(), u.contract, target_contract)
+        }
+        TypeKind::Custom(_) => unreachable!("unexpected ItemId in custom type position"),
+        TypeKind::Mapping(m) => {
+            let key = get_type_name(ctx, &m.key.kind, target_contract)?;
+            let value = get_type_name(ctx, &m.value.kind, target_contract)?;
+            format!("mapping({key} => {value})")
+        }
+        TypeKind::Function(f) => {
+            let params = f
+                .parameters
+                .iter()
+                .map(|&vid| get_type_name(ctx, &ctx.hir.variable(vid).ty.kind, target_contract))
+                .collect::<eyre::Result<Vec<_>>>()?
+                .join(", ");
+            let returns = f
+                .returns
+                .iter()
+                .map(|&vid| get_type_name(ctx, &ctx.hir.variable(vid).ty.kind, target_contract))
+                .collect::<eyre::Result<Vec<_>>>()?;
+            let mutability = match f.state_mutability {
+                StateMutability::NonPayable => String::new(),
+                m => format!(" {m}"),
+            };
+            if returns.is_empty() {
+                format!("function({params}) {}{mutability}", f.visibility)
+            } else {
+                format!(
+                    "function({params}) {}{mutability} returns ({})",
+                    f.visibility,
+                    returns.join(", ")
+                )
+            }
+        }
+        TypeKind::Err(_) => unreachable!("Cannot unpacks errors"),
+    })
+}
+
+/// Returns the byte size of an elementary type as encoded by `abi.encodePacked`.
+fn packed_size(ty: ElementaryType) -> usize {
+    match ty {
+        ElementaryType::Bool => 1,
+        ElementaryType::Address(_) => 20,
+        ElementaryType::UInt(s) | ElementaryType::Int(s) => s.bytes() as usize,
+        ElementaryType::FixedBytes(s) => s.bytes() as usize,
+        ElementaryType::Fixed(s, _) | ElementaryType::UFixed(s, _) => s.bytes() as usize,
+        ElementaryType::Bytes | ElementaryType::String => {
+            unreachable!("dynamic types have no fixed packed size")
+        }
+    }
+}
+
+/// Returns a Solidity expression that decodes `size` bytes from the front of the calldata
+/// slice `var` into the appropriate type.
+fn calldata_decode(var: &str, ty: ElementaryType, size: usize) -> String {
+    let bytes_type = format!("bytes{size}");
+    match ty {
+        ElementaryType::Bool => format!("bytes1({var}[0:1]) != 0x00"),
+        ElementaryType::FixedBytes(_) => format!("{bytes_type}({var}[0:{size}])"),
+        ElementaryType::Address(_) => format!("address(bytes20({var}[0:20]))"),
+        ElementaryType::UInt(s) => format!("uint{}({bytes_type}({var}[0:{size}]))", s.bits()),
+        ElementaryType::Int(s) => format!(
+            "int{}(uint{}({bytes_type}({var}[0:{size}])))",
+            s.bits(),
+            s.bits()
+        ),
+        ElementaryType::Fixed(s, f) => {
+            format!(
+                "fixed{}x{}({bytes_type}({var}[0:{size}]))",
+                s.bytes(),
+                f.get()
+            )
+        }
+        ElementaryType::UFixed(s, f) => {
+            format!(
+                "ufixed{}x{}({bytes_type}({var}[0:{size}]))",
+                s.bytes(),
+                f.get()
+            )
+        }
+        ElementaryType::Bytes | ElementaryType::String => unreachable!(),
+    }
+}
+
+/// Generates assembly that zero-copy slices a `bytes memory` variable in place: advances its
+/// pointer by `bytes_read` bytes and writes `new_length` as the new length word.
+/// `new_length` is evaluated to a temporary before the pointer moves, so expressions that
+/// read `mload(array)` in `new_length` correctly capture the old length word.
+fn slice_memory(array: &str, bytes_read: &str, new_length: &str) -> String {
+    format!(
+        "assembly {{\
+    \n    let _{array}_new_len := {new_length}\
+    \n    {array} := add({array}, {bytes_read})\
+    \n    mstore({array}, _{array}_new_len)\
+    \n}}"
+    )
+}
+
+/// Returns a local variable name that does not clash with any names introduced
+/// by the generated unpacking function body. Appends trailing underscores until the name is free.
+///
+/// Reserved names: `data`, `result`, `read`, `length`, `i`, `_initial_length`, `_final_length`,
+/// `data_length`, `data_orig_length`, `_len_before`.
+fn sanitize_local(name: &str) -> String {
+    const RESERVED: &[&str] = &[
+        "data",
+        "result",
+        "read",
+        "length",
+        "i",
+        "_initial_length",
+        "_final_length",
+        "data_length",
+        "data_orig_length",
+        "_len_before",
+    ];
+    let mut out = name.to_string();
+    while RESERVED.contains(&out.as_str()) {
+        out.push('_');
+    }
+    out
+}
+
+/// Returns the visibility keyword with a trailing space, or an empty string when
+/// `visibility` is empty (i.e. for file-level functions that take no visibility specifier).
+fn vis_prefix(visibility: &str) -> String {
+    if visibility.is_empty() {
+        String::new()
+    } else {
+        format!("{visibility} ")
+    }
+}

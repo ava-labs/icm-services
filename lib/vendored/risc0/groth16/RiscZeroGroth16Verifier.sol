@@ -116,7 +116,10 @@ contract RiscZeroGroth16Verifier is IRiscZeroVerifier, IRiscZeroSelectable, Grot
         );
     }
 
-    constructor(bytes32 control_root, bytes32 bn254_control_id) {
+    constructor(
+        bytes32 control_root,
+        bytes32 bn254_control_id
+    ) {
         (CONTROL_ROOT_0, CONTROL_ROOT_1) = splitDigest(control_root);
         BN254_CONTROL_ID = bn254_control_id;
 
@@ -148,7 +151,11 @@ contract RiscZeroGroth16Verifier is IRiscZeroVerifier, IRiscZeroSelectable, Grot
     }
 
     /// @inheritdoc IRiscZeroVerifier
-    function verify(bytes calldata seal, bytes32 imageId, bytes32 journalDigest) external view {
+    function verify(
+        bytes calldata seal,
+        bytes32 imageId,
+        bytes32 journalDigest
+    ) external view {
         _verifyIntegrity(seal, ReceiptClaimLib.ok(imageId, journalDigest).digest());
     }
 
@@ -160,7 +167,10 @@ contract RiscZeroGroth16Verifier is IRiscZeroVerifier, IRiscZeroSelectable, Grot
     }
 
     /// @notice internal implementation of verifyIntegrity, factored to avoid copying calldata bytes to memory.
-    function _verifyIntegrity(bytes calldata seal, bytes32 claimDigest) internal view {
+    function _verifyIntegrity(
+        bytes calldata seal,
+        bytes32 claimDigest
+    ) internal view {
         // Check that the seal has a matching selector. Mismatch generally indicates that the
         // prover and this verifier are using different parameters, and so the verification
         // will not succeed.

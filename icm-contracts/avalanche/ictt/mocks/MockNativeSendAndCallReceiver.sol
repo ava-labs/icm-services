@@ -62,7 +62,10 @@ contract MockNativeSendAndCallReceiver is INativeSendAndCallReceiver {
      * @param blockchainID The blockchain ID of the sender.
      * @param senderAddress The address of the sender.
      */
-    function blockSender(bytes32 blockchainID, address senderAddress) external {
+    function blockSender(
+        bytes32 blockchainID,
+        address senderAddress
+    ) external {
         blockedSenders[blockchainID][senderAddress] = true;
     }
 }

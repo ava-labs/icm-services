@@ -21,7 +21,11 @@ library Memory {
     // Compares the 'len' bytes starting at address 'addr' in memory with the 'len'
     // bytes starting at 'addr2'.
     // Returns 'true' if the bytes are the same, otherwise 'false'.
-    function equals(uint256 addr, uint256 addr2, uint256 len) internal pure returns (bool equal) {
+    function equals(
+        uint256 addr,
+        uint256 addr2,
+        uint256 len
+    ) internal pure returns (bool equal) {
         assembly {
             equal := eq(keccak256(addr, len), keccak256(addr2, len))
         }
@@ -57,7 +61,10 @@ library Memory {
     // Creates a 'bytes memory' variable from the memory address 'addr', with the
     // length 'len'. The function will allocate new memory for the bytes array, and
     // the 'len bytes starting at 'addr' will be copied into that new memory.
-    function toBytes(uint256 addr, uint256 len) internal pure returns (bytes memory bts) {
+    function toBytes(
+        uint256 addr,
+        uint256 len
+    ) internal pure returns (bytes memory bts) {
         bts = new bytes(len);
         uint256 btsptr;
         assembly {
@@ -81,7 +88,11 @@ library Memory {
     // Copy 'len' bytes from memory address 'src', to address 'dest'.
     // This function does not check the or destination, it only copies
     // the bytes.
-    function copy(uint256 src, uint256 dest, uint256 len) internal pure {
+    function copy(
+        uint256 src,
+        uint256 dest,
+        uint256 len
+    ) internal pure {
         // Copy word-length chunks while possible
         for (; len >= WORD_SIZE; len -= WORD_SIZE) {
             assembly {
