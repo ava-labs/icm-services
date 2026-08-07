@@ -89,7 +89,7 @@ func OracleAttestation(
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, adapterDeployTx.Hash())
 	log.Info("Deployed OracleAdapter", zap.Stringer("address", adapterAddress))
 
-	ginkgo.By("Step 1b: Deploy TeleporterMessengerV2 with OracleAdapter as verifier")
+	ginkgo.By("Step 2: Deploy TeleporterMessengerV2 with OracleAdapter as verifier")
 	teleporterAddress := utils.DeployTeleporterV2(ctx, &l1Info, adapterAddress, fundedKey)
 	teleporterContract, err := teleportermessengerv2.NewTeleporterMessengerV2(
 		teleporterAddress, l1Info.EthClient,
@@ -97,7 +97,7 @@ func OracleAttestation(
 	Expect(err).Should(BeNil())
 	log.Info("Deployed TeleporterMessengerV2", zap.Stringer("address", teleporterAddress))
 
-	ginkgo.By("Step 1c: Deploy MockOracleReceiver pointing to TeleporterMessengerV2")
+	ginkgo.By("Step 3: Deploy MockOracleReceiver pointing to TeleporterMessengerV2")
 	mockAddress, mockDeployTx, mockContract, err := mockoraclereceiver.DeployMockOracleReceiver(
 		deployOpts, l1Info.EthClient, teleporterAddress,
 	)
@@ -105,7 +105,7 @@ func OracleAttestation(
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, mockDeployTx.Hash())
 	log.Info("Deployed MockOracleReceiver", zap.Stringer("address", mockAddress))
 
-	ginkgo.By("Step 2: Start signature aggregator")
+	ginkgo.By("Step 4: Start signature aggregator")
 	sigAggConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
 		[]testinfo.L1TestInfo{l1Info},
@@ -135,7 +135,7 @@ func OracleAttestation(
 		justification []byte
 	)
 	if solanaRPCURL != "" {
-		ginkgo.By("Step 3: Fetch real Memo Program transaction from Solana devnet")
+		ginkgo.By("Step 5: Fetch real Memo Program transaction from Solana devnet")
 		txData := fetchSolanaMemoTx(ctx, solanaRPCURL)
 		sourceAddress = txData.programID
 		blockHeight = new(big.Int).SetUint64(txData.slot)
@@ -147,19 +147,19 @@ func OracleAttestation(
 			zap.Int("payloadBytes", len(msgPayload)),
 		)
 	} else {
-		ginkgo.By("Step 3: Using mock oracle data (no SOLANA_RPC_URL set)")
+		ginkgo.By("Step 5: Using mock oracle data (no SOLANA_RPC_URL set)")
 		sourceAddress = "4oracle1testaddr"
 		blockHeight = big.NewInt(100)
 		msgPayload = []byte("e2e-test-payload")
 		justification = []byte("dummy-solana-tx-signature")
 	}
 
-	ginkgo.By("Step 4: Allowlist source on OracleAdapter")
+	ginkgo.By("Step 6: Allowlist source on OracleAdapter")
 	allowTx, err := adapterContract.SetAllowedSource(deployOpts, "solana", sourceAddress, true)
 	Expect(err).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, allowTx.Hash())
 
-	ginkgo.By("Step 5: Request BLS aggregate signature from validators")
+	ginkgo.By("Step 7: Request BLS aggregate signature from validators")
 	oraclePayload, err := oracleMsgABI.Pack(
 		"solana",
 		sourceAddress,
@@ -260,7 +260,7 @@ func OracleAttestation(
 		utils.SendTransactionAndWaitForFailure(ctx, l1Info.EthClient, tx)
 	}
 
-	ginkgo.By("Sad path 1: delivery from non-allowlisted source is rejected (SourceNotAllowed)")
+	ginkgo.By("Step 8: Verify delivery from a non-allowlisted source is rejected (SourceNotAllowed)")
 	removeTx, removeErr := adapterContract.SetAllowedSource(deployOpts, "solana", sourceAddress, false)
 	Expect(removeErr).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, removeTx.Hash())
@@ -276,7 +276,7 @@ func OracleAttestation(
 	Expect(restoreErr).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, restoreTx.Hash())
 
-	ginkgo.By("Step 6: Deliver the signed oracle message via TeleporterMessengerV2")
+	ginkgo.By("Step 9: Deliver the signed oracle message via TeleporterMessengerV2")
 	icmMsg, err := buildICMMessage(oracleadapter.OracleMessage{
 		SourceType:        "solana",
 		SourceAddress:     sourceAddress,
@@ -310,7 +310,7 @@ func OracleAttestation(
 	deliveryTx = utils.SignTransaction(deliveryTx, fundedKey, l1Info.EVMChainID)
 	utils.SendTransactionAndWaitForSuccess(ctx, l1Info.EthClient, deliveryTx)
 
-	ginkgo.By("Step 7: Assert MockOracleReceiver recorded the expected payload")
+	ginkgo.By("Step 10: Assert MockOracleReceiver recorded the expected payload")
 	receiveCount, assertErr := mockContract.ReceiveCount(&bind.CallOpts{})
 	Expect(assertErr).Should(BeNil())
 	Expect(receiveCount).Should(Equal(big.NewInt(1)))
@@ -327,7 +327,7 @@ func OracleAttestation(
 	Expect(assertErr).Should(BeNil())
 	Expect(lastSourceChainID).Should(Equal(thisChainID))
 
-	ginkgo.By("Step 8: Assert Teleporter recorded the message as received")
+	ginkgo.By("Step 11: Assert Teleporter recorded the message as received")
 	msgID, assertErr := teleporterContract.CalculateMessageID(
 		&bind.CallOpts{},
 		thisChainID,
@@ -339,7 +339,7 @@ func OracleAttestation(
 	Expect(assertErr).Should(BeNil())
 	Expect(received).Should(BeTrue())
 
-	ginkgo.By("Sad path 3: replay of already-delivered nonce is rejected (AlreadyProcessed)")
+	ginkgo.By("Step 12: Verify replay of an already-delivered nonce is rejected (AlreadyProcessed)")
 	sendExpectRevert(oracleadapter.OracleMessage{
 		SourceType:        "solana",
 		SourceAddress:     sourceAddress,

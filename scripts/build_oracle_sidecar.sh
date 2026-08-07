@@ -2,9 +2,7 @@
 # Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
 # See the file LICENSE for licensing terms.
 
-set -o errexit
-set -o nounset
-set -o pipefail
+set -euo pipefail
 
 BASE_PATH=$(
     cd "$(dirname "${BASH_SOURCE[0]}")"

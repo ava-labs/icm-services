@@ -90,9 +90,10 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 
 // tryExtractMemoInstruction fetches the transaction with the given signature and
 // scans its top-level and inner instructions for one that invokes the Memo
-// program. Returns (data, slot, true) on the first match, or (nil, 0, false)
-// if the transaction contains no Memo invocation. The transaction must exist;
-// this helper does not retry lookup failures.
+// program with a non-empty payload. Returns (data, slot, true) on the first
+// match, or (nil, 0, false) if the transaction contains no such Memo
+// invocation. The transaction must exist; this helper does not retry lookup
+// failures.
 func tryExtractMemoInstruction(post func(any) []byte, txSig string) ([]byte, uint64, bool) {
 	txRaw := post(map[string]any{
 		"jsonrpc": "2.0", "id": 1,
@@ -155,6 +156,11 @@ func tryExtractMemoInstruction(post func(any) []byte, txSig string) ([]byte, uin
 		}
 		data, err := base58.Decode(instr.Data)
 		Expect(err).Should(BeNil())
+		// Skip memos with empty data so a match always carries a usable payload
+		// and the (data, _, true) return is guaranteed non-empty.
+		if len(data) == 0 {
+			continue
+		}
 		return data, txResp.Result.Slot, true
 	}
 	return nil, 0, false
