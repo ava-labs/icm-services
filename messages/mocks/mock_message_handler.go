@@ -47,10 +47,10 @@ func (m *MockMessageHandlerFactory) EXPECT() *MockMessageHandlerFactoryMockRecor
 }
 
 // EventFilter mocks base method.
-func (m *MockMessageHandlerFactory) EventFilter() [][]common.Hash {
+func (m *MockMessageHandlerFactory) EventFilter() types.EventFilter {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EventFilter")
-	ret0, _ := ret[0].([][]common.Hash)
+	ret0, _ := ret[0].(types.EventFilter)
 	return ret0
 }
 

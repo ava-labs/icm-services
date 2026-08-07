@@ -69,10 +69,10 @@ func NewMessageHandlerFactory(
 	}, nil
 }
 
-// EventFilter returns nil. Off-chain registry messages are not emitted on a source chain, they are
-// provided to the relayer out of band.
-func (f *factory) EventFilter() [][]common.Hash {
-	return nil
+// EventFilter returns an empty filter. Off-chain registry messages are not emitted on a source
+// chain, they are provided to the relayer out of band.
+func (f *factory) EventFilter() types.EventFilter {
+	return types.EventFilter{}
 }
 
 func (f *factory) NewMessageHandler(

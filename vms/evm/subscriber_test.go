@@ -82,7 +82,7 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 		stubRPCClient,
 		stubRPCClient,
 		errChan,
-		[][]common.Hash{{stypes.WarpPrecompileLogFilter}},
+		stypes.EventFilter{Topics: [][]common.Hash{{stypes.WarpPrecompileLogFilter}}},
 	)
 
 	return subscriber, stubRPCClient
