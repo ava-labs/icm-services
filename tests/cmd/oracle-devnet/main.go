@@ -83,7 +83,11 @@ func main() {
 	observerBin := flag.String("observer", "", "path to solana-observer binary (built if empty and --solana-keypair set)")
 	// avalanchego-path is already registered by e2e.RegisterFlags; we read it
 	// directly from the env for the sidecar build step.
-	avalancheGoPathEnv := flag.String("avalanchego-path-env", os.Getenv("AVALANCHEGO_PATH"), "path to avalanchego binary (defaults to $AVALANCHEGO_PATH)")
+	avalancheGoPathEnv := flag.String(
+		"avalanchego-path-env",
+		os.Getenv("AVALANCHEGO_PATH"),
+		"path to avalanchego binary (defaults to $AVALANCHEGO_PATH)",
+	)
 	flag.Parse()
 
 	log := logging.NewLogger(
@@ -102,7 +106,7 @@ func main() {
 
 	repoRoot, err := utils.GetRepoRoot()
 	if err != nil {
-		die(log,"could not find repo root", zap.Error(err))
+		die(log, "could not find repo root", zap.Error(err))
 	}
 
 	// ── build ICM executables ────────────────────────────────────────────────
@@ -111,14 +115,14 @@ func main() {
 
 	// ── build + start solanarpc sidecar ─────────────────────────────────────
 	if *avalancheGoPathEnv == "" {
-		die(log,"AVALANCHEGO_PATH env var or --avalanchego-path-env flag is required")
+		die(log, "AVALANCHEGO_PATH env var or --avalanchego-path-env flag is required")
 	}
 	avalancheGoRoot := filepath.Dir(filepath.Dir(*avalancheGoPathEnv))
 	solanarpcBin := filepath.Join(repoRoot, "build/solanarpc-sidecar")
 
 	log.Info("Building solanarpc sidecar", zap.String("root", avalancheGoRoot))
 	if out, err := runIn(avalancheGoRoot, "go", "build", "-o", solanarpcBin, "./sidecar/"); err != nil {
-		die(log,"solanarpc-sidecar build failed", zap.String("output", out), zap.Error(err))
+		die(log, "solanarpc-sidecar build failed", zap.String("output", out), zap.Error(err))
 	}
 
 	solanarpcConfigPath := filepath.Join(repoRoot, "build/solanarpc-config.json")
@@ -127,7 +131,7 @@ func main() {
 		*solanaRPCURL, memoProgram,
 	)
 	if err := os.WriteFile(solanarpcConfigPath, []byte(sidecarCfgJSON), 0o600); err != nil {
-		die(log,"write solanarpc config", zap.Error(err))
+		die(log, "write solanarpc config", zap.Error(err))
 	}
 
 	solanarpcEndpoint := fmt.Sprintf("127.0.0.1:%d", solanarpcSidecarPort)
@@ -145,7 +149,7 @@ func main() {
 		*observerBin = filepath.Join(repoRoot, "build/solana-observer")
 		log.Info("Building solana-observer")
 		if out, err := runIn(repoRoot, "go", "build", "-o", *observerBin, "./solana-observer/"); err != nil {
-			die(log,"solana-observer build failed", zap.String("output", out), zap.Error(err))
+			die(log, "solana-observer build failed", zap.String("output", out), zap.Error(err))
 		}
 	}
 
@@ -183,7 +187,7 @@ func main() {
 	_, fundedKey := localNet.GetFundedAccountInfo()
 	deployOpts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1Info.EVMChainID)
 	if err != nil {
-		die(log,"new keyed transactor", zap.Error(err))
+		die(log, "new keyed transactor", zap.Error(err))
 	}
 
 	// ── deploy OracleAdapter ─────────────────────────────────────────────────
@@ -192,7 +196,7 @@ func main() {
 		deployOpts, l1Info.EthClient, deployOpts.From,
 	)
 	if err != nil {
-		die(log,"deploy OracleAdapter", zap.Error(err))
+		die(log, "deploy OracleAdapter", zap.Error(err))
 	}
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, adapterTx.Hash())
 	log.Info("OracleAdapter deployed", zap.Stringer("address", adapterAddr))
@@ -218,12 +222,14 @@ func main() {
 		log.Info("Compiling OracleToken", zap.String("path", *oracleTokenSol))
 		bytecode, err := compileSol(*oracleTokenSol, "OracleToken")
 		if err != nil {
-			die(log,"OracleToken compile", zap.Error(err))
+			die(log, "OracleToken compile", zap.Error(err))
 		}
 		log.Info("Deploying OracleToken")
-		oracleTokenAddr, err = deployWithAddressArg(ctx, l1Info.EthClient, fundedKey, l1Info.EVMChainID, bytecode, teleporterAddr)
+		oracleTokenAddr, err = deployWithAddressArg(
+			ctx, l1Info.EthClient, fundedKey, l1Info.EVMChainID, bytecode, teleporterAddr,
+		)
 		if err != nil {
-			die(log,"OracleToken deploy", zap.Error(err))
+			die(log, "OracleToken deploy", zap.Error(err))
 		}
 		log.Info("OracleToken deployed", zap.Stringer("address", oracleTokenAddr))
 	}
@@ -252,7 +258,7 @@ func main() {
 		)
 		observerCfgPath := filepath.Join(repoRoot, "build/observer-local-config.json")
 		if err := os.WriteFile(observerCfgPath, observerCfg, 0o600); err != nil {
-			die(log,"write observer config", zap.Error(err))
+			die(log, "write observer config", zap.Error(err))
 		}
 
 		observerProc = exec.CommandContext(ctx, *observerBin, "--config-path", observerCfgPath)
@@ -262,7 +268,7 @@ func main() {
 		observerProc.Stdout = tee
 		observerProc.Stderr = tee
 		if err := observerProc.Start(); err != nil {
-			die(log,"start observer", zap.Error(err))
+			die(log, "start observer", zap.Error(err))
 		}
 		select {
 		case <-observerReady:
@@ -307,7 +313,7 @@ func main() {
 		fmt.Println("║  OracleToken:      (not deployed — pass --oracle-token-sol)")
 	}
 	fmt.Println("╚══════════════════════════════════════════════════════════╝")
-	fmt.Println("\nPress Ctrl-C to shut down.\n")
+	fmt.Print("\nPress Ctrl-C to shut down.\n\n")
 
 	// ── block until signal ────────────────────────────────────────────────────
 	sigCh := make(chan os.Signal, 1)
@@ -441,7 +447,7 @@ func startProcess(log logging.Logger, name string, cmd *exec.Cmd) *exec.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		die(log,"start "+name, zap.Error(err))
+		die(log, "start "+name, zap.Error(err))
 	}
 	go func() {
 		if err := cmd.Wait(); err != nil {
@@ -461,11 +467,11 @@ func waitForTCP(ctx context.Context, log logging.Logger, addr string, timeout ti
 		}
 		select {
 		case <-ctx.Done():
-			die(log,"context cancelled waiting for "+addr, zap.Error(ctx.Err()))
+			die(log, "context cancelled waiting for "+addr, zap.Error(ctx.Err()))
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	die(log,"timed out waiting for " + addr)
+	die(log, "timed out waiting for "+addr)
 }
 
 func runIn(dir, name string, args ...string) (string, error) {
