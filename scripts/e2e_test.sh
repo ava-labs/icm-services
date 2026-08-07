@@ -106,23 +106,28 @@ source "$REPO_PATH"/scripts/versions.sh
 
 BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 
-# Install the avalanchego binary and subnet-evm plugin, unless a build of the pinned version is
-# already present (for example restored from the CI cache). The pinned version is a commit hash,
-# so a fresh install clones and compiles avalanchego and subnet-evm, which takes several minutes.
-# The stamp records which version the directory holds so that a version bump triggers a rebuild.
-AVAGO_INSTALL_STAMP="$BASEDIR/avalanchego/.avalanchego-version"
-AVAGO_INSTALLED_VERSION="$(cat "$AVAGO_INSTALL_STAMP" 2>/dev/null || true)"
-if [[ -x "$BASEDIR/avalanchego/avalanchego" && "$AVAGO_INSTALLED_VERSION" == "$AVALANCHEGO_VERSION" ]]; then
-    echo "Reusing avalanchego $AVALANCHEGO_VERSION at $BASEDIR/avalanchego"
-else
-    rm -rf $BASEDIR/avalanchego
-    BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
-    echo "$AVALANCHEGO_VERSION" > "$AVAGO_INSTALL_STAMP"
-fi
+# Install the avalanchego binary and subnet-evm plugin, unless the caller
+# provided a custom build via AVALANCHEGO_PATH (e.g. the oracle suite requires
+# a build with sidecar-verifier support). When installing, reuse an existing
+# build of the pinned version to avoid recompiling from scratch.
+if [ -z "${AVALANCHEGO_PATH:-}" ]; then
+    AVAGO_INSTALL_STAMP="$BASEDIR/avalanchego/.avalanchego-version"
+    AVAGO_INSTALLED_VERSION="$(cat "$AVAGO_INSTALL_STAMP" 2>/dev/null || true)"
+    if [[ -x "$BASEDIR/avalanchego/avalanchego" && "$AVAGO_INSTALLED_VERSION" == "$AVALANCHEGO_VERSION" ]]; then
+        echo "Reusing avalanchego $AVALANCHEGO_VERSION at $BASEDIR/avalanchego"
+    else
+        rm -rf $BASEDIR/avalanchego
+        BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
+        echo "$AVALANCHEGO_VERSION" > "$AVAGO_INSTALL_STAMP"
+    fi
 
-export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
-export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
-export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
+    export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
+    export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
+    export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
+else
+    echo "Using avalanchego from environment: $AVALANCHEGO_PATH"
+    export AVAGO_PLUGIN_DIR=${AVAGO_PLUGIN_DIR:-"$(dirname "$AVALANCHEGO_PATH")/plugins"}
+fi
 export PATH=$PATH:$HOME/.foundry/bin
 
 # Install signature-aggregator binary

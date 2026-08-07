@@ -48,13 +48,10 @@ const (
 )
 
 func BuildAllExecutables(ctx context.Context, log logging.Logger) {
-	repoRoot, err := GetRepoRoot()
-	Expect(err).Should(BeNil())
-	cmd := exec.Command(filepath.Join(repoRoot, "scripts/build.sh"))
-	cmd.Dir = repoRoot
-	out, cmdErr := cmd.CombinedOutput()
+	cmd := exec.Command("./scripts/build.sh")
+	out, err := cmd.CombinedOutput()
 	log.Info(string(out))
-	Expect(cmdErr).Should(BeNil())
+	Expect(err).Should(BeNil())
 }
 
 func RunRelayerExecutable(
@@ -87,17 +84,13 @@ func RunSignatureAggregatorExecutable(
 	configPath string,
 	config signatureaggregatorcfg.Config,
 ) (context.CancelFunc, chan struct{}) {
-	repoRoot, err := GetRepoRoot()
-	Expect(err).Should(BeNil())
-
 	aggregatorCtx, aggregatorCancel := context.WithCancel(ctx)
 	signatureAggregatorCmd := exec.CommandContext(
 		aggregatorCtx,
-		filepath.Join(repoRoot, "build/signature-aggregator"),
+		"./build/signature-aggregator",
 		"--config-file",
 		configPath,
 	)
-	signatureAggregatorCmd.Dir = repoRoot
 
 	healthCheckURL := fmt.Sprintf("http://localhost:%d/health", config.APIPort)
 	readyChan := runExecutable(
