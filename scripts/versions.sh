@@ -31,7 +31,10 @@ function extract_commit() {
 # This needs to be exported to be picked up by the dockerfile.
 export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 # Don't export them as they're used in the context of other calls
-AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/avalanchego)")}
+
+# Currently using an instrumented version for testing; differs from the version in go.mod
+# AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/avalanchego)")}
+AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-7d8d096ab845ceb008dc9ab7605addc50d2732ba}
 LIBEVM_VERSION=${LIBEVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/libevm)")}
 
 # Extract the Solidity version from foundry.toml

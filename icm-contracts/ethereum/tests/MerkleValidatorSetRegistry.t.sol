@@ -77,7 +77,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
 
     /**
      * @dev Helper function that builds the Merkle root over the validator leaves using the same
-     * scheme that verifyMerkleAttestation expects. The leaves are computed as leaf := sha256(pubkey || weight),
+     * scheme that verifyMerkleAttestation expects. The leaves are computed as leaf := keccak256(pubkey || weight),
      * where the public keys are lexiographically sorted.
      * NOTE: Assumes number of validators is a power of 2 otherwise this won't match OZ's MerkleProof verifier.
      */
@@ -96,7 +96,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
                 if (2 * i + 1 < layer.length) {
                     bytes32 a = layer[2 * i];
                     bytes32 b = layer[2 * i + 1];
-                    next[i] = ValidatorSets.sha256InternalPair(a, b);
+                    next[i] = ValidatorSets.keccakInternalPair(a, b);
                 } else {
                     next[i] = layer[2 * i];
                 }
@@ -553,11 +553,9 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         bytes memory aggregateBlsSig = BLST.createAggregateSignature(partialSecretKeys, signedData);
 
         // Build the multi-proof
-        bytes32 l2 =
-            sha256(abi.encodePacked(_pchainValidators[2].blsPublicKey, _pchainValidators[2].weight));
-        bytes32 l3 =
-            sha256(abi.encodePacked(_pchainValidators[3].blsPublicKey, _pchainValidators[3].weight));
-        bytes32 cd = l2 < l3 ? sha256(abi.encodePacked(l2, l3)) : sha256(abi.encodePacked(l3, l2));
+        bytes32 l2 = ValidatorSets.hashValidator(_pchainValidators[2]);
+        bytes32 l3 = ValidatorSets.hashValidator(_pchainValidators[3]);
+        bytes32 cd = ValidatorSets.keccakInternalPair(l2, l3);
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = cd;
 

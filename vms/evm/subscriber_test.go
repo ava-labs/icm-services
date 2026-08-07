@@ -5,6 +5,7 @@ package evm
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -14,6 +15,7 @@ import (
 	stypes "github.com/ava-labs/icm-services/types"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -25,10 +27,19 @@ type subscriberClientStub struct {
 	blockNumber                 uint64
 	numFilterLogCalls           int
 	numSubscribeFilterLogsCalls int
+	numHeadByNumberCalls        int
 }
 
 func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) {
 	return c.blockNumber, nil
+}
+
+func (c *subscriberClientStub) HeadByNumber(ctx context.Context, number *big.Int) (*stypes.BlockHead, error) {
+	c.numHeadByNumberCalls++
+	return &stypes.BlockHead{
+		Hash:   common.BigToHash(number),
+		Number: (*hexutil.Big)(new(big.Int).Set(number)),
+	}, nil
 }
 
 func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
@@ -45,9 +56,9 @@ func (c *subscriberClientStub) SubscribeFilterLogs(
 	return nil, nil
 }
 
-func (c *subscriberClientStub) SubscribeNewHead(
+func (c *subscriberClientStub) SubscribeNewHeads(
 	ctx context.Context,
-	ch chan<- *types.Header,
+	ch chan<- *stypes.BlockHead,
 ) (ethereum.Subscription, error) {
 	return nil, nil
 }
@@ -109,6 +120,21 @@ func TestProcessFromHeight(t *testing.T) {
 			input:  41,
 		},
 		{
+			name:   "span smaller than strict tail",
+			latest: 50,
+			input:  45,
+		},
+		{
+			name:   "span exactly the strict tail",
+			latest: 50,
+			input:  41,
+		},
+		{
+			name:   "span one greater than strict tail",
+			latest: 50,
+			input:  40,
+		},
+		{
 			name:   "invalid starting block number",
 			latest: 50,
 			input:  51,
@@ -121,22 +147,38 @@ func TestProcessFromHeight(t *testing.T) {
 			subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
 
 			stubRPCClient.blockNumber = tc.latest
-			var expectedFilterLogCalls uint64
-			if tc.latest > tc.input {
-				expectedFilterLogCalls = (tc.latest-tc.input+1)/MaxBlocksPerRequest + 1
+
+			// The last strictTailBlocks blocks are processed one by one via
+			// HeadByNumber (no FilterLogs here: the stub's bloom is empty and
+			// the test chain is not the primary network, so the bloom gate
+			// skips the log fetch); everything older is served by chunked
+			// range queries.
+			var expectedFilterLogCalls, expectedHeadCalls uint64
+			if tc.latest >= tc.input {
+				span := tc.latest - tc.input + 1
+				if span > strictTailBlocks {
+					expectedHeadCalls = strictTailBlocks
+					rangeSpan := span - strictTailBlocks
+					expectedFilterLogCalls = (rangeSpan + MaxBlocksPerRequest - 1) / MaxBlocksPerRequest
+				} else {
+					expectedHeadCalls = span
+				}
 			}
+
 			subscriberUnderTest.ProcessFromHeight(tc.input, tc.latest)
 			require.Empty(t, errChan)
 
-			if tc.latest > tc.input {
+			if tc.latest >= tc.input {
 				for i := tc.input; i <= tc.latest; i++ {
 					block := <-subscriberUnderTest.ICMBlocks()
 					require.Equal(t, i, block.BlockNumber)
 					require.Empty(t, block.Logs)
+					require.True(t, block.IsCatchup)
 				}
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
 			require.EqualValues(t, expectedFilterLogCalls, stubRPCClient.numFilterLogCalls)
+			require.EqualValues(t, expectedHeadCalls, stubRPCClient.numHeadByNumberCalls)
 		})
 	}
 }

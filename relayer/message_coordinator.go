@@ -322,7 +322,7 @@ func FetchWarpMessage(
 		return nil, fmt.Errorf("could not fetch logs: %w", err)
 	}
 	if len(logs) != 1 {
-		return nil, fmt.Errorf("found more than 1 log: %d", len(logs))
+		return nil, fmt.Errorf("did not find exactly 1 log: %d", len(logs))
 	}
 
 	return types.NewSourceMessageFromWarpLog(blockchainID, logs[0])

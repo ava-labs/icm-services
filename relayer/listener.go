@@ -119,7 +119,9 @@ func newListener(
 		)
 	}
 
-	ethWSClient, err := utils.NewEthClientWithConfig(
+	// Dial the WS endpoint as a raw RPC client so newHeads notifications can
+	// be decoded with the node-reported block hash preserved.
+	wsRPCClient, err := utils.DialWithConfig(
 		ctx,
 		sourceBlockchain.WSEndpoint.BaseURL,
 		sourceBlockchain.WSEndpoint.HTTPHeaders,
@@ -134,8 +136,8 @@ func newListener(
 		logger,
 		blockchainID,
 		sourceBlockchain.GetSubnetID() == constants.PrimaryNetworkID,
-		ethWSClient,
-		ethRPCClient,
+		evm.NewWSHeadClient(wsRPCClient),
+		evm.NewRPCHeadClient(ethRPCClient),
 		errChan,
 		eventFilter,
 	)

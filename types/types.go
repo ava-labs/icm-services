@@ -16,6 +16,7 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
 )
@@ -54,11 +55,40 @@ type SourceMessage struct {
 	// hash for messages provided directly to the relayer API rather than read from a log.
 	SourceTxID common.Hash
 }
+	
+// BlockHead is the subset of a newHeads notification the relayer uses,
+// decoded leniently so it works across chain families. The node-reported hash
+// is kept verbatim: recomputing it client-side is not reliable for chains
+// whose headers carry fields this client cannot encode (e.g. SAE chains).
+// The upstream header types cannot be reused here: each family's generated
+// decoder requires fields the other family omits, and their "hash" is a
+// marshal-only computed field that is dropped on unmarshal.
+//
+// If more notification fields are needed later, the wire format is defined by
+// HeaderSerializable in avalanchego's
+// graft/coreth/plugin/evm/customtypes/header_ext.go (C-Chain, including the
+// SAE settlement fields) and
+// graft/subnet-evm/plugin/evm/customtypes/header_ext.go (subnet-evm chains).
+type BlockHead struct {
+	Hash   common.Hash  `json:"hash"`
+	Number *hexutil.Big `json:"number"`
+	Bloom  types.Bloom  `json:"logsBloom"`
+}
+
+// WarpMessageInfo describes the transaction information for the Warp message
+// sent on the source chain.
+// WarpMessageInfo instances are either derived from the logs of a block or
+// from the manual Warp message information provided via configuration.
+type WarpMessageInfo struct {
+	SourceAddress   common.Address
+	SourceTxID      common.Hash
+	UnsignedMessage *avalancheWarp.UnsignedMessage
+}
 
 // Extract Warp logs from the block, if they exist.
 func NewICMBlockInfo(
 	logger logging.Logger,
-	header *types.Header,
+	head *BlockHead,
 	ethClient ethereum.LogFilterer,
 	topics [][]common.Hash,
 	isPrimaryNetwork bool,
@@ -75,14 +105,19 @@ func NewICMBlockInfo(
 	// as a shortcut: it summarises a settled predecessor range rather than the
 	// block's own receipts, so the shortcut would silently miss events. Bypass the
 	// bloom check there and always fetch the logs.
-	if isPrimaryNetwork || bloomContainsAnyEventTopic(header.Bloom, topics) {
-		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
-		defer cancel()
+	if isPrimaryNetwork || bloomContainsAnyEventTopic(head.Bloom, topics) {
+		// Query by hash: a node that doesn't know the block errors ("unknown
+		// block") and is retried below, whereas a by-number query would return
+		// empty logs with no error and the block would be silently skipped.
+		blockHash := head.Hash
 		operation := func() (err error) {
+			// Fresh context per attempt so retries aren't killed by an
+			// already-expired deadline.
+			cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+			defer cancel()
 			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
 				Topics:    topics,
-				FromBlock: header.Number,
-				ToBlock:   header.Number,
+				BlockHash: &blockHash,
 			})
 			return err
 		}
@@ -94,10 +129,9 @@ func NewICMBlockInfo(
 			)
 		}
 
-		// We increase the timeout here to 30 seconds reducing the chance of hitting a race condition
-		// where the block header is received via websocket subscription before the block's
-		// logs are available via RPC. This is a known behavior in EVM nodes due to
-		// asynchronous log/index processing after a block becomes canonical.
+		// Headers arrive via WS before every node behind a load-balanced RPC
+		// endpoint knows the block, so allow several retries for the "unknown
+		// block" case above.
 		timeout := utils.DefaultRPCTimeout * 6
 		err = utils.WithRetriesTimeout(operation, notify, timeout)
 		if err != nil {
@@ -106,7 +140,7 @@ func NewICMBlockInfo(
 	}
 
 	return &ICMBlockInfo{
-		BlockNumber: header.Number.Uint64(),
+		BlockNumber: head.Number.ToInt().Uint64(),
 		Logs:        logs,
 		IsCatchup:   false,
 	}, nil
