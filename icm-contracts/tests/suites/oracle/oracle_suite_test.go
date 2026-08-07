@@ -3,10 +3,16 @@
 
 // Package oracle_test is the E2E test suite for oracle attestation.
 //
+// Run via the e2e test script, which handles building executables and sets the
+// working directory to the repo root (required by the shared test utilities):
+//
+//	AVALANCHEGO_PATH=/abs/path/to/avalanchego ./scripts/e2e_test.sh --components oracle
+//
 // Requirements to run:
-//   - RUN_E2E=true environment variable
 //   - AVALANCHEGO_PATH pointing to a binary built from the
-//     boraplusplus/sidecar-verifier branch (oracle handler ID 4 support)
+//     boraplusplus/sidecar-verifier branch (oracle handler ID 4 support);
+//     e2e_test.sh skips the release avalanchego install when it is set
+//   - RUN_E2E=true environment variable (set automatically by e2e_test.sh)
 //
 // Optional — enables Solana verification via the solanarpc sidecar:
 //   - SOLANA_RPC_URL set to a Solana JSON-RPC endpoint (e.g. https://api.devnet.solana.com)
