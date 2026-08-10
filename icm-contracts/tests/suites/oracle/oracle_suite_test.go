@@ -177,6 +177,19 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		log.Info("solanarpc sidecar is ready", zap.String("addr", solanarpcEndpoint))
 	}
 
+	// Build the solana-observer binary when the auto-relay demo is requested.
+	// The spec that consumes it is skipped unless RUN_OBSERVER_DEMO,
+	// SOLANA_RPC_URL, and SOLANA_KEYPAIR are all set.
+	if runObserverDemo {
+		observerBinaryPath = filepath.Join(repoRoot, "build/solana-observer")
+		log.Info("Building solana-observer", zap.String("path", observerBinaryPath))
+		buildCmd := exec.Command("go", "build", "-o", observerBinaryPath, "./solana-observer/")
+		buildCmd.Dir = repoRoot
+		buildOut, buildErr := buildCmd.CombinedOutput()
+		log.Info(string(buildOut))
+		Expect(buildErr).Should(BeNil())
+	}
+
 	// Build chain configs pointing each L1 at its sidecar. As of the upstream
 	// oracle handler wiring, validators declare their allowed source types
 	// directly via oracle.allowed-sources instead of reading the sidecar's
