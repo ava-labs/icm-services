@@ -10,6 +10,7 @@ package oracle
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,8 +29,8 @@ import (
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
+	signatureaggregatorcfg "github.com/ava-labs/icm-services/signature-aggregator/config"
 	icmutils "github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -38,33 +39,32 @@ import (
 	"go.uber.org/zap"
 )
 
-// oracleMsgABI encodes the oracle message payload that OracleVerifier expects.
-// Layout mirrors OracleMessage in network/p2p/oracle/message.go on the
-// boraplusplus/sidecar-verifier branch.
-var oracleMsgABI abi.Arguments
+const (
+	oracleSourceType       = "solana"
+	oracleRequiredGasLimit = 500_000
+	// oracleRequiredGasLimit plus TeleporterV2/OracleAdapter delivery overhead.
+	oracleDeliveryGasLimit = 2_000_000
+)
 
-func init() {
-	stringT, _ := abi.NewType("string", "", nil)
-	addrT, _ := abi.NewType("address", "", nil)
-	uint256T, _ := abi.NewType("uint256", "", nil)
-	bytesT, _ := abi.NewType("bytes", "", nil)
+// oracleTestContracts bundles the contracts deployed for an oracle attestation
+// flow together with the keys used to deploy and administer them.
+type oracleTestContracts struct {
+	fundedKey  *ecdsa.PrivateKey
+	deployOpts *bind.TransactOpts
 
-	oracleMsgABI = abi.Arguments{
-		{Type: stringT, Name: "sourceType"},
-		{Type: stringT, Name: "sourceAddress"},
-		{Type: addrT, Name: "destContract"},
-		{Type: uint256T, Name: "sourceBlockHeight"},
-		{Type: uint256T, Name: "nonce"},
-		{Type: bytesT, Name: "payload"},
-	}
+	adapterContract    *oracleadapter.OracleAdapter
+	teleporterAddress  common.Address
+	teleporterContract *teleportermessengerv2.TeleporterMessengerV2
+	mockAddress        common.Address
+	mockContract       *mockoraclereceiver.MockOracleReceiver
 }
 
 // OracleAttestation tests the full oracle attestation path:
-//  1. Deploy OracleAdapter and TeleporterMessengerV2 on the L1
-//  2. Deploy MockOracleReceiver pointing to TeleporterMessengerV2
-//  3. Construct an OracleMessage and request BLS aggregate signature
-//  4. Deliver the signed message via TeleporterMessengerV2.receiveCrossChainMessage
-//  5. Assert MockOracleReceiver received the expected payload
+//  1. Deploy OracleAdapter, TeleporterMessengerV2, and MockOracleReceiver on the L1
+//  2. Construct an OracleMessage and request BLS aggregate signature
+//  3. Deliver the signed message via TeleporterMessengerV2.receiveCrossChainMessage
+//  4. Assert MockOracleReceiver received the expected payload
+//  5. Verify non-allowlisted sources and replayed nonces are rejected
 //
 // When solanaRPCURL is empty the flow uses the mock sidecar with dummy data.
 // When solanaRPCURL is set it fetches a real Memo Program transaction from that
@@ -77,6 +77,70 @@ func OracleAttestation(
 	l1Info testinfo.L1TestInfo,
 	solanaRPCURL string,
 ) {
+	contracts := deployOracleTestContracts(ctx, log, avalancheNetwork, l1Info)
+
+	ginkgo.By("Step 4: Start signature aggregator")
+	sigAggConfig, sigAggCancel := startOracleSignatureAggregator(ctx, log, l1Info)
+	defer sigAggCancel()
+
+	oracleMsg, justification := buildOracleMessage(ctx, log, solanaRPCURL, contracts.mockAddress)
+
+	ginkgo.By("Step 6: Allowlist source on OracleAdapter")
+	allowTx, err := contracts.adapterContract.SetAllowedSource(
+		contracts.deployOpts, oracleSourceType, oracleMsg.SourceAddress, true,
+	)
+	Expect(err).Should(BeNil())
+	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, allowTx.Hash())
+
+	ginkgo.By("Step 7: Request BLS aggregate signature from validators")
+	networkID := avalancheNetwork.GetNetworkID()
+	signedMsg := requestOracleAggregateSignature(
+		ctx, log, sigAggConfig, networkID, l1Info, oracleMsg, justification,
+	)
+
+	thisChainID := [32]byte(l1Info.BlockchainID)
+	icmMsg := utils.BuildOracleICMMessage(
+		0, // warpIndex
+		oracleMsg,
+		contracts.teleporterAddress,
+		thisChainID,
+		networkID,
+		big.NewInt(oracleRequiredGasLimit),
+	)
+
+	ginkgo.By("Step 8: Verify delivery from a non-allowlisted source is rejected (SourceNotAllowed)")
+	removeTx, err := contracts.adapterContract.SetAllowedSource(
+		contracts.deployOpts, oracleSourceType, oracleMsg.SourceAddress, false,
+	)
+	Expect(err).Should(BeNil())
+	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, removeTx.Hash())
+	expectOracleDeliveryFailure(ctx, l1Info, contracts, signedMsg, icmMsg)
+	restoreTx, err := contracts.adapterContract.SetAllowedSource(
+		contracts.deployOpts, oracleSourceType, oracleMsg.SourceAddress, true,
+	)
+	Expect(err).Should(BeNil())
+	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, restoreTx.Hash())
+
+	ginkgo.By("Step 9: Deliver the signed oracle message via TeleporterMessengerV2")
+	deliveryTx := buildOracleDeliveryTx(
+		ctx, l1Info, contracts, signedMsg, icmMsg, oracleDeliveryGasLimit,
+	)
+	utils.SendTransactionAndWaitForSuccess(ctx, l1Info.EthClient, deliveryTx)
+
+	assertOracleDelivered(contracts, oracleMsg, thisChainID, icmMsg)
+
+	ginkgo.By("Step 12: Verify replay of an already-delivered nonce is rejected (AlreadyProcessed)")
+	expectOracleDeliveryFailure(ctx, l1Info, contracts, signedMsg, icmMsg)
+}
+
+// deployOracleTestContracts deploys OracleAdapter, TeleporterMessengerV2 (with
+// the adapter as verifier), and MockOracleReceiver on the L1.
+func deployOracleTestContracts(
+	ctx context.Context,
+	log logging.Logger,
+	avalancheNetwork *network.LocalAvalancheNetwork,
+	l1Info testinfo.L1TestInfo,
+) oracleTestContracts {
 	ginkgo.By("Step 1: Deploy OracleAdapter")
 	_, fundedKey := avalancheNetwork.GetFundedAccountInfo()
 	deployOpts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1Info.EVMChainID)
@@ -105,7 +169,24 @@ func OracleAttestation(
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, mockDeployTx.Hash())
 	log.Info("Deployed MockOracleReceiver", zap.Stringer("address", mockAddress))
 
-	ginkgo.By("Step 4: Start signature aggregator")
+	return oracleTestContracts{
+		fundedKey:          fundedKey,
+		deployOpts:         deployOpts,
+		adapterContract:    adapterContract,
+		teleporterAddress:  teleporterAddress,
+		teleporterContract: teleporterContract,
+		mockAddress:        mockAddress,
+		mockContract:       mockContract,
+	}
+}
+
+// startOracleSignatureAggregator starts a signature-aggregator executable
+// configured for the given L1 and blocks until its health check passes.
+func startOracleSignatureAggregator(
+	ctx context.Context,
+	log logging.Logger,
+	l1Info testinfo.L1TestInfo,
+) (signatureaggregatorcfg.Config, context.CancelFunc) {
 	sigAggConfig := utils.CreateDefaultSignatureAggregatorConfig(
 		log,
 		[]testinfo.L1TestInfo{l1Info},
@@ -121,56 +202,67 @@ func OracleAttestation(
 		sigAggConfigPath,
 		sigAggConfig,
 	)
-	defer sigAggCancel()
 
 	startupCtx, startupCancel := context.WithTimeout(ctx, 20*time.Second)
 	defer startupCancel()
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
-	// Choose oracle message source: real Solana tx or dummy data.
-	var (
-		sourceAddress string
-		blockHeight   *big.Int
-		msgPayload    []byte
-		justification []byte
-	)
+	return sigAggConfig, sigAggCancel
+}
+
+// buildOracleMessage chooses the oracle message source. With a Solana RPC URL it
+// fetches a real Memo Program transaction; otherwise it uses mock data accepted
+// unconditionally by the mock sidecar. Returns the oracle message and the
+// justification bytes handed to the sidecar.
+func buildOracleMessage(
+	ctx context.Context,
+	log logging.Logger,
+	solanaRPCURL string,
+	destContract common.Address,
+) (oracleadapter.OracleMessage, []byte) {
+	oracleMsg := oracleadapter.OracleMessage{
+		SourceType:   oracleSourceType,
+		DestContract: destContract,
+		Nonce:        big.NewInt(1),
+	}
+	var justification []byte
+
 	if solanaRPCURL != "" {
 		ginkgo.By("Step 5: Fetch real Memo Program transaction from Solana devnet")
-		txData := fetchSolanaMemoTx(ctx, solanaRPCURL)
-		sourceAddress = txData.programID
-		blockHeight = new(big.Int).SetUint64(txData.slot)
-		msgPayload = txData.instrData
-		justification = txData.txSigBytes
+		txData := utils.FetchSolanaMemoTx(ctx, solanaRPCURL)
+		oracleMsg.SourceAddress = txData.ProgramID
+		oracleMsg.SourceBlockHeight = new(big.Int).SetUint64(txData.Slot)
+		oracleMsg.Payload = txData.InstrData
+		justification = txData.TxSigBytes
 		log.Info("Using real Solana transaction",
-			zap.String("program", sourceAddress),
-			zap.Stringer("slot", blockHeight),
-			zap.Int("payloadBytes", len(msgPayload)),
+			zap.String("program", oracleMsg.SourceAddress),
+			zap.Stringer("slot", oracleMsg.SourceBlockHeight),
+			zap.Int("payloadBytes", len(oracleMsg.Payload)),
 		)
 	} else {
 		ginkgo.By("Step 5: Using mock oracle data (no SOLANA_RPC_URL set)")
-		sourceAddress = "4oracle1testaddr"
-		blockHeight = big.NewInt(100)
-		msgPayload = []byte("e2e-test-payload")
+		oracleMsg.SourceAddress = "4oracle1testaddr"
+		oracleMsg.SourceBlockHeight = big.NewInt(100)
+		oracleMsg.Payload = []byte("e2e-test-payload")
 		justification = []byte("dummy-solana-tx-signature")
 	}
 
-	ginkgo.By("Step 6: Allowlist source on OracleAdapter")
-	allowTx, err := adapterContract.SetAllowedSource(deployOpts, "solana", sourceAddress, true)
-	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, allowTx.Hash())
+	return oracleMsg, justification
+}
 
-	ginkgo.By("Step 7: Request BLS aggregate signature from validators")
-	oraclePayload, err := oracleMsgABI.Pack(
-		"solana",
-		sourceAddress,
-		mockAddress,
-		blockHeight,
-		big.NewInt(1), // nonce
-		msgPayload,
-	)
-	Expect(err).Should(BeNil())
+// requestOracleAggregateSignature submits the oracle warp payload to the
+// signature aggregator's oracle endpoint and returns the BLS-signed message.
+func requestOracleAggregateSignature(
+	ctx context.Context,
+	log logging.Logger,
+	sigAggConfig signatureaggregatorcfg.Config,
+	networkID uint32,
+	l1Info testinfo.L1TestInfo,
+	oracleMsg oracleadapter.OracleMessage,
+	justification []byte,
+) *avalancheWarp.Message {
+	oraclePayload := utils.PackOracleWarpPayload(oracleMsg)
 
-	networkID := avalancheNetwork.GetNetworkID()
 	ac, err := payload.NewAddressedCall(nil, oraclePayload)
 	Expect(err).Should(BeNil())
 
@@ -219,133 +311,90 @@ func OracleAttestation(
 		"signed message ID must match the submitted unsigned message")
 
 	log.Info("BLS aggregation succeeded", zap.Stringer("messageID", signedMsg.ID()))
+	return signedMsg
+}
 
-	thisChainID := [32]byte(l1Info.BlockchainID)
-	fundedAddress := utils.PrivateKeyToAddress(fundedKey)
-
-	buildICMMessage := func(msg oracleadapter.OracleMessage) (teleportermessengerv2.TeleporterICMMessage, error) {
-		return oracleadapter.BuildOracleICMMessage(
-			0,
-			msg,
-			teleporterAddress,
-			thisChainID,
-			networkID,
-			new(big.Int).SetUint64(500_000),
-		)
-	}
-
-	sendExpectRevert := func(msg oracleadapter.OracleMessage) {
-		icmMsg, buildErr := buildICMMessage(msg)
-		Expect(buildErr).Should(BeNil())
-		data, packErr := teleportermessengerv2.PackReceiveCrossChainMessageV2(
-			icmMsg.Message,
-			l1Info.BlockchainID,
-			icmMsg.Attestation,
-			common.Address{},
-		)
-		Expect(packErr).Should(BeNil())
-		gasFeeCap, gasTipCap, txNonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
-		tx := types.NewTx(&types.DynamicFeeTx{
-			ChainID:    l1Info.EVMChainID,
-			Nonce:      txNonce,
-			To:         &teleporterAddress,
-			Gas:        500_000,
-			GasFeeCap:  gasFeeCap,
-			GasTipCap:  gasTipCap,
-			Value:      common.Big0,
-			Data:       data,
-			AccessList: icmutils.SignedWarpMessageToAccessList(signedMsg),
-		})
-		tx = utils.SignTransaction(tx, fundedKey, l1Info.EVMChainID)
-		utils.SendTransactionAndWaitForFailure(ctx, l1Info.EthClient, tx)
-	}
-
-	ginkgo.By("Step 8: Verify delivery from a non-allowlisted source is rejected (SourceNotAllowed)")
-	removeTx, removeErr := adapterContract.SetAllowedSource(deployOpts, "solana", sourceAddress, false)
-	Expect(removeErr).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, removeTx.Hash())
-	sendExpectRevert(oracleadapter.OracleMessage{
-		SourceType:        "solana",
-		SourceAddress:     sourceAddress,
-		DestContract:      mockAddress,
-		SourceBlockHeight: blockHeight,
-		Nonce:             big.NewInt(1),
-		Payload:           msgPayload,
-	})
-	restoreTx, restoreErr := adapterContract.SetAllowedSource(deployOpts, "solana", sourceAddress, true)
-	Expect(restoreErr).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, restoreTx.Hash())
-
-	ginkgo.By("Step 9: Deliver the signed oracle message via TeleporterMessengerV2")
-	icmMsg, err := buildICMMessage(oracleadapter.OracleMessage{
-		SourceType:        "solana",
-		SourceAddress:     sourceAddress,
-		DestContract:      mockAddress,
-		SourceBlockHeight: blockHeight,
-		Nonce:             big.NewInt(1),
-		Payload:           msgPayload,
-	})
-	Expect(err).Should(BeNil())
-
-	callData, packErr := teleportermessengerv2.PackReceiveCrossChainMessageV2(
+// buildOracleDeliveryTx constructs a signed receiveCrossChainMessage transaction
+// carrying the signed oracle warp message in its access list.
+func buildOracleDeliveryTx(
+	ctx context.Context,
+	l1Info testinfo.L1TestInfo,
+	contracts oracleTestContracts,
+	signedMsg *avalancheWarp.Message,
+	icmMsg teleportermessengerv2.TeleporterICMMessage,
+	gasLimit uint64,
+) *types.Transaction {
+	callData, err := teleportermessengerv2.PackReceiveCrossChainMessageV2(
 		icmMsg.Message,
 		l1Info.BlockchainID,
 		icmMsg.Attestation,
 		common.Address{},
 	)
-	Expect(packErr).Should(BeNil())
+	Expect(err).Should(BeNil())
 
+	fundedAddress := utils.PrivateKeyToAddress(contracts.fundedKey)
 	gasFeeCap, gasTipCap, txNonce := utils.CalculateTxParams(ctx, l1Info.EthClient, fundedAddress)
-	deliveryTx := types.NewTx(&types.DynamicFeeTx{
+	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:    l1Info.EVMChainID,
 		Nonce:      txNonce,
-		To:         &teleporterAddress,
-		Gas:        2_000_000, // requiredGasLimit(500K) + TeleporterV2/OracleAdapter overhead
+		To:         &contracts.teleporterAddress,
+		Gas:        gasLimit,
 		GasFeeCap:  gasFeeCap,
 		GasTipCap:  gasTipCap,
 		Value:      common.Big0,
 		Data:       callData,
 		AccessList: icmutils.SignedWarpMessageToAccessList(signedMsg),
 	})
-	deliveryTx = utils.SignTransaction(deliveryTx, fundedKey, l1Info.EVMChainID)
-	utils.SendTransactionAndWaitForSuccess(ctx, l1Info.EthClient, deliveryTx)
+	return utils.SignTransaction(tx, contracts.fundedKey, l1Info.EVMChainID)
+}
 
+// expectOracleDeliveryFailure delivers the message and asserts the transaction
+// reverts (used for the SourceNotAllowed and AlreadyProcessed sad paths).
+func expectOracleDeliveryFailure(
+	ctx context.Context,
+	l1Info testinfo.L1TestInfo,
+	contracts oracleTestContracts,
+	signedMsg *avalancheWarp.Message,
+	icmMsg teleportermessengerv2.TeleporterICMMessage,
+) {
+	tx := buildOracleDeliveryTx(ctx, l1Info, contracts, signedMsg, icmMsg, oracleRequiredGasLimit)
+	utils.SendTransactionAndWaitForFailure(ctx, l1Info.EthClient, tx)
+}
+
+// assertOracleDelivered asserts MockOracleReceiver recorded the delivered
+// payload and Teleporter marked the message as received.
+func assertOracleDelivered(
+	contracts oracleTestContracts,
+	oracleMsg oracleadapter.OracleMessage,
+	thisChainID [32]byte,
+	icmMsg teleportermessengerv2.TeleporterICMMessage,
+) {
 	ginkgo.By("Step 10: Assert MockOracleReceiver recorded the expected payload")
-	receiveCount, assertErr := mockContract.ReceiveCount(&bind.CallOpts{})
-	Expect(assertErr).Should(BeNil())
+	receiveCount, err := contracts.mockContract.ReceiveCount(&bind.CallOpts{})
+	Expect(err).Should(BeNil())
 	Expect(receiveCount).Should(Equal(big.NewInt(1)))
 
-	lastPayload, assertErr := mockContract.LastPayload(&bind.CallOpts{})
-	Expect(assertErr).Should(BeNil())
-	Expect(lastPayload).Should(Equal(msgPayload))
+	lastPayload, err := contracts.mockContract.LastPayload(&bind.CallOpts{})
+	Expect(err).Should(BeNil())
+	Expect(lastPayload).Should(Equal(oracleMsg.Payload))
 
-	lastSourceAddr, assertErr := mockContract.LastSourceAddress(&bind.CallOpts{})
-	Expect(assertErr).Should(BeNil())
-	Expect(lastSourceAddr).Should(Equal(sourceAddress))
+	lastSourceAddr, err := contracts.mockContract.LastSourceAddress(&bind.CallOpts{})
+	Expect(err).Should(BeNil())
+	Expect(lastSourceAddr).Should(Equal(oracleMsg.SourceAddress))
 
-	lastSourceChainID, assertErr := mockContract.LastSourceChainID(&bind.CallOpts{})
-	Expect(assertErr).Should(BeNil())
+	lastSourceChainID, err := contracts.mockContract.LastSourceChainID(&bind.CallOpts{})
+	Expect(err).Should(BeNil())
 	Expect(lastSourceChainID).Should(Equal(thisChainID))
 
 	ginkgo.By("Step 11: Assert Teleporter recorded the message as received")
-	msgID, assertErr := teleporterContract.CalculateMessageID(
+	msgID, err := contracts.teleporterContract.CalculateMessageID(
 		&bind.CallOpts{},
 		thisChainID,
 		thisChainID,
 		icmMsg.Message.MessageNonce,
 	)
-	Expect(assertErr).Should(BeNil())
-	received, assertErr := teleporterContract.MessageReceived(&bind.CallOpts{}, msgID)
-	Expect(assertErr).Should(BeNil())
+	Expect(err).Should(BeNil())
+	received, err := contracts.teleporterContract.MessageReceived(&bind.CallOpts{}, msgID)
+	Expect(err).Should(BeNil())
 	Expect(received).Should(BeTrue())
-
-	ginkgo.By("Step 12: Verify replay of an already-delivered nonce is rejected (AlreadyProcessed)")
-	sendExpectRevert(oracleadapter.OracleMessage{
-		SourceType:        "solana",
-		SourceAddress:     sourceAddress,
-		DestContract:      mockAddress,
-		SourceBlockHeight: blockHeight,
-		Nonce:             big.NewInt(1),
-		Payload:           msgPayload,
-	})
 }

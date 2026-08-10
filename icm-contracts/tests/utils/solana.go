@@ -1,7 +1,7 @@
 // Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package oracle
+package utils
 
 import (
 	"bytes"
@@ -17,13 +17,13 @@ import (
 // memoProgram is the Solana Memo Program v2, present on both mainnet and devnet.
 const memoProgram = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
 
-// solanaTxData holds the fields extracted from a Solana transaction that
+// SolanaTxData holds the fields extracted from a Solana transaction that
 // are needed to construct a matching OracleMessage.
-type solanaTxData struct {
-	txSigBytes []byte // raw 64-byte Ed25519 signature (justification for the sidecar)
-	slot       uint64
-	programID  string
-	instrData  []byte
+type SolanaTxData struct {
+	TxSigBytes []byte // raw 64-byte Ed25519 signature (justification for the sidecar)
+	Slot       uint64
+	ProgramID  string
+	InstrData  []byte
 }
 
 // solanaInstr mirrors the instruction fields returned by the Solana JSON-RPC
@@ -33,9 +33,9 @@ type solanaInstr struct {
 	Data           string `json:"data"`
 }
 
-// fetchSolanaMemoTx discovers a recent Memo Program transaction from the given
+// FetchSolanaMemoTx discovers a recent Memo Program transaction from the given
 // Solana RPC endpoint and extracts the fields needed for an OracleMessage.
-func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
+func FetchSolanaMemoTx(ctx context.Context, rpcURL string) SolanaTxData {
 	post := func(body any) []byte {
 		b, err := json.Marshal(body)
 		Expect(err).Should(BeNil())
@@ -76,16 +76,16 @@ func fetchSolanaMemoTx(ctx context.Context, rpcURL string) solanaTxData {
 		if data, slot, ok := tryExtractMemoInstruction(post, txSig); ok {
 			sigBytes, err := base58.Decode(txSig)
 			Expect(err).Should(BeNil())
-			return solanaTxData{
-				txSigBytes: sigBytes,
-				slot:       slot,
-				programID:  memoProgram,
-				instrData:  data,
+			return SolanaTxData{
+				TxSigBytes: sigBytes,
+				Slot:       slot,
+				ProgramID:  memoProgram,
+				InstrData:  data,
 			}
 		}
 	}
 	Expect(false).To(BeTrue(), "no Memo instruction found in the %d most recent Memo-tagged transactions", candidateLimit)
-	return solanaTxData{}
+	return SolanaTxData{}
 }
 
 // tryExtractMemoInstruction fetches the transaction with the given signature and

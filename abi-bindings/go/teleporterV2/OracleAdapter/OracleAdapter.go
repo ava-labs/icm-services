@@ -29,6 +29,16 @@ var (
 	_ = abi.ConvertType
 )
 
+// OracleMessage is an auto generated low-level Go binding around an user-defined struct.
+type OracleMessage struct {
+	SourceType        string
+	SourceAddress     string
+	DestContract      common.Address
+	SourceBlockHeight *big.Int
+	Nonce             *big.Int
+	Payload           []byte
+}
+
 // TeleporterICMMessage is an auto generated low-level Go binding around an user-defined struct.
 type TeleporterICMMessage struct {
 	Message            TeleporterMessageV2
@@ -58,8 +68,8 @@ type TeleporterMessageV2 struct {
 
 // OracleAdapterMetaData contains all meta data concerning the OracleAdapter contract.
 var OracleAdapterMetaData = &bind.MetaData{
-	ABI: "[{\"type\":\"constructor\",\"inputs\":[{\"name\":\"initialOwner\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"WARP_MESSENGER\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractIWarpMessenger\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"isAllowed\",\"inputs\":[{\"name\":\"sourceType\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"sourceAddress\",\"type\":\"string\",\"internalType\":\"string\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"isProcessed\",\"inputs\":[{\"name\":\"nonce\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"owner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"sendMessage\",\"inputs\":[{\"name\":\"message\",\"type\":\"tuple\",\"internalType\":\"structTeleporterMessageV2\",\"components\":[{\"name\":\"messageNonce\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"originSenderAddress\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"originTeleporterAddress\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"destinationAddress\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"requiredGasLimit\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\",\"internalType\":\"address[]\"},{\"name\":\"receipts\",\"type\":\"tuple[]\",\"internalType\":\"structTeleporterMessageReceipt[]\",\"components\":[{\"name\":\"receivedMessageNonce\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"relayerRewardAddress\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"name\":\"message\",\"type\":\"bytes\",\"internalType\":\"bytes\"}]}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setAllowedSource\",\"inputs\":[{\"name\":\"sourceType\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"sourceAddress\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"allowed\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"transferOwnership\",\"inputs\":[{\"name\":\"newOwner\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"verifyMessage\",\"inputs\":[{\"name\":\"message\",\"type\":\"tuple\",\"internalType\":\"structTeleporterICMMessage\",\"components\":[{\"name\":\"message\",\"type\":\"tuple\",\"internalType\":\"structTeleporterMessageV2\",\"components\":[{\"name\":\"messageNonce\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"originSenderAddress\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"originTeleporterAddress\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"destinationAddress\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"requiredGasLimit\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\",\"internalType\":\"address[]\"},{\"name\":\"receipts\",\"type\":\"tuple[]\",\"internalType\":\"structTeleporterMessageReceipt[]\",\"components\":[{\"name\":\"receivedMessageNonce\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"relayerRewardAddress\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"name\":\"message\",\"type\":\"bytes\",\"internalType\":\"bytes\"}]},{\"name\":\"sourceNetworkID\",\"type\":\"uint32\",\"internalType\":\"uint32\"},{\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"attestation\",\"type\":\"bytes\",\"internalType\":\"bytes\"}]}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"event\",\"name\":\"AllowedSourceUpdated\",\"inputs\":[{\"name\":\"sourceType\",\"type\":\"string\",\"indexed\":false,\"internalType\":\"string\"},{\"name\":\"sourceAddress\",\"type\":\"string\",\"indexed\":false,\"internalType\":\"string\"},{\"name\":\"allowed\",\"type\":\"bool\",\"indexed\":false,\"internalType\":\"bool\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OracleMessageVerified\",\"inputs\":[{\"name\":\"nonce\",\"type\":\"uint64\",\"indexed\":true,\"internalType\":\"uint64\"},{\"name\":\"sourceType\",\"type\":\"string\",\"indexed\":false,\"internalType\":\"string\"},{\"name\":\"sourceAddress\",\"type\":\"string\",\"indexed\":false,\"internalType\":\"string\"},{\"name\":\"destContract\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OwnershipTransferred\",\"inputs\":[{\"name\":\"previousOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"AlreadyProcessed\",\"inputs\":[{\"name\":\"nonce\",\"type\":\"uint64\",\"internalType\":\"uint64\"}]},{\"type\":\"error\",\"name\":\"InvalidWarpMessage\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"SourceNotAllowed\",\"inputs\":[{\"name\":\"sourceType\",\"type\":\"string\",\"internalType\":\"string\"},{\"name\":\"sourceAddress\",\"type\":\"string\",\"internalType\":\"string\"}]},{\"type\":\"error\",\"name\":\"Unauthorized\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"WrongSourceChain\",\"inputs\":[{\"name\":\"got\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"want\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}]},{\"type\":\"error\",\"name\":\"ZeroAddress\",\"inputs\":[]}]",
-	Bin: "0x6080604052348015600e575f5ffd5b50604051611002380380611002833981016040819052602b91609d565b6001600160a01b03811660515760405163d92e233d60e01b815260040160405180910390fd5b5f80546001600160a01b0319166001600160a01b03831690811782556040519091907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0908290a35060c8565b5f6020828403121560ac575f5ffd5b81516001600160a01b038116811460c1575f5ffd5b9392505050565b610f2d806100d55f395ff3fe608060405234801561000f575f5ffd5b5060043610610085575f3560e01c8063b771b3bc11610058578063b771b3bc1461011b578063eb97cd2c14610129578063f1faff001461013c578063f2fde38b1461014f575f5ffd5b806354f12a2c146100895780637a22977c146100b15780638da5cb5b146100dc5780639b46d5e414610106575b5f5ffd5b61009c61009736600461073c565b610162565b60405190151581526020015b60405180910390f35b61009c6100bf3660046107bd565b6001600160401b03165f9081526002602052604090205460ff1690565b5f546100ee906001600160a01b031681565b6040516001600160a01b0390911681526020016100a8565b6101196101143660046107ec565b6101b0565b005b6100ee6005600160991b0181565b61011961013736600461086d565b61026f565b61009c61014a3660046108a4565b610305565b61011961015d3660046108fe565b61064f565b5f60018585604051610175929190610919565b90815260200160405180910390208383604051610193929190610919565b9081526040519081900360200190205460ff169050949350505050565b5f546001600160a01b031633146101d9576040516282b42960e81b815260040160405180910390fd5b80600186866040516101ec929190610919565b9081526020016040518091039020848460405161020a929190610919565b908152604051908190036020018120805492151560ff19909316929092179091557f394722fe385073e63adaca9c5034df77a80030d78984a16eab5b57556609b0ee906102609087908790879087908790610950565b60405180910390a15050505050565b6005600160991b016001600160a01b031663ee5b48eb826040516020016102969190610ae4565b6040516020818303038152906040526040518263ffffffff1660e01b81526004016102c19190610c2b565b6020604051808303815f875af11580156102dd573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103019190610c3d565b5050565b5f806103146060840184610c54565b8101906103219190610c96565b6040516306f8253560e41b815263ffffffff821660048201529091505f9081906005600160991b0190636f825350906024015f60405180830381865afa15801561036d573d5f5f3e3d5ffd5b505050506040513d5f823e601f3d908101601f191682016040526103949190810190610d76565b91509150806103b657604051636b2f19e960e01b815260040160405180910390fd5b5f6005600160991b016001600160a01b0316634213cf786040518163ffffffff1660e01b8152600401602060405180830381865afa1580156103fa573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061041e9190610c3d565b8351909150811461045457825160405163344de78960e01b81526004810191909152602481018290526044015b60405180910390fd5b6104a56040518060c0016040528060608152602001606081526020015f6001600160a01b031681526020015f6001600160401b031681526020015f6001600160401b03168152602001606081525090565b5f5f5f5f5f5f89604001518060200190518101906104c39190610e14565b6040805160c08101825287815260208101969096526001600160a01b03909416858501526001600160401b0392831660608601529116608084015260a0830152519098506001975061051d96509094509250610ed8915050565b9081526020016040518091039020816020015160405161053d9190610ed8565b9081526040519081900360200190205460ff166105765780516020820151604051630d708e6360e41b815261044b929190600401610ef3565b60808101516001600160401b03165f9081526002602052604090205460ff16156105c4576080810151604051633d16f9d960e01b81526001600160401b03909116600482015260240161044b565b6080810180516001600160401b039081165f90815260026020908152604091829020805460ff1916600117905581850151935185519186015192516001600160a01b03909516949316927fce36b341d6a7eec024aa12775c1c08fe81117add41f1b0f0425eb04dc27beb569261063a9291610ef3565b60405180910390a35060019695505050505050565b5f546001600160a01b03163314610678576040516282b42960e81b815260040160405180910390fd5b6001600160a01b03811661069f5760405163d92e233d60e01b815260040160405180910390fd5b5f80546040516001600160a01b03808516939216917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e091a35f80546001600160a01b0319166001600160a01b0392909216919091179055565b5f5f83601f840112610708575f5ffd5b5081356001600160401b0381111561071e575f5ffd5b602083019150836020828501011115610735575f5ffd5b9250929050565b5f5f5f5f6040858703121561074f575f5ffd5b84356001600160401b03811115610764575f5ffd5b610770878288016106f8565b90955093505060208501356001600160401b0381111561078e575f5ffd5b61079a878288016106f8565b95989497509550505050565b6001600160401b03811681146107ba575f5ffd5b50565b5f602082840312156107cd575f5ffd5b81356107d8816107a6565b9392505050565b80151581146107ba575f5ffd5b5f5f5f5f5f60608688031215610800575f5ffd5b85356001600160401b03811115610815575f5ffd5b610821888289016106f8565b90965094505060208601356001600160401b0381111561083f575f5ffd5b61084b888289016106f8565b909450925050604086013561085f816107df565b809150509295509295909350565b5f6020828403121561087d575f5ffd5b81356001600160401b03811115610892575f5ffd5b820161012081850312156107d8575f5ffd5b5f602082840312156108b4575f5ffd5b81356001600160401b038111156108c9575f5ffd5b8201608081850312156107d8575f5ffd5b6001600160a01b03811681146107ba575f5ffd5b80356108f9816108da565b919050565b5f6020828403121561090e575f5ffd5b81356107d8816108da565b818382375f9101908152919050565b81835281816020850137505f828201602090810191909152601f909101601f19169091010190565b606081525f610963606083018789610928565b8281036020840152610976818688610928565b91505082151560408301529695505050505050565b5f5f8335601e198436030181126109a0575f5ffd5b83016020810192503590506001600160401b038111156109be575f5ffd5b8060051b3603821315610735575f5ffd5b8183526020830192505f815f5b84811015610a0d5781356109ef816108da565b6001600160a01b0316865260209586019591909101906001016109dc565b5093949350505050565b5f5f8335601e19843603018112610a2c575f5ffd5b83016020810192503590506001600160401b03811115610a4a575f5ffd5b8060061b3603821315610735575f5ffd5b8183526020830192505f815f5b84811015610a0d57813586526020820135610a82816108da565b6001600160a01b031660208701526040958601959190910190600101610a68565b5f5f8335601e19843603018112610ab8575f5ffd5b83016020810192503590506001600160401b03811115610ad6575f5ffd5b803603821315610735575f5ffd5b60208082528235828201525f90610afc9084016108ee565b6001600160a01b038116604084015250610b18604084016108ee565b6001600160a01b0381166060840152506060830135608083810191909152610b419084016108ee565b6001600160a01b03811660a08401525060a083013560c083810191909152610b6b9084018461098b565b61012060e0850152610b82610140850182846109cf565b915050610b9260e0850185610a17565b848303601f1901610100860152610baa838284610a5b565b92505050610bbc610100850185610aa3565b848303601f1901610120860152610bd4838284610928565b9695505050505050565b5f5b83811015610bf8578181015183820152602001610be0565b50505f910152565b5f8151808452610c17816020860160208601610bde565b601f01601f19169290920160200192915050565b602081525f6107d86020830184610c00565b5f60208284031215610c4d575f5ffd5b5051919050565b5f5f8335601e19843603018112610c69575f5ffd5b8301803591506001600160401b03821115610c82575f5ffd5b602001915036819003821315610735575f5ffd5b5f60208284031215610ca6575f5ffd5b813563ffffffff811681146107d8575f5ffd5b634e487b7160e01b5f52604160045260245ffd5b604051606081016001600160401b0381118282101715610cef57610cef610cb9565b60405290565b5f82601f830112610d04575f5ffd5b8151602083015f5f6001600160401b03841115610d2357610d23610cb9565b50604051601f19601f85018116603f011681018181106001600160401b0382111715610d5157610d51610cb9565b604052838152905080828401871015610d68575f5ffd5b610bd4846020830185610bde565b5f5f60408385031215610d87575f5ffd5b82516001600160401b03811115610d9c575f5ffd5b830160608186031215610dad575f5ffd5b610db5610ccd565b815181526020820151610dc7816108da565b602082015260408201516001600160401b03811115610de4575f5ffd5b610df087828501610cf5565b60408301525080935050506020830151610e09816107df565b809150509250929050565b5f5f5f5f5f5f60c08789031215610e29575f5ffd5b86516001600160401b03811115610e3e575f5ffd5b610e4a89828a01610cf5565b96505060208701516001600160401b03811115610e65575f5ffd5b610e7189828a01610cf5565b9550506040870151610e82816108da565b6060880151909450610e93816107a6565b6080880151909350610ea4816107a6565b60a08801519092506001600160401b03811115610ebf575f5ffd5b610ecb89828a01610cf5565b9150509295509295509295565b5f8251610ee9818460208701610bde565b9190910192915050565b604081525f610f056040830185610c00565b8281036020840152610f178185610c00565b9594505050505056fea164736f6c634300081e000a",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"initialOwner\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"AlreadyProcessed\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidWarpMessage\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"}],\"name\":\"SourceNotAllowed\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"got\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"want\",\"type\":\"bytes32\"}],\"name\":\"WrongSourceChain\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"allowed\",\"type\":\"bool\"}],\"name\":\"AllowedSourceUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"messageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"originSenderAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"originTeleporterAddress\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"requiredGasLimit\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"receivedMessageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"relayerRewardAddress\",\"type\":\"address\"}],\"internalType\":\"structTeleporterMessageReceipt[]\",\"name\":\"receipts\",\"type\":\"tuple[]\"},{\"internalType\":\"bytes\",\"name\":\"message\",\"type\":\"bytes\"}],\"indexed\":false,\"internalType\":\"structTeleporterMessageV2\",\"name\":\"message\",\"type\":\"tuple\"}],\"name\":\"OracleMessageSent\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"indexed\":true,\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"destContract\",\"type\":\"address\"}],\"name\":\"OracleMessageVerified\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"WARP_MESSENGER\",\"outputs\":[{\"internalType\":\"contractIWarpMessenger\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"payload\",\"type\":\"bytes\"}],\"name\":\"decodeOracleMessage\",\"outputs\":[{\"components\":[{\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"},{\"internalType\":\"address\",\"name\":\"destContract\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"sourceBlockHeight\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"payload\",\"type\":\"bytes\"}],\"internalType\":\"structOracleMessage\",\"name\":\"\",\"type\":\"tuple\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"warpIndex\",\"type\":\"uint32\"}],\"name\":\"encodeOracleAttestation\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"},{\"internalType\":\"address\",\"name\":\"destContract\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"sourceBlockHeight\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"payload\",\"type\":\"bytes\"}],\"name\":\"encodeOracleMessage\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"},{\"internalType\":\"uint256\",\"name\":\"sourceBlockHeight\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"payload\",\"type\":\"bytes\"}],\"name\":\"encodeReceiverPayload\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"}],\"name\":\"isAllowed\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"isProcessed\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"messageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"originSenderAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"originTeleporterAddress\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"requiredGasLimit\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"receivedMessageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"relayerRewardAddress\",\"type\":\"address\"}],\"internalType\":\"structTeleporterMessageReceipt[]\",\"name\":\"receipts\",\"type\":\"tuple[]\"},{\"internalType\":\"bytes\",\"name\":\"message\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterMessageV2\",\"name\":\"message\",\"type\":\"tuple\"}],\"name\":\"sendMessage\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"sourceType\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"sourceAddress\",\"type\":\"string\"},{\"internalType\":\"bool\",\"name\":\"allowed\",\"type\":\"bool\"}],\"name\":\"setAllowedSource\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"messageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"originSenderAddress\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"originTeleporterAddress\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"destinationBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"destinationAddress\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"requiredGasLimit\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"allowedRelayerAddresses\",\"type\":\"address[]\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"receivedMessageNonce\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"relayerRewardAddress\",\"type\":\"address\"}],\"internalType\":\"structTeleporterMessageReceipt[]\",\"name\":\"receipts\",\"type\":\"tuple[]\"},{\"internalType\":\"bytes\",\"name\":\"message\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterMessageV2\",\"name\":\"message\",\"type\":\"tuple\"},{\"internalType\":\"uint32\",\"name\":\"sourceNetworkID\",\"type\":\"uint32\"},{\"internalType\":\"bytes32\",\"name\":\"sourceBlockchainID\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"attestation\",\"type\":\"bytes\"}],\"internalType\":\"structTeleporterICMMessage\",\"name\":\"message\",\"type\":\"tuple\"}],\"name\":\"verifyMessage\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b50604051611404380380611404833981016040819052602b9160b4565b806001600160a01b038116605857604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b605f816065565b505060df565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b5f6020828403121560c3575f5ffd5b81516001600160a01b038116811460d8575f5ffd5b9392505050565b611318806100ec5f395ff3fe608060405234801561000f575f5ffd5b50600436106100cb575f3560e01c80639b46d5e411610088578063bfe7edd711610063578063bfe7edd7146101d5578063eb97cd2c146101f7578063f1faff001461020a578063f2fde38b1461021d575f5ffd5b80639b46d5e414610194578063b771b3bc146101a7578063b870ba53146101b5575f5ffd5b80630ac675f1146100cf5780631e028233146100f857806354f12a2c14610130578063715018a6146101535780637a9310fd1461015d5780638da5cb5b14610170575b5f5ffd5b6100e26100dd3660046108df565b610230565b6040516100ef91906109db565b60405180910390f35b6100e26101063660046109f4565b6040805163ffffffff83166020820152606091016040516020818303038152906040529050919050565b61014361013e366004610a5b565b610268565b60405190151581526020016100ef565b61015b6102b6565b005b6100e261016b366004610ac5565b6102c9565b5f546001600160a01b03165b6040516001600160a01b0390911681526020016100ef565b61015b6101a2366004610b70565b6102fe565b61017c6005600160991b0181565b6101c86101c3366004610bf1565b61039c565b6040516100ef9190610c2a565b6101436101e3366004610caf565b5f9081526002602052604090205460ff1690565b61015b610205366004610cc6565b61043a565b610143610218366004610cfd565b610474565b61015b61022b366004610d33565b61071d565b606086868686868660405160200161024d96959493929190610d4e565b60405160208183030381529060405290509695505050505050565b5f6001858560405161027b929190610db0565b90815260200160405180910390208383604051610299929190610db0565b9081526040519081900360200190205460ff169050949350505050565b6102be61075a565b6102c75f610786565b565b606085858585856040516020016102e4959493929190610dbf565b604051602081830303815290604052905095945050505050565b61030661075a565b8060018686604051610319929190610db0565b90815260200160405180910390208484604051610337929190610db0565b908152604051908190036020018120805492151560ff19909316929092179091557f394722fe385073e63adaca9c5034df77a80030d78984a16eab5b57556609b0ee9061038d9087908790879087908790610e37565b60405180910390a15050505050565b6103db6040518060c0016040528060608152602001606081526020015f6001600160a01b031681526020015f81526020015f8152602001606081525090565b5f5f5f5f5f5f878060200190518101906103f59190610eb5565b6040805160c08101825296875260208701959095526001600160a01b03909316938501939093526060840152608083019190915260a082015298975050505050505050565b7fe036eca82262a249913f85dc821a7d3c7d08e90a1fdbd6d2ddc80c474b226dd48160405161046991906110b2565b60405180910390a150565b5f8061048360608401846111ac565b81019061049091906109f4565b6040516306f8253560e41b815263ffffffff821660048201529091505f9081906005600160991b0190636f825350906024015f60405180830381865afa1580156104dc573d5f5f3e3d5ffd5b505050506040513d5f823e601f3d908101601f1916820160405261050391908101906111ee565b915091508061052557604051636b2f19e960e01b815260040160405180910390fd5b5f6005600160991b016001600160a01b0316634213cf786040518163ffffffff1660e01b8152600401602060405180830381865afa158015610569573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061058d919061128c565b835190915081146105c357825160405163344de78960e01b81526004810191909152602481018290526044015b60405180910390fd5b5f6105d1846040015161039c565b90506001815f01516040516105e691906112a3565b9081526020016040518091039020816020015160405161060691906112a3565b9081526040519081900360200190205460ff1661063f5780516020820151604051630d708e6360e41b81526105ba9291906004016112be565b60808101515f9081526002602052604090205460ff161561067b578060800151604051635ad313b960e01b81526004016105ba91815260200190565b60808101515f90815260026020908152604091829020805460ff19166001179055818301519083015191516001600160a01b03909116916106bb916112a3565b604051908190038120835190916106d291906112a3565b60405190819003812060808501518252907f2d99b811a0eb7abb06c26b6a03250e336194b44578a56313b8002d7b1bbc8f499060200160405180910390a45060019695505050505050565b61072561075a565b6001600160a01b03811661074e57604051631e4fbdf760e01b81525f60048201526024016105ba565b61075781610786565b50565b5f546001600160a01b031633146102c75760405163118cdaa760e01b81523360048201526024016105ba565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b634e487b7160e01b5f52604160045260245ffd5b604051606081016001600160401b038111828210171561080b5761080b6107d5565b60405290565b604051601f8201601f191681016001600160401b0381118282101715610839576108396107d5565b604052919050565b5f6001600160401b03821115610859576108596107d5565b50601f01601f191660200190565b5f82601f830112610876575f5ffd5b8135602083015f61088e61088984610841565b610811565b90508281528583830111156108a1575f5ffd5b828260208301375f92810160200192909252509392505050565b6001600160a01b0381168114610757575f5ffd5b80356108da816108bb565b919050565b5f5f5f5f5f5f60c087890312156108f4575f5ffd5b86356001600160401b03811115610909575f5ffd5b61091589828a01610867565b96505060208701356001600160401b03811115610930575f5ffd5b61093c89828a01610867565b955050604087013561094d816108bb565b9350606087013592506080870135915060a08701356001600160401b03811115610975575f5ffd5b61098189828a01610867565b9150509295509295509295565b5f5b838110156109a8578181015183820152602001610990565b50505f910152565b5f81518084526109c781602086016020860161098e565b601f01601f19169290920160200192915050565b602081525f6109ed60208301846109b0565b9392505050565b5f60208284031215610a04575f5ffd5b813563ffffffff811681146109ed575f5ffd5b5f5f83601f840112610a27575f5ffd5b5081356001600160401b03811115610a3d575f5ffd5b602083019150836020828501011115610a54575f5ffd5b9250929050565b5f5f5f5f60408587031215610a6e575f5ffd5b84356001600160401b03811115610a83575f5ffd5b610a8f87828801610a17565b90955093505060208501356001600160401b03811115610aad575f5ffd5b610ab987828801610a17565b95989497509550505050565b5f5f5f5f5f60a08688031215610ad9575f5ffd5b85356001600160401b03811115610aee575f5ffd5b610afa88828901610867565b95505060208601356001600160401b03811115610b15575f5ffd5b610b2188828901610867565b945050604086013592506060860135915060808601356001600160401b03811115610b4a575f5ffd5b610b5688828901610867565b9150509295509295909350565b8015158114610757575f5ffd5b5f5f5f5f5f60608688031215610b84575f5ffd5b85356001600160401b03811115610b99575f5ffd5b610ba588828901610a17565b90965094505060208601356001600160401b03811115610bc3575f5ffd5b610bcf88828901610a17565b9094509250506040860135610be381610b63565b809150509295509295909350565b5f60208284031215610c01575f5ffd5b81356001600160401b03811115610c16575f5ffd5b610c2284828501610867565b949350505050565b602081525f825160c06020840152610c4560e08401826109b0565b90506020840151601f19848303016040850152610c6282826109b0565b91505060018060a01b03604085015116606084015260608401516080840152608084015160a084015260a0840151601f198483030160c0850152610ca682826109b0565b95945050505050565b5f60208284031215610cbf575f5ffd5b5035919050565b5f60208284031215610cd6575f5ffd5b81356001600160401b03811115610ceb575f5ffd5b820161012081850312156109ed575f5ffd5b5f60208284031215610d0d575f5ffd5b81356001600160401b03811115610d22575f5ffd5b8201608081850312156109ed575f5ffd5b5f60208284031215610d43575f5ffd5b81356109ed816108bb565b60c081525f610d6060c08301896109b0565b8281036020840152610d7281896109b0565b6001600160a01b0388166040850152606084018790526080840186905283810360a08501529050610da381856109b0565b9998505050505050505050565b818382375f9101908152919050565b60a081525f610dd160a08301886109b0565b8281036020840152610de381886109b0565b90508560408401528460608401528281036080840152610e0381856109b0565b98975050505050505050565b81835281816020850137505f828201602090810191909152601f909101601f19169091010190565b606081525f610e4a606083018789610e0f565b8281036020840152610e5d818688610e0f565b91505082151560408301529695505050505050565b5f82601f830112610e81575f5ffd5b8151602083015f610e9461088984610841565b9050828152858383011115610ea7575f5ffd5b610ca683602083018461098e565b5f5f5f5f5f5f60c08789031215610eca575f5ffd5b86516001600160401b03811115610edf575f5ffd5b610eeb89828a01610e72565b96505060208701516001600160401b03811115610f06575f5ffd5b610f1289828a01610e72565b9550506040870151610f23816108bb565b6060880151608089015160a08a015192965090945092506001600160401b03811115610f4d575f5ffd5b61098189828a01610e72565b5f5f8335601e19843603018112610f6e575f5ffd5b83016020810192503590506001600160401b03811115610f8c575f5ffd5b8060051b3603821315610a54575f5ffd5b8183526020830192505f815f5b84811015610fdb578135610fbd816108bb565b6001600160a01b031686526020958601959190910190600101610faa565b5093949350505050565b5f5f8335601e19843603018112610ffa575f5ffd5b83016020810192503590506001600160401b03811115611018575f5ffd5b8060061b3603821315610a54575f5ffd5b8183526020830192505f815f5b84811015610fdb57813586526020820135611050816108bb565b6001600160a01b031660208701526040958601959190910190600101611036565b5f5f8335601e19843603018112611086575f5ffd5b83016020810192503590506001600160401b038111156110a4575f5ffd5b803603821315610a54575f5ffd5b60208082528235828201525f906110ca9084016108cf565b6001600160a01b0381166040840152506110e6604084016108cf565b6001600160a01b038116606084015250606083013560808381019190915261110f9084016108cf565b6001600160a01b03811660a08401525060a083013560c08381019190915261113990840184610f59565b61012060e085015261115061014085018284610f9d565b91505061116060e0850185610fe5565b848303601f1901610100860152611178838284611029565b9250505061118a610100850185611071565b848303601f19016101208601526111a2838284610e0f565b9695505050505050565b5f5f8335601e198436030181126111c1575f5ffd5b8301803591506001600160401b038211156111da575f5ffd5b602001915036819003821315610a54575f5ffd5b5f5f604083850312156111ff575f5ffd5b82516001600160401b03811115611214575f5ffd5b830160608186031215611225575f5ffd5b61122d6107e9565b81518152602082015161123f816108bb565b602082015260408201516001600160401b0381111561125c575f5ffd5b61126887828501610e72565b6040830152508093505050602083015161128181610b63565b809150509250929050565b5f6020828403121561129c575f5ffd5b5051919050565b5f82516112b481846020870161098e565b9190910192915050565b604081525f6112d060408301856109b0565b8281036020840152610ca681856109b056fea26469706673582212203e62eac8dc2b71c4e5df9da9669f3c94a5b85092ab90cd37ba08c071af5aa82864736f6c634300081e0033",
 }
 
 // OracleAdapterABI is the input ABI used to generate the binding from.
@@ -260,6 +270,130 @@ func (_OracleAdapter *OracleAdapterCallerSession) WARPMESSENGER() (common.Addres
 	return _OracleAdapter.Contract.WARPMESSENGER(&_OracleAdapter.CallOpts)
 }
 
+// DecodeOracleMessage is a free data retrieval call binding the contract method 0xb870ba53.
+//
+// Solidity: function decodeOracleMessage(bytes payload) pure returns((string,string,address,uint256,uint256,bytes))
+func (_OracleAdapter *OracleAdapterCaller) DecodeOracleMessage(opts *bind.CallOpts, payload []byte) (OracleMessage, error) {
+	var out []interface{}
+	err := _OracleAdapter.contract.Call(opts, &out, "decodeOracleMessage", payload)
+
+	if err != nil {
+		return *new(OracleMessage), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(OracleMessage)).(*OracleMessage)
+
+	return out0, err
+
+}
+
+// DecodeOracleMessage is a free data retrieval call binding the contract method 0xb870ba53.
+//
+// Solidity: function decodeOracleMessage(bytes payload) pure returns((string,string,address,uint256,uint256,bytes))
+func (_OracleAdapter *OracleAdapterSession) DecodeOracleMessage(payload []byte) (OracleMessage, error) {
+	return _OracleAdapter.Contract.DecodeOracleMessage(&_OracleAdapter.CallOpts, payload)
+}
+
+// DecodeOracleMessage is a free data retrieval call binding the contract method 0xb870ba53.
+//
+// Solidity: function decodeOracleMessage(bytes payload) pure returns((string,string,address,uint256,uint256,bytes))
+func (_OracleAdapter *OracleAdapterCallerSession) DecodeOracleMessage(payload []byte) (OracleMessage, error) {
+	return _OracleAdapter.Contract.DecodeOracleMessage(&_OracleAdapter.CallOpts, payload)
+}
+
+// EncodeOracleAttestation is a free data retrieval call binding the contract method 0x1e028233.
+//
+// Solidity: function encodeOracleAttestation(uint32 warpIndex) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterCaller) EncodeOracleAttestation(opts *bind.CallOpts, warpIndex uint32) ([]byte, error) {
+	var out []interface{}
+	err := _OracleAdapter.contract.Call(opts, &out, "encodeOracleAttestation", warpIndex)
+
+	if err != nil {
+		return *new([]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([]byte)).(*[]byte)
+
+	return out0, err
+
+}
+
+// EncodeOracleAttestation is a free data retrieval call binding the contract method 0x1e028233.
+//
+// Solidity: function encodeOracleAttestation(uint32 warpIndex) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterSession) EncodeOracleAttestation(warpIndex uint32) ([]byte, error) {
+	return _OracleAdapter.Contract.EncodeOracleAttestation(&_OracleAdapter.CallOpts, warpIndex)
+}
+
+// EncodeOracleAttestation is a free data retrieval call binding the contract method 0x1e028233.
+//
+// Solidity: function encodeOracleAttestation(uint32 warpIndex) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterCallerSession) EncodeOracleAttestation(warpIndex uint32) ([]byte, error) {
+	return _OracleAdapter.Contract.EncodeOracleAttestation(&_OracleAdapter.CallOpts, warpIndex)
+}
+
+// EncodeOracleMessage is a free data retrieval call binding the contract method 0x0ac675f1.
+//
+// Solidity: function encodeOracleMessage(string sourceType, string sourceAddress, address destContract, uint256 sourceBlockHeight, uint256 nonce, bytes payload) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterCaller) EncodeOracleMessage(opts *bind.CallOpts, sourceType string, sourceAddress string, destContract common.Address, sourceBlockHeight *big.Int, nonce *big.Int, payload []byte) ([]byte, error) {
+	var out []interface{}
+	err := _OracleAdapter.contract.Call(opts, &out, "encodeOracleMessage", sourceType, sourceAddress, destContract, sourceBlockHeight, nonce, payload)
+
+	if err != nil {
+		return *new([]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([]byte)).(*[]byte)
+
+	return out0, err
+
+}
+
+// EncodeOracleMessage is a free data retrieval call binding the contract method 0x0ac675f1.
+//
+// Solidity: function encodeOracleMessage(string sourceType, string sourceAddress, address destContract, uint256 sourceBlockHeight, uint256 nonce, bytes payload) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterSession) EncodeOracleMessage(sourceType string, sourceAddress string, destContract common.Address, sourceBlockHeight *big.Int, nonce *big.Int, payload []byte) ([]byte, error) {
+	return _OracleAdapter.Contract.EncodeOracleMessage(&_OracleAdapter.CallOpts, sourceType, sourceAddress, destContract, sourceBlockHeight, nonce, payload)
+}
+
+// EncodeOracleMessage is a free data retrieval call binding the contract method 0x0ac675f1.
+//
+// Solidity: function encodeOracleMessage(string sourceType, string sourceAddress, address destContract, uint256 sourceBlockHeight, uint256 nonce, bytes payload) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterCallerSession) EncodeOracleMessage(sourceType string, sourceAddress string, destContract common.Address, sourceBlockHeight *big.Int, nonce *big.Int, payload []byte) ([]byte, error) {
+	return _OracleAdapter.Contract.EncodeOracleMessage(&_OracleAdapter.CallOpts, sourceType, sourceAddress, destContract, sourceBlockHeight, nonce, payload)
+}
+
+// EncodeReceiverPayload is a free data retrieval call binding the contract method 0x7a9310fd.
+//
+// Solidity: function encodeReceiverPayload(string sourceType, string sourceAddress, uint256 sourceBlockHeight, uint256 nonce, bytes payload) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterCaller) EncodeReceiverPayload(opts *bind.CallOpts, sourceType string, sourceAddress string, sourceBlockHeight *big.Int, nonce *big.Int, payload []byte) ([]byte, error) {
+	var out []interface{}
+	err := _OracleAdapter.contract.Call(opts, &out, "encodeReceiverPayload", sourceType, sourceAddress, sourceBlockHeight, nonce, payload)
+
+	if err != nil {
+		return *new([]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([]byte)).(*[]byte)
+
+	return out0, err
+
+}
+
+// EncodeReceiverPayload is a free data retrieval call binding the contract method 0x7a9310fd.
+//
+// Solidity: function encodeReceiverPayload(string sourceType, string sourceAddress, uint256 sourceBlockHeight, uint256 nonce, bytes payload) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterSession) EncodeReceiverPayload(sourceType string, sourceAddress string, sourceBlockHeight *big.Int, nonce *big.Int, payload []byte) ([]byte, error) {
+	return _OracleAdapter.Contract.EncodeReceiverPayload(&_OracleAdapter.CallOpts, sourceType, sourceAddress, sourceBlockHeight, nonce, payload)
+}
+
+// EncodeReceiverPayload is a free data retrieval call binding the contract method 0x7a9310fd.
+//
+// Solidity: function encodeReceiverPayload(string sourceType, string sourceAddress, uint256 sourceBlockHeight, uint256 nonce, bytes payload) pure returns(bytes)
+func (_OracleAdapter *OracleAdapterCallerSession) EncodeReceiverPayload(sourceType string, sourceAddress string, sourceBlockHeight *big.Int, nonce *big.Int, payload []byte) ([]byte, error) {
+	return _OracleAdapter.Contract.EncodeReceiverPayload(&_OracleAdapter.CallOpts, sourceType, sourceAddress, sourceBlockHeight, nonce, payload)
+}
+
 // IsAllowed is a free data retrieval call binding the contract method 0x54f12a2c.
 //
 // Solidity: function isAllowed(string sourceType, string sourceAddress) view returns(bool)
@@ -291,10 +425,10 @@ func (_OracleAdapter *OracleAdapterCallerSession) IsAllowed(sourceType string, s
 	return _OracleAdapter.Contract.IsAllowed(&_OracleAdapter.CallOpts, sourceType, sourceAddress)
 }
 
-// IsProcessed is a free data retrieval call binding the contract method 0x7a22977c.
+// IsProcessed is a free data retrieval call binding the contract method 0xbfe7edd7.
 //
-// Solidity: function isProcessed(uint64 nonce) view returns(bool)
-func (_OracleAdapter *OracleAdapterCaller) IsProcessed(opts *bind.CallOpts, nonce uint64) (bool, error) {
+// Solidity: function isProcessed(uint256 nonce) view returns(bool)
+func (_OracleAdapter *OracleAdapterCaller) IsProcessed(opts *bind.CallOpts, nonce *big.Int) (bool, error) {
 	var out []interface{}
 	err := _OracleAdapter.contract.Call(opts, &out, "isProcessed", nonce)
 
@@ -308,17 +442,17 @@ func (_OracleAdapter *OracleAdapterCaller) IsProcessed(opts *bind.CallOpts, nonc
 
 }
 
-// IsProcessed is a free data retrieval call binding the contract method 0x7a22977c.
+// IsProcessed is a free data retrieval call binding the contract method 0xbfe7edd7.
 //
-// Solidity: function isProcessed(uint64 nonce) view returns(bool)
-func (_OracleAdapter *OracleAdapterSession) IsProcessed(nonce uint64) (bool, error) {
+// Solidity: function isProcessed(uint256 nonce) view returns(bool)
+func (_OracleAdapter *OracleAdapterSession) IsProcessed(nonce *big.Int) (bool, error) {
 	return _OracleAdapter.Contract.IsProcessed(&_OracleAdapter.CallOpts, nonce)
 }
 
-// IsProcessed is a free data retrieval call binding the contract method 0x7a22977c.
+// IsProcessed is a free data retrieval call binding the contract method 0xbfe7edd7.
 //
-// Solidity: function isProcessed(uint64 nonce) view returns(bool)
-func (_OracleAdapter *OracleAdapterCallerSession) IsProcessed(nonce uint64) (bool, error) {
+// Solidity: function isProcessed(uint256 nonce) view returns(bool)
+func (_OracleAdapter *OracleAdapterCallerSession) IsProcessed(nonce *big.Int) (bool, error) {
 	return _OracleAdapter.Contract.IsProcessed(&_OracleAdapter.CallOpts, nonce)
 }
 
@@ -351,6 +485,27 @@ func (_OracleAdapter *OracleAdapterSession) Owner() (common.Address, error) {
 // Solidity: function owner() view returns(address)
 func (_OracleAdapter *OracleAdapterCallerSession) Owner() (common.Address, error) {
 	return _OracleAdapter.Contract.Owner(&_OracleAdapter.CallOpts)
+}
+
+// RenounceOwnership is a paid mutator transaction binding the contract method 0x715018a6.
+//
+// Solidity: function renounceOwnership() returns()
+func (_OracleAdapter *OracleAdapterTransactor) RenounceOwnership(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _OracleAdapter.contract.Transact(opts, "renounceOwnership")
+}
+
+// RenounceOwnership is a paid mutator transaction binding the contract method 0x715018a6.
+//
+// Solidity: function renounceOwnership() returns()
+func (_OracleAdapter *OracleAdapterSession) RenounceOwnership() (*types.Transaction, error) {
+	return _OracleAdapter.Contract.RenounceOwnership(&_OracleAdapter.TransactOpts)
+}
+
+// RenounceOwnership is a paid mutator transaction binding the contract method 0x715018a6.
+//
+// Solidity: function renounceOwnership() returns()
+func (_OracleAdapter *OracleAdapterTransactorSession) RenounceOwnership() (*types.Transaction, error) {
+	return _OracleAdapter.Contract.RenounceOwnership(&_OracleAdapter.TransactOpts)
 }
 
 // SendMessage is a paid mutator transaction binding the contract method 0xeb97cd2c.
@@ -573,6 +728,140 @@ func (_OracleAdapter *OracleAdapterFilterer) ParseAllowedSourceUpdated(log types
 	return event, nil
 }
 
+// OracleAdapterOracleMessageSentIterator is returned from FilterOracleMessageSent and is used to iterate over the raw logs and unpacked data for OracleMessageSent events raised by the OracleAdapter contract.
+type OracleAdapterOracleMessageSentIterator struct {
+	Event *OracleAdapterOracleMessageSent // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *OracleAdapterOracleMessageSentIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(OracleAdapterOracleMessageSent)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(OracleAdapterOracleMessageSent)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *OracleAdapterOracleMessageSentIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *OracleAdapterOracleMessageSentIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// OracleAdapterOracleMessageSent represents a OracleMessageSent event raised by the OracleAdapter contract.
+type OracleAdapterOracleMessageSent struct {
+	Message TeleporterMessageV2
+	Raw     types.Log // Blockchain specific contextual infos
+}
+
+// FilterOracleMessageSent is a free log retrieval operation binding the contract event 0xe036eca82262a249913f85dc821a7d3c7d08e90a1fdbd6d2ddc80c474b226dd4.
+//
+// Solidity: event OracleMessageSent((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message)
+func (_OracleAdapter *OracleAdapterFilterer) FilterOracleMessageSent(opts *bind.FilterOpts) (*OracleAdapterOracleMessageSentIterator, error) {
+
+	logs, sub, err := _OracleAdapter.contract.FilterLogs(opts, "OracleMessageSent")
+	if err != nil {
+		return nil, err
+	}
+	return &OracleAdapterOracleMessageSentIterator{contract: _OracleAdapter.contract, event: "OracleMessageSent", logs: logs, sub: sub}, nil
+}
+
+// WatchOracleMessageSent is a free log subscription operation binding the contract event 0xe036eca82262a249913f85dc821a7d3c7d08e90a1fdbd6d2ddc80c474b226dd4.
+//
+// Solidity: event OracleMessageSent((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message)
+func (_OracleAdapter *OracleAdapterFilterer) WatchOracleMessageSent(opts *bind.WatchOpts, sink chan<- *OracleAdapterOracleMessageSent) (event.Subscription, error) {
+
+	logs, sub, err := _OracleAdapter.contract.WatchLogs(opts, "OracleMessageSent")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(OracleAdapterOracleMessageSent)
+				if err := _OracleAdapter.contract.UnpackLog(event, "OracleMessageSent", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseOracleMessageSent is a log parse operation binding the contract event 0xe036eca82262a249913f85dc821a7d3c7d08e90a1fdbd6d2ddc80c474b226dd4.
+//
+// Solidity: event OracleMessageSent((uint256,address,address,bytes32,address,uint256,address[],(uint256,address)[],bytes) message)
+func (_OracleAdapter *OracleAdapterFilterer) ParseOracleMessageSent(log types.Log) (*OracleAdapterOracleMessageSent, error) {
+	event := new(OracleAdapterOracleMessageSent)
+	if err := _OracleAdapter.contract.UnpackLog(event, "OracleMessageSent", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
 // OracleAdapterOracleMessageVerifiedIterator is returned from FilterOracleMessageVerified and is used to iterate over the raw logs and unpacked data for OracleMessageVerified events raised by the OracleAdapter contract.
 type OracleAdapterOracleMessageVerifiedIterator struct {
 	Event *OracleAdapterOracleMessageVerified // Event containing the contract specifics and raw log
@@ -642,51 +931,57 @@ func (it *OracleAdapterOracleMessageVerifiedIterator) Close() error {
 
 // OracleAdapterOracleMessageVerified represents a OracleMessageVerified event raised by the OracleAdapter contract.
 type OracleAdapterOracleMessageVerified struct {
-	Nonce         uint64
-	SourceType    string
-	SourceAddress string
+	Nonce         *big.Int
+	SourceType    common.Hash
+	SourceAddress common.Hash
 	DestContract  common.Address
 	Raw           types.Log // Blockchain specific contextual infos
 }
 
-// FilterOracleMessageVerified is a free log retrieval operation binding the contract event 0xce36b341d6a7eec024aa12775c1c08fe81117add41f1b0f0425eb04dc27beb56.
+// FilterOracleMessageVerified is a free log retrieval operation binding the contract event 0x2d99b811a0eb7abb06c26b6a03250e336194b44578a56313b8002d7b1bbc8f49.
 //
-// Solidity: event OracleMessageVerified(uint64 indexed nonce, string sourceType, string sourceAddress, address indexed destContract)
-func (_OracleAdapter *OracleAdapterFilterer) FilterOracleMessageVerified(opts *bind.FilterOpts, nonce []uint64, destContract []common.Address) (*OracleAdapterOracleMessageVerifiedIterator, error) {
+// Solidity: event OracleMessageVerified(uint256 nonce, string indexed sourceType, string indexed sourceAddress, address indexed destContract)
+func (_OracleAdapter *OracleAdapterFilterer) FilterOracleMessageVerified(opts *bind.FilterOpts, sourceType []string, sourceAddress []string, destContract []common.Address) (*OracleAdapterOracleMessageVerifiedIterator, error) {
 
-	var nonceRule []interface{}
-	for _, nonceItem := range nonce {
-		nonceRule = append(nonceRule, nonceItem)
+	var sourceTypeRule []interface{}
+	for _, sourceTypeItem := range sourceType {
+		sourceTypeRule = append(sourceTypeRule, sourceTypeItem)
 	}
-
+	var sourceAddressRule []interface{}
+	for _, sourceAddressItem := range sourceAddress {
+		sourceAddressRule = append(sourceAddressRule, sourceAddressItem)
+	}
 	var destContractRule []interface{}
 	for _, destContractItem := range destContract {
 		destContractRule = append(destContractRule, destContractItem)
 	}
 
-	logs, sub, err := _OracleAdapter.contract.FilterLogs(opts, "OracleMessageVerified", nonceRule, destContractRule)
+	logs, sub, err := _OracleAdapter.contract.FilterLogs(opts, "OracleMessageVerified", sourceTypeRule, sourceAddressRule, destContractRule)
 	if err != nil {
 		return nil, err
 	}
 	return &OracleAdapterOracleMessageVerifiedIterator{contract: _OracleAdapter.contract, event: "OracleMessageVerified", logs: logs, sub: sub}, nil
 }
 
-// WatchOracleMessageVerified is a free log subscription operation binding the contract event 0xce36b341d6a7eec024aa12775c1c08fe81117add41f1b0f0425eb04dc27beb56.
+// WatchOracleMessageVerified is a free log subscription operation binding the contract event 0x2d99b811a0eb7abb06c26b6a03250e336194b44578a56313b8002d7b1bbc8f49.
 //
-// Solidity: event OracleMessageVerified(uint64 indexed nonce, string sourceType, string sourceAddress, address indexed destContract)
-func (_OracleAdapter *OracleAdapterFilterer) WatchOracleMessageVerified(opts *bind.WatchOpts, sink chan<- *OracleAdapterOracleMessageVerified, nonce []uint64, destContract []common.Address) (event.Subscription, error) {
+// Solidity: event OracleMessageVerified(uint256 nonce, string indexed sourceType, string indexed sourceAddress, address indexed destContract)
+func (_OracleAdapter *OracleAdapterFilterer) WatchOracleMessageVerified(opts *bind.WatchOpts, sink chan<- *OracleAdapterOracleMessageVerified, sourceType []string, sourceAddress []string, destContract []common.Address) (event.Subscription, error) {
 
-	var nonceRule []interface{}
-	for _, nonceItem := range nonce {
-		nonceRule = append(nonceRule, nonceItem)
+	var sourceTypeRule []interface{}
+	for _, sourceTypeItem := range sourceType {
+		sourceTypeRule = append(sourceTypeRule, sourceTypeItem)
 	}
-
+	var sourceAddressRule []interface{}
+	for _, sourceAddressItem := range sourceAddress {
+		sourceAddressRule = append(sourceAddressRule, sourceAddressItem)
+	}
 	var destContractRule []interface{}
 	for _, destContractItem := range destContract {
 		destContractRule = append(destContractRule, destContractItem)
 	}
 
-	logs, sub, err := _OracleAdapter.contract.WatchLogs(opts, "OracleMessageVerified", nonceRule, destContractRule)
+	logs, sub, err := _OracleAdapter.contract.WatchLogs(opts, "OracleMessageVerified", sourceTypeRule, sourceAddressRule, destContractRule)
 	if err != nil {
 		return nil, err
 	}
@@ -718,9 +1013,9 @@ func (_OracleAdapter *OracleAdapterFilterer) WatchOracleMessageVerified(opts *bi
 	}), nil
 }
 
-// ParseOracleMessageVerified is a log parse operation binding the contract event 0xce36b341d6a7eec024aa12775c1c08fe81117add41f1b0f0425eb04dc27beb56.
+// ParseOracleMessageVerified is a log parse operation binding the contract event 0x2d99b811a0eb7abb06c26b6a03250e336194b44578a56313b8002d7b1bbc8f49.
 //
-// Solidity: event OracleMessageVerified(uint64 indexed nonce, string sourceType, string sourceAddress, address indexed destContract)
+// Solidity: event OracleMessageVerified(uint256 nonce, string indexed sourceType, string indexed sourceAddress, address indexed destContract)
 func (_OracleAdapter *OracleAdapterFilterer) ParseOracleMessageVerified(log types.Log) (*OracleAdapterOracleMessageVerified, error) {
 	event := new(OracleAdapterOracleMessageVerified)
 	if err := _OracleAdapter.contract.UnpackLog(event, "OracleMessageVerified", log); err != nil {

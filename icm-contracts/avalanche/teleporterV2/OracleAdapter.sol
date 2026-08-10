@@ -13,6 +13,7 @@ import {
     TeleporterMessageV2,
     TeleporterICMMessage
 } from "@common/ITeleporterMessengerV2.sol";
+import {Ownable} from "@openzeppelin/contracts@5.1.0/access/Ownable.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -61,11 +62,9 @@ struct OracleMessage {
  *
  * @custom:security-contact https://github.com/ava-labs/icm-contracts/blob/main/SECURITY.md
  */
-contract OracleAdapter is IAdapter {
+contract OracleAdapter is IAdapter, Ownable {
     IWarpMessenger public constant WARP_MESSENGER =
         IWarpMessenger(0x0200000000000000000000000000000000000005);
-
-    address public owner;
 
     // sourceType => sourceAddress => allowed
     mapping(string => mapping(string => bool)) private _allowedSources;
@@ -103,11 +102,6 @@ contract OracleAdapter is IAdapter {
      */
     event OracleMessageSent(TeleporterMessageV2 message);
 
-    /**
-     * @notice Emitted when ownership is transferred.
-     */
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
@@ -116,17 +110,6 @@ contract OracleAdapter is IAdapter {
     error WrongSourceChain(bytes32 got, bytes32 want);
     error SourceNotAllowed(string sourceType, string sourceAddress);
     error AlreadyProcessed(uint256 nonce);
-    error Unauthorized();
-    error ZeroAddress();
-
-    // -------------------------------------------------------------------------
-    // Modifiers
-    // -------------------------------------------------------------------------
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert Unauthorized();
-        _;
-    }
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -134,11 +117,7 @@ contract OracleAdapter is IAdapter {
 
     constructor(
         address initialOwner
-    ) {
-        if (initialOwner == address(0)) revert ZeroAddress();
-        owner = initialOwner;
-        emit OwnershipTransferred(address(0), initialOwner);
-    }
+    ) Ownable(initialOwner) {}
 
     // -------------------------------------------------------------------------
     // IAdapter
@@ -183,27 +162,7 @@ contract OracleAdapter is IAdapter {
         }
 
         // 3. Decode the oracle message directly from the BLS-verified warp payload.
-        //    The payload is abi.encode of individual fields (not a packed struct), so decode
-        //    field-by-field and reconstruct the struct to match the Go-side encoding.
-        OracleMessage memory oracleMsg;
-        {
-            (
-                string memory sourceType,
-                string memory sourceAddress,
-                address destContract,
-                uint256 sourceBlockHeight,
-                uint256 nonce,
-                bytes memory msgPayload
-            ) = abi.decode(warp.payload, (string, string, address, uint256, uint256, bytes));
-            oracleMsg = OracleMessage({
-                sourceType: sourceType,
-                sourceAddress: sourceAddress,
-                destContract: destContract,
-                sourceBlockHeight: sourceBlockHeight,
-                nonce: nonce,
-                payload: msgPayload
-            });
-        }
+        OracleMessage memory oracleMsg = decodeOracleMessage(warp.payload);
 
         // 4. Source allowlist check. Validators also enforce this per-node, but the on-chain
         //    check ensures a rogue validator cannot deliver to an unconfigured source.
@@ -241,15 +200,76 @@ contract OracleAdapter is IAdapter {
         emit AllowedSourceUpdated(sourceType, sourceAddress, allowed);
     }
 
+    // -------------------------------------------------------------------------
+    // Encoding helpers
+    // -------------------------------------------------------------------------
+    // These pure helpers are the canonical definition of the oracle wire formats.
+    // The Go test/tooling side packs and unpacks through the generated ABI
+    // bindings of these functions instead of hand-maintaining ABI type lists.
+
     /**
-     * @notice Transfer ownership to a new address.
+     * @notice Decode an oracle message from a BLS-verified warp payload.
+     * @dev The payload is abi.encode of the individual fields (not a packed struct),
+     *      matching the Go-side encoding produced by the oracle sidecar path.
      */
-    function transferOwnership(
-        address newOwner
-    ) external onlyOwner {
-        if (newOwner == address(0)) revert ZeroAddress();
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+    function decodeOracleMessage(
+        bytes memory payload
+    ) public pure returns (OracleMessage memory) {
+        (
+            string memory sourceType,
+            string memory sourceAddress,
+            address destContract,
+            uint256 sourceBlockHeight,
+            uint256 nonce,
+            bytes memory msgPayload
+        ) = abi.decode(payload, (string, string, address, uint256, uint256, bytes));
+        return OracleMessage({
+            sourceType: sourceType,
+            sourceAddress: sourceAddress,
+            destContract: destContract,
+            sourceBlockHeight: sourceBlockHeight,
+            nonce: nonce,
+            payload: msgPayload
+        });
+    }
+
+    /**
+     * @notice Encode oracle message fields into the warp payload format decoded by
+     *         decodeOracleMessage. Inverse of decodeOracleMessage.
+     */
+    function encodeOracleMessage(
+        string memory sourceType,
+        string memory sourceAddress,
+        address destContract,
+        uint256 sourceBlockHeight,
+        uint256 nonce,
+        bytes memory payload
+    ) public pure returns (bytes memory) {
+        return
+            abi.encode(sourceType, sourceAddress, destContract, sourceBlockHeight, nonce, payload);
+    }
+
+    /**
+     * @notice Encode a warp index into the attestation format expected by verifyMessage.
+     */
+    function encodeOracleAttestation(
+        uint32 warpIndex
+    ) public pure returns (bytes memory) {
+        return abi.encode(warpIndex);
+    }
+
+    /**
+     * @notice Encode the TeleporterMessageV2.message bytes delivered to receiver
+     *         contracts (see MockOracleReceiver.receiveTeleporterMessage).
+     */
+    function encodeReceiverPayload(
+        string memory sourceType,
+        string memory sourceAddress,
+        uint256 sourceBlockHeight,
+        uint256 nonce,
+        bytes memory payload
+    ) public pure returns (bytes memory) {
+        return abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload);
     }
 
     // -------------------------------------------------------------------------
