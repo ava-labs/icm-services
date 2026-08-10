@@ -14,8 +14,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// memoProgram is the Solana Memo Program v2, present on both mainnet and devnet.
-const memoProgram = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+// MemoProgram is the Solana Memo Program v2, present on both mainnet and devnet.
+const MemoProgram = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
 
 // SolanaTxData holds the fields extracted from a Solana transaction that
 // are needed to construct a matching OracleMessage.
@@ -59,7 +59,7 @@ func FetchSolanaMemoTx(ctx context.Context, rpcURL string) SolanaTxData {
 	sigsRaw := post(map[string]any{
 		"jsonrpc": "2.0", "id": 1,
 		"method": "getSignaturesForAddress",
-		"params": []any{memoProgram, map[string]any{"limit": candidateLimit}},
+		"params": []any{MemoProgram, map[string]any{"limit": candidateLimit}},
 	})
 	var sigsResp struct {
 		Result []struct {
@@ -79,7 +79,7 @@ func FetchSolanaMemoTx(ctx context.Context, rpcURL string) SolanaTxData {
 			return SolanaTxData{
 				TxSigBytes: sigBytes,
 				Slot:       slot,
-				ProgramID:  memoProgram,
+				ProgramID:  MemoProgram,
 				InstrData:  data,
 			}
 		}
@@ -151,7 +151,7 @@ func tryExtractMemoInstruction(post func(any) []byte, txSig string) ([]byte, uin
 		if instr.ProgramIDIndex < 0 || instr.ProgramIDIndex >= len(keys) {
 			continue
 		}
-		if keys[instr.ProgramIDIndex] != memoProgram {
+		if keys[instr.ProgramIDIndex] != MemoProgram {
 			continue
 		}
 		data, err := base58.Decode(instr.Data)

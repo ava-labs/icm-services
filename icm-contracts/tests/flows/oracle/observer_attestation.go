@@ -86,7 +86,7 @@ func ObserverAttestation(
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	ginkgo.By("Step 3: Allowlist the Memo program on OracleAdapter")
-	allowTx, err := adapterContract.SetAllowedSource(deployOpts, "solana", memoProgram, true)
+	allowTx, err := adapterContract.SetAllowedSource(deployOpts, "solana", utils.MemoProgram, true)
 	Expect(err).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, allowTx.Hash())
 

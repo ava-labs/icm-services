@@ -23,34 +23,12 @@ import (
 	oracleadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/OracleAdapter"
 	"github.com/ava-labs/icm-services/signature-aggregator/api"
 	icmutils "github.com/ava-labs/icm-services/utils"
-	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
-
-// oracleMsgABI mirrors the encoding at
-// avalanchego/network/p2p/oracle/message.go and the E2E test flow. Duplicated
-// here rather than imported so the observer does not require the sidecar
-// branch to be published as a Go module.
-var oracleMsgABI abi.Arguments
-
-func init() {
-	stringT, _ := abi.NewType("string", "", nil)
-	addrT, _ := abi.NewType("address", "", nil)
-	uint64T, _ := abi.NewType("uint64", "", nil)
-	bytesT, _ := abi.NewType("bytes", "", nil)
-	oracleMsgABI = abi.Arguments{
-		{Type: stringT, Name: "sourceType"},
-		{Type: stringT, Name: "sourceAddress"},
-		{Type: addrT, Name: "destContract"},
-		{Type: uint64T, Name: "sourceBlockHeight"},
-		{Type: uint64T, Name: "nonce"},
-		{Type: bytesT, Name: "payload"},
-	}
-}
 
 // Relay owns the L1 delivery pipeline. Given a fetched Solana transaction, it
 // constructs the OracleMessage, drives BLS aggregation against the running
@@ -124,14 +102,7 @@ func (r *Relay) Deliver(ctx context.Context, tx *SolanaTx) error {
 		Payload:           tx.InstrData,
 	}
 
-	oraclePayload, err := oracleMsgABI.Pack(
-		oracleMsg.SourceType,
-		oracleMsg.SourceAddress,
-		oracleMsg.DestContract,
-		oracleMsg.SourceBlockHeight.Uint64(),
-		oracleMsg.Nonce.Uint64(),
-		oracleMsg.Payload,
-	)
+	oraclePayload, err := icmutils.PackOracleWarpPayload(oracleMsg)
 	if err != nil {
 		return fmt.Errorf("abi pack: %w", err)
 	}
@@ -221,7 +192,7 @@ func (r *Relay) submitL1(
 	signed *avalancheWarp.Message,
 	oracleMsg oracleadapter.OracleMessage,
 ) error {
-	icmMsg, err := oracleadapter.BuildOracleICMMessage(
+	icmMsg, err := icmutils.BuildOracleICMMessage(
 		0,
 		oracleMsg,
 		r.cfg.L1.TeleporterAddress,
