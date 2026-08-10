@@ -72,8 +72,11 @@ else
     rm -f ${AVAGO_DOWNLOAD_PATH}
   fi
 
-  # try to download the archive if it exists
-  if curl -s --head --request GET ${AVAGO_DOWNLOAD_URL} | grep "302" > /dev/null; then
+  # Try to download the archive if it exists. GitHub responds to existing
+  # release asset requests with a 302 redirect to the actual download; check
+  # the HTTP status code explicitly rather than grepping the headers for
+  # "302", which can false-positive on substrings of unrelated header values.
+  if [[ "$(curl -s -o /dev/null -w '%{http_code}' -I ${AVAGO_DOWNLOAD_URL})" == "302" ]]; then
     echo "${AVAGO_DOWNLOAD_URL} found"
     echo "downloading to ${AVAGO_DOWNLOAD_PATH}"
     if ! curl -f -L ${AVAGO_DOWNLOAD_URL} -o ${AVAGO_DOWNLOAD_PATH}; then
