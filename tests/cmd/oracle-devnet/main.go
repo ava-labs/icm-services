@@ -156,8 +156,8 @@ func main() {
 	// ── start Avalanche network ──────────────────────────────────────────────
 	chainConfig := utils.DefaultChainConfig()
 	chainConfig["oracle"] = map[string]any{
-		"endpoint":            solanarpcEndpoint,
-		"sidecar-config-path": solanarpcConfigPath,
+		"endpoint":        solanarpcEndpoint,
+		"allowed-sources": []string{"solana"},
 	}
 
 	l1Specs := []network.L1Spec{{
