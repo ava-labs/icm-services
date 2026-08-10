@@ -9,9 +9,9 @@
 //	AVALANCHEGO_PATH=/abs/path/to/avalanchego ./scripts/e2e_test.sh --components oracle
 //
 // Requirements to run:
-//   - AVALANCHEGO_PATH pointing to a binary built from the
-//     boraplusplus/sidecar-verifier branch (oracle handler ID 4 support);
-//     e2e_test.sh skips the release avalanchego install when it is set
+//   - AVALANCHEGO_PATH pointing to a binary built with oracle sidecar support
+//     (merged upstream via the oracle handler wiring); e2e_test.sh skips the
+//     release avalanchego install when it is set
 //   - RUN_E2E=true environment variable (set automatically by e2e_test.sh)
 //
 // Optional — enables Solana verification via the solanarpc sidecar:
@@ -165,20 +165,14 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		log.Info("solanarpc sidecar is ready", zap.String("addr", solanarpcEndpoint))
 	}
 
-	// The validator's OracleSidecarConfig requires a sidecar-config-path from
-	// which it derives its allowed-source-type set. For the mock L1 the sidecar
-	// binary is a stub that ignores config, so we write a synthetic file just
-	// for the validator to read. For the solanarpc L1 we point the validator
-	// at the same file the real sidecar already consumes — that's the single
-	// source of truth this design is built around.
-	mockValidatorSidecarConfigPath := filepath.Join(repoRoot, "build/oracle-mock-validator-config.json")
-	Expect(os.WriteFile(mockValidatorSidecarConfigPath, []byte(`{"verifiers": {"solana": {}}}`), 0o600)).Should(BeNil())
-
-	// Build chain configs pointing each L1 at its sidecar.
+	// Build chain configs pointing each L1 at its sidecar. As of the upstream
+	// oracle handler wiring, validators declare their allowed source types
+	// directly via oracle.allowed-sources instead of reading the sidecar's
+	// config file.
 	mockChainConfig := utils.DefaultChainConfig()
 	mockChainConfig["oracle"] = map[string]any{
-		"endpoint":            mockEndpoint,
-		"sidecar-config-path": mockValidatorSidecarConfigPath,
+		"endpoint":        mockEndpoint,
+		"allowed-sources": []string{"solana"},
 	}
 
 	l1Specs := []network.L1Spec{
@@ -193,8 +187,8 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	if solanaRPCURL != "" {
 		solanarpcChainConfig := utils.DefaultChainConfig()
 		solanarpcChainConfig["oracle"] = map[string]any{
-			"endpoint":            fmt.Sprintf("127.0.0.1:%d", solanarpcSidecarPort),
-			"sidecar-config-path": solanarpcConfigPath,
+			"endpoint":        fmt.Sprintf("127.0.0.1:%d", solanarpcSidecarPort),
+			"allowed-sources": []string{"solana"},
 		}
 		l1Specs = append(l1Specs, network.L1Spec{
 			Name:        "solanarpc",
