@@ -201,6 +201,29 @@ contract OracleAdapter is IAdapter, Ownable {
     }
 
     // -------------------------------------------------------------------------
+    // Views
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Returns true if the (sourceType, sourceAddress) pair is on the allowlist.
+     */
+    function isAllowed(
+        string calldata sourceType,
+        string calldata sourceAddress
+    ) external view returns (bool) {
+        return _allowedSources[sourceType][sourceAddress];
+    }
+
+    /**
+     * @notice Returns true if the global oracle nonce has already been delivered.
+     */
+    function isProcessed(
+        uint256 nonce
+    ) external view returns (bool) {
+        return _processedMessages[nonce];
+    }
+
+    // -------------------------------------------------------------------------
     // Encoding helpers
     // -------------------------------------------------------------------------
     // These pure helpers are the canonical definition of the oracle wire formats.
@@ -270,28 +293,5 @@ contract OracleAdapter is IAdapter, Ownable {
         bytes memory payload
     ) public pure returns (bytes memory) {
         return abi.encode(sourceType, sourceAddress, sourceBlockHeight, nonce, payload);
-    }
-
-    // -------------------------------------------------------------------------
-    // Views
-    // -------------------------------------------------------------------------
-
-    /**
-     * @notice Returns true if the (sourceType, sourceAddress) pair is on the allowlist.
-     */
-    function isAllowed(
-        string calldata sourceType,
-        string calldata sourceAddress
-    ) external view returns (bool) {
-        return _allowedSources[sourceType][sourceAddress];
-    }
-
-    /**
-     * @notice Returns true if the global oracle nonce has already been delivered.
-     */
-    function isProcessed(
-        uint256 nonce
-    ) external view returns (bool) {
-        return _processedMessages[nonce];
     }
 }
