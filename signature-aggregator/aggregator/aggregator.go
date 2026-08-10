@@ -110,9 +110,12 @@ func NewSignatureAggregator(
 }
 
 // OracleHandlerID is the p2p handler ID for oracle attestation requests.
-// Mirrors validator.SignatureRequestHandlerID in
-// github.com/ava-labs/avalanchego/network/p2p/oracle/validator.
-const OracleHandlerID uint64 = 4
+// Mirrors p2p.OracleSignatureRequestHandlerID in
+// github.com/ava-labs/avalanchego/network/p2p/handler.go.
+// TODO: reference the constant directly once the avalanchego version in go.mod
+// includes the oracle handler wiring; until then this must be kept in sync
+// with the upstream iota block by hand.
+const OracleHandlerID uint64 = 8
 
 func (s *SignatureAggregator) connectToQuorumValidators(
 	ctx context.Context,
