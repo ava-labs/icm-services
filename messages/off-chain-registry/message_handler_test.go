@@ -39,7 +39,7 @@ var (
 
 // sourceMessage returns the source chain message that [unsignedMessage] was provided to the
 // relayer as, in the protocol agnostic form the message handler factory receives.
-func sourceMessage(unsignedMessage *warp.UnsignedMessage) *types.SourceMessage {
+func toSourceMessage(unsignedMessage *warp.UnsignedMessage) *types.SourceMessage {
 	return &types.SourceMessage{
 		SourceBlockchainID: unsignedMessage.SourceChainID,
 		ProtocolAddress:    messageProtocolAddress,
