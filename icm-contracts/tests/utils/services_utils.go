@@ -210,6 +210,9 @@ func CreateDefaultRelayerConfig(
 		AllowPrivateIPs:                 true,
 		InitialConnectionTimeoutSeconds: 300,
 		MaxConcurrentMessages:           250,
+		// Refresh tracked validators frequently so tests that restarted nodes
+		// re-establish connections quickly.
+		ValidatorRefreshPeriodSeconds: 5,
 	}
 }
 
@@ -243,6 +246,9 @@ func CreateDefaultSignatureAggregatorConfig(
 		SignatureCacheSize: (1024 * 1024),
 		AllowPrivateIPs:    true,
 		MaxPChainLookback:  -1,
+		// Refresh tracked validators frequently so tests that restarted nodes
+		// re-establish connections quickly.
+		ValidatorRefreshPeriodSeconds: 5,
 	}
 }
 

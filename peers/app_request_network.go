@@ -69,6 +69,9 @@ type AppRequestNetwork struct {
 	lruSubnets         *linked.Hashmap[ids.ID, interface{}]
 	trackedSubnetsLock *sync.RWMutex
 
+	// validatorRefreshPeriod is the interval between tracked-validator refreshes
+	validatorRefreshPeriod time.Duration
+
 	validatorManager *ValidatorManager
 }
 
@@ -219,15 +222,21 @@ func NewNetwork(
 
 	validatorManager := NewValidatorManager(cfg, logger, metrics, int(validatorSetsCacheSize), manager)
 
+	validatorRefreshPeriod := cfg.GetValidatorRefreshPeriod()
+	if validatorRefreshPeriod <= 0 {
+		validatorRefreshPeriod = ValidatorRefreshPeriod
+	}
+
 	arNetwork := &AppRequestNetwork{
-		network:            testNetwork,
-		handler:            handler,
-		logger:             logger,
-		metrics:            metrics,
-		trackedSubnets:     localTrackedSubnets,
-		trackedSubnetsLock: trackedSubnetsLock,
-		lruSubnets:         lruSubnets,
-		validatorManager:   validatorManager,
+		network:                testNetwork,
+		handler:                handler,
+		logger:                 logger,
+		metrics:                metrics,
+		trackedSubnets:         localTrackedSubnets,
+		trackedSubnetsLock:     trackedSubnetsLock,
+		lruSubnets:             lruSubnets,
+		validatorRefreshPeriod: validatorRefreshPeriod,
+		validatorManager:       validatorManager,
 	}
 
 	go arNetwork.startUpdateTrackedValidators(ctx)
@@ -269,9 +278,10 @@ func (n *AppRequestNetwork) TrackSubnet(ctx context.Context, subnetID ids.ID) {
 }
 
 func (n *AppRequestNetwork) startUpdateTrackedValidators(ctx context.Context) {
-	// Fetch validators immediately when called, and refresh every ValidatorRefreshPeriod
-	ticker := time.NewTicker(ValidatorRefreshPeriod)
+	// Fetch validators immediately when called, then refresh every validatorRefreshPeriod
 	n.updateTrackedValidatorSets(ctx)
+	ticker := time.NewTicker(ValidatorRefreshPeriod)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -282,6 +292,13 @@ func (n *AppRequestNetwork) startUpdateTrackedValidators(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// getAllSubnets returns the tracked subnets plus the primary network.
+func (n *AppRequestNetwork) getAllSubnets() []ids.ID {
+	n.trackedSubnetsLock.RLock()
+	defer n.trackedSubnetsLock.RUnlock()
+	return append(n.trackedSubnets.List(), constants.PrimaryNetworkID)
 }
 
 func (n *AppRequestNetwork) StartCacheValidatorSets(ctx context.Context) {
@@ -296,12 +313,8 @@ func (n *AppRequestNetwork) updateTrackedValidatorSets(ctx context.Context) {
 		return
 	}
 
-	n.trackedSubnetsLock.RLock()
-	subnets := append(n.trackedSubnets.List(), constants.PrimaryNetworkID)
-	n.trackedSubnetsLock.RUnlock()
-
 	// Update the validators for each tracked subnet for the most recent height
-	for _, subnetID := range subnets {
+	for _, subnetID := range n.getAllSubnets() {
 		vdrs, ok := allValidators[subnetID]
 		if !ok {
 			n.logger.Warn("No validator set found for tracked subnet",
@@ -429,38 +442,44 @@ func (n *AppRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID
 // GetNetworkHealthFunc returns a health check function for the network
 func (n *AppRequestNetwork) GetNetworkHealthFunc(subnetIDs []ids.ID) func(context.Context) error {
 	return func(ctx context.Context) error {
-		allValidatorSets, err := n.validatorManager.GetAllValidatorSets(
-			ctx,
-			uint64(pchainapi.ProposedHeight),
-		)
-		if err != nil {
-			n.logger.Error("Failed to get all validator sets", zap.Error(err))
-			return fmt.Errorf("failed to get all validator sets: %w", err)
-		}
-
-		for _, subnetID := range subnetIDs {
-			vdrs, ok := allValidatorSets[subnetID]
-			if !ok {
-				n.logger.Error("No validators for subnet", zap.Stringer("subnetID", subnetID))
-				return fmt.Errorf("no validators for subnet %s", subnetID)
-			}
-			canonicalSet := n.buildCanonicalValidators(vdrs)
-
-			if !utils.CheckStakeWeightExceedsThreshold(
-				big.NewInt(0).SetUint64(canonicalSet.ConnectedWeight),
-				canonicalSet.ValidatorSet.TotalWeight,
-				warp.WarpDefaultQuorumNumerator,
-			) {
-				n.logger.Error("Not enough connected stake for subnet",
-					zap.Stringer("subnetID", subnetID),
-					zap.Uint64("connectedWeight", canonicalSet.ConnectedWeight),
-					zap.Uint64("totalWeight", canonicalSet.ValidatorSet.TotalWeight),
-				)
-				return ErrNotEnoughConnectedStake
-			}
-		}
-		return nil
+		return n.checkConnectedStake(ctx, subnetIDs)
 	}
+}
+
+// checkConnectedStake returns an error if the network is not connected to a default quorum of
+// stake for any of the given subnets, at the proposed P-Chain height.
+func (n *AppRequestNetwork) checkConnectedStake(ctx context.Context, subnetIDs []ids.ID) error {
+	allValidatorSets, err := n.validatorManager.GetAllValidatorSets(
+		ctx,
+		uint64(pchainapi.ProposedHeight),
+	)
+	if err != nil {
+		n.logger.Error("Failed to get all validator sets", zap.Error(err))
+		return fmt.Errorf("failed to get all validator sets: %w", err)
+	}
+
+	for _, subnetID := range subnetIDs {
+		vdrs, ok := allValidatorSets[subnetID]
+		if !ok {
+			n.logger.Error("No validators for subnet", zap.Stringer("subnetID", subnetID))
+			return fmt.Errorf("no validators for subnet %s", subnetID)
+		}
+		canonicalSet := n.buildCanonicalValidators(vdrs)
+
+		if !utils.CheckStakeWeightExceedsThreshold(
+			big.NewInt(0).SetUint64(canonicalSet.ConnectedWeight),
+			canonicalSet.ValidatorSet.TotalWeight,
+			warp.WarpDefaultQuorumNumerator,
+		) {
+			n.logger.Error("Not enough connected stake for subnet",
+				zap.Stringer("subnetID", subnetID),
+				zap.Uint64("connectedWeight", canonicalSet.ConnectedWeight),
+				zap.Uint64("totalWeight", canonicalSet.ValidatorSet.TotalWeight),
+			)
+			return ErrNotEnoughConnectedStake
+		}
+	}
+	return nil
 }
 
 // Non-receiver util functions

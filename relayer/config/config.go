@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/params"
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
@@ -41,6 +42,7 @@ const (
 	defaultSignatureCacheSize              = uint64(1024 * 1024)
 	defaultInitialConnectionTimeoutSeconds = uint64(300)
 	defaultMaxConcurrentMessages           = uint64(250)
+	defaultValidatorRefreshPeriodSeconds   = uint64(60)
 )
 
 var defaultLogLevel = logging.Info.String()
@@ -79,6 +81,7 @@ type Config struct {
 	TLSKeyPath                      string                    `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
 	InitialConnectionTimeoutSeconds uint64                    `mapstructure:"initial-connection-timeout-seconds" json:"initial-connection-timeout-seconds,omitempty"` // nolint:lll
 	MaxConcurrentMessages           uint64                    `mapstructure:"max-concurrent-messages" json:"max-concurrent-messages,omitempty"`                       //nolint:lll
+	ValidatorRefreshPeriodSeconds   uint64                    `mapstructure:"validator-refresh-period-seconds" json:"validator-refresh-period-seconds,omitempty"`     //nolint:lll
 	ExternalEVMDestinations         []*ExternalEVMDestination `mapstructure:"external-evm-destinations" json:"external-evm-destinations,omitempty"`                   //nolint:lll
 
 	// convenience field to fetch a blockchain's subnet ID
@@ -358,6 +361,10 @@ func (c *Config) LogSafeField() zap.Field {
 
 func (c *Config) GetMaxPChainLookback() int64 {
 	return -1 // No max lookback for relayer
+}
+
+func (c *Config) GetValidatorRefreshPeriod() time.Duration {
+	return time.Duration(c.ValidatorRefreshPeriodSeconds) * time.Second
 }
 
 func (c *Config) sanitizeForLogging() map[string]any {

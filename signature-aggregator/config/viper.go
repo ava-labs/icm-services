@@ -62,6 +62,10 @@ func SetDefaultConfigValues(v *viper.Viper) {
 		MaxPChainLookbackKey,
 		DefaultMaxPChainLookback,
 	)
+	v.SetDefault(
+		ValidatorRefreshPeriodSecondsKey,
+		DefaultValidatorRefreshPeriodSeconds,
+	)
 }
 
 // BuildConfig constructs the signature aggregator config using Viper.
