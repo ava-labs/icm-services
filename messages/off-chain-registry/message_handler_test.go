@@ -176,7 +176,7 @@ func TestShouldSendMessage(t *testing.T) {
 			}
 			handler, err := factory.NewMessageHandler(
 				logging.NoLog{},
-				sourceMessage(unsignedMessage),
+				toSourceMessage(unsignedMessage),
 				mockClient,
 				nil,
 				mocks.NewMockMetrics(ctrl),
