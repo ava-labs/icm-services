@@ -16,8 +16,8 @@ import (
 	logging "github.com/ava-labs/avalanchego/utils/logging"
 	messages "github.com/ava-labs/icm-services/messages"
 	aggregator "github.com/ava-labs/icm-services/signature-aggregator/aggregator"
-	types "github.com/ava-labs/icm-services/types"
 	vms "github.com/ava-labs/icm-services/vms"
+	evm "github.com/ava-labs/icm-services/vms/evm"
 	common "github.com/ava-labs/libevm/common"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -47,10 +47,10 @@ func (m *MockMessageHandlerFactory) EXPECT() *MockMessageHandlerFactoryMockRecor
 }
 
 // EventFilter mocks base method.
-func (m *MockMessageHandlerFactory) EventFilter() types.EventFilter {
+func (m *MockMessageHandlerFactory) EventFilter() evm.EventFilter {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EventFilter")
-	ret0, _ := ret[0].(types.EventFilter)
+	ret0, _ := ret[0].(evm.EventFilter)
 	return ret0
 }
 
@@ -61,7 +61,7 @@ func (mr *MockMessageHandlerFactoryMockRecorder) EventFilter() *gomock.Call {
 }
 
 // GetMessageRoutingInfo mocks base method.
-func (m *MockMessageHandlerFactory) GetMessageRoutingInfo(message *types.SourceMessage) (messages.MessageRoutingInfo, error) {
+func (m *MockMessageHandlerFactory) GetMessageRoutingInfo(message *messages.SourceMessage) (messages.MessageRoutingInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetMessageRoutingInfo", message)
 	ret0, _ := ret[0].(messages.MessageRoutingInfo)
@@ -76,7 +76,7 @@ func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(message a
 }
 
 // NewMessageHandler mocks base method.
-func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, message *types.SourceMessage, destinationClient vms.DestinationClient, signatureAggregator *aggregator.SignatureAggregator, metrics messages.Metrics, signingSubnetID ids.ID, quorumNumerator uint64) (messages.MessageHandler, error) {
+func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, message *messages.SourceMessage, destinationClient vms.DestinationClient, signatureAggregator *aggregator.SignatureAggregator, metrics messages.Metrics, signingSubnetID ids.ID, quorumNumerator uint64) (messages.MessageHandler, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "NewMessageHandler", logger, message, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator)
 	ret0, _ := ret[0].(messages.MessageHandler)

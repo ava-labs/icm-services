@@ -16,7 +16,6 @@ import (
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
-	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	"go.uber.org/zap"
 )
@@ -124,7 +123,7 @@ func signatureAggregationAPIHandler(
 			writeJSONError(logger, w, http.StatusBadRequest, msg)
 			return
 		}
-		message, err := types.UnpackWarpMessage(decodedMessage)
+		message, err := utils.UnpackWarpMessage(decodedMessage)
 		if err != nil {
 			msg := "Error unpacking warp message"
 			logger.Warn(msg, zap.Error(err))
