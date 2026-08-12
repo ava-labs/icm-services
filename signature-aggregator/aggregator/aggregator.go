@@ -109,6 +109,14 @@ func NewSignatureAggregator(
 	return &sa, nil
 }
 
+// OracleHandlerID is the p2p handler ID for oracle attestation requests.
+// Mirrors p2p.OracleSignatureRequestHandlerID in
+// github.com/ava-labs/avalanchego/network/p2p/handler.go.
+// TODO: reference the constant directly once the avalanchego version in go.mod
+// includes the oracle handler wiring; until then this must be kept in sync
+// with the upstream iota block by hand.
+const OracleHandlerID uint64 = 8
+
 func (s *SignatureAggregator) connectToQuorumValidators(
 	ctx context.Context,
 	logger logging.Logger,
@@ -606,6 +614,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 	inputSigningSubnet ids.ID,
 	requiredQuorumPercentage uint64,
 	pchainHeight uint64,
+	handlerID uint64,
 ) (*avalancheWarp.Message, error) {
 	log = log.With(
 		zap.Uint64("requiredQuorumPercentage", requiredQuorumPercentage),
@@ -693,7 +702,7 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		))
 	}
 
-	reqBytes, err := s.marshalRequest(unsignedMessage, justification)
+	reqBytes, err := s.marshalRequest(unsignedMessage, justification, handlerID)
 	if err != nil {
 		msg := "Failed to marshal request bytes"
 		log.Error(msg, zap.Error(err))
@@ -1025,6 +1034,7 @@ func (s *SignatureAggregator) aggregateSignatures(
 func (s *SignatureAggregator) marshalRequest(
 	unsignedMessage *avalancheWarp.UnsignedMessage,
 	justification []byte,
+	handlerID uint64,
 ) ([]byte, error) {
 	messageBytes, err := proto.Marshal(
 		&sdk.SignatureRequest{
@@ -1036,7 +1046,7 @@ func (s *SignatureAggregator) marshalRequest(
 		return nil, err
 	}
 	return networkP2P.PrefixMessage(
-		networkP2P.ProtocolPrefix(networkP2P.SignatureRequestHandlerID),
+		networkP2P.ProtocolPrefix(handlerID),
 		messageBytes,
 	), nil
 }

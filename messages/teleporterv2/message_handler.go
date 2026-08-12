@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -241,6 +242,7 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 		m.sourceSubnetID,
 		m.quorumNumerator,
 		commitment.PChainHeight,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	m.metrics.IncFetchSignatureAppRequestCount()
 	if err != nil {

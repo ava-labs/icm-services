@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -358,6 +359,7 @@ func (s *MerkleSetUpdater) performUpdate(
 		signingChain,
 		defaultQuorumPercentage,
 		onChainPChainHeight,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)

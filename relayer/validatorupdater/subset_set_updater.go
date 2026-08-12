@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
+	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -292,6 +293,7 @@ func (s *SubsetSetUpdater) performFullSetUpdate(
 		signingSubnet,
 		defaultQuorumPercentage,
 		onChainPChainHeight,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)

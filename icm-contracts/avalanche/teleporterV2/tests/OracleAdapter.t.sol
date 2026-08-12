@@ -14,6 +14,7 @@ import {
 } from "@common/ITeleporterMessengerV2.sol";
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
+import {Ownable} from "@openzeppelin/contracts@5.1.0/access/Ownable.sol";
 
 contract OracleAdapterTest is Test {
     address private constant _WARP_PRECOMPILE = 0x0200000000000000000000000000000000000005;
@@ -136,18 +137,22 @@ contract OracleAdapterTest is Test {
 
     function testSetAllowedSourceOnlyOwner() public {
         vm.prank(address(0xBEEF));
-        vm.expectRevert(OracleAdapter.Unauthorized.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xBEEF))
+        );
         _adapter.setAllowedSource("solana", "addr", true);
     }
 
     function testTransferOwnershipOnlyOwner() public {
         vm.prank(address(0xBEEF));
-        vm.expectRevert(OracleAdapter.Unauthorized.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xBEEF))
+        );
         _adapter.transferOwnership(address(0xDEAD));
     }
 
     function testTransferOwnershipZeroAddress() public {
-        vm.expectRevert(OracleAdapter.ZeroAddress.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         _adapter.transferOwnership(address(0));
     }
 

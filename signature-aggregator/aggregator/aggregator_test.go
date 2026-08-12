@@ -11,6 +11,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/message"
+	networkP2P "github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/proto/pb/sdk"
 	avagocommon "github.com/ava-labs/avalanchego/snow/engine/common"
@@ -152,7 +153,7 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	).AnyTimes()
 	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return([]peer.Info{}).AnyTimes()
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, pchainapi.ProposedHeight, networkP2P.SignatureRequestHandlerID)
 	require.ErrorContains(t, err, "no signatures")
 }
 
@@ -180,7 +181,7 @@ func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	).AnyTimes()
 	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return([]peer.Info{}).AnyTimes()
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, ids.Empty, 80, pchainapi.ProposedHeight, networkP2P.SignatureRequestHandlerID)
 	require.ErrorContains(
 		t,
 		err,
@@ -272,7 +273,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	).Times(1)
 
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, subnetID, 80, pchainapi.ProposedHeight)
+		t.Context(), logging.NoLog{}, msg, nil, subnetID, 80, pchainapi.ProposedHeight, networkP2P.SignatureRequestHandlerID)
 	require.ErrorIs(
 		t,
 		err,
@@ -428,6 +429,7 @@ func TestCreateSignedMessageSucceeds(t *testing.T) {
 				subnetID,
 				tc.requiredQuorumPercentage,
 				pchainapi.ProposedHeight, // Use ProposedHeight for current validators
+				networkP2P.SignatureRequestHandlerID,
 			)
 			require.NoError(t, err)
 
@@ -666,6 +668,7 @@ func TestCreateSignedMessagePrioritizesHighWeightValidators(t *testing.T) {
 		t.Context(), logging.NoLog{}, msg, nil, subnetID,
 		51, // 51% required quorum.
 		pchainapi.ProposedHeight,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	require.NoError(t, err)
 	require.NoError(t, signedMessage.Signature.Verify(
@@ -759,6 +762,7 @@ func TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent(t *testin
 		t.Context(), logging.NoLog{}, msg, nil, subnetID,
 		40, // 40% required quorum.
 		pchainapi.ProposedHeight,
+		networkP2P.SignatureRequestHandlerID,
 	)
 	require.NoError(t, err)
 	require.NoError(t, signedMessage.Signature.Verify(

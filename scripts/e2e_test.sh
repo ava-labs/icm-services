@@ -106,13 +106,26 @@ source "$REPO_PATH"/scripts/versions.sh
 
 BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 
-# Install the avalanchego binary and subnet-evm plugin
-rm -rf $BASEDIR/avalanchego
-BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
+# Install the avalanchego binary and subnet-evm plugin, unless the caller
+# provided a custom build via AVALANCHEGO_PATH (e.g. the oracle suite requires
+# a build with sidecar-verifier support).
+#
+# TODO(oracle): once oracle sidecar support is merged into avalanchego and the
+# pinned AVALANCHEGO_VERSION picks it up, drop this conditional and install
+# unconditionally so the oracle suite runs against the default install like
+# every other suite:
+#   AVALANCHEGO_VERSION=<version-with-sidecar-support> "${REPO_PATH}/scripts/install_avalanchego_release.sh"
+if [ -z "${AVALANCHEGO_PATH:-}" ]; then
+    rm -rf $BASEDIR/avalanchego
+    BASEDIR=$BASEDIR AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego "${REPO_PATH}/scripts/install_avalanchego_release.sh"
 
-export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
-export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
-export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
+    export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
+    export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
+    export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
+else
+    echo "Using avalanchego from environment: $AVALANCHEGO_PATH"
+    export AVAGO_PLUGIN_DIR=${AVAGO_PLUGIN_DIR:-"$(dirname "$AVALANCHEGO_PATH")/plugins"}
+fi
 export PATH=$PATH:$HOME/.foundry/bin
 
 # Install signature-aggregator binary
