@@ -17,6 +17,7 @@ import (
 	"github.com/ava-labs/avalanchego/genesis"
 	subnetEvmTestUtils "github.com/ava-labs/avalanchego/graft/subnet-evm/tests/utils"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/upgrade"
@@ -167,6 +168,7 @@ func NewLocalAvalancheNetwork(
 	numPrimaryNetworkValidators int,
 	extraNodeCount int, // for use by tests, eg to add new L1 validators
 	flagVars *e2e.FlagVars,
+	testCtx ...tests.TestContext,
 ) *LocalAvalancheNetwork {
 	// There must be at least one primary network validator per L1
 	Expect(numPrimaryNetworkValidators).Should(BeNumerically(">=", len(l1Specs)))
@@ -256,7 +258,12 @@ func NewLocalAvalancheNetwork(
 	defaultFlags.SetDefaults(tmpnet.DefaultE2EFlags())
 	network.DefaultFlags = defaultFlags
 
-	tc := e2e.NewTestContext()
+	var tc tests.TestContext
+	if len(testCtx) > 0 {
+		tc = testCtx[0]
+	} else {
+		tc = e2e.NewTestContext()
+	}
 	env := e2e.NewTestEnvironment(tc, flagVars, network)
 	Expect(env).ShouldNot(BeNil())
 
