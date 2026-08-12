@@ -40,7 +40,6 @@ import (
 
 const (
 	InboundMessageChannelSize = 1000
-	ValidatorRefreshPeriod    = time.Minute * 1
 	ValidatorPreFetchPeriod   = time.Second * 5
 	NumBootstrapNodes         = 5
 	// Maximum number of subnets that can be tracked by the app request network
@@ -222,11 +221,6 @@ func NewNetwork(
 
 	validatorManager := NewValidatorManager(cfg, logger, metrics, int(validatorSetsCacheSize), manager)
 
-	validatorRefreshPeriod := cfg.GetValidatorRefreshPeriod()
-	if validatorRefreshPeriod <= 0 {
-		validatorRefreshPeriod = ValidatorRefreshPeriod
-	}
-
 	arNetwork := &AppRequestNetwork{
 		network:                testNetwork,
 		handler:                handler,
@@ -235,7 +229,7 @@ func NewNetwork(
 		trackedSubnets:         localTrackedSubnets,
 		trackedSubnetsLock:     trackedSubnetsLock,
 		lruSubnets:             lruSubnets,
-		validatorRefreshPeriod: validatorRefreshPeriod,
+		validatorRefreshPeriod: cfg.GetValidatorRefreshPeriod(),
 		validatorManager:       validatorManager,
 	}
 
@@ -280,7 +274,7 @@ func (n *AppRequestNetwork) TrackSubnet(ctx context.Context, subnetID ids.ID) {
 func (n *AppRequestNetwork) startUpdateTrackedValidators(ctx context.Context) {
 	// Fetch validators immediately when called, then refresh every validatorRefreshPeriod
 	n.updateTrackedValidatorSets(ctx)
-	ticker := time.NewTicker(ValidatorRefreshPeriod)
+	ticker := time.NewTicker(n.validatorRefreshPeriod)
 	defer ticker.Stop()
 
 	for {
