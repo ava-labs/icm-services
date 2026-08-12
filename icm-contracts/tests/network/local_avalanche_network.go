@@ -17,6 +17,7 @@ import (
 	"github.com/ava-labs/avalanchego/genesis"
 	subnetEvmTestUtils "github.com/ava-labs/avalanchego/graft/subnet-evm/tests/utils"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/upgrade"
@@ -80,6 +81,9 @@ type L1Spec struct {
 	TeleporterDeployedBytecode   string
 	TeleporterDeployerAddress    common.Address
 	RequirePrimaryNetworkSigners bool
+	// ChainConfig overrides the default EVM VM chain config for this L1.
+	// If nil, utils.DefaultChainConfig() is used.
+	ChainConfig map[string]any
 }
 
 func newTmpnetNetwork(
@@ -98,6 +102,10 @@ func newTmpnetNetwork(
 		// but will remain a primary network validator
 		initialL1Bootstrapper := bootstrapNodes[i] // One bootstrap node per L1
 
+		chainConfig := l1Spec.ChainConfig
+		if chainConfig == nil {
+			chainConfig = utils.DefaultChainConfig()
+		}
 		l1 := subnetEvmTestUtils.NewTmpnetSubnet(
 			l1Spec.Name,
 			[]byte(utils.InstantiateGenesisTemplate(
@@ -108,7 +116,7 @@ func newTmpnetNetwork(
 				l1Spec.TeleporterDeployerAddress,
 				l1Spec.RequirePrimaryNetworkSigners,
 			)),
-			maps.Clone(utils.DefaultChainConfig()),
+			maps.Clone(chainConfig),
 			initialL1Bootstrapper,
 		)
 		l1.OwningKey = globalFundedKey
@@ -160,6 +168,7 @@ func NewLocalAvalancheNetwork(
 	numPrimaryNetworkValidators int,
 	extraNodeCount int, // for use by tests, eg to add new L1 validators
 	flagVars *e2e.FlagVars,
+	testCtx ...tests.TestContext,
 ) *LocalAvalancheNetwork {
 	// There must be at least one primary network validator per L1
 	Expect(numPrimaryNetworkValidators).Should(BeNumerically(">=", len(l1Specs)))
@@ -249,7 +258,12 @@ func NewLocalAvalancheNetwork(
 	defaultFlags.SetDefaults(tmpnet.DefaultE2EFlags())
 	network.DefaultFlags = defaultFlags
 
-	tc := e2e.NewTestContext()
+	var tc tests.TestContext
+	if len(testCtx) > 0 {
+		tc = testCtx[0]
+	} else {
+		tc = e2e.NewTestContext()
+	}
 	env := e2e.NewTestEnvironment(tc, flagVars, network)
 	Expect(env).ShouldNot(BeNil())
 
