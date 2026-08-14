@@ -277,6 +277,10 @@ func waitForNodesToReconnect(
 		}
 		infoClient := info.NewClient(tmpnetNode.URI)
 		for {
+			if cctx.Err() != nil {
+				Expect(false).Should(BeTrue(), "timed out waiting for restarted nodes to reconnect")
+			}
+
 			peers, err := infoClient.Peers(cctx, nil)
 			if err != nil {
 				log.Error("Failed to get peers from node",
