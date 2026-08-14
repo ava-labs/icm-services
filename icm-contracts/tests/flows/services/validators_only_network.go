@@ -303,7 +303,6 @@ func waitForNodesToReconnect(
 			log.Info("Waiting for restarted node to reconnect to its peers",
 				zap.Stringer("nodeID", tmpnetNode.NodeID),
 				zap.Any("missingPeers", missing),
-				zap.Error(err),
 			)
 			select {
 			case <-cctx.Done():
