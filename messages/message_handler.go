@@ -9,28 +9,28 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
-	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 )
 
 // MessageManager is specific to each message protocol. The interface handles choosing which messages to send
 // for each message protocol, and performs the sending to the destination chain.
-// Message protocols are only handed the protocol agnostic [types.SourceMessage] observed on the source
+// Message protocols are only handed the protocol agnostic [SourceMessage] observed on the source
 // chain, so that any contract that originates messages, e.g. an IAdapter implementation, can be relayed
 // without the relayer having to know how that protocol encodes or proves its messages.
 type MessageHandlerFactory interface {
 	// EventFilter returns the source chain log filter matching the messages sent by this message
-	// protocol. The data of the logs it matches is the [types.SourceMessage] payload passed back
+	// protocol. The data of the logs it matches is the [SourceMessage] payload passed back
 	// to this factory. The filter should constrain the emitting contract address, not just the
 	// topics, so that other contracts emitting the same event signature are not matched.
 	// Returns an empty filter for protocols whose messages are not read from source chain logs.
-	EventFilter() types.EventFilter
+	EventFilter() evm.EventFilter
 
 	// Create a message handler to relay the message
 	NewMessageHandler(
 		logger logging.Logger,
-		message *types.SourceMessage,
+		message *SourceMessage,
 		destinationClient vms.DestinationClient,
 		signatureAggregator *aggregator.SignatureAggregator,
 		metrics Metrics,
@@ -39,7 +39,7 @@ type MessageHandlerFactory interface {
 	) (MessageHandler, error)
 
 	// Return info for routing the message to the correct relayer
-	GetMessageRoutingInfo(message *types.SourceMessage) (MessageRoutingInfo, error)
+	GetMessageRoutingInfo(message *SourceMessage) (MessageRoutingInfo, error)
 }
 
 // Struct containing fields for routing messages to the correct relayer.
