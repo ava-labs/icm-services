@@ -14,7 +14,6 @@ import (
 	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
-	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
@@ -107,7 +106,7 @@ type Subscriber struct {
 	rpcClient        SubscriberRPCClient
 	blockchainID     ids.ID
 	isPrimaryNetwork bool
-	topics           [][]common.Hash
+	filter           relayerTypes.EventFilter
 	headers          chan *relayerTypes.BlockHead
 	icmBlocks        chan *relayerTypes.ICMBlockInfo
 	sub              ethereum.Subscription
@@ -125,12 +124,12 @@ func NewSubscriber(
 	wsClient SubscriberWSClient,
 	rpcClient SubscriberRPCClient,
 	errChan chan error,
-	topics [][]common.Hash,
+	filter relayerTypes.EventFilter,
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID:     blockchainID,
 		isPrimaryNetwork: isPrimaryNetwork,
-		topics:           topics,
+		filter:           filter,
 		wsClient:         wsClient,
 		rpcClient:        rpcClient,
 		logger:           logger,
@@ -213,7 +212,7 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 		return fmt.Errorf("failed to get head for block %d: %w", height, err)
 	}
 
-	block, err := relayerTypes.NewICMBlockInfo(s.logger, head, s.rpcClient, s.topics, s.isPrimaryNetwork)
+	block, err := relayerTypes.NewICMBlockInfo(s.logger, head, s.rpcClient, s.filter, s.isPrimaryNetwork)
 	if err != nil {
 		return err
 	}
@@ -259,7 +258,8 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock uint6
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
 		logs, err = s.rpcClient.FilterLogs(cctx, ethereum.FilterQuery{
-			Topics:    s.topics,
+			Addresses: s.filter.Addresses,
+			Topics:    s.filter.Topics,
 			FromBlock: new(big.Int).SetUint64(fromBlock),
 			ToBlock:   new(big.Int).SetUint64(toBlock),
 		})
@@ -332,7 +332,7 @@ func (s *Subscriber) blocksInfoFromHeaders() {
 		// block. On SAE chains such a node returns empty logs without an
 		// error, which would cause this block's messages to be silently
 		// skipped.
-		block, err := relayerTypes.NewICMBlockInfo(s.logger, head, s.wsClient, s.topics, s.isPrimaryNetwork)
+		block, err := relayerTypes.NewICMBlockInfo(s.logger, head, s.wsClient, s.filter, s.isPrimaryNetwork)
 		if err != nil {
 			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return

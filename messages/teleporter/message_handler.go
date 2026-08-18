@@ -89,7 +89,7 @@ func NewMessageHandlerFactory(
 }
 
 // EventFilter returns the filter matching the Warp messages sent by the Teleporter contract.
-func (f *factory) EventFilter() [][]common.Hash {
+func (f *factory) EventFilter() relayerTypes.EventFilter {
 	return relayerTypes.WarpEventFilter(f.protocolAddress)
 }
 
