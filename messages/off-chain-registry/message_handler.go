@@ -18,6 +18,7 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
+	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
@@ -68,15 +69,26 @@ func NewMessageHandlerFactory(
 	}, nil
 }
 
+// EventFilter returns nil. Off-chain registry messages are not emitted on a source chain, they are
+// provided to the relayer out of band.
+func (f *factory) EventFilter() [][]common.Hash {
+	return nil
+}
+
 func (f *factory) NewMessageHandler(
 	logger logging.Logger,
-	unsignedMessage *warp.UnsignedMessage,
+	message *types.SourceMessage,
 	destinationClient vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
 	metrics messages.Metrics,
 	signingSubnetID ids.ID,
 	quorumNumerator uint64,
 ) (messages.MessageHandler, error) {
+	unsignedMessage, err := types.UnpackWarpMessage(message.Payload)
+	if err != nil {
+		logger.Error("Failed to parse off-chain registry message.", zap.Error(err))
+		return nil, fmt.Errorf("failed parsing unsigned warp message: %w", err)
+	}
 	logFields := []zap.Field{
 		zap.Stringer("warpMessageID", unsignedMessage.ID()),
 		zap.Stringer("destinationBlockchainID", destinationClient.DestinationBlockchainID()),
@@ -94,8 +106,12 @@ func (f *factory) NewMessageHandler(
 }
 
 func (f *factory) GetMessageRoutingInfo(
-	unsignedMessage *warp.UnsignedMessage,
+	message *types.SourceMessage,
 ) (messages.MessageRoutingInfo, error) {
+	unsignedMessage, err := types.UnpackWarpMessage(message.Payload)
+	if err != nil {
+		return messages.MessageRoutingInfo{}, fmt.Errorf("failed parsing unsigned warp message: %w", err)
+	}
 	return messages.MessageRoutingInfo{
 			SourceChainID:      unsignedMessage.SourceChainID,
 			SenderAddress:      OffChainRegistrySourceAddress, // Off-chain registry messages have a zero address as the sender

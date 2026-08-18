@@ -22,6 +22,7 @@ import (
 	pbDecider "github.com/ava-labs/icm-services/proto/pb/decider"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
+	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
@@ -87,20 +88,26 @@ func NewMessageHandlerFactory(
 	}, nil
 }
 
+// EventFilter returns the filter matching the Warp messages sent by the Teleporter contract.
+func (f *factory) EventFilter() [][]common.Hash {
+	return relayerTypes.WarpEventFilter(f.protocolAddress)
+}
+
 func (f *factory) NewMessageHandler(
 	logger logging.Logger,
-	unsignedMessage *warp.UnsignedMessage,
+	message *relayerTypes.SourceMessage,
 	destinationClient vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
 	metrics messages.Metrics,
 	signingSubnetID ids.ID,
 	quorumNumerator uint64,
 ) (messages.MessageHandler, error) {
-	teleporterMessage, err := parseTeleporterMessage(unsignedMessage)
+	unsignedMessage, teleporterMessage, err := parseMessage(message)
 	if err != nil {
 		logger.Error(
 			"Failed to parse teleporter message.",
-			zap.Stringer("warpMessageID", unsignedMessage.ID()),
+			zap.Stringer("sourceTxID", message.SourceTxID),
+			zap.Error(err),
 		)
 		return nil, err
 	}
@@ -142,8 +149,10 @@ func (f *factory) NewMessageHandler(
 	}, nil
 }
 
-func (f *factory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (messages.MessageRoutingInfo, error) {
-	teleporterMessage, err := parseTeleporterMessage(unsignedMessage)
+func (f *factory) GetMessageRoutingInfo(
+	message *relayerTypes.SourceMessage,
+) (messages.MessageRoutingInfo, error) {
+	unsignedMessage, teleporterMessage, err := parseMessage(message)
 	if err != nil {
 		return messages.MessageRoutingInfo{}, fmt.Errorf("failed to parse teleporter message: %w", err)
 	}
@@ -380,20 +389,27 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	return txHash, nil
 }
 
-func parseTeleporterMessage(
-	unsignedMessage *warp.UnsignedMessage,
-) (*teleportermessenger.TeleporterMessage, error) {
+// parseMessage decodes the Teleporter message that [message] was sent as. Teleporter sends its
+// messages through the Warp precompile, so the source message payload is the encoded unsigned
+// Warp message that carries the Teleporter message as its addressed payload.
+func parseMessage(
+	message *relayerTypes.SourceMessage,
+) (*warp.UnsignedMessage, *teleportermessenger.TeleporterMessage, error) {
+	unsignedMessage, err := relayerTypes.UnpackWarpMessage(message.Payload)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed parsing unsigned warp message: %w", err)
+	}
 	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing addressed payload: %w", err)
+		return nil, nil, fmt.Errorf("failed parsing addressed payload: %w", err)
 	}
 	var teleporterMessage teleportermessenger.TeleporterMessage
 	err = teleporterMessage.Unpack(addressedPayload.Payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed unpacking teleporter message: %w", err)
+		return nil, nil, fmt.Errorf("failed unpacking teleporter message: %w", err)
 	}
 
-	return &teleporterMessage, nil
+	return unsignedMessage, &teleporterMessage, nil
 }
 
 // getTeleporterMessenger returns the Teleporter messenger instance for the destination chain.

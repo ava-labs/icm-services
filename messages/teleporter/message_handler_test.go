@@ -15,6 +15,7 @@ import (
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
+	relayerTypes "github.com/ava-labs/icm-services/types"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	ethereum "github.com/ava-labs/libevm"
@@ -44,6 +45,16 @@ var (
 	validRelayerAddress           = common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567")
 	validTeleporterMessage        teleportermessenger.TeleporterMessage
 )
+
+// sourceMessage returns the source chain message that [unsignedMessage] was sent as by the
+// Teleporter contract, as the relayer would pass it to the message handler factory.
+func sourceMessage(unsignedMessage *warp.UnsignedMessage) *relayerTypes.SourceMessage {
+	return &relayerTypes.SourceMessage{
+		SourceBlockchainID: unsignedMessage.SourceChainID,
+		ProtocolAddress:    messageProtocolAddress,
+		Payload:            unsignedMessage.Bytes(),
+	}
+}
 
 func init() {
 	var err error
@@ -222,7 +233,7 @@ func TestShouldSendMessage(t *testing.T) {
 			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
 			handler, err := factory.NewMessageHandler(
 				logging.NoLog{},
-				test.warpUnsignedMessage,
+				sourceMessage(test.warpUnsignedMessage),
 				mockClient,
 				nil,
 				mocks.NewMockMetrics(ctrl),
@@ -325,7 +336,7 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
 	handler, err := factory.NewMessageHandler(
 		logging.NoLog{},
-		warpUnsignedMessage,
+		sourceMessage(warpUnsignedMessage),
 		mockClient,
 		nil,
 		mocks.NewMockMetrics(ctrl),
