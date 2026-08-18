@@ -35,6 +35,49 @@ type ICMBlockInfo struct {
 	IsCatchup   bool
 }
 
+// SourceMessage describes a message sent from a source blockchain that the relayer may deliver to
+// its destination chain. It is agnostic to the message protocol that sent the message: each
+// protocol's MessageHandlerFactory is responsible for decoding [Payload] into that protocol's own
+// message representation.
+// SourceMessage instances are either derived from the logs of a block, or from the message
+// information provided directly to the relayer API.
+type SourceMessage struct {
+	// SourceBlockchainID is the ID of the blockchain that the message was sent from.
+	SourceBlockchainID ids.ID
+	// ProtocolAddress is the address of the message protocol contract that sent the message. The
+	// message is relayed by the message handler registered for this address.
+	ProtocolAddress common.Address
+	// Payload is the message as encoded by the message protocol that sent it. Protocols that send
+	// their messages through the Warp precompile set this to the encoded unsigned Warp message.
+	// Protocols that emit their messages as contract events set it to the event data.
+	Payload []byte
+	// SourceTxID is the hash of the transaction that the message was emitted in. It is the zero
+	// hash for messages provided directly to the relayer API rather than read from a log.
+	SourceTxID common.Hash
+}
+
+// EventFilter selects the source chain logs that carry a message protocol's messages, following
+// the semantics of ethereum.FilterQuery: a log matches if it was emitted by one of [Addresses]
+// (any address, if empty) and its topics match [Topics].
+// Filters should constrain the emitting address whenever possible: topics can be forged by any
+// contract, so a filter that only constrains topics can match logs that were not emitted by the
+// message protocol.
+type EventFilter struct {
+	// Addresses are the contract addresses that emit the protocol's message logs. For protocols
+	// that send their messages through the Warp precompile, this is the precompile's address
+	// rather than the protocol's own.
+	Addresses []common.Address
+	// Topics constrain the topics of matching logs, in the format expected by
+	// ethereum.FilterQuery.Topics.
+	Topics [][]common.Hash
+}
+
+// IsEmpty reports whether the filter constrains neither the emitting address nor the log topics.
+// Message protocols whose messages are not read from source chain logs return an empty filter.
+func (f EventFilter) IsEmpty() bool {
+	return len(f.Addresses) == 0 && len(f.Topics) == 0
+}
+
 // BlockHead is the subset of a newHeads notification the relayer uses,
 // decoded leniently so it works across chain families. The node-reported hash
 // is kept verbatim: recomputing it client-side is not reliable for chains
@@ -64,48 +107,26 @@ type WarpMessageInfo struct {
 	UnsignedMessage *avalancheWarp.UnsignedMessage
 }
 
-// SourceMessage describes a message sent from a source blockchain that the relayer may deliver to
-// its destination chain. It is agnostic to the message protocol that sent the message: each
-// protocol's MessageHandlerFactory is responsible for decoding [Payload] into that protocol's own
-// message representation.
-// SourceMessage instances are either derived from the logs of a block, or from the message
-// information provided directly to the relayer API.
-type SourceMessage struct {
-	// SourceBlockchainID is the ID of the blockchain that the message was sent from.
-	SourceBlockchainID ids.ID
-	// ProtocolAddress is the address of the message protocol contract that sent the message. The
-	// message is relayed by the message handler registered for this address.
-	ProtocolAddress common.Address
-	// Payload is the message as encoded by the message protocol that sent it. Protocols that send
-	// their messages through the Warp precompile set this to the encoded unsigned Warp message.
-	// Protocols that emit their messages as contract events set it to the event data.
-	Payload []byte
-	// SourceTxID is the hash of the transaction that the message was emitted in. It is the zero
-	// hash for messages provided directly to the relayer API rather than read from a log.
-	SourceTxID common.Hash
-}
-
-// Extract Warp logs from the block, if they exist.
 func NewICMBlockInfo(
 	logger logging.Logger,
 	head *BlockHead,
 	ethClient ethereum.LogFilterer,
-	topics [][]common.Hash,
+	filter EventFilter,
 	isPrimaryNetwork bool,
 ) (*ICMBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
 	)
-	// Only fetch logs when the block's bloom filter indicates that one of the event
-	// topics we filter for (topics[0]) is present. A bloom match may be a false
-	// positive; the FilterLogs call below performs the precise filtering.
+	// Only fetch logs when the block's bloom filter indicates that the filter's emitting
+	// addresses and event topics are present. A bloom match may be a false positive; the
+	// FilterLogs call below performs the precise filtering.
 	//
 	// On the primary network (C-Chain) the header bloom filter cannot be relied on
 	// as a shortcut: it summarises a settled predecessor range rather than the
 	// block's own receipts, so the shortcut would silently miss events. Bypass the
 	// bloom check there and always fetch the logs.
-	if isPrimaryNetwork || bloomContainsAnyEventTopic(head.Bloom, topics) {
+	if isPrimaryNetwork || bloomMatchesFilter(head.Bloom, filter) {
 		// Query by hash: a node that doesn't know the block errors ("unknown
 		// block") and is retried below, whereas a by-number query would return
 		// empty logs with no error and the block would be silently skipped.
@@ -116,7 +137,8 @@ func NewICMBlockInfo(
 			cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 			defer cancel()
 			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
-				Topics:    topics,
+				Addresses: filter.Addresses,
+				Topics:    filter.Topics,
 				BlockHash: &blockHash,
 			})
 			return err
@@ -146,21 +168,38 @@ func NewICMBlockInfo(
 	}, nil
 }
 
-// bloomContainsAnyEventTopic reports whether the block's bloom filter indicates the presence of at
-// least one of the event-signature topics being filtered for (the first topic position, topics[0]).
-// If no event-signature topics are provided, it conservatively returns true so that logs are still
-// fetched. A positive result may be a false positive due to the probabilistic nature of bloom
-// filters; callers must perform precise filtering afterwards.
-func bloomContainsAnyEventTopic(bloom types.Bloom, topics [][]common.Hash) bool {
-	if len(topics) == 0 || len(topics[0]) == 0 {
-		return true
-	}
-	for _, eventTopic := range topics[0] {
-		if bloom.Test(eventTopic[:]) {
-			return true
+// bloomMatchesFilter reports whether the block's bloom filter indicates the presence of logs
+// matching [filter]: at least one of the filter's emitting addresses and at least one of its
+// event-signature topics (the first topic position, Topics[0]). Filter dimensions that are not
+// constrained are conservatively treated as matching so that logs are still fetched. A positive
+// result may be a false positive due to the probabilistic nature of bloom filters; callers must
+// perform precise filtering afterwards.
+func bloomMatchesFilter(bloom types.Bloom, filter EventFilter) bool {
+	if len(filter.Addresses) > 0 {
+		anyAddress := false
+		for _, address := range filter.Addresses {
+			if bloom.Test(address[:]) {
+				anyAddress = true
+				break
+			}
+		}
+		if !anyAddress {
+			return false
 		}
 	}
-	return false
+	if len(filter.Topics) > 0 && len(filter.Topics[0]) > 0 {
+		anyTopic := false
+		for _, eventTopic := range filter.Topics[0] {
+			if bloom.Test(eventTopic[:]) {
+				anyTopic = true
+				break
+			}
+		}
+		if !anyTopic {
+			return false
+		}
+	}
+	return true
 }
 
 // NewSourceMessage returns the message contained in [log], which was emitted on
@@ -195,12 +234,15 @@ func NewSourceMessageFromWarpLog(sourceBlockchainID ids.ID, log types.Log) (*Sou
 }
 
 // WarpEventFilter returns the source chain log filter matching the Warp messages sent by the
-// message protocol contract at [protocolAddress], in the format expected by
-// ethereum.FilterQuery.Topics.
-func WarpEventFilter(protocolAddress common.Address) [][]common.Hash {
-	return [][]common.Hash{
-		{WarpPrecompileLogFilter},
-		{common.BytesToHash(protocolAddress[:])},
+// message protocol contract at [protocolAddress]. Warp messages are emitted as SendWarpMessage
+// events by the Warp precompile, with the sending protocol's address as the first indexed topic.
+func WarpEventFilter(protocolAddress common.Address) EventFilter {
+	return EventFilter{
+		Addresses: []common.Address{warp.ContractAddress},
+		Topics: [][]common.Hash{
+			{WarpPrecompileLogFilter},
+			{common.BytesToHash(protocolAddress[:])},
+		},
 	}
 }
 

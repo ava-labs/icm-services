@@ -85,7 +85,7 @@ func NewMessageHandlerFactory(
 }
 
 // EventFilter returns the filter matching the Warp messages sent by the TeleporterV2 Warp adapter.
-func (f *factory) EventFilter() [][]common.Hash {
+func (f *factory) EventFilter() relayerTypes.EventFilter {
 	return relayerTypes.WarpEventFilter(f.protocolAddress)
 }
 

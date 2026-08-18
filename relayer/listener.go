@@ -112,7 +112,7 @@ func newListener(
 		)
 	}
 	eventFilter := messageHandlerFactory.EventFilter()
-	if len(eventFilter) == 0 {
+	if eventFilter.IsEmpty() {
 		return nil, fmt.Errorf(
 			"message protocol %s does not send messages on a source chain",
 			protocol.Type,

@@ -21,10 +21,11 @@ import (
 // without the relayer having to know how that protocol encodes or proves its messages.
 type MessageHandlerFactory interface {
 	// EventFilter returns the source chain log filter matching the messages sent by this message
-	// protocol, in the format expected by ethereum.FilterQuery.Topics. The data of the logs it
-	// matches is the [types.SourceMessage] payload passed back to this factory.
-	// Returns nil for protocols whose messages are not read from source chain logs.
-	EventFilter() [][]common.Hash
+	// protocol. The data of the logs it matches is the [types.SourceMessage] payload passed back
+	// to this factory. The filter should constrain the emitting contract address, not just the
+	// topics, so that other contracts emitting the same event signature are not matched.
+	// Returns an empty filter for protocols whose messages are not read from source chain logs.
+	EventFilter() types.EventFilter
 
 	// Create a message handler to relay the message
 	NewMessageHandler(
