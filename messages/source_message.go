@@ -61,6 +61,9 @@ func NewSourceMessage(
 // protocol that sent the message is the sender of the Warp message, which is indexed as the
 // second topic of the log.
 func NewSourceMessageFromWarpLog(sourceBlockchainID ids.ID, log types.Log) (*SourceMessage, error) {
+	if log.Address != warp.ContractAddress {
+		return nil, ErrInvalidLog
+	}
 	if len(log.Topics) != 3 {
 		return nil, ErrInvalidLog
 	}
