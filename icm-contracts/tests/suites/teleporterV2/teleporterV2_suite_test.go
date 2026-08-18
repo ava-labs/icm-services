@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	icttFlows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/ictt"
+	teleporterV2Flows "github.com/ava-labs/icm-services/icm-contracts/tests/flows/teleporterV2"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
-	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/common"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,10 +30,14 @@ const (
 	nativeTokenRemoteLabel = "NativeTokenRemote"
 	registrationLabel      = "Registration"
 
+	teleporterMessengerV2Label = "TeleporterMessengerV2"
+
 	teleporterRegistryAddressFile = "TeleporterRegistryAddress.json"
 )
 
 var (
+	log logging.Logger
+
 	localNetworkInstance *localnetwork.LocalAvalancheNetwork
 	teleporterInfo       utils.TeleporterTestInfo
 	e2eFlags             *e2e.FlagVars
@@ -54,6 +59,18 @@ func TestTeleporterV2(t *testing.T) {
 }
 
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
+	log = logging.NewLogger(
+		"teleporterV2",
+		logging.NewWrappedCore(
+			logging.Info,
+			os.Stdout,
+			logging.JSON.ConsoleEncoder(),
+		),
+	)
+
+	log.Info("Building all ICM service executables")
+	utils.BuildAllExecutables(ctx, log)
+
 	// Create the local network instance
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
@@ -88,7 +105,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			warpAdapterAddress := utils.DeployWarpAdapterContract(ctx, &l1, fundedKey)
 			teleporterContractAddress = utils.DeployTeleporterV2(ctx, &l1, warpAdapterAddress, fundedKey)
-			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, l1.BlockchainID)
+			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, warpAdapterAddress, l1.BlockchainID)
 			teleporterInfo.DeployTeleporterRegistry(ctx, &l1, fundedKey)
 		}
 
@@ -111,7 +128,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		Expect(err).Should(BeNil())
 
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, l1.BlockchainID)
+			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, common.Address{}, l1.BlockchainID)
 			teleporterInfo.SetTeleporterRegistry(
 				common.HexToAddress(registryAddresseses[l1.BlockchainID.Hex()]),
 				l1.BlockchainID,
@@ -126,6 +143,13 @@ var _ = ginkgo.AfterSuite(func() {
 })
 
 var _ = ginkgo.Describe("[ICTT Teleporter V2 integration tests]", func() {
+	// Teleporter V2 tests
+	ginkgo.It("Basic Relay",
+		ginkgo.Label(teleporterMessengerV2Label),
+		func(ctx context.Context) {
+			teleporterV2Flows.BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
+		})
+
 	// ICTT tests
 	ginkgo.It("Transfer an ERC20 token between two L1s",
 		ginkgo.Label(icttLabel, erc20TokenHomeLabel, erc20TokenRemoteLabel),
