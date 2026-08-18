@@ -13,9 +13,9 @@ import (
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
+	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
-	relayerTypes "github.com/ava-labs/icm-services/types"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	ethereum "github.com/ava-labs/libevm"
@@ -48,8 +48,8 @@ var (
 
 // sourceMessage returns the source chain message that [unsignedMessage] was sent as by the
 // Teleporter contract, as the relayer would pass it to the message handler factory.
-func sourceMessage(unsignedMessage *warp.UnsignedMessage) *relayerTypes.SourceMessage {
-	return &relayerTypes.SourceMessage{
+func sourceMessage(unsignedMessage *warp.UnsignedMessage) *messages.SourceMessage {
+	return &messages.SourceMessage{
 		SourceBlockchainID: unsignedMessage.SourceChainID,
 		ProtocolAddress:    messageProtocolAddress,
 		Payload:            unsignedMessage.Bytes(),

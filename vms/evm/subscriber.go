@@ -11,7 +11,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common/hexutil"
@@ -42,7 +41,7 @@ type SubscriberRPCClient interface {
 	// HeadByNumber returns the block head with its node-reported hash, or an
 	// error — ethereum.NotFound when the serving node does not have the block,
 	// which callers treat as retryable.
-	HeadByNumber(ctx context.Context, number *big.Int) (*relayerTypes.BlockHead, error)
+	HeadByNumber(ctx context.Context, number *big.Int) (*BlockHead, error)
 	ethereum.LogFilterer
 }
 
@@ -58,8 +57,8 @@ func NewRPCHeadClient(client *ethclient.Client) RPCHeadClient {
 	return RPCHeadClient{Client: client}
 }
 
-func (c RPCHeadClient) HeadByNumber(ctx context.Context, number *big.Int) (*relayerTypes.BlockHead, error) {
-	var head *relayerTypes.BlockHead
+func (c RPCHeadClient) HeadByNumber(ctx context.Context, number *big.Int) (*BlockHead, error) {
+	var head *BlockHead
 	err := c.Client.Client().CallContext(ctx, &head, "eth_getBlockByNumber", hexutil.EncodeBig(number), false)
 	if err == nil && head == nil {
 		err = ethereum.NotFound
@@ -68,7 +67,7 @@ func (c RPCHeadClient) HeadByNumber(ctx context.Context, number *big.Int) (*rela
 }
 
 type SubscriberWSClient interface {
-	SubscribeNewHeads(ctx context.Context, ch chan<- *relayerTypes.BlockHead) (ethereum.Subscription, error)
+	SubscribeNewHeads(ctx context.Context, ch chan<- *BlockHead) (ethereum.Subscription, error)
 	// Used to fetch logs for live blocks; see blocksInfoFromHeaders for why
 	// these fetches must use the WS connection.
 	ethereum.LogFilterer
@@ -96,7 +95,7 @@ func NewWSHeadClient(client *rpc.Client) WSHeadClient {
 
 func (w WSHeadClient) SubscribeNewHeads(
 	ctx context.Context,
-	ch chan<- *relayerTypes.BlockHead,
+	ch chan<- *BlockHead,
 ) (ethereum.Subscription, error) {
 	return w.client.EthSubscribe(ctx, ch, "newHeads")
 }
@@ -106,9 +105,9 @@ type Subscriber struct {
 	rpcClient        SubscriberRPCClient
 	blockchainID     ids.ID
 	isPrimaryNetwork bool
-	filter           relayerTypes.EventFilter
-	headers          chan *relayerTypes.BlockHead
-	icmBlocks        chan *relayerTypes.ICMBlockInfo
+	filter           EventFilter
+	headers          chan *BlockHead
+	icmBlocks        chan *ICMBlockInfo
 	sub              ethereum.Subscription
 
 	errChan chan error
@@ -124,7 +123,7 @@ func NewSubscriber(
 	wsClient SubscriberWSClient,
 	rpcClient SubscriberRPCClient,
 	errChan chan error,
-	filter relayerTypes.EventFilter,
+	filter EventFilter,
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID:     blockchainID,
@@ -133,8 +132,8 @@ func NewSubscriber(
 		wsClient:         wsClient,
 		rpcClient:        rpcClient,
 		logger:           logger,
-		icmBlocks:        make(chan *relayerTypes.ICMBlockInfo, maxClientSubscriptionBuffer),
-		headers:          make(chan *relayerTypes.BlockHead, maxClientSubscriptionBuffer),
+		icmBlocks:        make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
+		headers:          make(chan *BlockHead, maxClientSubscriptionBuffer),
 		errChan:          errChan,
 	}
 	go subscriber.blocksInfoFromHeaders()
@@ -190,7 +189,7 @@ func (s *Subscriber) ProcessFromHeight(startingHeight uint64, endingHeight uint6
 // the node-reported hash. A by-number range query over these blocks could be
 // served by a lagging node and silently omit them.
 func (s *Subscriber) processBlockStrict(height uint64) error {
-	var head *relayerTypes.BlockHead
+	var head *BlockHead
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
@@ -212,7 +211,7 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 		return fmt.Errorf("failed to get head for block %d: %w", height, err)
 	}
 
-	block, err := relayerTypes.NewICMBlockInfo(s.logger, head, s.rpcClient, s.filter, s.isPrimaryNetwork)
+	block, err := NewICMBlockInfo(s.logger, head, s.rpcClient, s.filter, s.isPrimaryNetwork)
 	if err != nil {
 		return err
 	}
@@ -243,7 +242,7 @@ func (s *Subscriber) processBlockRange(
 			logIndex++
 		}
 		// Blocks with no ICM messages also need to be explicitly processed.
-		s.icmBlocks <- &relayerTypes.ICMBlockInfo{
+		s.icmBlocks <- &ICMBlockInfo{
 			BlockNumber: i,
 			Logs:        blockLogs,
 			IsCatchup:   true,
@@ -321,7 +320,7 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	return nil
 }
 
-// blocksInfoFromHeaders listens to the header channel and converts the headers to [relayerTypes.ICMBlockInfo]
+// blocksInfoFromHeaders listens to the header channel and converts the headers to [ICMBlockInfo]
 // and writes them to the blocks channel consumed by the listener
 func (s *Subscriber) blocksInfoFromHeaders() {
 	for head := range s.headers {
@@ -332,7 +331,7 @@ func (s *Subscriber) blocksInfoFromHeaders() {
 		// block. On SAE chains such a node returns empty logs without an
 		// error, which would cause this block's messages to be silently
 		// skipped.
-		block, err := relayerTypes.NewICMBlockInfo(s.logger, head, s.wsClient, s.filter, s.isPrimaryNetwork)
+		block, err := NewICMBlockInfo(s.logger, head, s.wsClient, s.filter, s.isPrimaryNetwork)
 		if err != nil {
 			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
 			return
@@ -341,7 +340,7 @@ func (s *Subscriber) blocksInfoFromHeaders() {
 	}
 }
 
-func (s *Subscriber) ICMBlocks() <-chan *relayerTypes.ICMBlockInfo {
+func (s *Subscriber) ICMBlocks() <-chan *ICMBlockInfo {
 	return s.icmBlocks
 }
 

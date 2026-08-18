@@ -22,9 +22,9 @@ import (
 	pbDecider "github.com/ava-labs/icm-services/proto/pb/decider"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
-	relayerTypes "github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -89,13 +89,13 @@ func NewMessageHandlerFactory(
 }
 
 // EventFilter returns the filter matching the Warp messages sent by the Teleporter contract.
-func (f *factory) EventFilter() relayerTypes.EventFilter {
-	return relayerTypes.WarpEventFilter(f.protocolAddress)
+func (f *factory) EventFilter() evm.EventFilter {
+	return messages.WarpEventFilter(f.protocolAddress)
 }
 
 func (f *factory) NewMessageHandler(
 	logger logging.Logger,
-	message *relayerTypes.SourceMessage,
+	message *messages.SourceMessage,
 	destinationClient vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
 	metrics messages.Metrics,
@@ -150,7 +150,7 @@ func (f *factory) NewMessageHandler(
 }
 
 func (f *factory) GetMessageRoutingInfo(
-	message *relayerTypes.SourceMessage,
+	message *messages.SourceMessage,
 ) (messages.MessageRoutingInfo, error) {
 	unsignedMessage, teleporterMessage, err := parseMessage(message)
 	if err != nil {
@@ -393,9 +393,9 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 // messages through the Warp precompile, so the source message payload is the encoded unsigned
 // Warp message that carries the Teleporter message as its addressed payload.
 func parseMessage(
-	message *relayerTypes.SourceMessage,
+	message *messages.SourceMessage,
 ) (*warp.UnsignedMessage, *teleportermessenger.TeleporterMessage, error) {
-	unsignedMessage, err := relayerTypes.UnpackWarpMessage(message.Payload)
+	unsignedMessage, err := utils.UnpackWarpMessage(message.Payload)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed parsing unsigned warp message: %w", err)
 	}

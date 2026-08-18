@@ -13,9 +13,9 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
+	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
-	"github.com/ava-labs/icm-services/types"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	"github.com/ava-labs/libevm/common"
@@ -39,8 +39,8 @@ var (
 
 // sourceMessage returns the source chain message that [unsignedMessage] was provided to the
 // relayer as, in the protocol agnostic form the message handler factory receives.
-func toSourceMessage(unsignedMessage *warp.UnsignedMessage) *types.SourceMessage {
-	return &types.SourceMessage{
+func toSourceMessage(unsignedMessage *warp.UnsignedMessage) *messages.SourceMessage {
+	return &messages.SourceMessage{
 		SourceBlockchainID: unsignedMessage.SourceChainID,
 		ProtocolAddress:    messageProtocolAddress,
 		Payload:            unsignedMessage.Bytes(),

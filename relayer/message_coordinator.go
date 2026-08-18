@@ -14,8 +14,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
-	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/icm-services/vms/evm"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/ethclient"
@@ -52,7 +52,7 @@ func NewMessageCoordinator(
 // The MessageHandler and ApplicationRelayer are decoupled to support batch workflows in which a single
 // ApplicationRelayer processes multiple messages (using their corresponding MessageHandlers) in a single shot.
 func (mc *MessageCoordinator) getAppRelayerMessageHandler(
-	message *types.SourceMessage,
+	message *messages.SourceMessage,
 ) (
 	*ApplicationRelayer,
 	messages.MessageHandler,
@@ -189,7 +189,7 @@ func (mc *MessageCoordinator) getApplicationRelayer(
 	return nil
 }
 
-func (mc *MessageCoordinator) ProcessMessage(message *types.SourceMessage) (common.Hash, error) {
+func (mc *MessageCoordinator) ProcessMessage(message *messages.SourceMessage) (common.Hash, error) {
 	appRelayer, handler, err := mc.getAppRelayerMessageHandler(message)
 	if err != nil {
 		mc.logger.Error(
@@ -239,7 +239,7 @@ func (mc *MessageCoordinator) ProcessMessageID(
 // The logs of [icmBlockInfo] are expected to match the event filter of the message protocol at
 // [protocolAddress], since that is what the subscriber that produced them filtered on.
 func (mc *MessageCoordinator) ProcessBlock(
-	icmBlockInfo *types.ICMBlockInfo,
+	icmBlockInfo *evm.ICMBlockInfo,
 	blockchainID ids.ID,
 	protocolAddress common.Address,
 	errChan chan error,
@@ -254,7 +254,7 @@ func (mc *MessageCoordinator) ProcessBlock(
 	// Register each message in the block with the appropriate application relayer
 	messageHandlers := make(map[common.Hash][]messages.MessageHandler)
 	for _, log := range icmBlockInfo.Logs {
-		message := types.NewSourceMessage(blockchainID, protocolAddress, log)
+		message := messages.NewSourceMessage(blockchainID, protocolAddress, log)
 		appRelayer, handler, err := mc.getAppRelayerMessageHandler(message)
 		if err != nil {
 			mc.logger.Error(
@@ -309,11 +309,11 @@ func FetchWarpMessage(
 	blockchainID ids.ID,
 	warpID ids.ID,
 	blockNum *big.Int,
-) (*types.SourceMessage, error) {
+) (*messages.SourceMessage, error) {
 	fetchLogsCtx, fetchLogsCtxCancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 	defer fetchLogsCtxCancel()
 	logs, err := ethClient.FilterLogs(fetchLogsCtx, ethereum.FilterQuery{
-		Topics:    [][]common.Hash{{types.WarpPrecompileLogFilter}, nil, {common.Hash(warpID)}},
+		Topics:    [][]common.Hash{{messages.WarpPrecompileLogFilter}, nil, {common.Hash(warpID)}},
 		Addresses: []common.Address{warp.ContractAddress},
 		FromBlock: blockNum,
 		ToBlock:   blockNum,
@@ -325,5 +325,5 @@ func FetchWarpMessage(
 		return nil, fmt.Errorf("found more than 1 log: %d", len(logs))
 	}
 
-	return types.NewSourceMessageFromWarpLog(blockchainID, logs[0])
+	return messages.NewSourceMessageFromWarpLog(blockchainID, logs[0])
 }
