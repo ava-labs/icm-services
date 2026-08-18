@@ -64,6 +64,7 @@ func SetDefaultConfigValues(v *viper.Viper) {
 	)
 	v.SetDefault(InitialConnectionTimeoutSecondsKey, defaultInitialConnectionTimeoutSeconds)
 	v.SetDefault(MaxConcurrentMessagesKey, defaultMaxConcurrentMessages)
+	v.SetDefault(ValidatorRefreshPeriodSecondsKey, defaultValidatorRefreshPeriodSeconds)
 }
 
 // BuildConfig constructs the relayer config using Viper.

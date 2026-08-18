@@ -24,4 +24,5 @@ const (
 	SignatureCacheSizeKey              = "signature-cache-size"
 	InitialConnectionTimeoutSecondsKey = "initial-connection-timeout-seconds"
 	MaxConcurrentMessagesKey           = "max-concurrent-messages"
+	ValidatorRefreshPeriodSecondsKey   = "validator-refresh-period-seconds"
 )
