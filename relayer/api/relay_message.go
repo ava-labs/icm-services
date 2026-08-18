@@ -70,16 +70,19 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 		}
 		address := common.HexToAddress(req.SourceAddress)
 
-		warpMessageInfo := &types.WarpMessageInfo{
-			SourceAddress:   address,
-			UnsignedMessage: unsignedMessage,
+		// The message protocol at [address] parses the payload itself, so pass along the
+		// unsigned message bytes as provided in the request.
+		sourceMessage := &types.SourceMessage{
+			SourceBlockchainID: unsignedMessage.SourceChainID,
+			ProtocolAddress:    address,
+			Payload:            req.UnsignedMessageBytes,
 		}
 		logger.Info(
 			"Processing manual warp message",
 			zap.Stringer("sourceAddress", address),
 			zap.Stringer("messageID", unsignedMessage.ID()),
 		)
-		txHash, err := messageCoordinator.ProcessWarpMessage(warpMessageInfo)
+		txHash, err := messageCoordinator.ProcessMessage(sourceMessage)
 		if err != nil {
 			logger.Error("Error processing message", zap.Error(err))
 			http.Error(w, "error processing message: "+err.Error(), http.StatusInternalServerError)

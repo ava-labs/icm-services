@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
+	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
@@ -61,6 +62,27 @@ type WarpMessageInfo struct {
 	SourceAddress   common.Address
 	SourceTxID      common.Hash
 	UnsignedMessage *avalancheWarp.UnsignedMessage
+}
+
+// SourceMessage describes a message sent from a source blockchain that the relayer may deliver to
+// its destination chain. It is agnostic to the message protocol that sent the message: each
+// protocol's MessageHandlerFactory is responsible for decoding [Payload] into that protocol's own
+// message representation.
+// SourceMessage instances are either derived from the logs of a block, or from the message
+// information provided directly to the relayer API.
+type SourceMessage struct {
+	// SourceBlockchainID is the ID of the blockchain that the message was sent from.
+	SourceBlockchainID ids.ID
+	// ProtocolAddress is the address of the message protocol contract that sent the message. The
+	// message is relayed by the message handler registered for this address.
+	ProtocolAddress common.Address
+	// Payload is the message as encoded by the message protocol that sent it. Protocols that send
+	// their messages through the Warp precompile set this to the encoded unsigned Warp message.
+	// Protocols that emit their messages as contract events set it to the event data.
+	Payload []byte
+	// SourceTxID is the hash of the transaction that the message was emitted in. It is the zero
+	// hash for messages provided directly to the relayer API rather than read from a log.
+	SourceTxID common.Hash
 }
 
 // Extract Warp logs from the block, if they exist.
@@ -141,24 +163,45 @@ func bloomContainsAnyEventTopic(bloom types.Bloom, topics [][]common.Hash) bool 
 	return false
 }
 
-// Extract the Warp message information from the raw log
-func NewWarpMessageInfo(log types.Log) (*WarpMessageInfo, error) {
+// NewSourceMessage returns the message contained in [log], which was emitted on
+// [sourceBlockchainID] by the message protocol deployed at [protocolAddress].
+// The log data is the message protocol's encoding of the message, so it is passed through
+// unparsed for the message protocol's handler to decode.
+func NewSourceMessage(
+	sourceBlockchainID ids.ID,
+	protocolAddress common.Address,
+	log types.Log,
+) *SourceMessage {
+	return &SourceMessage{
+		SourceBlockchainID: sourceBlockchainID,
+		ProtocolAddress:    protocolAddress,
+		Payload:            log.Data,
+		SourceTxID:         log.TxHash,
+	}
+}
+
+// NewSourceMessageFromWarpLog returns the message contained in [log], which must be a
+// SendWarpMessage event emitted by the Warp precompile on [sourceBlockchainID]. The message
+// protocol that sent the message is the sender of the Warp message, which is indexed as the
+// second topic of the log.
+func NewSourceMessageFromWarpLog(sourceBlockchainID ids.ID, log types.Log) (*SourceMessage, error) {
 	if len(log.Topics) != 3 {
 		return nil, ErrInvalidLog
 	}
 	if log.Topics[0] != WarpPrecompileLogFilter {
 		return nil, ErrInvalidLog
 	}
-	unsignedMsg, err := UnpackWarpMessage(log.Data)
-	if err != nil {
-		return nil, err
-	}
+	return NewSourceMessage(sourceBlockchainID, common.BytesToAddress(log.Topics[1][:]), log), nil
+}
 
-	return &WarpMessageInfo{
-		SourceAddress:   common.BytesToAddress(log.Topics[1][:]),
-		SourceTxID:      log.TxHash,
-		UnsignedMessage: unsignedMsg,
-	}, nil
+// WarpEventFilter returns the source chain log filter matching the Warp messages sent by the
+// message protocol contract at [protocolAddress], in the format expected by
+// ethereum.FilterQuery.Topics.
+func WarpEventFilter(protocolAddress common.Address) [][]common.Hash {
+	return [][]common.Hash{
+		{WarpPrecompileLogFilter},
+		{common.BytesToHash(protocolAddress[:])},
+	}
 }
 
 func UnpackWarpMessage(unsignedMsgBytes []byte) (*avalancheWarp.UnsignedMessage, error) {

@@ -15,6 +15,7 @@ import (
 	teleporterregistry "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/registry/TeleporterRegistry"
 	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/types"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	"github.com/ava-labs/libevm/common"
@@ -35,6 +36,16 @@ var (
 	destinationBlockchainIDString = "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD"
 	destinationBlockchainID       ids.ID
 )
+
+// sourceMessage returns the source chain message that [unsignedMessage] was provided to the
+// relayer as, in the protocol agnostic form the message handler factory receives.
+func sourceMessage(unsignedMessage *warp.UnsignedMessage) *types.SourceMessage {
+	return &types.SourceMessage{
+		SourceBlockchainID: unsignedMessage.SourceChainID,
+		ProtocolAddress:    messageProtocolAddress,
+		Payload:            unsignedMessage.Bytes(),
+	}
+}
 
 func init() {
 	var err error
@@ -165,7 +176,7 @@ func TestShouldSendMessage(t *testing.T) {
 			}
 			handler, err := factory.NewMessageHandler(
 				logging.NoLog{},
-				unsignedMessage,
+				sourceMessage(unsignedMessage),
 				mockClient,
 				nil,
 				mocks.NewMockMetrics(ctrl),
