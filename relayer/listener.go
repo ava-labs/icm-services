@@ -118,7 +118,7 @@ func newListener(
 			protocol.Type,
 		)
 	}
-	
+
 	// Dial the WS endpoint as a raw RPC client so newHeads notifications can
 	// be decoded with the node-reported block hash preserved.
 	wsRPCClient, err := utils.DialWithConfig(
