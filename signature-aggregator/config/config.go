@@ -6,6 +6,7 @@ package config
 import (
 	"crypto/tls"
 	"fmt"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -18,8 +19,9 @@ const (
 	defaultAPIPort     = uint16(8080)
 	defaultMetricsPort = uint16(8081)
 
-	DefaultSignatureCacheSize = uint64(1024 * 1024)
-	DefaultMaxPChainLookback  = int64(1000)
+	DefaultSignatureCacheSize            = uint64(1024 * 1024)
+	DefaultMaxPChainLookback             = int64(1000)
+	DefaultValidatorRefreshPeriodSeconds = uint64(60)
 )
 
 var defaultLogLevel = logging.Info.String()
@@ -32,18 +34,19 @@ signature-aggregator --help                                  Display signature-a
 `
 
 type Config struct {
-	LogLevel             string                `mapstructure:"log-level" json:"log-level"`
-	PChainAPI            *basecfg.APIConfig    `mapstructure:"p-chain-api" json:"p-chain-api"`
-	InfoAPI              *basecfg.APIConfig    `mapstructure:"info-api" json:"info-api"`
-	APIPort              uint16                `mapstructure:"api-port" json:"api-port"`
-	MetricsPort          uint16                `mapstructure:"metrics-port" json:"metrics-port"`
-	SignatureCacheSize   uint64                `mapstructure:"signature-cache-size" json:"signature-cache-size"`
-	AllowPrivateIPs      bool                  `mapstructure:"allow-private-ips" json:"allow-private-ips"`
-	TrackedSubnetIDs     []string              `mapstructure:"tracked-subnet-ids" json:"tracked-subnet-ids"`
-	TLSCertPath          string                `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"`
-	TLSKeyPath           string                `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
-	ManuallyTrackedPeers []*basecfg.PeerConfig `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"`
-	MaxPChainLookback    int64                 `mapstructure:"max-p-chain-lookback" json:"max-p-chain-lookback"`
+	LogLevel                      string                `mapstructure:"log-level" json:"log-level"`
+	PChainAPI                     *basecfg.APIConfig    `mapstructure:"p-chain-api" json:"p-chain-api"`
+	InfoAPI                       *basecfg.APIConfig    `mapstructure:"info-api" json:"info-api"`
+	APIPort                       uint16                `mapstructure:"api-port" json:"api-port"`
+	MetricsPort                   uint16                `mapstructure:"metrics-port" json:"metrics-port"`
+	SignatureCacheSize            uint64                `mapstructure:"signature-cache-size" json:"signature-cache-size"`
+	AllowPrivateIPs               bool                  `mapstructure:"allow-private-ips" json:"allow-private-ips"`
+	TrackedSubnetIDs              []string              `mapstructure:"tracked-subnet-ids" json:"tracked-subnet-ids"`
+	TLSCertPath                   string                `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"`
+	TLSKeyPath                    string                `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
+	ManuallyTrackedPeers          []*basecfg.PeerConfig `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"` //nolint:lll
+	MaxPChainLookback             int64                 `mapstructure:"max-p-chain-lookback" json:"max-p-chain-lookback"`
+	ValidatorRefreshPeriodSeconds uint64                `mapstructure:"validator-refresh-period-seconds" json:"validator-refresh-period-seconds,omitempty"` //nolint:lll
 
 	// convenience fields
 	trackedSubnets set.Set[ids.ID]
@@ -105,4 +108,8 @@ func (c *Config) GetTLSCert() *tls.Certificate {
 
 func (c *Config) GetMaxPChainLookback() int64 {
 	return c.MaxPChainLookback
+}
+
+func (c *Config) GetValidatorRefreshPeriod() time.Duration {
+	return time.Duration(c.ValidatorRefreshPeriodSeconds) * time.Second
 }

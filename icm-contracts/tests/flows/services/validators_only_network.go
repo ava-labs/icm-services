@@ -14,6 +14,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/staking"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -102,7 +103,7 @@ func ValidatorsOnlyNetwork(
 
 	// Wait for signature-aggregator to start up
 	log.Info("Waiting for the signature-aggregator to start up")
-	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
+	startupCtx, startupCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer startupCancel()
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
@@ -159,6 +160,12 @@ func ValidatorsOnlyNetwork(
 			Expect(err).Should(BeNil())
 		}
 	}
+
+	// The signature aggregator's readiness health check requires a quorum of l1B stake to be
+	// connected, and with one of the equal-weight validators intentionally underfunded the margin
+	// is a single node. Wait for the restarted validators to re-establish their p2p connections
+	// before starting the aggregator so its initial dials don't race the restarts.
+	waitForNodesToReconnect(ctx, log, network, l1BNodes)
 
 	// End setup step
 
@@ -228,7 +235,7 @@ func ValidatorsOnlyNetwork(
 
 	// Wait for signature-aggregator to start up
 	log.Info("Waiting for the signature-aggregator to start up")
-	startupCtx, startupCancel = context.WithTimeout(ctx, 15*time.Second)
+	startupCtx, startupCancel = context.WithTimeout(ctx, 60*time.Second)
 	defer startupCancel()
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
@@ -247,11 +254,68 @@ func ValidatorsOnlyNetwork(
 
 	// Wait for signature-aggregator to start up
 	log.Info("Waiting for the signature-aggregator to start up")
-	startupCtx, startupCancel = context.WithTimeout(ctx, 15*time.Second)
+	startupCtx, startupCancel = context.WithTimeout(ctx, 60*time.Second)
 	defer startupCancel()
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
 	sendRequestToAPI(true)
+}
+
+// waitForNodesToReconnect blocks until every node in [nodeIDs] reports every other node in
+// [nodeIDs] as a connected peer, or fails the test after a timeout.
+func waitForNodesToReconnect(
+	ctx context.Context,
+	log logging.Logger,
+	network *network.LocalAvalancheNetwork,
+	nodeIDs set.Set[ids.NodeID],
+) {
+	cctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	for _, tmpnetNode := range network.Nodes {
+		if !nodeIDs.Contains(tmpnetNode.NodeID) {
+			continue
+		}
+		infoClient := info.NewClient(tmpnetNode.URI)
+		for {
+			if cctx.Err() != nil {
+				Expect(false).Should(BeTrue(), "timed out waiting for restarted nodes to reconnect")
+			}
+
+			peers, err := infoClient.Peers(cctx, nil)
+			if err != nil {
+				log.Error("Failed to get peers from node",
+					zap.Stringer("nodeID", tmpnetNode.NodeID),
+					zap.Error(err),
+				)
+				continue
+			}
+
+			connected := set.NewSet[ids.NodeID](len(peers))
+			for _, peer := range peers {
+				connected.Add(peer.ID)
+			}
+			var missing []ids.NodeID
+			for _, want := range nodeIDs.List() {
+				if want != tmpnetNode.NodeID && !connected.Contains(want) {
+					missing = append(missing, want)
+				}
+			}
+			if len(missing) == 0 {
+				break
+			}
+
+			log.Info("Waiting for restarted node to reconnect to its peers",
+				zap.Stringer("nodeID", tmpnetNode.NodeID),
+				zap.Any("missingPeers", missing),
+			)
+			select {
+			case <-cctx.Done():
+				Expect(false).Should(BeTrue(), "timed out waiting for restarted nodes to reconnect")
+			case <-time.After(time.Second):
+			}
+		}
+	}
+	log.Info("Restarted nodes reconnected to their peers")
 }
 
 func getUnderfundedNodeIndexes(

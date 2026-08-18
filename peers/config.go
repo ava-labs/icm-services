@@ -5,6 +5,7 @@ package peers
 
 import (
 	"crypto/tls"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/set"
@@ -19,4 +20,5 @@ type Config interface {
 	GetTrackedSubnets() set.Set[ids.ID]
 	GetTLSCert() *tls.Certificate
 	GetMaxPChainLookback() int64
+	GetValidatorRefreshPeriod() time.Duration
 }

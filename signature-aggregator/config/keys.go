@@ -13,9 +13,10 @@ const (
 	ConfigFileEnvKey = "CONFIG_FILE"
 
 	// Top-level configuration keys
-	LogLevelKey           = "log-level"
-	APIPortKey            = "api-port"
-	MetricsPortKey        = "metrics-port"
-	SignatureCacheSizeKey = "signature-cache-size"
-	MaxPChainLookbackKey  = "max-p-chain-lookback"
+	LogLevelKey                      = "log-level"
+	APIPortKey                       = "api-port"
+	MetricsPortKey                   = "metrics-port"
+	SignatureCacheSizeKey            = "signature-cache-size"
+	MaxPChainLookbackKey             = "max-p-chain-lookback"
+	ValidatorRefreshPeriodSecondsKey = "validator-refresh-period-seconds"
 )
