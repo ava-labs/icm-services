@@ -21,9 +21,10 @@ classDiagram
     Subscriber : Subscribe()
     Subscriber : Headers()
     DestinationClient : SendTx()
+    MessageHandlerFactory : EventFilter()
+    MessageHandlerFactory : GetMessageRoutingInfo() MessageRoutingInfo
     MessageHandlerFactory : NewMessageHandler() MessageHandler
-    MessageHandler : ShouldSendMessage()
-    MessageHandler : SendMessage()
+    MessageHandler : ProcessMessage()
     RelayerDatabase : Get()
     RelayerDatabase : Put()
     AppRequestNetwork : ConnectPeers()
