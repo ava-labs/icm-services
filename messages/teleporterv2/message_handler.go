@@ -25,6 +25,7 @@ import (
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/icm-services/vms/evm"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -83,20 +84,25 @@ func NewMessageHandlerFactory(
 	}, nil
 }
 
+// EventFilter returns the filter matching the Warp messages sent by the TeleporterV2 Warp adapter.
+func (f *factory) EventFilter() evm.EventFilter {
+	return messages.WarpEventFilter(f.protocolAddress)
+}
+
 func (f *factory) NewMessageHandler(
 	logger logging.Logger,
-	unsignedMessage *warp.UnsignedMessage,
+	message *messages.SourceMessage,
 	destinationClient vms.DestinationClient,
 	signatureAggregator *aggregator.SignatureAggregator,
 	metrics messages.Metrics,
 	signingSubnetID ids.ID,
 	quorumNumerator uint64,
 ) (messages.MessageHandler, error) {
-	teleporterMessage, err := parseTeleporterMessage(unsignedMessage)
+	unsignedMessage, teleporterMessage, err := parseMessage(message)
 	if err != nil {
 		logger.Error(
 			"Failed to parse teleporter v2 message.",
-			zap.Stringer("warpMessageID", unsignedMessage.ID()),
+			zap.Stringer("sourceTxID", message.SourceTxID),
 			zap.Error(err),
 		)
 		return nil, err
@@ -141,9 +147,9 @@ func (f *factory) NewMessageHandler(
 }
 
 func (f *factory) GetMessageRoutingInfo(
-	unsignedMessage *warp.UnsignedMessage,
+	message *messages.SourceMessage,
 ) (messages.MessageRoutingInfo, error) {
-	teleporterMessage, err := parseTeleporterMessage(unsignedMessage)
+	unsignedMessage, teleporterMessage, err := parseMessage(message)
 	if err != nil {
 		return messages.MessageRoutingInfo{}, fmt.Errorf("failed to parse teleporter v2 message: %w", err)
 	}
@@ -444,14 +450,25 @@ func (m *messageHandler) getTeleporterMessenger() (*teleportermessengerv2.Telepo
 	return messenger, nil
 }
 
-func parseTeleporterMessage(
-	unsignedMessage *warp.UnsignedMessage,
-) (*teleportermessengerv2.TeleporterMessageV2, error) {
+// parseMessage decodes the TeleporterV2 message that [message] was sent as. The Warp adapter sends
+// its messages through the Warp precompile, so the source message payload is the encoded unsigned
+// Warp message that carries the Teleporter message as its addressed payload.
+func parseMessage(
+	message *messages.SourceMessage,
+) (*warp.UnsignedMessage, *teleportermessengerv2.TeleporterMessageV2, error) {
+	unsignedMessage, err := utils.UnpackWarpMessage(message.Payload)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed parsing unsigned warp message: %w", err)
+	}
 	addressedPayload, err := warpPayload.ParseAddressedCall(unsignedMessage.Payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed parsing addressed payload: %w", err)
+		return nil, nil, fmt.Errorf("failed parsing addressed payload: %w", err)
 	}
-	return ParseTeleporterMessageV2(addressedPayload.Payload)
+	teleporterMessage, err := ParseTeleporterMessageV2(addressedPayload.Payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	return unsignedMessage, teleporterMessage, nil
 }
 
 func isAllowedRelayer(allowedRelayers []common.Address, eoa common.Address) bool {

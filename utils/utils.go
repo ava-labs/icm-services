@@ -91,6 +91,22 @@ func SignedWarpMessageToAccessList(signedMessage *avalancheWarp.Message) types.A
 	}
 }
 
+// UnpackWarpMessage parses [unsignedMsgBytes] as an unsigned Warp message, accepting either the
+// data of a Warp precompile SendWarpMessage log or a standalone encoded unsigned message.
+func UnpackWarpMessage(unsignedMsgBytes []byte) (*avalancheWarp.UnsignedMessage, error) {
+	unsignedMsg, err := warp.UnpackSendWarpEventDataToMessage(unsignedMsgBytes)
+	if err != nil {
+		// If we failed to parse the message as a log, attempt to parse it as a standalone message
+		var standaloneErr error
+		unsignedMsg, standaloneErr = avalancheWarp.ParseUnsignedMessage(unsignedMsgBytes)
+		if standaloneErr != nil {
+			err = errors.Join(err, standaloneErr)
+			return nil, err
+		}
+	}
+	return unsignedMsg, nil
+}
+
 // SortDescending sorts [items] in place by descending key, using [key] to extract each
 // item's sort value. The sort is stable, so items with an equal key retain their original
 // relative order.
