@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer"
-	"github.com/ava-labs/icm-services/types"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/common"
 	"go.uber.org/zap"
@@ -56,7 +56,7 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 			return
 		}
 
-		unsignedMessage, err := types.UnpackWarpMessage(req.UnsignedMessageBytes)
+		unsignedMessage, err := utils.UnpackWarpMessage(req.UnsignedMessageBytes)
 		if err != nil {
 			logger.Warn("Error unpacking warp message", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -70,16 +70,19 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 		}
 		address := common.HexToAddress(req.SourceAddress)
 
-		warpMessageInfo := &types.WarpMessageInfo{
-			SourceAddress:   address,
-			UnsignedMessage: unsignedMessage,
+		// The message protocol at [address] parses the payload itself, so pass along the
+		// unsigned message bytes as provided in the request.
+		sourceMessage := &messages.SourceMessage{
+			SourceBlockchainID: unsignedMessage.SourceChainID,
+			ProtocolAddress:    address,
+			Payload:            req.UnsignedMessageBytes,
 		}
 		logger.Info(
 			"Processing manual warp message",
 			zap.Stringer("sourceAddress", address),
 			zap.Stringer("messageID", unsignedMessage.ID()),
 		)
-		txHash, err := messageCoordinator.ProcessWarpMessage(warpMessageInfo)
+		txHash, err := messageCoordinator.ProcessMessage(sourceMessage)
 		if err != nil {
 			logger.Error("Error processing message", zap.Error(err))
 			http.Error(w, "error processing message: "+err.Error(), http.StatusInternalServerError)

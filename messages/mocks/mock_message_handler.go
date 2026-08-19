@@ -14,10 +14,10 @@ import (
 
 	ids "github.com/ava-labs/avalanchego/ids"
 	logging "github.com/ava-labs/avalanchego/utils/logging"
-	warp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	messages "github.com/ava-labs/icm-services/messages"
 	aggregator "github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	vms "github.com/ava-labs/icm-services/vms"
+	evm "github.com/ava-labs/icm-services/vms/evm"
 	common "github.com/ava-labs/libevm/common"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -46,34 +46,48 @@ func (m *MockMessageHandlerFactory) EXPECT() *MockMessageHandlerFactoryMockRecor
 	return m.recorder
 }
 
-// GetMessageRoutingInfo mocks base method.
-func (m *MockMessageHandlerFactory) GetMessageRoutingInfo(unsignedMessage *warp.UnsignedMessage) (messages.MessageRoutingInfo, error) {
+// EventFilter mocks base method.
+func (m *MockMessageHandlerFactory) EventFilter() evm.EventFilter {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMessageRoutingInfo", unsignedMessage)
+	ret := m.ctrl.Call(m, "EventFilter")
+	ret0, _ := ret[0].(evm.EventFilter)
+	return ret0
+}
+
+// EventFilter indicates an expected call of EventFilter.
+func (mr *MockMessageHandlerFactoryMockRecorder) EventFilter() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EventFilter", reflect.TypeOf((*MockMessageHandlerFactory)(nil).EventFilter))
+}
+
+// GetMessageRoutingInfo mocks base method.
+func (m *MockMessageHandlerFactory) GetMessageRoutingInfo(message *messages.SourceMessage) (messages.MessageRoutingInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMessageRoutingInfo", message)
 	ret0, _ := ret[0].(messages.MessageRoutingInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetMessageRoutingInfo indicates an expected call of GetMessageRoutingInfo.
-func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(unsignedMessage any) *gomock.Call {
+func (mr *MockMessageHandlerFactoryMockRecorder) GetMessageRoutingInfo(message any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessageRoutingInfo", reflect.TypeOf((*MockMessageHandlerFactory)(nil).GetMessageRoutingInfo), unsignedMessage)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessageRoutingInfo", reflect.TypeOf((*MockMessageHandlerFactory)(nil).GetMessageRoutingInfo), message)
 }
 
 // NewMessageHandler mocks base method.
-func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, unsignedMessage *warp.UnsignedMessage, destinationClient vms.DestinationClient, signatureAggregator *aggregator.SignatureAggregator, metrics messages.Metrics, signingSubnetID ids.ID, quorumNumerator uint64) (messages.MessageHandler, error) {
+func (m *MockMessageHandlerFactory) NewMessageHandler(logger logging.Logger, message *messages.SourceMessage, destinationClient vms.DestinationClient, signatureAggregator *aggregator.SignatureAggregator, metrics messages.Metrics, signingSubnetID ids.ID, quorumNumerator uint64) (messages.MessageHandler, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewMessageHandler", logger, unsignedMessage, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator)
+	ret := m.ctrl.Call(m, "NewMessageHandler", logger, message, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator)
 	ret0, _ := ret[0].(messages.MessageHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NewMessageHandler indicates an expected call of NewMessageHandler.
-func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, unsignedMessage, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator any) *gomock.Call {
+func (mr *MockMessageHandlerFactoryMockRecorder) NewMessageHandler(logger, message, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, unsignedMessage, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessageHandler", reflect.TypeOf((*MockMessageHandlerFactory)(nil).NewMessageHandler), logger, message, destinationClient, signatureAggregator, metrics, signingSubnetID, quorumNumerator)
 }
 
 // MockMetrics is a mock of Metrics interface.

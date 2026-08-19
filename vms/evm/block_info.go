@@ -1,17 +1,14 @@
 // Copyright (C) 2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package types
+package evm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
@@ -20,18 +17,34 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	WarpPrecompileLogFilter = warp.WarpABI.Events["SendWarpMessage"].ID
-	ErrInvalidLog           = errors.New("invalid warp message log")
-	ErrFailedToProcessLogs  = errors.New("failed to process logs")
-)
-
 // ICMBlockInfo describes the block height and logs needed to process Warp messages.
 // ICMBlockInfo instances are populated by the subscriber, and forwarded to the Listener to process.
 type ICMBlockInfo struct {
 	BlockNumber uint64
 	Logs        []types.Log
 	IsCatchup   bool
+}
+
+// EventFilter selects the source chain logs that carry a message protocol's messages, following
+// the semantics of ethereum.FilterQuery: a log matches if it was emitted by one of [Addresses]
+// (any address, if empty) and its topics match [Topics].
+// Filters should constrain the emitting address whenever possible: topics can be forged by any
+// contract, so a filter that only constrains topics can match logs that were not emitted by the
+// message protocol.
+type EventFilter struct {
+	// Addresses are the contract addresses that emit the protocol's message logs. For protocols
+	// that send their messages through the Warp precompile, this is the precompile's address
+	// rather than the protocol's own.
+	Addresses []common.Address
+	// Topics constrain the topics of matching logs, in the format expected by
+	// ethereum.FilterQuery.Topics.
+	Topics [][]common.Hash
+}
+
+// IsEmpty reports whether the filter constrains neither the emitting address nor the log topics.
+// Message protocols whose messages are not read from source chain logs return an empty filter.
+func (f EventFilter) IsEmpty() bool {
+	return len(f.Addresses) == 0 && len(f.Topics) == 0
 }
 
 // BlockHead is the subset of a newHeads notification the relayer uses,
@@ -53,37 +66,27 @@ type BlockHead struct {
 	Bloom  types.Bloom  `json:"logsBloom"`
 }
 
-// WarpMessageInfo describes the transaction information for the Warp message
-// sent on the source chain.
-// WarpMessageInfo instances are either derived from the logs of a block or
-// from the manual Warp message information provided via configuration.
-type WarpMessageInfo struct {
-	SourceAddress   common.Address
-	SourceTxID      common.Hash
-	UnsignedMessage *avalancheWarp.UnsignedMessage
-}
-
-// Extract Warp logs from the block, if they exist.
+// Extract the logs matching [filter] from the block, if they exist.
 func NewICMBlockInfo(
 	logger logging.Logger,
 	head *BlockHead,
 	ethClient ethereum.LogFilterer,
-	topics [][]common.Hash,
+	filter EventFilter,
 	isPrimaryNetwork bool,
 ) (*ICMBlockInfo, error) {
 	var (
 		logs []types.Log
 		err  error
 	)
-	// Only fetch logs when the block's bloom filter indicates that one of the event
-	// topics we filter for (topics[0]) is present. A bloom match may be a false
-	// positive; the FilterLogs call below performs the precise filtering.
+	// Only fetch logs when the block's bloom filter indicates that the filter's emitting
+	// addresses and event topics are present. A bloom match may be a false positive; the
+	// FilterLogs call below performs the precise filtering.
 	//
 	// On the primary network (C-Chain) the header bloom filter cannot be relied on
 	// as a shortcut: it summarises a settled predecessor range rather than the
 	// block's own receipts, so the shortcut would silently miss events. Bypass the
 	// bloom check there and always fetch the logs.
-	if isPrimaryNetwork || bloomContainsAnyEventTopic(head.Bloom, topics) {
+	if isPrimaryNetwork || bloomMatchesFilter(head.Bloom, filter) {
 		// Query by hash: a node that doesn't know the block errors ("unknown
 		// block") and is retried below, whereas a by-number query would return
 		// empty logs with no error and the block would be silently skipped.
@@ -94,7 +97,8 @@ func NewICMBlockInfo(
 			cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 			defer cancel()
 			logs, err = ethClient.FilterLogs(cctx, ethereum.FilterQuery{
-				Topics:    topics,
+				Addresses: filter.Addresses,
+				Topics:    filter.Topics,
 				BlockHash: &blockHash,
 			})
 			return err
@@ -124,53 +128,36 @@ func NewICMBlockInfo(
 	}, nil
 }
 
-// bloomContainsAnyEventTopic reports whether the block's bloom filter indicates the presence of at
-// least one of the event-signature topics being filtered for (the first topic position, topics[0]).
-// If no event-signature topics are provided, it conservatively returns true so that logs are still
-// fetched. A positive result may be a false positive due to the probabilistic nature of bloom
-// filters; callers must perform precise filtering afterwards.
-func bloomContainsAnyEventTopic(bloom types.Bloom, topics [][]common.Hash) bool {
-	if len(topics) == 0 || len(topics[0]) == 0 {
-		return true
-	}
-	for _, eventTopic := range topics[0] {
-		if bloom.Test(eventTopic[:]) {
-			return true
+// bloomMatchesFilter reports whether the block's bloom filter indicates the presence of logs
+// matching [filter]: at least one of the filter's emitting addresses and at least one of its
+// event-signature topics (the first topic position, Topics[0]). Filter dimensions that are not
+// constrained are conservatively treated as matching so that logs are still fetched. A positive
+// result may be a false positive due to the probabilistic nature of bloom filters; callers must
+// perform precise filtering afterwards.
+func bloomMatchesFilter(bloom types.Bloom, filter EventFilter) bool {
+	if len(filter.Addresses) > 0 {
+		anyAddress := false
+		for _, address := range filter.Addresses {
+			if bloom.Test(address[:]) {
+				anyAddress = true
+				break
+			}
+		}
+		if !anyAddress {
+			return false
 		}
 	}
-	return false
-}
-
-// Extract the Warp message information from the raw log
-func NewWarpMessageInfo(log types.Log) (*WarpMessageInfo, error) {
-	if len(log.Topics) != 3 {
-		return nil, ErrInvalidLog
-	}
-	if log.Topics[0] != WarpPrecompileLogFilter {
-		return nil, ErrInvalidLog
-	}
-	unsignedMsg, err := UnpackWarpMessage(log.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	return &WarpMessageInfo{
-		SourceAddress:   common.BytesToAddress(log.Topics[1][:]),
-		SourceTxID:      log.TxHash,
-		UnsignedMessage: unsignedMsg,
-	}, nil
-}
-
-func UnpackWarpMessage(unsignedMsgBytes []byte) (*avalancheWarp.UnsignedMessage, error) {
-	unsignedMsg, err := warp.UnpackSendWarpEventDataToMessage(unsignedMsgBytes)
-	if err != nil {
-		// If we failed to parse the message as a log, attempt to parse it as a standalone message
-		var standaloneErr error
-		unsignedMsg, standaloneErr = avalancheWarp.ParseUnsignedMessage(unsignedMsgBytes)
-		if standaloneErr != nil {
-			err = errors.Join(err, standaloneErr)
-			return nil, err
+	if len(filter.Topics) > 0 && len(filter.Topics[0]) > 0 {
+		anyTopic := false
+		for _, eventTopic := range filter.Topics[0] {
+			if bloom.Test(eventTopic[:]) {
+				anyTopic = true
+				break
+			}
+		}
+		if !anyTopic {
+			return false
 		}
 	}
-	return unsignedMsg, nil
+	return true
 }

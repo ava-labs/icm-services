@@ -8,11 +8,11 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/relayer/config"
-	stypes "github.com/ava-labs/icm-services/types"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
@@ -34,9 +34,9 @@ func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) 
 	return c.blockNumber, nil
 }
 
-func (c *subscriberClientStub) HeadByNumber(ctx context.Context, number *big.Int) (*stypes.BlockHead, error) {
+func (c *subscriberClientStub) HeadByNumber(ctx context.Context, number *big.Int) (*BlockHead, error) {
 	c.numHeadByNumberCalls++
-	return &stypes.BlockHead{
+	return &BlockHead{
 		Hash:   common.BigToHash(number),
 		Number: (*hexutil.Big)(new(big.Int).Set(number)),
 	}, nil
@@ -58,7 +58,7 @@ func (c *subscriberClientStub) SubscribeFilterLogs(
 
 func (c *subscriberClientStub) SubscribeNewHeads(
 	ctx context.Context,
-	ch chan<- *stypes.BlockHead,
+	ch chan<- *BlockHead,
 ) (ethereum.Subscription, error) {
 	return nil, nil
 }
@@ -82,7 +82,7 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 		stubRPCClient,
 		stubRPCClient,
 		errChan,
-		[][]common.Hash{{stypes.WarpPrecompileLogFilter}},
+		EventFilter{Topics: [][]common.Hash{{warp.WarpABI.Events["SendWarpMessage"].ID}}},
 	)
 
 	return subscriber, stubRPCClient
