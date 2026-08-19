@@ -12,6 +12,8 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     groups:
       weekly-ava-updates:
         patterns:
@@ -23,6 +25,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     groups:
       weekly-github-actions:
         patterns:
