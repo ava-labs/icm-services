@@ -33,7 +33,15 @@ const (
 	teleporterMessengerV2Label = "TeleporterMessengerV2"
 
 	teleporterRegistryAddressFile = "TeleporterRegistryAddress.json"
+	teleporterV2AddressesFile     = "TeleporterV2ContractAddresses.json"
 )
+
+// teleporterV2Addresses is persisted per blockchain so that a reused network
+// can reconstruct the TeleporterMessengerV2 and WarpAdapter deployments.
+type teleporterV2Addresses struct {
+	TeleporterMessenger string `json:"teleporterMessenger"`
+	WarpAdapter         string `json:"warpAdapter"`
+}
 
 var (
 	log logging.Logger
@@ -100,23 +108,32 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Only need to deploy Teleporter on the C-Chain since it is included in the genesis of the L1 chains.
 	_, fundedKey := localNetworkInstance.GetFundedAccountInfo()
 
-	var teleporterContractAddress common.Address
 	if e2eFlags.NetworkDir() == "" {
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			warpAdapterAddress := utils.DeployWarpAdapterContract(ctx, &l1, fundedKey)
-			teleporterContractAddress = utils.DeployTeleporterV2(ctx, &l1, warpAdapterAddress, fundedKey)
+			teleporterContractAddress := utils.DeployTeleporterV2(ctx, &l1, warpAdapterAddress, fundedKey)
 			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, warpAdapterAddress, l1.BlockchainID)
 			teleporterInfo.DeployTeleporterRegistry(ctx, &l1, fundedKey)
 		}
 
 		registryAddresseses := make(map[string]string)
+		v2Addresses := make(map[string]teleporterV2Addresses)
 		for blockchainID := range teleporterInfo {
 			registryAddresseses[blockchainID.Hex()] = teleporterInfo.TeleporterRegistryAddress(blockchainID).Hex()
+			v2Addresses[blockchainID.Hex()] = teleporterV2Addresses{
+				TeleporterMessenger: teleporterInfo.TeleporterMessengerAddress(blockchainID).Hex(),
+				WarpAdapter:         teleporterInfo.WarpAdapterAddress(blockchainID).Hex(),
+			}
 		}
 
 		jsonData, err := json.Marshal(registryAddresseses)
 		Expect(err).Should(BeNil())
 		err = os.WriteFile(teleporterRegistryAddressFile, jsonData, fs.ModePerm)
+		Expect(err).Should(BeNil())
+
+		jsonData, err = json.Marshal(v2Addresses)
+		Expect(err).Should(BeNil())
+		err = os.WriteFile(teleporterV2AddressesFile, jsonData, fs.ModePerm)
 		Expect(err).Should(BeNil())
 
 	} else {
@@ -127,8 +144,21 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		err = json.Unmarshal(data, &registryAddresseses)
 		Expect(err).Should(BeNil())
 
+		// Read the TeleporterMessengerV2 and WarpAdapter addresses from the file
+		v2Addresses := make(map[string]teleporterV2Addresses)
+		data, err = os.ReadFile(teleporterV2AddressesFile)
+		Expect(err).Should(BeNil())
+		err = json.Unmarshal(data, &v2Addresses)
+		Expect(err).Should(BeNil())
+
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
-			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, common.Address{}, l1.BlockchainID)
+			addresses, ok := v2Addresses[l1.BlockchainID.Hex()]
+			Expect(ok).Should(BeTrue(), "no saved TeleporterV2 addresses for blockchain %s", l1.BlockchainID.Hex())
+			teleporterInfo.SetTeleporterV2WarpAdapter(
+				common.HexToAddress(addresses.TeleporterMessenger),
+				common.HexToAddress(addresses.WarpAdapter),
+				l1.BlockchainID,
+			)
 			teleporterInfo.SetTeleporterRegistry(
 				common.HexToAddress(registryAddresseses[l1.BlockchainID.Hex()]),
 				l1.BlockchainID,
