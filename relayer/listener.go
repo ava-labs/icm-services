@@ -29,17 +29,16 @@ const (
 
 // Listener handles all messages sent from a given source chain
 type Listener struct {
-	Subscriber                   *evm.Subscriber
-	currentRequestID             uint32
-	logger                       logging.Logger
-	sourceBlockchainID           ids.ID
-	healthStatus                 *atomic.Bool
-	ethClient                    *ethclient.Client
-	messageCoordinator           *MessageCoordinator
-	maxConcurrentMsg             uint64
-	errChan                      chan error
-	lastSubscriberBlockProcessed uint64
-	protocol                     config.Protocol
+	Subscriber         *evm.Subscriber
+	currentRequestID   uint32
+	logger             logging.Logger
+	sourceBlockchainID ids.ID
+	healthStatus       *atomic.Bool
+	ethClient          *ethclient.Client
+	messageCoordinator *MessageCoordinator
+	maxConcurrentMsg   uint64
+	errChan            chan error
+	protocol           config.Protocol
 }
 
 // RunListener creates a Listener instance and the ApplicationRelayers for a subnet.
@@ -144,25 +143,26 @@ func newListener(
 
 	logger.Info("Creating relayer")
 	lstnr := Listener{
-		Subscriber:                   sub,
-		currentRequestID:             rand.Uint32(), // Initialize to a random value to mitigate requestID collision
-		logger:                       logger,
-		sourceBlockchainID:           blockchainID,
-		errChan:                      errChan,
-		healthStatus:                 relayerHealth,
-		ethClient:                    ethRPCClient,
-		messageCoordinator:           messageCoordinator,
-		maxConcurrentMsg:             maxConcurrentMsg,
-		lastSubscriberBlockProcessed: startingHeight - 1,
-		protocol:                     protocol,
+		Subscriber:         sub,
+		currentRequestID:   rand.Uint32(), // Initialize to a random value to mitigate requestID collision
+		logger:             logger,
+		sourceBlockchainID: blockchainID,
+		errChan:            errChan,
+		healthStatus:       relayerHealth,
+		ethClient:          ethRPCClient,
+		messageCoordinator: messageCoordinator,
+		maxConcurrentMsg:   maxConcurrentMsg,
+		protocol:           protocol,
 	}
 
-	// Open the subscription. We must do this before processing any missed messages, otherwise we may
-	// miss an incoming message in between fetching the latest block and subscribing.
+	// Open the log subscription that triggers the live loop.
 	err = lstnr.Subscriber.Subscribe(retrySubscribeTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe to node: %w", err)
 	}
+
+	// The subscriber owns both catch-up and live processing.
+	go lstnr.Subscriber.Run(ctx, startingHeight)
 
 	return &lstnr, nil
 }
@@ -171,8 +171,6 @@ func newListener(
 // On subscriber error, attempts to reconnect and errors if unable.
 // Exits if context is cancelled by another goroutine.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
-	// Error channel for application relayer errors
-	needsCatchup := true
 	for {
 		select {
 		case err := <-lstnr.errChan:
@@ -180,20 +178,6 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			lstnr.logger.Error("Listener received error", zap.Error(err))
 			return fmt.Errorf("listener received error: %w", err)
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
-			// Catchup should run on startup, and after any reconnects. It will wait for the first block
-			// received from the subscriber, so that it has an accurate bound on which blocks to process.
-			if needsCatchup && !icmBlockInfo.IsCatchup {
-				needsCatchup = false
-				go lstnr.Subscriber.ProcessFromHeight(
-					lstnr.lastSubscriberBlockProcessed+1,
-					icmBlockInfo.BlockNumber-1,
-				)
-			}
-
-			if !icmBlockInfo.IsCatchup && icmBlockInfo.BlockNumber > lstnr.lastSubscriberBlockProcessed {
-				lstnr.lastSubscriberBlockProcessed = icmBlockInfo.BlockNumber
-			}
-
 			go lstnr.messageCoordinator.ProcessBlock(
 				icmBlockInfo,
 				lstnr.sourceBlockchainID,
@@ -201,7 +185,6 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				lstnr.errChan,
 			)
 		case subError := <-lstnr.Subscriber.SubscribeErr():
-			needsCatchup = true
 			lstnr.logger.Info("Received error from subscribed node", zap.Error(subError))
 			subError = lstnr.reconnectToSubscriber()
 			if subError != nil {

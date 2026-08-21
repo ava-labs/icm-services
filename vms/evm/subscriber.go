@@ -34,6 +34,14 @@ const (
 	// margin. Blocks older than this exist on every node, so range queries
 	// remain safe and fast for deep history.
 	strictTailBlocks = 10
+
+	// defaultScanInterval bounds live-loop scan frequency and is the fallback
+	// poll that advances the watermark through empty blocks. See (*Subscriber).Run.
+	defaultScanInterval = time.Second
+
+	// defaultConfirmations is how far behind the tip the live loop scans.
+	// 0 processes up to the tip; increase to trade latency for reorg safety.
+	defaultConfirmations = 0
 )
 
 type SubscriberRPCClient interface {
@@ -67,37 +75,18 @@ func (c RPCHeadClient) HeadByNumber(ctx context.Context, number *big.Int) (*Bloc
 }
 
 type SubscriberWSClient interface {
-	SubscribeNewHeads(ctx context.Context, ch chan<- *BlockHead) (ethereum.Subscription, error)
-	// Used to fetch logs for live blocks; see blocksInfoFromHeaders for why
-	// these fetches must use the WS connection.
+	// SubscribeFilterLogs is used only as a low-latency trigger to wake the live
+	// loop; log completeness is guaranteed by the scan over the HTTP rpcClient.
 	ethereum.LogFilterer
 }
 
-// WSHeadClient adapts a raw rpc.Client to SubscriberWSClient. It decodes
-// newHeads notifications into BlockHead, keeping the node-reported block hash,
-// which cannot be recomputed client-side for chains whose headers carry fields
-// unknown to this client (e.g. SAE chains).
-//
-// The embedded ethclient.Client wraps the same rpc.Client, so log fetches are
-// issued over the same connection as the newHeads notification that triggered
-// them, and therefore reach the same node.
+// WSHeadClient exposes the LogFilterer methods of an ethclient.Client.
 type WSHeadClient struct {
-	client *rpc.Client
 	*ethclient.Client
 }
 
 func NewWSHeadClient(client *rpc.Client) WSHeadClient {
-	return WSHeadClient{
-		client: client,
-		Client: ethclient.NewClient(client),
-	}
-}
-
-func (w WSHeadClient) SubscribeNewHeads(
-	ctx context.Context,
-	ch chan<- *BlockHead,
-) (ethereum.Subscription, error) {
-	return w.client.EthSubscribe(ctx, ch, "newHeads")
+	return WSHeadClient{Client: ethclient.NewClient(client)}
 }
 
 type Subscriber struct {
@@ -106,9 +95,13 @@ type Subscriber struct {
 	blockchainID     ids.ID
 	isPrimaryNetwork bool
 	filter           EventFilter
-	headers          chan *BlockHead
-	icmBlocks        chan *ICMBlockInfo
-	sub              ethereum.Subscription
+	// logs receives pushed logs used only as a signal to scan sooner.
+	logs      chan types.Log
+	icmBlocks chan *ICMBlockInfo
+	sub       ethereum.Subscription
+
+	confirmations uint64
+	scanInterval  time.Duration
 
 	errChan chan error
 
@@ -125,7 +118,7 @@ func NewSubscriber(
 	errChan chan error,
 	filter EventFilter,
 ) *Subscriber {
-	subscriber := &Subscriber{
+	return &Subscriber{
 		blockchainID:     blockchainID,
 		isPrimaryNetwork: isPrimaryNetwork,
 		filter:           filter,
@@ -133,28 +126,36 @@ func NewSubscriber(
 		rpcClient:        rpcClient,
 		logger:           logger,
 		icmBlocks:        make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
-		headers:          make(chan *BlockHead, maxClientSubscriptionBuffer),
+		logs:             make(chan types.Log, maxClientSubscriptionBuffer),
+		confirmations:    defaultConfirmations,
+		scanInterval:     defaultScanInterval,
 		errChan:          errChan,
 	}
-	go subscriber.blocksInfoFromHeaders()
-	return subscriber
 }
 
-// Process logs from the starting block to the ending block, inclusive. Limits the
-// number of blocks retrieved in a single eth_getLogs request to
-// `MaxBlocksPerRequest`; if processing more than that, multiple eth_getLogs
-// requests will be made.
-// Writes to the error channel if an error occurs
+// ProcessFromHeight processes logs from the starting block to the ending block,
+// inclusive, marking the emitted blocks as catch-up. Writes to the error channel
+// if an error occurs.
 func (s *Subscriber) ProcessFromHeight(startingHeight uint64, endingHeight uint64) {
 	log := s.logger.With(
 		zap.Uint64("fromBlockHeight", startingHeight),
 		zap.Uint64("toBlockHeight", endingHeight),
 	)
 	log.Info("Processing historical logs")
-
-	if endingHeight < startingHeight {
-		log.Info("Finished processing historical logs")
+	if err := s.scanRange(startingHeight, endingHeight, true); err != nil {
+		s.errChan <- err
 		return
+	}
+	log.Info("Finished processing historical logs")
+}
+
+// scanRange emits one ICMBlockInfo per height in [startingHeight, endingHeight],
+// including empty blocks so the checkpoint can advance contiguously. Deep
+// history is fetched in eth_getLogs chunks of MaxBlocksPerRequest; the newest
+// strictTailBlocks are fetched one by one.
+func (s *Subscriber) scanRange(startingHeight, endingHeight uint64, isCatchup bool) error {
+	if endingHeight < startingHeight {
+		return nil
 	}
 
 	// Range queries are only trustworthy for blocks old enough that every node
@@ -166,21 +167,18 @@ func (s *Subscriber) ProcessFromHeight(startingHeight uint64, endingHeight uint6
 		for fromBlock := startingHeight; fromBlock < strictStart; fromBlock += MaxBlocksPerRequest {
 			toBlock := min(fromBlock+MaxBlocksPerRequest-1, strictStart-1)
 
-			err := s.processBlockRange(fromBlock, toBlock)
-			if err != nil {
-				s.errChan <- fmt.Errorf("failed to process block range: %w", err)
-				return
+			if err := s.processBlockRange(fromBlock, toBlock, isCatchup); err != nil {
+				return fmt.Errorf("failed to process block range: %w", err)
 			}
 		}
 	}
 
 	for height := strictStart; height <= endingHeight; height++ {
-		if err := s.processBlockStrict(height); err != nil {
-			s.errChan <- fmt.Errorf("failed to process block %d: %w", height, err)
-			return
+		if err := s.processBlockStrict(height, isCatchup); err != nil {
+			return fmt.Errorf("failed to process block %d: %w", height, err)
 		}
 	}
-	log.Info("Finished processing historical logs")
+	return nil
 }
 
 // processBlockStrict processes a single block with the same guarantees as the
@@ -188,7 +186,7 @@ func (s *Subscriber) ProcessFromHeight(startingHeight uint64, endingHeight uint6
 // block answers ethereum.NotFound, which is retried) and logs are fetched by
 // the node-reported hash. A by-number range query over these blocks could be
 // served by a lagging node and silently omit them.
-func (s *Subscriber) processBlockStrict(height uint64) error {
+func (s *Subscriber) processBlockStrict(height uint64, isCatchup bool) error {
 	var head *BlockHead
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
@@ -215,7 +213,7 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 	if err != nil {
 		return err
 	}
-	block.IsCatchup = true
+	block.IsCatchup = isCatchup
 	s.icmBlocks <- block
 	return nil
 }
@@ -223,6 +221,7 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 // Process Warp messages from the block range [fromBlock, toBlock], inclusive
 func (s *Subscriber) processBlockRange(
 	fromBlock, toBlock uint64,
+	isCatchup bool,
 ) error {
 	s.logger.Info(
 		"Processing block range",
@@ -245,7 +244,7 @@ func (s *Subscriber) processBlockRange(
 		s.icmBlocks <- &ICMBlockInfo{
 			BlockNumber: i,
 			Logs:        blockLogs,
-			IsCatchup:   true,
+			IsCatchup:   isCatchup,
 		}
 	}
 	return nil
@@ -300,7 +299,10 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
-		sub, err = s.wsClient.SubscribeNewHeads(cctx, s.headers)
+		sub, err = s.wsClient.SubscribeFilterLogs(cctx, ethereum.FilterQuery{
+			Addresses: s.filter.Addresses,
+			Topics:    s.filter.Topics,
+		}, s.logs)
 		return err
 	}
 	notify := func(err error, duration time.Duration) {
@@ -320,23 +322,74 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	return nil
 }
 
-// blocksInfoFromHeaders listens to the header channel and converts the headers to [ICMBlockInfo]
-// and writes them to the blocks channel consumed by the listener
-func (s *Subscriber) blocksInfoFromHeaders() {
-	for head := range s.headers {
-		// Fetch logs over the WS connection rather than the HTTP client: the
-		// node that emitted this head is guaranteed to have the block's
-		// receipts on disk, whereas an HTTP request may be routed to a
-		// different node behind a load balancer that has not yet executed the
-		// block. On SAE chains such a node returns empty logs without an
-		// error, which would cause this block's messages to be silently
-		// skipped.
-		block, err := NewICMBlockInfo(s.logger, head, s.wsClient, s.filter, s.isPrimaryNetwork)
+// Run drives the live path until ctx is cancelled. Triggered by a pushed log or
+// by scanInterval, it scans [watermark+1, tip-confirmations], emitting every
+// height (including empty blocks) and advancing the watermark. The first scan
+// covers any historical gap from startingHeight, unifying catch-up and live.
+func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
+	var watermark uint64
+	if startingHeight > 0 {
+		watermark = startingHeight - 1
+	}
+
+	ticker := time.NewTicker(s.scanInterval)
+	defer ticker.Stop()
+
+	var lastScan time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.logs:
+		case <-ticker.C:
+		}
+
+		// At most one scan per scanInterval, coalescing bursts of logs.
+		if wait := s.scanInterval - time.Since(lastScan); wait > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+		}
+		drainLogs(s.logs)
+		lastScan = time.Now()
+
+		tip, err := s.currentBlockNumber(ctx)
 		if err != nil {
-			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
+			s.logger.Warn("failed to get block number, will retry", zap.Error(err))
+			continue
+		}
+		if tip < s.confirmations {
+			continue
+		}
+		safeTip := tip - s.confirmations
+		if safeTip <= watermark {
+			continue
+		}
+
+		if err := s.scanRange(watermark+1, safeTip, false); err != nil {
+			s.errChan <- fmt.Errorf("failed to scan live range: %w", err)
 			return
 		}
-		s.icmBlocks <- block
+		watermark = safeTip
+	}
+}
+
+func (s *Subscriber) currentBlockNumber(ctx context.Context) (uint64, error) {
+	cctx, cancel := context.WithTimeout(ctx, utils.DefaultRPCTimeout)
+	defer cancel()
+	return s.rpcClient.BlockNumber(cctx)
+}
+
+// drainLogs empties the trigger channel so pending triggers coalesce into one scan.
+func drainLogs(ch <-chan types.Log) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
 	}
 }
 
