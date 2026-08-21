@@ -2,8 +2,9 @@ package zkrelayer
 
 import (
 	"encoding/json"
-	"os"
+	"errors"
 
+	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/libevm/common"
 )
 
@@ -28,15 +29,24 @@ type RelayerState struct {
 	PendingMessages map[common.Hash]*PendingMessage `json:"pending"`
 }
 
-type FileStore struct{ Path string }
+// DatabaseStore persists the relayer state as a single JSON value in the shared
+// RelayerDatabase, keyed by this relayer's ID.
+type DatabaseStore struct {
+	db        database.RelayerDatabase
+	relayerID common.Hash
+}
 
-// Load reads the relayer state from the file at f.Path. If the file does not exist, it returns
+func NewDatabaseStore(db database.RelayerDatabase, relayerID common.Hash) *DatabaseStore {
+	return &DatabaseStore{db: db, relayerID: relayerID}
+}
+
+// Load reads the relayer state from the database. If no state has been stored yet, it returns
 // an empty RelayerState.
-func (f *FileStore) Load() (*RelayerState, error) {
+func (s *DatabaseStore) Load() (*RelayerState, error) {
 	// Initialize empty relayer state
 	state := &RelayerState{PendingMessages: map[common.Hash]*PendingMessage{}}
-	data, err := os.ReadFile(f.Path)
-	if os.IsNotExist(err) {
+	data, err := s.db.Get(s.relayerID, database.ZKRelayerStateKey)
+	if errors.Is(err, database.ErrKeyNotFound) || errors.Is(err, database.ErrRelayerIDNotFound) {
 		return state, nil
 	}
 	if err != nil {
@@ -52,23 +62,11 @@ func (f *FileStore) Load() (*RelayerState, error) {
 	return state, nil
 }
 
-// Save `writes the relayer state to the file at f.Path.
-func (f *FileStore) Save(state *RelayerState) error {
-	data, err := json.MarshalIndent(state, "", "  ")
+// Save writes the relayer state to the database.
+func (s *DatabaseStore) Save(state *RelayerState) error {
+	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
-
-	// Write to a temporary file first to ensure an atomic update.
-	// This prevents file corruption if the application crashes mid-write
-	// because it will not reach creating the final file.
-	tmp := f.Path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-
-	// Atomically replace the old file with the new one.
-	// The temp file is renamed to the final path, which is an atomic operation on
-	// most filesystems.
-	return os.Rename(tmp, f.Path)
+	return s.db.Put(s.relayerID, database.ZKRelayerStateKey, data)
 }

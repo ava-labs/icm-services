@@ -1,18 +1,44 @@
 package zkrelayer
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/libevm/common"
 	"github.com/stretchr/testify/require"
 )
 
-// newTestStore returns a FileStore rooted in a per-test temp directory.
-func newTestStore(t *testing.T) *FileStore {
+// memDatabase is a minimal in-memory RelayerDatabase for tests.
+type memDatabase struct {
+	values map[common.Hash]map[database.DataKey][]byte
+}
+
+func newMemDatabase() *memDatabase {
+	return &memDatabase{values: map[common.Hash]map[database.DataKey][]byte{}}
+}
+
+func (m *memDatabase) Get(relayerID common.Hash, key database.DataKey) ([]byte, error) {
+	data, ok := m.values[relayerID][key]
+	if !ok {
+		return nil, database.ErrKeyNotFound
+	}
+	return data, nil
+}
+
+func (m *memDatabase) Put(relayerID common.Hash, key database.DataKey, value []byte) error {
+	if m.values[relayerID] == nil {
+		m.values[relayerID] = map[database.DataKey][]byte{}
+	}
+	m.values[relayerID][key] = value
+	return nil
+}
+
+func (m *memDatabase) Close() error { return nil }
+
+// newTestStore returns a DatabaseStore backed by an in-memory database.
+func newTestStore(t *testing.T) *DatabaseStore {
 	t.Helper()
-	return &FileStore{Path: filepath.Join(t.TempDir(), "state.json")}
+	return NewDatabaseStore(newMemDatabase(), common.HexToHash("0x01"))
 }
 
 // sampleState returns a populated RelayerState for round-trip tests.
@@ -35,8 +61,8 @@ func sampleState(txHash common.Hash) *RelayerState {
 	}
 }
 
-// Loading a missing file should return an empty RelayerState, not an error.
-func TestFileStoreLoadMissingFile(t *testing.T) {
+// Loading before any state has been stored should return an empty RelayerState, not an error.
+func TestDatabaseStoreLoadMissingKey(t *testing.T) {
 	store := newTestStore(t)
 	state, err := store.Load()
 	require.NoError(t, err)
@@ -48,7 +74,7 @@ func TestFileStoreLoadMissingFile(t *testing.T) {
 }
 
 // Saves and loads a RelayerState, verifying that the loaded state matches the saved state.
-func TestFileStoreSaveLoadRoundTrip(t *testing.T) {
+func TestDatabaseStoreSaveLoadRoundTrip(t *testing.T) {
 	store := newTestStore(t)
 	txHash := common.HexToHash("0xabc123")
 	targetState := sampleState(txHash)
@@ -64,26 +90,15 @@ func TestFileStoreSaveLoadRoundTrip(t *testing.T) {
 	require.Equal(t, targetState.PendingMessages[txHash], loadedState.PendingMessages[txHash])
 }
 
-// Saving a RelayerState should remove any temporary file used during the save process.
-func TestFileStoreSaveRemovesTempFile(t *testing.T) {
-	store := newTestStore(t)
-
-	require.NoError(t, store.Save(&RelayerState{
-		PendingMessages: map[common.Hash]*PendingMessage{},
-	}))
-
-	// The .tmp file must be renamed away, leaving only the final state file.
-	_, err := os.Stat(store.Path + ".tmp")
-	require.True(t, os.IsNotExist(err))
-	_, err = os.Stat(store.Path)
-	require.NoError(t, err)
-}
-
-// Helper function to run a load test case with given file contents and expected error behavior.
-func runLoadTestCase(t *testing.T, store *FileStore, contents string, targetErr bool) {
+// Helper function to run a load test case with given stored contents and expected error behavior.
+func runLoadTestCase(t *testing.T, contents string, targetErr bool) {
 	t.Helper()
-	// Setup initial file state
-	require.NoError(t, os.WriteFile(store.Path, []byte(contents), 0o600))
+	// Setup initial stored state
+	db := newMemDatabase()
+	relayerID := common.HexToHash("0x01")
+	require.NoError(t, db.Put(relayerID, database.ZKRelayerStateKey, []byte(contents)))
+	store := NewDatabaseStore(db, relayerID)
+
 	state, err := store.Load()
 	if targetErr {
 		require.Error(t, err)
@@ -99,8 +114,8 @@ func runLoadTestCase(t *testing.T, store *FileStore, contents string, targetErr 
 	require.Len(t, state.PendingMessages, 1)
 }
 
-// Loading a malformed state file should return an error, not silently return a new state.
-func TestFileStoreLoadMalformedState(t *testing.T) {
+// Loading a malformed state should return an error, not silently return a new state.
+func TestDatabaseStoreLoadMalformedState(t *testing.T) {
 	testCases := []struct {
 		name      string
 		contents  string
@@ -114,14 +129,13 @@ func TestFileStoreLoadMalformedState(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newTestStore(t)
-			runLoadTestCase(t, store, tc.contents, tc.targetErr)
+			runLoadTestCase(t, tc.contents, tc.targetErr)
 		})
 	}
 }
 
-// Loading a valid state file twice should yield the same result both times
-func TestFileStoreLoadIsIdempotent(t *testing.T) {
+// Loading a valid state twice should yield the same result both times
+func TestDatabaseStoreLoadIsIdempotent(t *testing.T) {
 	store := newTestStore(t)
 	require.NoError(t, store.Save(&RelayerState{
 		LastScannedBlock: 12345678,
