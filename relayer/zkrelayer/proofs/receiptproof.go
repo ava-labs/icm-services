@@ -104,7 +104,7 @@ func BuildReceiptProof(
 	}
 
 	// Extract the inclusion proof for the target receipt.
-	key, err := rlp.EncodeToBytes(uint(targetReceipt.TransactionIndex))
+	key, err := rlp.EncodeToBytes(targetReceipt.TransactionIndex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode target trie key: %w", err)
 	}
