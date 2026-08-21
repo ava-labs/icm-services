@@ -56,13 +56,6 @@ func (c *subscriberClientStub) SubscribeFilterLogs(
 	return nil, nil
 }
 
-func (c *subscriberClientStub) SubscribeNewHeads(
-	ctx context.Context,
-	ch chan<- *BlockHead,
-) (ethereum.Subscription, error) {
-	return nil, nil
-}
-
 func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscriber, *subscriberClientStub) {
 	sourceSubnet := config.SourceBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
