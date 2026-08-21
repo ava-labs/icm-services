@@ -64,7 +64,8 @@ type messageHandler struct {
 	teleporterAddress common.Address
 }
 
-// NewMessageHandlerFactory creates a factory for the TeleporterV2 Merkle verification path.
+// NewMessageHandlerFactory creates a factory for the TeleporterV2 message protocol. The
+// verification path (Merkle registry or WarpAdapter) is selected by the config's verifier-type.
 func NewMessageHandlerFactory(
 	messageProtocolAddress common.Address,
 	messageProtocolConfig config.MessageProtocolConfig,
@@ -98,7 +99,7 @@ func (f *factory) NewMessageHandler(
 	signingSubnetID ids.ID,
 	quorumNumerator uint64,
 ) (messages.MessageHandler, error) {
-	unsignedMessage, teleporterMessage, err := parseMessage(message)
+	unsignedMessage, teleporterMessage, err := f.parseMessage(message)
 	if err != nil {
 		logger.Error(
 			"Failed to parse teleporter v2 message.",
@@ -130,6 +131,23 @@ func (f *factory) NewMessageHandler(
 		zap.Stringer("adapterAddress", f.protocolAddress),
 		zap.Stringer("teleporterAddress", f.messageConfig.teleporterAddress()),
 	}
+
+	if f.messageConfig.VerifierType == VerifierTypeWarp {
+		return &warpMessageHandler{
+			logger:              logger.With(logFields...),
+			teleporterMessage:   teleporterMessage,
+			unsignedMessage:     unsignedMessage,
+			destinationClient:   destinationClient,
+			signatureAggregator: signatureAggregator,
+			metrics:             metrics,
+			signingSubnetID:     signingSubnetID,
+			quorumNumerator:     quorumNumerator,
+			teleporterMessageID: teleporterMessageID,
+			messageConfig:       f.messageConfig,
+			teleporterAddress:   f.messageConfig.teleporterAddress(),
+		}, nil
+	}
+
 	return &messageHandler{
 		logger:              logger.With(logFields...),
 		teleporterMessage:   teleporterMessage,
@@ -149,7 +167,7 @@ func (f *factory) NewMessageHandler(
 func (f *factory) GetMessageRoutingInfo(
 	message *messages.SourceMessage,
 ) (messages.MessageRoutingInfo, error) {
-	unsignedMessage, teleporterMessage, err := parseMessage(message)
+	unsignedMessage, teleporterMessage, err := f.parseMessage(message)
 	if err != nil {
 		return messages.MessageRoutingInfo{}, fmt.Errorf("failed to parse teleporter v2 message: %w", err)
 	}
@@ -450,10 +468,12 @@ func (m *messageHandler) getTeleporterMessenger() (*teleportermessengerv2.Telepo
 	return messenger, nil
 }
 
-// parseMessage decodes the TeleporterV2 message that [message] was sent as. The Warp adapter sends
-// its messages through the Warp precompile, so the source message payload is the encoded unsigned
-// Warp message that carries the Teleporter message as its addressed payload.
-func parseMessage(
+// parseMessage decodes the TeleporterV2 message that [message] was sent as. Both adapters send
+// their messages through the Warp precompile, so the source message payload is the encoded
+// unsigned Warp message that carries the Teleporter message as its addressed payload. The two
+// adapters encode that payload differently: the Merkle registry adapter uses the packed
+// serializeTeleporterMessageV2 layout, while the WarpAdapter uses abi.encode.
+func (f *factory) parseMessage(
 	message *messages.SourceMessage,
 ) (*warp.UnsignedMessage, *teleportermessengerv2.TeleporterMessageV2, error) {
 	unsignedMessage, err := utils.UnpackWarpMessage(message.Payload)
@@ -464,9 +484,18 @@ func parseMessage(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed parsing addressed payload: %w", err)
 	}
-	teleporterMessage, err := ParseTeleporterMessageV2(addressedPayload.Payload)
-	if err != nil {
-		return nil, nil, err
+
+	var teleporterMessage *teleportermessengerv2.TeleporterMessageV2
+	if f.messageConfig.VerifierType == VerifierTypeWarp {
+		teleporterMessage = &teleportermessengerv2.TeleporterMessageV2{}
+		if err := teleporterMessage.Unpack(addressedPayload.Payload); err != nil {
+			return nil, nil, fmt.Errorf("failed unpacking teleporter v2 message: %w", err)
+		}
+	} else {
+		teleporterMessage, err = ParseTeleporterMessageV2(addressedPayload.Payload)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	return unsignedMessage, teleporterMessage, nil
 }
