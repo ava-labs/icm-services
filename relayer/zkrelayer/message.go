@@ -24,7 +24,7 @@ const (
 // PendingMessage tracks one Ethereum-originated message through the pipeline.
 // Records are held in memory only and rebuilt on startup by rescanning the
 // source chain from the persisted slot cursor and the destination-chain for confirmed
-// deliveries. The relayer does not persist the message state, attempts, or last error. 
+// deliveries. The relayer does not persist the message state, attempts, or last error.
 type PendingMessage struct {
 	// TxHash of the source-chain transaction that emitted the message event.
 	// Used as the dedup key for the in-memory pending set.
