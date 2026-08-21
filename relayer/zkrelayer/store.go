@@ -14,19 +14,17 @@ type Store interface {
 	Save(*RelayerState) error
 }
 
-// RelayerState is the persisted state of the relayer used on startup.
+// RelayerState is the persisted state of the relayer used on startup. It is kept minimal as
+// a single scan cursor. Everything else the relayer needs is reconstructed on startup, i.e.,
+// pending messages by rescanning the source chain from the cursor (checking delivery
+// status against the destination), and the consensus position and confirmed anchors by
+// reading the destination contract.
 type RelayerState struct {
-	// LastScannedBlock is the last source-chain block number that was scanned for message events.
-	LastScannedBlock uint64 `json:"lastScannedBlock"`
-	// LastAppliedSlot is the last beacon chain slot for which a Boundless proof was applied to
-	// the destination chain.
-	LastAppliedSlot uint64 `json:"lastAppliedSlot"`
-	// ConfirmedAnchors is the list of beacon chain slots for which a Boundless proof has been
-	// applied to the destination chain.
-	ConfirmedAnchors []uint64 `json:"confirmedAnchors"`
-	// PendingMessages is a map of source-chain transaction hashes to their corresponding
-	// PendingMessage records.
-	PendingMessages map[common.Hash]*PendingMessage `json:"pending"`
+	// ScanFromBlock is the source-chain block number to resume scanning from. It is the
+	// block of the earliest pending (not yet confirmed delivered) message, or the last
+	// scanned block if no messages are pending, so a restart rescans exactly the window
+	// that may still contain undelivered messages.
+	ScanFromBlock uint64 `json:"scanFromBlock"`
 }
 
 // DatabaseStore persists the relayer state as a single JSON value in the shared
@@ -44,7 +42,7 @@ func NewDatabaseStore(db database.RelayerDatabase, relayerID common.Hash) *Datab
 // an empty RelayerState.
 func (s *DatabaseStore) Load() (*RelayerState, error) {
 	// Initialize empty relayer state
-	state := &RelayerState{PendingMessages: map[common.Hash]*PendingMessage{}}
+	state := &RelayerState{}
 	data, err := s.db.Get(s.relayerID, database.ZKRelayerStateKey)
 	if errors.Is(err, database.ErrKeyNotFound) || errors.Is(err, database.ErrRelayerIDNotFound) {
 		return state, nil
@@ -55,9 +53,6 @@ func (s *DatabaseStore) Load() (*RelayerState, error) {
 	// Unmarshal the JSON data into the RelayerState struct
 	if err := json.Unmarshal(data, state); err != nil {
 		return nil, err
-	}
-	if state.PendingMessages == nil {
-		state.PendingMessages = map[common.Hash]*PendingMessage{}
 	}
 	return state, nil
 }
