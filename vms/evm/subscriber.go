@@ -35,13 +35,21 @@ const (
 	// remain safe and fast for deep history.
 	strictTailBlocks = 10
 
-	// defaultScanInterval bounds live-loop scan frequency and is the fallback
-	// poll that advances the watermark through empty blocks. See (*Subscriber).Run.
-	defaultScanInterval = time.Second
+	// defaultCheckpointInterval is how often the live loop checkpoints empty
+	// blocks up to the chain tip during quiet periods when no logs arrive.
+	defaultCheckpointInterval = time.Hour
 
-	// defaultConfirmations is how far behind the tip the live loop scans.
-	// 0 processes up to the tip; increase to trade latency for reorg safety.
-	defaultConfirmations = 0
+	// defaultBlockFlushDelay is how long a block's buffered logs are held before
+	// being emitted, giving all logs of a block (delivered together) time to
+	// arrive. A later block's log flushes the buffer immediately regardless.
+	defaultBlockFlushDelay = time.Second
+
+	// defaultHeadBuffer is how many blocks behind the tip the periodic
+	// checkpoint stops, a margin for logs from the head arriving slightly late.
+	defaultHeadBuffer = 10
+
+	// resubscribeTimeout bounds a reconnect attempt after a subscription error.
+	resubscribeTimeout = 10 * time.Second
 )
 
 type SubscriberRPCClient interface {
@@ -95,13 +103,15 @@ type Subscriber struct {
 	blockchainID     ids.ID
 	isPrimaryNetwork bool
 	filter           EventFilter
-	// logs receives pushed logs used only as a signal to scan sooner.
+	// logs receives matching logs pushed by the subscription; the live loop
+	// delivers them and synthesizes the empty blocks in between.
 	logs      chan types.Log
 	icmBlocks chan *ICMBlockInfo
 	sub       ethereum.Subscription
 
-	confirmations uint64
-	scanInterval  time.Duration
+	checkpointInterval time.Duration
+	blockFlushDelay    time.Duration
+	headBuffer         uint64
 
 	errChan chan error
 
@@ -119,17 +129,18 @@ func NewSubscriber(
 	filter EventFilter,
 ) *Subscriber {
 	return &Subscriber{
-		blockchainID:     blockchainID,
-		isPrimaryNetwork: isPrimaryNetwork,
-		filter:           filter,
-		wsClient:         wsClient,
-		rpcClient:        rpcClient,
-		logger:           logger,
-		icmBlocks:        make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
-		logs:             make(chan types.Log, maxClientSubscriptionBuffer),
-		confirmations:    defaultConfirmations,
-		scanInterval:     defaultScanInterval,
-		errChan:          errChan,
+		blockchainID:       blockchainID,
+		isPrimaryNetwork:   isPrimaryNetwork,
+		filter:             filter,
+		wsClient:           wsClient,
+		rpcClient:          rpcClient,
+		logger:             logger,
+		icmBlocks:          make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
+		logs:               make(chan types.Log, maxClientSubscriptionBuffer),
+		checkpointInterval: defaultCheckpointInterval,
+		blockFlushDelay:    defaultBlockFlushDelay,
+		headBuffer:         defaultHeadBuffer,
+		errChan:            errChan,
 	}
 }
 
@@ -322,84 +333,159 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	return nil
 }
 
-// Run drives the live path until ctx is cancelled. Triggered by a pushed log or
-// by scanInterval, it scans [watermark+1, tip-confirmations], emitting every
-// height (including empty blocks) and advancing the watermark. The first scan
-// covers any historical gap from startingHeight, unifying catch-up and live.
+// Run delivers messages until ctx is cancelled. It first catches up
+// [startingHeight, tip] with a historical scan, then delivers the logs pushed by
+// the subscription: a block's logs are emitted together, and the empty blocks
+// between two consecutive logged blocks are emitted immediately so the
+// checkpoint advances contiguously. A periodic checkpoint advances through quiet
+// tails, and a subscription error triggers a reconnect plus a catch-up scan over
+// the gap that occurred while disconnected.
 func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
-	var watermark uint64
-	if startingHeight > 0 {
-		watermark = startingHeight - 1
+	tip, err := s.currentBlockNumber(ctx)
+	if err != nil {
+		s.errChan <- fmt.Errorf("failed to get initial block number: %w", err)
+		return
+	}
+	if err := s.scanRange(startingHeight, tip, true); err != nil {
+		s.errChan <- err
+		return
 	}
 
-	ticker := time.NewTicker(s.scanInterval)
-	defer ticker.Stop()
+	// lastEmitted is the highest block height emitted so far; the next block to
+	// emit is lastEmitted+1.
+	lastEmitted := tip
+	if startingHeight > 0 && lastEmitted < startingHeight-1 {
+		lastEmitted = startingHeight - 1
+	}
 
-	var lastScan time.Time
+	var (
+		bufBlock  uint64
+		bufLogs   []types.Log
+		buffering bool
+	)
+
+	ticker := time.NewTicker(s.checkpointInterval)
+	defer ticker.Stop()
+	flushTimer := time.NewTimer(s.blockFlushDelay)
+	if !flushTimer.Stop() {
+		<-flushTimer.C
+	}
+	defer flushTimer.Stop()
+
+	emit := func(height uint64, logs []types.Log) {
+		s.icmBlocks <- &ICMBlockInfo{BlockNumber: height, Logs: logs}
+		lastEmitted = height
+	}
+	// fillEmptyThrough emits empty blocks for (lastEmitted, upTo].
+	fillEmptyThrough := func(upTo uint64) {
+		for h := lastEmitted + 1; h <= upTo; h++ {
+			emit(h, nil)
+		}
+	}
+	flush := func() {
+		if !buffering {
+			return
+		}
+		emit(bufBlock, bufLogs)
+		bufLogs = nil
+		buffering = false
+	}
+	resetFlushTimer := func() {
+		if !flushTimer.Stop() {
+			select {
+			case <-flushTimer.C:
+			default:
+			}
+		}
+		flushTimer.Reset(s.blockFlushDelay)
+	}
+
+	subErr := s.sub.Err()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-s.logs:
-		case <-ticker.C:
-		}
-
-		// At most one scan per scanInterval, coalescing bursts of logs.
-		if wait := s.scanInterval - time.Since(lastScan); wait > 0 {
-			select {
-			case <-ctx.Done():
+		case lg, ok := <-s.logs:
+			if !ok {
 				return
-			case <-time.After(wait):
+			}
+			// Skip reorg-removed logs and anything already emitted by catch-up.
+			if lg.Removed || lg.BlockNumber <= lastEmitted {
+				continue
+			}
+			if buffering && lg.BlockNumber != bufBlock {
+				flush()
+			}
+			if !buffering {
+				fillEmptyThrough(lg.BlockNumber - 1)
+				bufBlock = lg.BlockNumber
+				buffering = true
+			}
+			bufLogs = append(bufLogs, lg)
+			resetFlushTimer()
+		case <-flushTimer.C:
+			flush()
+		case <-ticker.C:
+			if buffering {
+				continue
+			}
+			tip, err := s.currentBlockNumber(ctx)
+			if err != nil {
+				s.logger.Warn("failed to get block number for periodic checkpoint", zap.Error(err))
+				continue
+			}
+			if tip >= s.headBuffer {
+				fillEmptyThrough(tip - s.headBuffer)
+			}
+		case subError := <-subErr:
+			s.logger.Info("subscription error, reconnecting", zap.Error(subError))
+			flush()
+			if err := s.subscribe(resubscribeTimeout); err != nil {
+				s.errChan <- fmt.Errorf("failed to resubscribe: %w", err)
+				return
+			}
+			subErr = s.sub.Err()
+			tip, err := s.currentBlockNumber(ctx)
+			if err != nil {
+				s.errChan <- fmt.Errorf("failed to get block number after reconnect: %w", err)
+				return
+			}
+			// Catch up the blocks missed while disconnected.
+			if err := s.scanRange(lastEmitted+1, tip, true); err != nil {
+				s.errChan <- err
+				return
+			}
+			if tip > lastEmitted {
+				lastEmitted = tip
 			}
 		}
-		drainLogs(s.logs)
-		lastScan = time.Now()
-
-		tip, err := s.currentBlockNumber(ctx)
-		if err != nil {
-			s.logger.Warn("failed to get block number, will retry", zap.Error(err))
-			continue
-		}
-		if tip < s.confirmations {
-			continue
-		}
-		safeTip := tip - s.confirmations
-		if safeTip <= watermark {
-			continue
-		}
-
-		if err := s.scanRange(watermark+1, safeTip, false); err != nil {
-			s.errChan <- fmt.Errorf("failed to scan live range: %w", err)
-			return
-		}
-		watermark = safeTip
 	}
 }
 
+// currentBlockNumber returns the current chain tip, retrying transient failures.
 func (s *Subscriber) currentBlockNumber(ctx context.Context) (uint64, error) {
-	cctx, cancel := context.WithTimeout(ctx, utils.DefaultRPCTimeout)
-	defer cancel()
-	return s.rpcClient.BlockNumber(cctx)
-}
-
-// drainLogs empties the trigger channel so pending triggers coalesce into one scan.
-func drainLogs(ch <-chan types.Log) {
-	for {
-		select {
-		case <-ch:
-		default:
-			return
-		}
+	var number uint64
+	operation := func() (err error) {
+		cctx, cancel := context.WithTimeout(ctx, utils.DefaultRPCTimeout)
+		defer cancel()
+		number, err = s.rpcClient.BlockNumber(cctx)
+		return err
 	}
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"get block number failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
+	if err := utils.WithRetriesTimeout(operation, notify, utils.DefaultRPCTimeout*6); err != nil {
+		return 0, err
+	}
+	return number, nil
 }
 
 func (s *Subscriber) ICMBlocks() <-chan *ICMBlockInfo {
 	return s.icmBlocks
-}
-
-// SubscribeErr returns the error channel for the underlying subscription
-func (s *Subscriber) SubscribeErr() <-chan error {
-	return s.sub.Err()
 }
 
 // Err returns the error channel for miscellaneous errors not recoverable from

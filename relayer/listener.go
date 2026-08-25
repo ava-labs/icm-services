@@ -22,9 +22,6 @@ import (
 
 const (
 	retrySubscribeTimeout = 10 * time.Second
-	// TODO attempt to resubscribe in perpetuity once we are able to process missed blocks and
-	// refresh the chain config on reconnect.
-	retryResubscribeTimeout = 10 * time.Second
 )
 
 // Listener handles all messages sent from a given source chain
@@ -167,9 +164,8 @@ func newListener(
 	return &lstnr, nil
 }
 
-// Listens to the Subscriber logs channel to process them.
-// On subscriber error, attempts to reconnect and errors if unable.
-// Exits if context is cancelled by another goroutine.
+// Listens to the Subscriber blocks channel to process them.
+// Exits on subscriber error or when the context is cancelled.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
 	for {
 		select {
@@ -184,30 +180,10 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				lstnr.protocol.Address,
 				lstnr.errChan,
 			)
-		case subError := <-lstnr.Subscriber.SubscribeErr():
-			lstnr.logger.Info("Received error from subscribed node", zap.Error(subError))
-			subError = lstnr.reconnectToSubscriber()
-			if subError != nil {
-				lstnr.healthStatus.Store(false)
-				lstnr.logger.Error("Relayer goroutine exiting.", zap.Error(subError))
-				return fmt.Errorf("listener goroutine exiting: %w", subError)
-			}
 		case <-ctx.Done():
 			lstnr.healthStatus.Store(false)
 			lstnr.logger.Info("Exiting listener because context cancelled")
 			return nil
 		}
 	}
-}
-
-func (lstnr *Listener) reconnectToSubscriber() error {
-	// Attempt to reconnect the subscription
-	err := lstnr.Subscriber.Subscribe(retryResubscribeTimeout)
-	if err != nil {
-		return fmt.Errorf("failed to resubscribe to node: %w", err)
-	}
-
-	// Success
-	lstnr.healthStatus.Store(true)
-	return nil
 }
