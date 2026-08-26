@@ -61,8 +61,8 @@ func BasicRelay(
 	)
 
 	// The config needs to be validated in order to be passed to database.GetConfigRelayerIDs
-	relayerConfig.Validate()
-
+	err = relayerConfig.Validate()
+	Expect(err).Should(BeNil())
 	relayerConfigPath := utils.WriteRelayerConfig(log, relayerConfig, utils.DefaultRelayerCfgFname)
 
 	//
