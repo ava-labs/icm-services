@@ -47,9 +47,6 @@ const (
 	// defaultHeadBuffer is how many blocks behind the tip the periodic
 	// checkpoint stops, a margin for logs from the head arriving slightly late.
 	defaultHeadBuffer = 10
-
-	// resubscribeTimeout bounds a reconnect attempt after a subscription error.
-	resubscribeTimeout = 10 * time.Second
 )
 
 type SubscriberRPCClient interface {
@@ -333,30 +330,22 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	return nil
 }
 
-// Run delivers messages until ctx is cancelled. It first catches up
-// [startingHeight, tip] with a historical scan, then delivers the logs pushed by
+// Run delivers messages until ctx is cancelled. It delivers the logs pushed by
 // the subscription: a block's logs are emitted together, and the empty blocks
 // between two consecutive logged blocks are emitted immediately so the
 // checkpoint advances contiguously. A periodic checkpoint advances through quiet
-// tails, and a subscription error triggers a reconnect plus a catch-up scan over
-// the gap that occurred while disconnected.
+// tails. Catch-up on startup and after reconnects is driven by the listener.
 func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
-	tip, err := s.currentBlockNumber(ctx)
-	if err != nil {
-		s.errChan <- fmt.Errorf("failed to get initial block number: %w", err)
-		return
-	}
-	if err := s.scanRange(startingHeight, tip, true); err != nil {
-		s.errChan <- err
-		return
-	}
-
 	// lastEmitted is the highest block height emitted so far; the next block to
 	// emit is lastEmitted+1.
-	lastEmitted := tip
-	if startingHeight > 0 && lastEmitted < startingHeight-1 {
+	var lastEmitted uint64
+	if startingHeight > 0 {
 		lastEmitted = startingHeight - 1
 	}
+	// started becomes true once the first live block is emitted. Until then the
+	// listener's catch-up covers everything below it, so the live path does not
+	// backfill empties before the first block.
+	started := false
 
 	var (
 		bufBlock  uint64
@@ -375,6 +364,7 @@ func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
 	emit := func(height uint64, logs []types.Log) {
 		s.icmBlocks <- &ICMBlockInfo{BlockNumber: height, Logs: logs}
 		lastEmitted = height
+		started = true
 	}
 	// fillEmptyThrough emits empty blocks for (lastEmitted, upTo].
 	fillEmptyThrough := func(upTo uint64) {
@@ -400,7 +390,6 @@ func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
 		flushTimer.Reset(s.blockFlushDelay)
 	}
 
-	subErr := s.sub.Err()
 	for {
 		select {
 		case <-ctx.Done():
@@ -409,7 +398,6 @@ func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
 			if !ok {
 				return
 			}
-			// Skip reorg-removed logs and anything already emitted by catch-up.
 			if lg.Removed || lg.BlockNumber <= lastEmitted {
 				continue
 			}
@@ -417,7 +405,9 @@ func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
 				flush()
 			}
 			if !buffering {
-				fillEmptyThrough(lg.BlockNumber - 1)
+				if started {
+					fillEmptyThrough(lg.BlockNumber - 1)
+				}
 				bufBlock = lg.BlockNumber
 				buffering = true
 			}
@@ -434,29 +424,16 @@ func (s *Subscriber) Run(ctx context.Context, startingHeight uint64) {
 				s.logger.Warn("failed to get block number for periodic checkpoint", zap.Error(err))
 				continue
 			}
-			if tip >= s.headBuffer {
-				fillEmptyThrough(tip - s.headBuffer)
+			if tip < s.headBuffer {
+				continue
 			}
-		case subError := <-subErr:
-			s.logger.Info("subscription error, reconnecting", zap.Error(subError))
-			flush()
-			if err := s.subscribe(resubscribeTimeout); err != nil {
-				s.errChan <- fmt.Errorf("failed to resubscribe: %w", err)
-				return
-			}
-			subErr = s.sub.Err()
-			tip, err := s.currentBlockNumber(ctx)
-			if err != nil {
-				s.errChan <- fmt.Errorf("failed to get block number after reconnect: %w", err)
-				return
-			}
-			// Catch up the blocks missed while disconnected.
-			if err := s.scanRange(lastEmitted+1, tip, true); err != nil {
-				s.errChan <- err
-				return
-			}
-			if tip > lastEmitted {
-				lastEmitted = tip
+			target := tip - s.headBuffer
+			if started {
+				fillEmptyThrough(target)
+			} else if target > lastEmitted {
+				// Bootstrap on a quiet chain: emit one empty block so the
+				// listener triggers catch-up for everything below it.
+				emit(target, nil)
 			}
 		}
 	}
@@ -486,6 +463,11 @@ func (s *Subscriber) currentBlockNumber(ctx context.Context) (uint64, error) {
 
 func (s *Subscriber) ICMBlocks() <-chan *ICMBlockInfo {
 	return s.icmBlocks
+}
+
+// SubscribeErr returns the error channel for the underlying subscription.
+func (s *Subscriber) SubscribeErr() <-chan error {
+	return s.sub.Err()
 }
 
 // Err returns the error channel for miscellaneous errors not recoverable from
