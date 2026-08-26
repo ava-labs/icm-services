@@ -13,6 +13,7 @@ type ApplicationRelayerMetrics struct {
 	successfulRelayMessageCount   *prometheus.CounterVec
 	createSignedMessageLatencyMS  *prometheus.GaugeVec
 	failedRelayMessageCount       *prometheus.CounterVec
+	abandonedRelayMessageCount    *prometheus.CounterVec
 	fetchSignatureAppRequestCount *prometheus.CounterVec
 }
 
@@ -39,6 +40,15 @@ func NewApplicationRelayerMetrics(registerer prometheus.Registerer) *Application
 			},
 			[]string{"destination_chain_id", "source_chain_id", "failure_reason"},
 		),
+		abandonedRelayMessageCount: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "abandoned_relay_message_count",
+				Help: "Number of messages the relayer gave up on permanently. Distinct from " +
+					"failed_relay_message_count: these will never be retried or re-attempted " +
+					"after a restart, because the height was checkpointed without them.",
+			},
+			[]string{"destination_chain_id", "source_chain_id", "failure_reason"},
+		),
 		fetchSignatureAppRequestCount: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "fetch_signature_app_request_count",
@@ -51,6 +61,7 @@ func NewApplicationRelayerMetrics(registerer prometheus.Registerer) *Application
 	registerer.MustRegister(m.successfulRelayMessageCount)
 	registerer.MustRegister(m.createSignedMessageLatencyMS)
 	registerer.MustRegister(m.failedRelayMessageCount)
+	registerer.MustRegister(m.abandonedRelayMessageCount)
 	registerer.MustRegister(m.fetchSignatureAppRequestCount)
 
 	return &m
@@ -82,6 +93,11 @@ func (m *relayerMetrics) IncSuccessfulRelayMessageCount() {
 
 func (m *relayerMetrics) IncFailedRelayMessageCount(failureReason string) {
 	m.metrics.failedRelayMessageCount.
+		WithLabelValues(m.destinationChainID, m.sourceChainID, failureReason).Inc()
+}
+
+func (m *relayerMetrics) IncAbandonedRelayMessageCount(failureReason string) {
+	m.metrics.abandonedRelayMessageCount.
 		WithLabelValues(m.destinationChainID, m.sourceChainID, failureReason).Inc()
 }
 

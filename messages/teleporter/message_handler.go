@@ -184,14 +184,30 @@ func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Addr
 
 // ShouldSendMessage returns true if the message should be sent to the destination chain
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
-	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
 	destBlockGasLimit := m.destinationClient.BlockGasLimit()
-	// Check if the specified gas limit is below the maximum threshold
-	if requiredGasLimit > destBlockGasLimit {
+
+	// Check that the whole delivery fits in a block, not just the message's own execution
+	// budget. A message's receipt count is attacker-controlled and unbounded - Teleporter's
+	// sendSpecifiedReceipts is permissionless, caps nothing, and hardcodes requiredGasLimit to
+	// zero - so the receipts, not RequiredGasLimit, are what can push a delivery past the block
+	// limit. Signers and predicate chunks are not known until the signature is aggregated;
+	// omitting them makes this a lower bound on the limit SendMessage will compute, so this
+	// never declines a message that would have fit.
+	minGasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
+		0,
+		m.teleporterMessage.RequiredGasLimit,
+		0,
+		len(m.unsignedMessage.Payload),
+		len(m.teleporterMessage.Receipts),
+	)
+	if err != nil || minGasLimit > destBlockGasLimit {
 		m.logger.Info(
-			"Gas limit exceeds maximum threshold",
+			"Delivery gas limit exceeds destination block gas limit",
 			zap.Uint64("requiredGasLimit", m.teleporterMessage.RequiredGasLimit.Uint64()),
+			zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
+			zap.Uint64("minDeliveryGasLimit", minGasLimit),
 			zap.Uint64("blockGasLimit", destBlockGasLimit),
+			zap.Error(err),
 		)
 		return false, nil
 	}
@@ -278,6 +294,22 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		return common.Hash{}, err
 	}
 
+	// Re-check against the block gas limit now that the signature fixes the signer and predicate
+	// chunk counts. ShouldSendMessage only had a lower bound, and broadcasting a transaction that
+	// cannot fit in a block would burn the relayer's funds for a guaranteed failure.
+	if blockGasLimit := m.destinationClient.BlockGasLimit(); gasLimit > blockGasLimit {
+		m.logger.Warn(
+			"Delivery gas limit exceeds destination block gas limit, not sending",
+			zap.Uint64("gasLimit", gasLimit),
+			zap.Uint64("blockGasLimit", blockGasLimit),
+			zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
+		)
+		return common.Hash{}, fmt.Errorf(
+			"%w: %d exceeds %d",
+			messages.ErrDeliveryExceedsBlockGasLimit, gasLimit, blockGasLimit,
+		)
+	}
+
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
 		0,
@@ -319,6 +351,24 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		if delivered {
 			log.Info("Execution reverted: message already delivered to destination.")
 			return txHash, nil
+		}
+
+		// A revert that consumed the entire gas limit is an out-of-gas failure: the same
+		// delivery will fail identically on a retry, so re-broadcasting only bills the relayer
+		// for a second reverted transaction. Reverts that left gas unspent are logic failures
+		// (e.g. Warp verification against a churned validator set) which a fresh signature may
+		// resolve, so those stay retryable.
+		if receipt.GasUsed >= gasLimit {
+			log.Error(
+				"Transaction ran out of gas",
+				zap.Uint64("gasUsed", receipt.GasUsed),
+				zap.Uint64("gasLimit", gasLimit),
+				zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
+			)
+			return common.Hash{}, fmt.Errorf(
+				"%w: used %d of %d",
+				messages.ErrDeliveryOutOfGas, receipt.GasUsed, gasLimit,
+			)
 		}
 
 		log.Error("Transaction failed")

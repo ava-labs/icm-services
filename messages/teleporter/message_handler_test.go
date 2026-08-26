@@ -9,9 +9,11 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
+	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/mocks"
@@ -130,7 +132,7 @@ func TestShouldSendMessage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	const blockGasLimit = 10_000
+	const blockGasLimit = 15_000_000
 	gasLimitExceededTeleporterMessage := validTeleporterMessage
 	gasLimitExceededTeleporterMessage.RequiredGasLimit = big.NewInt(blockGasLimit + 1)
 	gasLimitExceededTeleporterMessageBytes, err := gasLimitExceededTeleporterMessage.Pack()
@@ -146,6 +148,41 @@ func TestShouldSendMessage(t *testing.T) {
 		0,
 		sourceBlockchainID,
 		gasLimitExceededAddressedCall.Bytes(),
+	)
+	require.NoError(t, err)
+
+	// A message shaped like one produced by Teleporter's permissionless sendSpecifiedReceipts:
+	// RequiredGasLimit of zero, no allowed-relayer restriction, and enough receipts that marking
+	// them cannot fit in a block. The old check only looked at RequiredGasLimit and so waved
+	// this through, after which the relayer broadcast an under-provisioned delivery and paid for
+	// the out-of-gas revert.
+	receiptHeavyTeleporterMessage := validTeleporterMessage
+	receiptHeavyTeleporterMessage.RequiredGasLimit = big.NewInt(0)
+	receiptHeavyTeleporterMessage.AllowedRelayerAddresses = nil
+	numReceipts := blockGasLimit/int(gasUtils.MarkMessageReceiptGasCost) + 1
+	receiptHeavyTeleporterMessage.Receipts = make(
+		[]teleportermessenger.TeleporterMessageReceipt,
+		numReceipts,
+	)
+	for i := range receiptHeavyTeleporterMessage.Receipts {
+		receiptHeavyTeleporterMessage.Receipts[i] = teleportermessenger.TeleporterMessageReceipt{
+			ReceivedMessageNonce: big.NewInt(int64(i + 1)),
+			RelayerRewardAddress: common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
+		}
+	}
+	receiptHeavyTeleporterMessageBytes, err := receiptHeavyTeleporterMessage.Pack()
+	require.NoError(t, err)
+
+	receiptHeavyAddressedCall, err := warpPayload.NewAddressedCall(
+		messageProtocolAddress.Bytes(),
+		receiptHeavyTeleporterMessageBytes,
+	)
+	require.NoError(t, err)
+
+	receiptHeavyWarpUnsignedMessage, err := warp.NewUnsignedMessage(
+		0,
+		sourceBlockchainID,
+		receiptHeavyAddressedCall.Bytes(),
 	)
 	require.NoError(t, err)
 
@@ -214,6 +251,12 @@ func TestShouldSendMessage(t *testing.T) {
 			name:                    "gas limit exceeded",
 			destinationBlockchainID: destinationBlockchainID,
 			warpUnsignedMessage:     gasLimitExceededWarpUnsignedMessage,
+			expectedResult:          false,
+		},
+		{
+			name:                    "receipt count exceeds block gas limit",
+			destinationBlockchainID: destinationBlockchainID,
+			warpUnsignedMessage:     receiptHeavyWarpUnsignedMessage,
 			expectedResult:          false,
 		},
 	}
@@ -346,6 +389,7 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	require.NoError(t, err)
 
 	mockEthClient := mock_evm.NewMockClient(ctrl)
+	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
 	mockClient.EXPECT().
 		Client().
 		Return(mockEthClient).
@@ -368,4 +412,128 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	// Call the method under test
 	_, err = handler.(*messageHandler).SendMessage(signedMessage)
 	require.NoError(t, err)
+}
+
+// A delivery that reverts having consumed its entire gas limit ran out of gas. That is
+// deterministic, so the relayer must surface it as non-retryable rather than re-broadcasting and
+// paying for the same reverted transaction again.
+func TestSendMessageOutOfGasIsNonRetryable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	validMessageBytes, err := validTeleporterMessage.Pack()
+	require.NoError(t, err)
+
+	validAddressedCall, err := warpPayload.NewAddressedCall(
+		messageProtocolAddress.Bytes(),
+		validMessageBytes,
+	)
+	require.NoError(t, err)
+
+	warpUnsignedMessage, err := warp.NewUnsignedMessage(0, ids.Empty, validAddressedCall.Bytes())
+	require.NoError(t, err)
+
+	signedMessage, err := warp.NewMessage(warpUnsignedMessage, &warp.BitSetSignature{})
+	require.NoError(t, err)
+
+	messageNotDelivered, err := teleportermessenger.PackMessageReceivedOutput(false)
+	require.NoError(t, err)
+
+	mockClient := mock_vms.NewMockDestinationClient(ctrl)
+	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
+	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
+
+	factory, err := NewMessageHandlerFactory(messageProtocolAddress, messageProtocolConfig, nil)
+	require.NoError(t, err)
+	handler, err := factory.NewMessageHandler(
+		logging.NoLog{},
+		sourceMessage(warpUnsignedMessage),
+		mockClient,
+		nil,
+		mocks.NewMockMetrics(ctrl),
+		ids.Empty,
+		0,
+	)
+	require.NoError(t, err)
+
+	mockEthClient := mock_evm.NewMockClient(ctrl)
+	mockClient.EXPECT().Client().Return(mockEthClient).Times(1)
+
+	// Echo the gas limit the handler chose back as gas used: that is what an out-of-gas revert
+	// looks like on chain.
+	mockClient.EXPECT().
+		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(
+			_ logging.Logger,
+			_ types.AccessList,
+			_ set.Set[common.Address],
+			_ common.Address,
+			gasLimit uint64,
+			_ []byte,
+		) (*types.Receipt, error) {
+			return &types.Receipt{
+				Status:  types.ReceiptStatusFailed,
+				GasUsed: gasLimit,
+			}, nil
+		}).Times(1)
+
+	mockEthClient.EXPECT().
+		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(messageNotDelivered, nil).
+		Times(1)
+
+	_, err = handler.(*messageHandler).SendMessage(signedMessage)
+	require.ErrorIs(t, err, messages.ErrNonRetryable)
+}
+
+// A revert that left gas unspent is a logic failure, e.g. Warp verification against a validator
+// set that has churned. A fresh signature may fix it, so it must stay retryable.
+func TestSendMessageRevertWithGasLeftIsRetryable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	validMessageBytes, err := validTeleporterMessage.Pack()
+	require.NoError(t, err)
+	validAddressedCall, err := warpPayload.NewAddressedCall(
+		messageProtocolAddress.Bytes(),
+		validMessageBytes,
+	)
+	require.NoError(t, err)
+	warpUnsignedMessage, err := warp.NewUnsignedMessage(0, ids.Empty, validAddressedCall.Bytes())
+	require.NoError(t, err)
+	signedMessage, err := warp.NewMessage(warpUnsignedMessage, &warp.BitSetSignature{})
+	require.NoError(t, err)
+
+	messageNotDelivered, err := teleportermessenger.PackMessageReceivedOutput(false)
+	require.NoError(t, err)
+
+	mockClient := mock_vms.NewMockDestinationClient(ctrl)
+	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
+	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
+
+	factory, err := NewMessageHandlerFactory(messageProtocolAddress, messageProtocolConfig, nil)
+	require.NoError(t, err)
+	handler, err := factory.NewMessageHandler(
+		logging.NoLog{},
+		sourceMessage(warpUnsignedMessage),
+		mockClient,
+		nil,
+		mocks.NewMockMetrics(ctrl),
+		ids.Empty,
+		0,
+	)
+	require.NoError(t, err)
+
+	mockEthClient := mock_evm.NewMockClient(ctrl)
+	mockClient.EXPECT().Client().Return(mockEthClient).Times(1)
+	mockClient.EXPECT().
+		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: 21_000}, nil).
+		Times(1)
+	mockEthClient.EXPECT().
+		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(messageNotDelivered, nil).
+		Times(1)
+
+	_, err = handler.(*messageHandler).SendMessage(signedMessage)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, messages.ErrNonRetryable)
 }
