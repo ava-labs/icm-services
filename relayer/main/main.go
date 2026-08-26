@@ -708,11 +708,8 @@ func startMerkleSetUpdater(
 		return fmt.Errorf("failed to get network ID: %w", err)
 	}
 
-	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
+	pollInterval := extDest.GetPollInterval()
 	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-	if pollInterval == 0 {
-		pollInterval = validatorupdater.DefaultPollInterval
-	}
 	updater := validatorupdater.NewMerkleSetUpdater(
 		logger,
 		pChainClient,

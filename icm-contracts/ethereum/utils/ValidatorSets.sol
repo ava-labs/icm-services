@@ -16,15 +16,6 @@ struct Validator {
     uint64 weight;
 }
 
-// The payload that initiates registering / updating a
-// Validator set for the chain with ID `avalancheBlockchainID`.
-// A shard to add to a validator set for which partial data has already
-// been received. The `avalancheBlockchainID` field will be used to lookup the
-// existing partial data
-// A partial Validator set which can be constructed from
-//  shards sent across multiple transactions
-// ValidatorChange represents a single validator addition, removal, or modification
-// ValidatorSetDiff contains the diff information from a signed message
 /// Compact, constant size on-chain commitment to an Avalanche validator set.
 struct ValidatorSetMerkleCommitment {
     bytes32 avalancheBlockchainID;

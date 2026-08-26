@@ -16,17 +16,13 @@ import (
 	warppayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	merklevalidatorsetregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	"github.com/ava-labs/icm-services/peers/clients"
+	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
-)
-
-const (
-	DefaultPollInterval     = 10 * time.Second
-	defaultQuorumPercentage = 67
 )
 
 // weiPerGwei is the conversion factor between gwei and wei.
@@ -361,7 +357,7 @@ func (s *MerkleSetUpdater) performUpdate(
 		unsignedMsg,
 		nil,
 		signingChain,
-		defaultQuorumPercentage,
+		config.DefaultRegistryQuorumNumerator,
 		onChainPChainHeight,
 	)
 	if err != nil {

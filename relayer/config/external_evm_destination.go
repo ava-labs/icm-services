@@ -7,14 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/libevm/common"
 )
 
-// defaultDeliveryQuorumNumerator matches the QUORUM_NUM used by MerkleValidatorSetRegistry
-// (67/100) for verifying delivered messages.
-const defaultDeliveryQuorumNumerator = 67
+// DefaultRegistryQuorumNumerator matches the QUORUM_NUM used by MerkleValidatorSetRegistry
+// (67/100) for verifying delivered messages and validator-set attestations. Signatures
+// aggregated with a lower quorum are rejected on-chain, so this is a hard requirement of the
+// registry contract rather than a configurable policy default.
+const DefaultRegistryQuorumNumerator uint64 = 67
+
+// defaultPollInterval is how often the validator-set updater polls when
+// PollIntervalSeconds is unset.
+const defaultPollInterval = 10 * time.Second
 
 // ExternalEVMDestination configures an external EVM chain (e.g. Ethereum) for the relayer.
 //
@@ -83,12 +90,21 @@ func (e *ExternalEVMDestination) DeliversMessages() bool {
 	return e.DestinationBlockchainID != ""
 }
 
+// GetPollInterval returns how often the validator-set updater should poll for validator set
+// changes, falling back to defaultPollInterval when PollIntervalSeconds is unset.
+func (e *ExternalEVMDestination) GetPollInterval() time.Duration {
+	if e.PollIntervalSeconds == 0 {
+		return defaultPollInterval
+	}
+	return time.Duration(e.PollIntervalSeconds) * time.Second
+}
+
 // GetWarpConfig returns the Warp configuration used when signing messages destined for this
 // external EVM chain. The source subnet signs, so only the quorum numerator is meaningful.
 func (e *ExternalEVMDestination) GetWarpConfig() WarpConfig {
 	q := e.QuorumNumerator
 	if q == 0 {
-		q = defaultDeliveryQuorumNumerator
+		q = DefaultRegistryQuorumNumerator
 	}
 	return WarpConfig{QuorumNumerator: q}
 }
@@ -124,7 +140,7 @@ func (e *ExternalEVMDestination) ValidateDelivery() error {
 		return errors.New("delivery-private-key must be different from private-key")
 	}
 	if e.QuorumNumerator == 0 {
-		e.QuorumNumerator = defaultDeliveryQuorumNumerator
+		e.QuorumNumerator = DefaultRegistryQuorumNumerator
 	}
 	return nil
 }
