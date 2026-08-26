@@ -68,10 +68,6 @@ jobs:
         persist-credentials: false
 
     - name: Install solhint
-      # Pinned so a newly published solhint release cannot change what CI executes;
-      # --ignore-scripts blocks dependency lifecycle scripts on install. This job holds
-      # no secrets and its GITHUB_TOKEN is read-only and not persisted (see above), so a
-      # compromised solhint can at worst falsify lint results for this run.
       run: |
         npm install -g solhint@6.2.4 --ignore-scripts
         solhint --version
