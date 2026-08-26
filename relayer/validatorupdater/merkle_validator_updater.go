@@ -24,6 +24,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	DefaultPollInterval     = 10 * time.Second
+	defaultQuorumPercentage = 67
+)
+
 // weiPerGwei is the conversion factor between gwei and wei.
 var weiPerGwei = big.NewInt(1_000_000_000)
 

@@ -249,6 +249,14 @@ var nullLeafHash = func() [32]byte {
 }()
 
 // nextPow2 returns the smallest power of two >= n (minimum 1).
+func sumWeights(validators []*Validator) uint64 {
+	var total uint64
+	for _, v := range validators {
+		total += v.Weight
+	}
+	return total
+}
+
 func nextPow2(n int) int {
 	p := 1
 	for p < n {
