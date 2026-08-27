@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ava-labs/avalanchego/graft/evm/rpc"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/rawdb"
 	"github.com/ava-labs/libevm/core/types"
@@ -17,38 +18,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeEthClient returns fixed test data instead of querying a real chain
-type fakeEthClient struct {
+// mockEthClient returns fixed test data instead of querying a real chain.
+type mockEthClient struct {
 	header   *types.Header
-	block    *types.Block
-	receipts map[common.Hash]*types.Receipt
+	receipts types.Receipts
 }
 
-func (f *fakeEthClient) HeaderByNumber(_ context.Context, _ *big.Int) (*types.Header, error) {
+func (f *mockEthClient) HeaderByNumber(_ context.Context, _ *big.Int) (*types.Header, error) {
 	return f.header, nil
 }
 
-func (f *fakeEthClient) BlockByNumber(_ context.Context, _ *big.Int) (*types.Block, error) {
-	return f.block, nil
+func (f *mockEthClient) BlockReceipts(_ context.Context, _ rpc.BlockNumberOrHash) ([]*types.Receipt, error) {
+	return f.receipts, nil
 }
 
-func (f *fakeEthClient) TransactionReceipt(_ context.Context, txHash common.Hash) (*types.Receipt, error) {
-	return f.receipts[txHash], nil
-}
-
-// makeTestBlock builds a synthetic block of n transactions with receipts,
-// whose header carries the correct receipts root for those receipts.
-func makeTestBlock(t *testing.T, n int) (*fakeEthClient, types.Receipts) {
+// makeTestBlock builds n synthetic receipts and a header carrying their
+// correct receipts root.
+func makeTestBlock(t *testing.T, n int) (*mockEthClient, types.Receipts) {
 	t.Helper()
 
-	txs := make([]*types.Transaction, n)
 	receipts := make(types.Receipts, n)
-	byHash := make(map[common.Hash]*types.Receipt, n)
 	for i := 0; i < n; i++ {
-		to := common.BytesToAddress([]byte{byte(i + 1)})
-		txs[i] = types.NewTransaction(uint64(i), to, big.NewInt(1), 21000, big.NewInt(1), nil)
-
-		receipt := &types.Receipt{
+		receipts[i] = &types.Receipt{
 			Type:              types.LegacyTxType,
 			Status:            types.ReceiptStatusSuccessful,
 			CumulativeGasUsed: uint64(21000 * (i + 1)),
@@ -64,25 +55,22 @@ func makeTestBlock(t *testing.T, n int) (*fakeEthClient, types.Receipts) {
 					Data:    []byte{byte(i), byte(i)},
 				},
 			},
-			TxHash:           txs[i].Hash(),
+			TxHash:           common.BytesToHash([]byte{0xCC, byte(i)}),
 			TransactionIndex: uint(i),
 		}
-		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-		receipts[i] = receipt
-		byHash[txs[i].Hash()] = receipt
 	}
 
 	header := &types.Header{
 		Number:      big.NewInt(100),
 		ReceiptHash: types.DeriveSha(receipts, trie.NewStackTrie(nil)),
 	}
-	block := types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
 
-	return &fakeEthClient{header: header, block: block, receipts: byHash}, receipts
+	return &mockEthClient{header: header, receipts: receipts}, receipts
 }
 
 // verifyProofAgainstRoot cryptographically verifies the returned proof nodes
-// against the receipts root and returns the proven value.
+// against the receipts root and returns the proven value. Plays the role of
+// on-chain verifier.
 func verifyProofAgainstRoot(t *testing.T, root common.Hash, key []byte, nodes [][]byte) []byte {
 	t.Helper()
 	proofDB := rawdb.NewMemoryDatabase()
@@ -102,27 +90,26 @@ func TestBuildReceiptProof(t *testing.T) {
 	targetLogIdx := uint(1)
 	targetHash := receipts[targetIdx].TxHash
 
+	// Build proof.
 	proof, err := BuildReceiptProof(context.Background(), client, 100, targetHash, targetLogIdx)
 	require.NoError(t, err)
 
-	// The key must be the RLP-encoded transaction index.
 	expectedKey, err := rlp.EncodeToBytes(uint(targetIdx))
 	require.NoError(t, err)
 	require.Equal(t, expectedKey, proof.Key)
 
-	// The proof must verify against the header's receipts root, and the
-	// proven value must equal the returned Value.
+	// Verify.
 	provenValue := verifyProofAgainstRoot(t, client.header.ReceiptHash, proof.Key, proof.Proof)
 	require.Equal(t, proof.Value, provenValue)
 
-	// Log metadata must identify the requested log.
+	// Log metadata must match the requested log.
 	targetLog := receipts[targetIdx].Logs[targetLogIdx]
 	require.Equal(t, targetLogIdx, proof.LogIndex)
 	require.Equal(t, targetLog.Address, proof.ExpectedEmitter)
 	require.Equal(t, targetLog.Topics[0], proof.ExpectedTopic0)
 }
 
-// Every receipt in the block must be provable, not just a particular index.
+// Verify every receipt in the block.
 func TestBuildReceiptProofAllIndices(t *testing.T) {
 	client, receipts := makeTestBlock(t, 5)
 	for i, receipt := range receipts {

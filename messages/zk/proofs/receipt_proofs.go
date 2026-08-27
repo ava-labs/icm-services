@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ava-labs/avalanchego/graft/evm/rpc"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/rawdb"
 	"github.com/ava-labs/libevm/core/types"
@@ -17,19 +18,18 @@ import (
 	"github.com/ava-labs/libevm/triedb"
 )
 
-// ethClient is the subset of ethclient.Client used by proof building.
-// *ethclient.Client satisfies it; tests substitute a fake.
+// ethClient is the subset of ethclient.Client used for proof building.
 type ethClient interface {
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
-	BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error)
-	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	BlockReceipts(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) ([]*types.Receipt, error)
 }
 
 // ReceiptProof is a Merkle Patricia Tree (MPT) inclusion proof for
 // a specific log inside a receipt and is against a block's receipts root.
 // The field layout below mirrors the ZKAdapter's Receipt.Proof struct
-// nolint:lll
 // See: https://github.com/ava-labs/icm-services/blob/39eb811943f8017843e30dfeb059e829fe65099e/icm-contracts/avalanche/verifiers/ethereum/StateManagerLibrary.sol#L160
+//
+//nolint:lll
 type ReceiptProof struct {
 	// Proof is the list of trie nodes on the path from the receipts root to
 	// the receipt, in root-to-leaf order.
@@ -56,57 +56,36 @@ func BuildReceiptProof(
 	txHash common.Hash,
 	logIndex uint,
 ) (*ReceiptProof, error) {
+	// Get the target receipt corresponding to txHash and its log.
 	header, err := client.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch header %d: %w", blockNumber, err)
 	}
-
-	receipts, err := blockReceipts(ctx, client, header)
+	// RequireCanonical=false: we want the receipts of exactly this header's block. Whether or not
+	// the block is canonical is already enforced by finality depth and by proof verification against
+	// a confirmed consensus anchor.
+	receipts, err := client.BlockReceipts(ctx, rpc.BlockNumberOrHashWithHash(header.Hash(), false))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch receipts for block %d: %w", blockNumber, err)
 	}
-
-	// Locate the target receipt and its log.
 	targetReceipt, err := receiptByTxHash(receipts, txHash)
 	if err != nil {
 		return nil, err
 	}
 	if int(logIndex) >= len(targetReceipt.Logs) {
-		return nil, fmt.Errorf("log index %d out of range (%d logs) in receipt %s",
+		return nil, fmt.Errorf("log index %d out of range (total %d logs) in receipt %s",
 			logIndex, len(targetReceipt.Logs), txHash.Hex())
 	}
 	targetLog := targetReceipt.Logs[logIndex]
 
-	// Rebuild the receipts trie. types.Receipts implements DerivableList, so
-	// EncodeIndex produces the canonical EIP-2718 typed receipt encoding.
-	receiptsTrie := trie.NewEmpty(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil))
-	var valueBuf bytes.Buffer
-	var targetValue []byte
-	receiptList := types.Receipts(receipts)
-	for i := range receipts {
-		key, err := rlp.EncodeToBytes(uint(i))
-		if err != nil {
-			return nil, fmt.Errorf("failed to encode trie key %d: %w", i, err)
-		}
-		valueBuf.Reset()
-		receiptList.EncodeIndex(i, &valueBuf)
-		value := bytes.Clone(valueBuf.Bytes())
-		if err := receiptsTrie.Update(key, value); err != nil {
-			return nil, fmt.Errorf("failed to insert receipt %d into trie: %w", i, err)
-		}
-		if uint(i) == targetReceipt.TransactionIndex {
-			targetValue = value
-		}
+	// Build the receipts trie.
+	receiptsTrie, targetValue, err := buildReceiptsTrie(receipts,
+		targetReceipt.TransactionIndex, header.ReceiptHash)
+	if err != nil {
+		return nil, err
 	}
 
-	// The reconstructed root must match the block header, or the proof would
-	// be built against the wrong tree.
-	if receiptsTrie.Hash() != header.ReceiptHash {
-		return nil, fmt.Errorf("receipts trie root mismatch: computed %s, header %s",
-			receiptsTrie.Hash().Hex(), header.ReceiptHash.Hex())
-	}
-
-	// Extract the inclusion proof for the target receipt.
+	// Compute the inclusion proof for the target receipt.
 	key, err := rlp.EncodeToBytes(targetReceipt.TransactionIndex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode target trie key: %w", err)
@@ -126,31 +105,44 @@ func BuildReceiptProof(
 	}, nil
 }
 
-// blockReceipts fetches every receipt in the block, preferring the batch
-// eth_getBlockReceipts endpoint and falling back to per-transaction fetches.
-func blockReceipts(
-	ctx context.Context,
-	client ethClient,
-	header *types.Header,
-) ([]*types.Receipt, error) {
-	// TODO: use client.BlockReceipts if the libevm ethclient version exposes
-	// it; the per-tx fallback below is correct but slower for large blocks.
-	block, err := client.BlockByNumber(ctx, header.Number)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch block %d: %w", header.Number, err)
-	}
-	receipts := make([]*types.Receipt, len(block.Transactions()))
-	for i, tx := range block.Transactions() {
-		receipt, err := client.TransactionReceipt(ctx, tx.Hash())
+// buildReceiptsTrie reconstructs the block's receipts trie and returns it
+// along with the encoded target receipt. The trie root is verified against
+// the header's receipts root, so any encoding drift fails here rather than
+// producing proofs against the wrong tree.
+func buildReceiptsTrie(
+	receipts []*types.Receipt,
+	targetIndex uint,
+	receiptsRoot common.Hash,
+) (*trie.Trie, []byte, error) {
+	receiptsTrie := trie.NewEmpty(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil))
+	var valueBuf bytes.Buffer
+	var targetValue []byte
+	receiptList := types.Receipts(receipts)
+	for i := range receipts {
+		key, err := rlp.EncodeToBytes(uint(i))
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch receipt %s: %w", tx.Hash().Hex(), err)
+			return nil, nil, fmt.Errorf("failed to encode trie key %d: %w", i, err)
 		}
-		receipts[i] = receipt
+		valueBuf.Reset()
+		receiptList.EncodeIndex(i, &valueBuf)
+		value := bytes.Clone(valueBuf.Bytes())
+		if err := receiptsTrie.Update(key, value); err != nil {
+			return nil, nil, fmt.Errorf("failed to insert receipt %d into trie: %w", i, err)
+		}
+		if uint(i) == targetIndex {
+			targetValue = value
+		}
 	}
-	return receipts, nil
+
+	if receiptsTrie.Hash() != receiptsRoot {
+		return nil, nil, fmt.Errorf("receipts trie root mismatch: computed %s, header %s",
+			receiptsTrie.Hash().Hex(), receiptsRoot.Hex())
+	}
+	return receiptsTrie, targetValue, nil
 }
 
 // receiptByTxHash returns the receipt for the given transaction hash.
+// We implement this manually which avoids making a TransactionReceipt RPC call.
 func receiptByTxHash(receipts []*types.Receipt, txHash common.Hash) (*types.Receipt, error) {
 	for _, r := range receipts {
 		if r.TxHash == txHash {
