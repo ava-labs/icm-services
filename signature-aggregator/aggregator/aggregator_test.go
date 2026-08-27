@@ -779,8 +779,7 @@ func TestUnmarshalResponse(t *testing.T) {
 	randSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: randSignature})
 	require.NoError(t, err)
 
-	shortSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: randSignature[:95]})
-	require.NoError(t, err)
+	shortSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: randSignature[:bls.SignatureLen-1]})
 
 	longSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{
 		Signature: append(slices.Clone(randSignature), 0xff),
