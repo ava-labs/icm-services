@@ -863,7 +863,6 @@ func TestConfigSanitization(t *testing.T) {
 				LogLevel:   "info",
 				RedisURL:   "redis://user:pass@localhost:6379",
 				TLSKeyPath: "/path/to/secret.key",
-				DeciderURL: "http://decider.example.com",
 				APIPort:    8080,
 			},
 			expectedFields: map[string]interface{}{
