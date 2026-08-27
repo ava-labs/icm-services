@@ -19,8 +19,11 @@ if ! command -v jq &> /dev/null; then
     echo "jq not found. It is required to be installed before proceeding." && exit 1
 fi
 
+# shellcheck source=scripts/cast_wallet.sh
+source "$REPO_PATH"/scripts/cast_wallet.sh
+
 function printHelp() {
-    echo "Usage: ./scripts/deploy_registry.sh --version <version> --rpc-url <url> --private-key <private_key> [OPTIONS]"
+    echo "Usage: ./scripts/deploy_registry.sh --version <version> --rpc-url <url> <signing option> [OPTIONS]"
     echo ""
     echo "Deploys a selected TeleporterRegistry contract to the specified chain"
     echo "For a list of releases, go to https://github.com/ava-labs/icm-contracts/releases"
@@ -32,14 +35,15 @@ function printUsage() {
 Arguments:
     --version <version>              Specify the release version to deploy.
     --rpc-url <url>                  Specify the rpc url of the node to use
-    --private-key <private_key>      Private key of account to deploy TeleporterRegistry
 Options:
     --help                           Print this help message
 EOF
+    echo ""
+    echo "The account that deploys TeleporterRegistry is named by one of:"
+    printWalletUsage
 }
 
 teleporter_version=
-user_private_key=
 rpc_url=
 
 while [ $# -gt 0 ]; do
@@ -58,22 +62,21 @@ while [ $# -gt 0 ]; do
                 echo "Invalid rpc url $2" && printHelp && exit 1
             fi 
             shift;;
-        --private-key) 
-            if [[ $2 != --* ]]; then
-                user_private_key=$2
-            else 
-                echo "Invalid private key $2" && printHelp && exit 1
-            fi 
-            shift;;
         --help) 
             printHelp && exit 0 ;;
         *) 
-            echo "Invalid option: $1" && printHelp && exit 1;;
+            if parse_wallet_arg "$1" "$2"; then
+                shift $wallet_arg_shift
+            else
+                echo "Invalid option: $1" && printHelp && exit 1
+            fi;;
     esac
     shift
 done
 
-if [[ $teleporter_version == "" || $rpc_url == "" || $user_private_key == "" ]]; then
+resolve_cast_wallet_args
+
+if [[ $teleporter_version == "" || $rpc_url == "" ]] || ! walletConfigured; then
     echo "Invalid usage. Missing required command line arguments."
     printHelp && exit 1
 fi
@@ -93,7 +96,7 @@ constructor_encoding=$(cast abi-encode "constructor((uint256,address)[])" "[(1, 
 constructor_encoding=${constructor_encoding:2}
 
 # Deploy the TeleporterRegistry contract 
-deployment_result=$(cast send --private-key $user_private_key --rpc-url $rpc_url --json --create $teleporter_registry_bytecode$constructor_encoding)
+deployment_result=$(cast send "${cast_wallet_args[@]}" --rpc-url $rpc_url --json --create $teleporter_registry_bytecode$constructor_encoding)
 teleporter_registry_address=$(echo $deployment_result | jq -r .contractAddress)
 deployment_status=$(echo $deployment_result | jq -r .status)
 deployment_tx_id=$(echo $deployment_result | jq -r .transactionHash)
