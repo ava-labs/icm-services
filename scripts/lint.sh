@@ -36,7 +36,6 @@ function golangLinter() {
     echo "Linting Golang code..."
     cd $REPO_PATH
     go run github.com/golangci/golangci-lint/cmd/golangci-lint run --config=$REPO_PATH/.golangci.yml --build-tags=test ./... --timeout 5m --fix
-    (cd proto && go run github.com/bufbuild/buf/cmd/buf lint)
 }
 
 function runAll() {

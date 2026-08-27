@@ -46,10 +46,6 @@ The published Docker image can be pulled from `avaplatform/icm-relayer:latest` o
 
 See the [Building](#building) section for instructions on how to build the relayer from source.
 
-## Requirements
-
-[buf](https://github.com/bufbuild/buf/) is required to rebuild protobuf definitions if changes are made to any `.proto` files. See [Generate Protobuf Files](#generate-protobuf-files) for more information.
-
 ### System Requirements
 
 - Ubuntu 22.04 or later
@@ -369,10 +365,6 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   - The time in seconds to wait for a sent transaction to be included in a block when verifying transaction receipts before erroring out. If omitted, defaults to 30 seconds.
 
-`"decider-url": string`
-
-- The URL of a service implementing the gRPC service defined by `proto/decider`, which will be queried for each message to determine whether that message should be relayed.
-
 ## Architecture
 
 ### Components
@@ -489,7 +481,7 @@ If your temporary directory is not writable, the unit tests may fail with messag
 
 ### E2E Tests
 
-To run the E2E tests locally, you'll need to install Gingko following the instructions [here](https://onsi.github.io/ginkgo/#installing-ginkgo). Run the tests using the dedicated script:
+See [Build and Test Requirements](#build-and-test-requirements) for the tooling the E2E tests depend on. Run the tests using the dedicated script:
 
 ```bash
 ./scripts/e2e_test.sh
@@ -514,14 +506,6 @@ The E2E tests use the `TeleporterMessenger` contract deployment transaction spec
 
 ```bash
 go generate ./...
-```
-
-### Generate Protobuf Files
-
-[buf](https://github.com/bufbuild/buf/) is used to generate protobuf definitions for communication with the [Decider service](https://github.com/ava-labs/icm-services/blob/main/proto/decider/decider.proto). If you change any of the protobuf definitions you will have to regenerate the `.go` files. To generate these files, run the following command at the root of the project:
-
-```bash
-./scripts/protobuf_codegen.sh
 ```
 
 ### Generate Abi Bindings
