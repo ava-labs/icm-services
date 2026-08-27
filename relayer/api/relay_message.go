@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/http"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/messages"
@@ -17,6 +18,12 @@ const (
 	RelayAPIPath        = "/relay"
 	RelayMessageAPIPath = RelayAPIPath + "/message"
 )
+
+func sanitizeLogValue(value string) string {
+	value = strings.ReplaceAll(value, "\n", "")
+	value = strings.ReplaceAll(value, "\r", "")
+	return value
+}
 
 type RelayMessageRequest struct {
 	// Required. cb58-encoded or "0x" prefixed hex-encoded source blockchain ID for the message
@@ -119,13 +126,13 @@ func relayAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageC
 
 		blockchainID, err := utils.HexOrCB58ToID(req.BlockchainID)
 		if err != nil {
-			logger.Warn("Invalid blockchainID", zap.String("blockchainID", req.BlockchainID), zap.Error(err))
+			logger.Warn("Invalid blockchainID", zap.String("blockchainID", sanitizeLogValue(req.BlockchainID)), zap.Error(err))
 			http.Error(w, "invalid blockchainID", http.StatusBadRequest)
 			return
 		}
 		messageID, err := utils.HexOrCB58ToID(req.MessageID)
 		if err != nil {
-			logger.Warn("Invalid messageID", zap.String("messageID", req.MessageID), zap.Error(err))
+			logger.Warn("Invalid messageID", zap.String("messageID", sanitizeLogValue(req.MessageID)), zap.Error(err))
 			http.Error(w, "invalid messageID", http.StatusBadRequest)
 			return
 		}
