@@ -440,7 +440,10 @@ func TestSendMessageOutOfGasIsNonRetryable(t *testing.T) {
 	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
 	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
 
-	factory, err := NewMessageHandlerFactory(messageProtocolAddress, messageProtocolConfig, nil)
+	factory, err := NewMessageHandlerFactory(
+		messageProtocolAddress,
+		messageProtocolConfig,
+	)
 	require.NoError(t, err)
 	handler, err := factory.NewMessageHandler(
 		logging.NoLog{},
@@ -507,7 +510,10 @@ func TestSendMessageRevertWithGasLeftIsRetryable(t *testing.T) {
 	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
 	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
 
-	factory, err := NewMessageHandlerFactory(messageProtocolAddress, messageProtocolConfig, nil)
+	factory, err := NewMessageHandlerFactory(
+		messageProtocolAddress,
+		messageProtocolConfig,
+	)
 	require.NoError(t, err)
 	handler, err := factory.NewMessageHandler(
 		logging.NoLog{},
