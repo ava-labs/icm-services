@@ -5,6 +5,9 @@ package database
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -23,9 +26,10 @@ type RedisDatabase struct {
 func NewRedisDatabase(logger logging.Logger, redisURL string, relayerIDs []RelayerID) (*RedisDatabase, error) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
+		err = redactURLError(err)
 		logger.Error(
 			"Failed to parse Redis URL",
-			zap.String("url", redisURL),
+			zap.String("url", redactRedisURL(redisURL)),
 			zap.Error(err),
 		)
 		return nil, err
@@ -39,6 +43,33 @@ func NewRedisDatabase(logger logging.Logger, redisURL string, relayerIDs []Relay
 		logger: logger,
 		client: client,
 	}, nil
+}
+
+// redactRedisURL returns a form of the Redis URL that is safe to log. A Redis
+// URL carries the connection password in its userinfo component, which
+// config.Config tags sensitive:"true" so the startup config logger prints
+// [REDACTED] for it; these helpers keep that guarantee on the parse error path.
+// A URL that cannot be parsed is withheld entirely, since there is then no way
+// to locate the credentials within it.
+func redactRedisURL(redisURL string) string {
+	u, err := url.Parse(redisURL)
+	if err != nil {
+		return "[REDACTED]"
+	}
+	return u.Redacted()
+}
+
+// redactURLError strips the raw URL out of a *url.Error, which redis.ParseURL
+// returns unmodified when url.Parse fails and whose message embeds that URL
+// verbatim, password included. The errors redis.ParseURL reports itself name
+// only the offending component (scheme, database number, path, option), never
+// the userinfo, so they are returned as-is.
+func redactURLError(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("%s redis URL: %w", urlErr.Op, urlErr.Err)
+	}
+	return err
 }
 
 func (r *RedisDatabase) Get(relayerID common.Hash, key DataKey) ([]byte, error) {
