@@ -205,7 +205,6 @@ func CreateDefaultRelayerConfig(
 		SourceBlockchains:               sources,
 		DestinationBlockchains:          destinations,
 		APIPort:                         8080,
-		DeciderURL:                      "localhost:50051",
 		SignatureCacheSize:              (1024 * 1024),
 		AllowPrivateIPs:                 true,
 		InitialConnectionTimeoutSeconds: 300,
