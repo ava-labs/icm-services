@@ -138,7 +138,9 @@ For more information on the registry and how to integrate with ICM contracts, se
 
 ## Signing options
 
-Both deploy scripts need an account to send transactions from. Neither accepts a raw
+Deploy scripts may require an account to send transactions from. `deploy_registry.sh` always needs a signer to deploy the registry, while `deploy_teleporter.sh` only needs a signer if the Teleporter deployer address still requires funding.
+
+Neither script accepts a raw
 private key: a key passed on a command line is readable by every other user on the host
 through the process listing for as long as the deployment runs, and is saved to your
 shell history. Instead, name the signer with one of the following, none of which put key
