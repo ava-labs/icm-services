@@ -183,19 +183,29 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
+	// Ownership of the message, and therefore the responsibility to call
+	// OnFinishedHandling, is transferred to the consumer of the response channel once the
+	// message is forwarded. On every other path this handler must finish the message
+	// itself, otherwise the inbound message throttler's byte and processing-message
+	// allocations for the sending node are held forever.
+	forwarded := false
+	defer func() {
+		if !forwarded {
+			inboundMessage.OnFinishedHandling()
+		}
+	}()
+
 	// Extract the message fields
 	m := inboundMessage.Message
 
 	chainID, err := message.GetChainID(m)
 	if err != nil {
 		h.log.Error("Could not get chainID from message")
-		inboundMessage.OnFinishedHandling()
 		return
 	}
 	requestID, ok := message.GetRequestID(m)
 	if !ok {
 		h.log.Error("Could not get requestID from message")
-		inboundMessage.OnFinishedHandling()
 		return
 	}
 
@@ -222,6 +232,7 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 	// Dispatch to the appropriate response channel
 	if responseChan, ok := h.responseChans[requestID]; ok {
 		responseChan <- inboundMessage
+		forwarded = true
 	} else {
 		log.Debug("Could not find response channel for request")
 		return
