@@ -78,7 +78,7 @@ func BuildReceiptProof(
 	}
 	targetLog := targetReceipt.Logs[logIndex]
 
-	// Build the receipts trie.
+	// Build the receipts trie and verify its root against the header receipts root.
 	receiptsTrie, targetValue, err := buildReceiptsTrie(receipts,
 		targetReceipt.TransactionIndex, header.ReceiptHash)
 	if err != nil {
