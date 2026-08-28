@@ -149,6 +149,26 @@ func TestShouldSendMessage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	// A requiredGasLimit of 2^64 truncates to 0 if converted with Uint64() without a bounds check,
+	// which would let it slip past the block gas limit guard.
+	gasLimitOverflowTeleporterMessage := validTeleporterMessage
+	gasLimitOverflowTeleporterMessage.RequiredGasLimit = new(big.Int).Lsh(big.NewInt(1), 64)
+	gasLimitOverflowTeleporterMessageBytes, err := gasLimitOverflowTeleporterMessage.Pack()
+	require.NoError(t, err)
+
+	gasLimitOverflowAddressedCall, err := warpPayload.NewAddressedCall(
+		messageProtocolAddress.Bytes(),
+		gasLimitOverflowTeleporterMessageBytes,
+	)
+	require.NoError(t, err)
+
+	gasLimitOverflowWarpUnsignedMessage, err := warp.NewUnsignedMessage(
+		0,
+		sourceBlockchainID,
+		gasLimitOverflowAddressedCall.Bytes(),
+	)
+	require.NoError(t, err)
+
 	testCases := []struct {
 		name                    string
 		destinationBlockchainID ids.ID
@@ -214,6 +234,12 @@ func TestShouldSendMessage(t *testing.T) {
 			name:                    "gas limit exceeded",
 			destinationBlockchainID: destinationBlockchainID,
 			warpUnsignedMessage:     gasLimitExceededWarpUnsignedMessage,
+			expectedResult:          false,
+		},
+		{
+			name:                    "gas limit does not fit in uint64",
+			destinationBlockchainID: destinationBlockchainID,
+			warpUnsignedMessage:     gasLimitOverflowWarpUnsignedMessage,
 			expectedResult:          false,
 		},
 	}

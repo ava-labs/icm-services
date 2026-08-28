@@ -184,13 +184,14 @@ func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Addr
 
 // ShouldSendMessage returns true if the message should be sent to the destination chain
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
-	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
+	// RequiredGasLimit is a Solidity uint256 (*big.Int). Calling Uint64() on a value that does not
+	// fit in 64 bits is undefined, so treat any non-uint64 value as exceeding the block gas limit.
 	destBlockGasLimit := m.destinationClient.BlockGasLimit()
-	// Check if the specified gas limit is below the maximum threshold
-	if requiredGasLimit > destBlockGasLimit {
+	if !m.teleporterMessage.RequiredGasLimit.IsUint64() ||
+		m.teleporterMessage.RequiredGasLimit.Uint64() > destBlockGasLimit {
 		m.logger.Info(
 			"Gas limit exceeds maximum threshold",
-			zap.Uint64("requiredGasLimit", m.teleporterMessage.RequiredGasLimit.Uint64()),
+			zap.Stringer("requiredGasLimit", m.teleporterMessage.RequiredGasLimit),
 			zap.Uint64("blockGasLimit", destBlockGasLimit),
 		)
 		return false, nil
