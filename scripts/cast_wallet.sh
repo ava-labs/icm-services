@@ -27,12 +27,14 @@ cast_wallet_args=()
 
 function printWalletUsage() {
     cat << USAGE
-Signing options (choose one; none of these place key material on a command line):
+Signing options (choose one signer; none of these place key material on a command line):
     --keystore <path>                Encrypted keystore file (or directory) to sign with
     --account <name>                 Keystore account name in ~/.foundry/keystores
     --interactive                    Prompt for the private key on the terminal
     --ledger                         Sign with a Ledger hardware wallet
     --trezor                         Sign with a Trezor hardware wallet
+
+Password options (optional; may be used with any signer):
     --password-file <path>           File holding the keystore password. Defaults to
                                      \$ETH_PASSWORD; cast prompts if neither is set.
 
