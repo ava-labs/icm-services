@@ -38,12 +38,12 @@ type ManualWarpMessageRequest struct {
 	SourceAddress        string `json:"source-address"`
 }
 
-func HandleRelayMessage(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
-	http.Handle(RelayMessageAPIPath, relayMessageAPIHandler(logger, messageCoordinator))
+func HandleRelayMessage(mux *http.ServeMux, logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
+	mux.Handle(RelayMessageAPIPath, relayMessageAPIHandler(logger, messageCoordinator))
 }
 
-func HandleRelay(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
-	http.Handle(RelayAPIPath, relayAPIHandler(logger, messageCoordinator))
+func HandleRelay(mux *http.ServeMux, logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
+	mux.Handle(RelayAPIPath, relayAPIHandler(logger, messageCoordinator))
 }
 
 func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) http.Handler {

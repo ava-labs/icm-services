@@ -52,11 +52,12 @@ type AggregateSignatureErrorResponse struct {
 }
 
 func HandleAggregateSignaturesByRawMsgRequest(
+	mux *http.ServeMux,
 	logger logging.Logger,
 	metrics *metrics.SignatureAggregatorMetrics,
 	signatureAggregator *aggregator.SignatureAggregator,
 ) {
-	http.Handle(
+	mux.Handle(
 		APIPath,
 		signatureAggregationAPIHandler(
 			logger,
