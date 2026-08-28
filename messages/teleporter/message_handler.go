@@ -5,6 +5,7 @@ package teleporter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -31,6 +32,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
+
+// errUndeliverableGasLimit marks a message whose delivery transaction would exceed the
+// destination block gas limit. Such a transaction is rejected deterministically by the
+// destination's transaction pool, so the message is skipped rather than retried.
+var errUndeliverableGasLimit = errors.New("delivery gas limit exceeds destination block gas limit")
 
 type factory struct {
 	messageConfig   *Config
@@ -182,16 +188,38 @@ func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Addr
 	return false
 }
 
+// minDeliveryGasLimit returns a lower bound on the gas limit that the delivery transaction will
+// be sent with. The signed Warp message is always at least as large as the unsigned message and
+// carries at least one signer, so the transaction gas limit computed in SendMessage can only be
+// larger than this. A message whose lower bound already exceeds the destination block gas limit
+// can therefore never be included in a block.
+func (m *messageHandler) minDeliveryGasLimit() (uint64, error) {
+	return gasUtils.CalculateReceiveMessageGasLimit(
+		0,
+		m.teleporterMessage.RequiredGasLimit,
+		len(predicate.New(m.unsignedMessage.Bytes())),
+		len(m.unsignedMessage.Payload),
+		len(m.teleporterMessage.Receipts),
+	)
+}
+
 // ShouldSendMessage returns true if the message should be sent to the destination chain
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
-	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
 	destBlockGasLimit := m.destinationClient.BlockGasLimit()
-	// Check if the specified gas limit is below the maximum threshold
-	if requiredGasLimit > destBlockGasLimit {
+	// The delivery transaction is sent with RequiredGasLimit plus the overhead of verifying the
+	// Warp predicate and decoding the Teleporter message, all of which the message sender controls.
+	// Compare the total against the block gas limit rather than RequiredGasLimit alone, otherwise a
+	// message can pass this check yet produce a transaction that no block can ever include.
+	deliveryGasLimit, err := m.minDeliveryGasLimit()
+	// The calculation only fails when RequiredGasLimit does not fit in a uint64 or the summed
+	// overhead overflows one, both of which are far beyond any block gas limit.
+	if err != nil || deliveryGasLimit > destBlockGasLimit {
 		m.logger.Info(
 			"Gas limit exceeds maximum threshold",
-			zap.Uint64("requiredGasLimit", m.teleporterMessage.RequiredGasLimit.Uint64()),
+			zap.Stringer("requiredGasLimit", m.teleporterMessage.RequiredGasLimit),
+			zap.Uint64("deliveryGasLimit", deliveryGasLimit),
 			zap.Uint64("blockGasLimit", destBlockGasLimit),
+			zap.Error(err),
 		)
 		return false, nil
 	}
@@ -276,6 +304,18 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	if err != nil {
 		m.logger.Error("Failed to calculate gas limit for receiveCrossChainMessage call")
 		return common.Hash{}, err
+	}
+
+	// ShouldSendMessage only bounds the gas limit from below, since the signature is not yet known
+	// at that point. Re-check the exact value here so that a transaction that no block can include
+	// is never handed to the destination client.
+	if blockGasLimit := m.destinationClient.BlockGasLimit(); gasLimit > blockGasLimit {
+		return common.Hash{}, fmt.Errorf(
+			"%w: gas limit %d, block gas limit %d",
+			errUndeliverableGasLimit,
+			gasLimit,
+			blockGasLimit,
+		)
 	}
 
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
@@ -376,6 +416,13 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	m.metrics.SetCreateSignedMessageLatencyMS(float64(time.Since(startCreateSignedMessageTime).Milliseconds()))
 
 	txHash, err := m.SendMessage(signedMessage)
+	if errors.Is(err, errUndeliverableGasLimit) {
+		// Retrying cannot help: the transaction would be rejected by the destination's transaction
+		// pool on every attempt. Skip the message so the relayer can checkpoint past this block.
+		m.logger.Warn("Skipping message that cannot be delivered within a block", zap.Error(err))
+		m.metrics.IncFailedRelayMessageCount("gas limit exceeds destination block gas limit")
+		return common.Hash{}, nil
+	}
 	if err != nil {
 		m.metrics.IncFailedRelayMessageCount("failed to send warp message")
 		return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)

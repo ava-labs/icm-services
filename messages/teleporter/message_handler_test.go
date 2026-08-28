@@ -56,6 +56,27 @@ func sourceMessage(unsignedMessage *warp.UnsignedMessage) *messages.SourceMessag
 	}
 }
 
+// warpMessageFor packs [teleporterMessage] the way the Teleporter contract does and wraps it in an
+// unsigned Warp message sent from [sourceBlockchainID].
+func warpMessageFor(
+	t *testing.T,
+	sourceBlockchainID ids.ID,
+	teleporterMessage teleportermessenger.TeleporterMessage,
+) *warp.UnsignedMessage {
+	t.Helper()
+
+	messageBytes, err := teleporterMessage.Pack()
+	require.NoError(t, err)
+
+	addressedCall, err := warpPayload.NewAddressedCall(messageProtocolAddress.Bytes(), messageBytes)
+	require.NoError(t, err)
+
+	unsignedMessage, err := warp.NewUnsignedMessage(0, sourceBlockchainID, addressedCall.Bytes())
+	require.NoError(t, err)
+
+	return unsignedMessage
+}
+
 func init() {
 	var err error
 	destinationBlockchainID, err = ids.FromString(destinationBlockchainIDString)
@@ -130,24 +151,45 @@ func TestShouldSendMessage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	const blockGasLimit = 10_000
+	const blockGasLimit = 10_000_000
+
 	gasLimitExceededTeleporterMessage := validTeleporterMessage
 	gasLimitExceededTeleporterMessage.RequiredGasLimit = big.NewInt(blockGasLimit + 1)
-	gasLimitExceededTeleporterMessageBytes, err := gasLimitExceededTeleporterMessage.Pack()
-	require.NoError(t, err)
-
-	gasLimitExceededAddressedCall, err := warpPayload.NewAddressedCall(
-		messageProtocolAddress.Bytes(),
-		gasLimitExceededTeleporterMessageBytes,
-	)
-	require.NoError(t, err)
-
-	gasLimitExceededWarpUnsignedMessage, err := warp.NewUnsignedMessage(
-		0,
+	gasLimitExceededWarpUnsignedMessage := warpMessageFor(
+		t,
 		sourceBlockchainID,
-		gasLimitExceededAddressedCall.Bytes(),
+		gasLimitExceededTeleporterMessage,
 	)
-	require.NoError(t, err)
+
+	// A required gas limit exactly at the block gas limit still overflows a block once the
+	// Teleporter and Warp verification overhead is added to the delivery transaction.
+	gasLimitAtBlockLimitTeleporterMessage := validTeleporterMessage
+	gasLimitAtBlockLimitTeleporterMessage.RequiredGasLimit = big.NewInt(blockGasLimit)
+	gasLimitAtBlockLimitWarpUnsignedMessage := warpMessageFor(
+		t,
+		sourceBlockchainID,
+		gasLimitAtBlockLimitTeleporterMessage,
+	)
+
+	// A required gas limit comfortably under the block gas limit still overflows a block once a
+	// large payload is charged per byte for decoding and predicate verification.
+	largePayloadTeleporterMessage := validTeleporterMessage
+	largePayloadTeleporterMessage.RequiredGasLimit = big.NewInt(blockGasLimit - 500_000)
+	largePayloadTeleporterMessage.Message = make([]byte, 20_000)
+	largePayloadWarpUnsignedMessage := warpMessageFor(
+		t,
+		sourceBlockchainID,
+		largePayloadTeleporterMessage,
+	)
+
+	// A required gas limit that does not fit in a uint64 must not be truncated into a passing value.
+	overflowingGasLimitTeleporterMessage := validTeleporterMessage
+	overflowingGasLimitTeleporterMessage.RequiredGasLimit = new(big.Int).Lsh(big.NewInt(1), 64)
+	overflowingGasLimitWarpUnsignedMessage := warpMessageFor(
+		t,
+		sourceBlockchainID,
+		overflowingGasLimitTeleporterMessage,
+	)
 
 	testCases := []struct {
 		name                    string
@@ -214,6 +256,24 @@ func TestShouldSendMessage(t *testing.T) {
 			name:                    "gas limit exceeded",
 			destinationBlockchainID: destinationBlockchainID,
 			warpUnsignedMessage:     gasLimitExceededWarpUnsignedMessage,
+			expectedResult:          false,
+		},
+		{
+			name:                    "gas limit equal to block gas limit",
+			destinationBlockchainID: destinationBlockchainID,
+			warpUnsignedMessage:     gasLimitAtBlockLimitWarpUnsignedMessage,
+			expectedResult:          false,
+		},
+		{
+			name:                    "overhead of large payload exceeds gas limit",
+			destinationBlockchainID: destinationBlockchainID,
+			warpUnsignedMessage:     largePayloadWarpUnsignedMessage,
+			expectedResult:          false,
+		},
+		{
+			name:                    "gas limit does not fit in uint64",
+			destinationBlockchainID: destinationBlockchainID,
+			warpUnsignedMessage:     overflowingGasLimitWarpUnsignedMessage,
 			expectedResult:          false,
 		},
 	}
@@ -351,6 +411,8 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 		Return(mockEthClient).
 		Times(1)
 
+	mockClient.EXPECT().BlockGasLimit().Return(uint64(10_000_000)).AnyTimes()
+
 	mockClient.EXPECT().
 		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
@@ -368,4 +430,43 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	// Call the method under test
 	_, err = handler.(*messageHandler).SendMessage(signedMessage)
 	require.NoError(t, err)
+}
+
+// TestSendMessageGasLimitExceedsBlockGasLimit checks that a message whose delivery transaction
+// would not fit in a block is never handed to the destination client. Such a transaction is
+// rejected deterministically by the destination's transaction pool, so retrying it would stall the
+// relayer on the block containing the message.
+func TestSendMessageGasLimitExceedsBlockGasLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	sourceBlockchainID := ids.Empty
+	warpUnsignedMessage := warpMessageFor(t, sourceBlockchainID, validTeleporterMessage)
+
+	signedMessage, err := warp.NewMessage(warpUnsignedMessage, &warp.BitSetSignature{})
+	require.NoError(t, err)
+
+	mockClient := mock_vms.NewMockDestinationClient(ctrl)
+	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
+	// Below the fixed Teleporter overhead, so any delivery transaction exceeds it.
+	mockClient.EXPECT().BlockGasLimit().Return(uint64(10_000)).AnyTimes()
+	mockClient.EXPECT().
+		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Times(0)
+
+	factory, err := NewMessageHandlerFactory(messageProtocolAddress, messageProtocolConfig, nil)
+	require.NoError(t, err)
+
+	handler, err := factory.NewMessageHandler(
+		logging.NoLog{},
+		sourceMessage(warpUnsignedMessage),
+		mockClient,
+		nil,
+		mocks.NewMockMetrics(ctrl),
+		ids.Empty,
+		0,
+	)
+	require.NoError(t, err)
+
+	_, err = handler.(*messageHandler).SendMessage(signedMessage)
+	require.ErrorIs(t, err, errUndeliverableGasLimit)
 }
