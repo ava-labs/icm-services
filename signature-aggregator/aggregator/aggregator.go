@@ -61,6 +61,7 @@ var (
 	// Errors
 	errNotEnoughSignatures     = errors.New("failed to collect a threshold of signatures")
 	errNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
+	errInvalidSignatureLength  = errors.New("signature response has incorrect length")
 )
 
 type SignatureAggregator struct {
@@ -955,22 +956,14 @@ func (s *SignatureAggregator) isValidSignatureResponse(
 
 	signature, err := s.unmarshalResponse(appResponse.GetAppBytes())
 	if err != nil {
-		log.Error("Error unmarshaling signature response", zap.Error(err))
+		log.Debug("Error unmarshaling signature response", zap.Error(err))
+		return blsSignatureBuf{}, false
 	}
 
 	// If the node returned an empty signature, then it has not yet seen the warp message. Retry later.
 	emptySignature := blsSignatureBuf{}
 	if bytes.Equal(signature[:], emptySignature[:]) {
 		log.Debug("Response contained an empty signature")
-		return blsSignatureBuf{}, false
-	}
-
-	if len(signature) != bls.SignatureLen {
-		log.Debug(
-			"Response signature has incorrect length",
-			zap.Int("actual", len(signature)),
-			zap.Int("expected", bls.SignatureLen),
-		)
 		return blsSignatureBuf{}, false
 	}
 
@@ -1050,6 +1043,22 @@ func (s *SignatureAggregator) unmarshalResponse(responseBytes []byte) (blsSignat
 	err := proto.Unmarshal(responseBytes, &sigResponse)
 	if err != nil {
 		return blsSignatureBuf{}, err
+	}
+	// An absent signature field is equivalent to an empty response: the node has not
+	// seen the message yet.
+	if len(sigResponse.Signature) == 0 {
+		return blsSignatureBuf{}, nil
+	}
+	// The signature length is chosen by the responding peer, so it must be validated before
+	// the conversion below: converting a slice shorter than the array panics at runtime, and
+	// converting a longer one would silently truncate.
+	if len(sigResponse.Signature) != bls.SignatureLen {
+		return blsSignatureBuf{}, fmt.Errorf(
+			"%w: got %d, expected %d",
+			errInvalidSignatureLength,
+			len(sigResponse.Signature),
+			bls.SignatureLen,
+		)
 	}
 	return blsSignatureBuf(sigResponse.Signature), nil
 }
