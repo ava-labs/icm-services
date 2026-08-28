@@ -227,7 +227,6 @@ func TestShouldSendMessage(t *testing.T) {
 			factory, err := NewMessageHandlerFactory(
 				messageProtocolAddress,
 				messageProtocolConfig,
-				nil,
 			)
 			require.NoError(t, err)
 			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
@@ -330,7 +329,6 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 	factory, err := NewMessageHandlerFactory(
 		messageProtocolAddress,
 		messageProtocolConfig,
-		nil,
 	)
 	require.NoError(t, err)
 	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
