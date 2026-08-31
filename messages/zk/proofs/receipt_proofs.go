@@ -73,8 +73,12 @@ func BuildReceiptProof(
 		return nil, err
 	}
 	if int(logIndex) >= len(targetReceipt.Logs) {
-		return nil, fmt.Errorf("log index %d out of range (total %d logs) in receipt %s",
-			logIndex, len(targetReceipt.Logs), txHash.Hex())
+		return nil, fmt.Errorf(
+			"log index %d out of range (total %d logs) in receipt %s",
+			logIndex, 
+			len(targetReceipt.Logs), 
+			txHash.Hex(),
+		)
 	}
 	targetLog := targetReceipt.Logs[logIndex]
 
