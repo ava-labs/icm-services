@@ -141,8 +141,6 @@ func buildReceiptsTrie(
 	return receiptsTrie, targetValue, nil
 }
 
-// receiptByTxHash returns the receipt for the given transaction hash.
-// We implement this manually which avoids making a TransactionReceipt RPC call.
 func receiptByTxHash(receipts []*types.Receipt, txHash common.Hash) (*types.Receipt, error) {
 	for _, r := range receipts {
 		if r.TxHash == txHash {
