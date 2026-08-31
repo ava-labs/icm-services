@@ -135,8 +135,11 @@ func buildReceiptsTrie(
 	}
 
 	if receiptsTrie.Hash() != receiptsRoot {
-		return nil, nil, fmt.Errorf("receipts trie root mismatch: computed %s, header %s",
-			receiptsTrie.Hash().Hex(), receiptsRoot.Hex())
+		return nil, nil, fmt.Errorf(
+			"receipts trie root mismatch: computed %s, header %s",
+			receiptsTrie.Hash().Hex(),
+			receiptsRoot.Hex(),
+		)
 	}
 	return receiptsTrie, targetValue, nil
 }
