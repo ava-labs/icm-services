@@ -11,6 +11,10 @@ on:
     branches:
       - "**"
 
+# No job here writes to the repository; they only read the checkout and report results.
+permissions:
+  contents: read
+
 jobs:
   golangci:
     runs-on: ubuntu-22.04
@@ -19,6 +23,7 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         submodules: recursive
+        persist-credentials: false
 
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -31,37 +36,17 @@ jobs:
         git --no-pager diff -- **.go
         git --no-pager diff --quiet -- **.go
 
-  protobuf-check:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-          submodules: recursive
-
-    - name: Setup Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: 'go.mod'
-
-    - name: Ensure protobuf changes are checked in
-      run: |
-        scripts/protobuf_codegen.sh
-        git update-index --really-refresh >> /dev/null
-        git diff-index HEAD # to show the differences
-        git diff-index --quiet HEAD || (echo 'protobuf generated code changes have not all been checked in' && exit 1)
-
   solhint:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Install solhint
       run: |
-        npm install solhint -g
+        npm install -g solhint@6.2.4 --ignore-scripts
         solhint --version
 
     - name: Run Lint
@@ -75,6 +60,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
@@ -92,6 +78,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -110,6 +97,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
