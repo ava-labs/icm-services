@@ -42,18 +42,14 @@ const (
 	gasLimitBufferDenominator = 4
 
 	// minDeliveryOverheadGas is a conservative lower bound on the gas receiveCrossChainMessage
-	// consumes before it reaches the `gasleft() >= requiredGasLimit` check in
-	// _handleInitialMessageExecution: transaction intrinsic gas, the Merkle multi-proof and BLS
-	// aggregate signature verification, and the receive bookkeeping writes. A message whose
-	// RequiredGasLimit leaves less than this much headroom under the destination block gas limit
-	// can never satisfy that check, no matter how much gas the delivery transaction supplies, so
-	// it is undeliverable rather than merely expensive.
+	// consumes (intrinsic gas, attestation verification, receive bookkeeping) before it reaches
+	// the `gasleft() >= requiredGasLimit` check in _handleInitialMessageExecution.
 	minDeliveryOverheadGas = 200_000
 )
 
 // errUndeliverable marks a message that cannot be delivered within the destination block gas
-// limit. Such a message is skipped rather than retried: every attempt would revert on-chain after
-// the relayer has already paid for signature verification and receive bookkeeping.
+// limit. Such a message is skipped rather than retried, since every attempt would revert on-chain
+// after the relayer has already paid for verification and bookkeeping.
 var errUndeliverable = errors.New("message cannot be delivered within the destination block gas limit")
 
 type factory struct {
@@ -181,10 +177,8 @@ func (f *factory) GetMessageRoutingInfo(
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	// RequiredGasLimit is a Solidity uint256 (*big.Int). Calling Uint64() on a value that does not
 	// fit in 64 bits is undefined, so treat any non-uint64 value as exceeding the block gas limit.
-	// The comparison is against the block gas limit less the delivery overhead, because the
-	// on-chain check is `gasleft() >= requiredGasLimit` after verification and bookkeeping have
-	// already run: a RequiredGasLimit above that bound can never be satisfied, and delivering it
-	// anyway would burn fees on a guaranteed revert.
+	// The bound is the block gas limit less the delivery overhead: the on-chain check runs after
+	// verification and bookkeeping, so anything above that can never be satisfied.
 	destBlockGasLimit := m.destinationClient.BlockGasLimit()
 	maxRequiredGasLimit := uint64(0)
 	if destBlockGasLimit > minDeliveryOverheadGas {
@@ -282,9 +276,8 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 
 	txHash, err := m.SendMessage(ctx, signedMessage, validators)
 	if err != nil {
-		// An undeliverable message is skipped rather than returned as an error. Retrying would
-		// repeat the same conclusive result, and surfacing the error would stall the source
-		// chain's checkpoint on a message that can never be delivered.
+		// Skip rather than error out, so a message that can never be delivered does not stall the
+		// source chain's checkpoint.
 		if errors.Is(err, errUndeliverable) {
 			m.metrics.IncFailedRelayMessageCount("message undeliverable")
 			m.logger.Warn("Message cannot be delivered, skipping", zap.Error(err))
@@ -437,9 +430,8 @@ func (m *messageHandler) validatorsAtCommitment(
 
 // estimateGasLimit estimates the gas for the receiveCrossChainMessage call and applies a safety
 // buffer, bounded by the configured block gas limit. Estimation is the only simulation performed
-// before the delivery is signed and broadcast, so it never falls back to a gas limit the estimate
-// has not shown to be sufficient: a failed estimation means the delivery would revert on-chain and
-// charge the relayer for verification and bookkeeping that is then rolled back.
+// before the delivery is signed and broadcast, so it never resolves to a gas limit the estimate has
+// not shown to be sufficient.
 func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) (uint64, error) {
 	from := m.selectSenderAddress()
 	blockGasLimit := m.destinationClient.BlockGasLimit()
@@ -464,9 +456,8 @@ func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) 
 		)
 	}
 	buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
-	// Capping is safe here only because the unbuffered estimate already fits under the limit, so
-	// the capped transaction still carries enough gas to execute; the buffer is a margin, not a
-	// requirement.
+	// Capping is safe only because the unbuffered estimate already fits under the limit, so the
+	// capped transaction still carries enough gas to execute.
 	if blockGasLimit != 0 && buffered > blockGasLimit {
 		buffered = blockGasLimit
 	}
@@ -474,22 +465,18 @@ func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) 
 }
 
 // undeliverableEstimateErrors are the eth_estimateGas failures that mean the delivery cannot
-// succeed at any gas value the node searched, up to the gas the delivery transaction can carry.
-// A retry would produce the same result, so the message is skipped instead.
+// succeed at any gas value within the block gas limit.
 var undeliverableEstimateErrors = []string{
 	// The node exhausted its search range without the call succeeding.
 	"gas required exceeds allowance",
 	"always failing transaction",
-	// TeleporterMessengerV2 reverts with this reason when the remaining gas at
-	// _handleInitialMessageExecution is below the message's requiredGasLimit, which no
-	// transaction gas limit within the block gas limit can satisfy.
+	// TeleporterMessengerV2's revert reason when gasleft() is below requiredGasLimit.
 	"insufficient gas",
 }
 
 // isUndeliverableEstimateError distinguishes conclusive gas-envelope failures from errors that may
-// clear on a retry. Reverts that are not gas related (for example a verification failure caused by
-// the destination registry's committed validator set changing mid-delivery) are deliberately
-// treated as retryable, since re-aggregating against the current commitment can succeed.
+// clear on a retry. Reverts that are not gas related, such as a verification failure caused by the
+// destination registry's committed validator set changing mid-delivery, are treated as retryable.
 func isUndeliverableEstimateError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	for _, undeliverable := range undeliverableEstimateErrors {

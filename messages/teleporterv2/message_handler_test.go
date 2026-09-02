@@ -52,9 +52,8 @@ func newTestHandler(
 }
 
 // TestShouldSendMessageGasLimitHeadroom checks that the RequiredGasLimit pre-check leaves room for
-// the delivery overhead. TeleporterMessengerV2 requires `gasleft() >= requiredGasLimit` only after
-// attestation verification and receive bookkeeping have run, so a RequiredGasLimit at or just below
-// the block gas limit can never be satisfied and must be rejected before signature aggregation.
+// the delivery overhead, so that a message at or just below the block gas limit is rejected before
+// signature aggregation rather than delivered into a guaranteed revert.
 func TestShouldSendMessageGasLimitHeadroom(t *testing.T) {
 	testCases := []struct {
 		name             string
@@ -120,9 +119,7 @@ func TestShouldSendMessageGasLimitHeadroom(t *testing.T) {
 }
 
 // TestEstimateGasLimit checks that estimation never resolves to a gas limit it has not shown to be
-// sufficient. Estimation is the only simulation before the delivery is signed and broadcast, so
-// falling back to the block gas limit would put a guaranteed-revert transaction on chain at the
-// relayer's expense.
+// sufficient, since it is the only simulation before the delivery is signed and broadcast.
 func TestEstimateGasLimit(t *testing.T) {
 	testCases := []struct {
 		name                  string
@@ -161,8 +158,8 @@ func TestEstimateGasLimit(t *testing.T) {
 			expectedUndeliverable: true,
 		},
 		{
-			// Verification can fail transiently if the registry's committed validator set changes
-			// mid-delivery, so this is retried rather than skipped. Either way, nothing is sent.
+			// Retried rather than skipped: verification can fail transiently if the registry's
+			// committed validator set changes mid-delivery.
 			name:          "delivery reverts for failed verification",
 			estimateErr:   errors.New("execution reverted: TeleporterMessenger: message verification failed"),
 			expectedError: true,
@@ -181,8 +178,7 @@ func TestEstimateGasLimit(t *testing.T) {
 			ethClient.EXPECT().
 				EstimateGas(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, call ethereum.CallMsg) (uint64, error) {
-					// The node's search must be bounded by the gas the delivery can carry, so that
-					// a successful estimate is one the relayer is able to honor.
+					// The search must be bounded by the gas the delivery can carry.
 					require.Equal(t, uint64(testBlockGasLimit), call.Gas)
 					return test.estimated, test.estimateErr
 				})
