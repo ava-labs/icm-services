@@ -58,6 +58,8 @@ const (
 	// The size of the FIFO cache for epoched validator sets
 	// The Cache will store validator sets for the most recent N P-Chain heights.
 	validatorSetCacheSize = 100
+
+	apiReadHeaderTimeout = 10 * time.Second
 )
 
 func main() {
@@ -289,14 +291,20 @@ func main() {
 
 	networkHealthFunc := network.GetNetworkHealthFunc(cfg.GetTrackedSubnets().List())
 
+	// The API endpoints are registered on a dedicated mux, rather than http.DefaultServeMux,
+	// so that they are only reachable on the API port and not on the metrics port.
+	apiMux := http.NewServeMux()
+
 	// Each Listener goroutine will have an atomic bool that it can set to false to indicate an unrecoverable error
-	api.HandleHealthCheck(logger, relayerHealth, networkHealthFunc)
-	api.HandleRelay(logger, messageCoordinator)
-	api.HandleRelayMessage(logger, messageCoordinator)
+	api.HandleHealthCheck(apiMux, logger, relayerHealth, networkHealthFunc)
+	api.HandleRelay(apiMux, logger, messageCoordinator)
+	api.HandleRelayMessage(apiMux, logger, messageCoordinator)
 
 	errGroup.Go(func() error {
 		httpServer := &http.Server{
-			Addr: fmt.Sprintf(":%d", cfg.APIPort),
+			Addr:              fmt.Sprintf(":%d", cfg.APIPort),
+			Handler:           apiMux,
+			ReadHeaderTimeout: apiReadHeaderTimeout,
 		}
 		// Handle graceful shutdown
 		go func() {

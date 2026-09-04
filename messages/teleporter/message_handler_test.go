@@ -151,38 +151,47 @@ func TestShouldSendMessage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// A message shaped like one produced by Teleporter's permissionless sendSpecifiedReceipts:
-	// RequiredGasLimit of zero, no allowed-relayer restriction, and enough receipts that marking
-	// them cannot fit in a block. The old check only looked at RequiredGasLimit and so waved
-	// this through, after which the relayer broadcast an under-provisioned delivery and paid for
-	// the out-of-gas revert.
-	receiptHeavyTeleporterMessage := validTeleporterMessage
-	receiptHeavyTeleporterMessage.RequiredGasLimit = big.NewInt(0)
-	receiptHeavyTeleporterMessage.AllowedRelayerAddresses = nil
-	numReceipts := blockGasLimit/int(gasUtils.MarkMessageReceiptGasCost) + 1
-	receiptHeavyTeleporterMessage.Receipts = make(
-		[]teleportermessenger.TeleporterMessageReceipt,
-		numReceipts,
+	// Locate the boundary of the receipt-aware block gas limit check so it is tested from both
+	// sides. The delivery gas limit is linear in the receipt count, so two samples give the fixed
+	// cost and the per-receipt cost.
+	_, gasNoReceipts := receiptHeavyUnsignedMessage(t, 0)
+	_, gasOneReceipt := receiptHeavyUnsignedMessage(t, 1)
+	perReceiptGas := gasOneReceipt - gasNoReceipts
+	maxFittingReceipts := int((blockGasLimit - gasNoReceipts) / perReceiptGas)
+
+	// The most receipts whose delivery still fits in a block must be relayed.
+	receiptBoundaryWarpUnsignedMessage, minGasLimit := receiptHeavyUnsignedMessage(
+		t,
+		maxFittingReceipts,
 	)
-	for i := range receiptHeavyTeleporterMessage.Receipts {
-		receiptHeavyTeleporterMessage.Receipts[i] = teleportermessenger.TeleporterMessageReceipt{
-			ReceivedMessageNonce: big.NewInt(int64(i + 1)),
-			RelayerRewardAddress: common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
-		}
-	}
-	receiptHeavyTeleporterMessageBytes, err := receiptHeavyTeleporterMessage.Pack()
+	require.LessOrEqual(t, minGasLimit, uint64(blockGasLimit))
+
+	// One more receipt must be declined. The old check only looked at RequiredGasLimit and so
+	// waved this through, after which the relayer broadcast an under-provisioned delivery and
+	// paid for the out-of-gas revert.
+	receiptHeavyWarpUnsignedMessage, minGasLimit := receiptHeavyUnsignedMessage(
+		t,
+		maxFittingReceipts+1,
+	)
+	require.Greater(t, minGasLimit, uint64(blockGasLimit))
+
+	// A requiredGasLimit of 2^64 truncates to 0 if converted with Uint64() without a bounds check,
+	// which would let it slip past the block gas limit guard.
+	gasLimitOverflowTeleporterMessage := validTeleporterMessage
+	gasLimitOverflowTeleporterMessage.RequiredGasLimit = new(big.Int).Lsh(big.NewInt(1), 64)
+	gasLimitOverflowTeleporterMessageBytes, err := gasLimitOverflowTeleporterMessage.Pack()
 	require.NoError(t, err)
 
-	receiptHeavyAddressedCall, err := warpPayload.NewAddressedCall(
+	gasLimitOverflowAddressedCall, err := warpPayload.NewAddressedCall(
 		messageProtocolAddress.Bytes(),
-		receiptHeavyTeleporterMessageBytes,
+		gasLimitOverflowTeleporterMessageBytes,
 	)
 	require.NoError(t, err)
 
-	receiptHeavyWarpUnsignedMessage, err := warp.NewUnsignedMessage(
+	gasLimitOverflowWarpUnsignedMessage, err := warp.NewUnsignedMessage(
 		0,
 		sourceBlockchainID,
-		receiptHeavyAddressedCall.Bytes(),
+		gasLimitOverflowAddressedCall.Bytes(),
 	)
 	require.NoError(t, err)
 
@@ -254,9 +263,29 @@ func TestShouldSendMessage(t *testing.T) {
 			expectedResult:          false,
 		},
 		{
-			name:                    "receipt count exceeds block gas limit",
+			name:                    "receipt count just fits in block gas limit",
+			destinationBlockchainID: destinationBlockchainID,
+			warpUnsignedMessage:     receiptBoundaryWarpUnsignedMessage,
+			senderAddressesResult:   []common.Address{validRelayerAddress},
+			senderAddressesTimes:    1,
+			clientTimes:             1,
+			messageReceivedCall: &CallContractChecker{
+				input:          messageReceivedInput,
+				expectedResult: messageNotDelivered,
+				times:          1,
+			},
+			expectedResult: true,
+		},
+		{
+			name:                    "receipt count exceeds block gas limit by one",
 			destinationBlockchainID: destinationBlockchainID,
 			warpUnsignedMessage:     receiptHeavyWarpUnsignedMessage,
+			expectedResult:          false,
+		},
+		{
+			name:                    "gas limit does not fit in uint64",
+			destinationBlockchainID: destinationBlockchainID,
+			warpUnsignedMessage:     gasLimitOverflowWarpUnsignedMessage,
 			expectedResult:          false,
 		},
 	}
@@ -317,6 +346,47 @@ func TestShouldSendMessage(t *testing.T) {
 			require.Equal(t, test.expectedResult, result)
 		})
 	}
+}
+
+// receiptHeavyUnsignedMessage builds a message shaped like one produced by Teleporter's
+// permissionless sendSpecifiedReceipts: RequiredGasLimit of zero, no allowed-relayer restriction,
+// and numReceipts receipts to mark. It also returns the minimum delivery gas limit that
+// ShouldSendMessage will compute for it.
+func receiptHeavyUnsignedMessage(t *testing.T, numReceipts int) (*warp.UnsignedMessage, uint64) {
+	t.Helper()
+
+	teleporterMessage := validTeleporterMessage
+	teleporterMessage.RequiredGasLimit = big.NewInt(0)
+	teleporterMessage.AllowedRelayerAddresses = nil
+	teleporterMessage.Receipts = make([]teleportermessenger.TeleporterMessageReceipt, numReceipts)
+	for i := range teleporterMessage.Receipts {
+		teleporterMessage.Receipts[i] = teleportermessenger.TeleporterMessageReceipt{
+			ReceivedMessageNonce: big.NewInt(int64(i + 1)),
+			RelayerRewardAddress: validRelayerAddress,
+		}
+	}
+	teleporterMessageBytes, err := teleporterMessage.Pack()
+	require.NoError(t, err)
+
+	addressedCall, err := warpPayload.NewAddressedCall(
+		messageProtocolAddress.Bytes(),
+		teleporterMessageBytes,
+	)
+	require.NoError(t, err)
+
+	unsignedMessage, err := warp.NewUnsignedMessage(0, ids.Empty, addressedCall.Bytes())
+	require.NoError(t, err)
+
+	minGasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
+		0,
+		teleporterMessage.RequiredGasLimit,
+		0,
+		len(unsignedMessage.Payload),
+		numReceipts,
+	)
+	require.NoError(t, err)
+
+	return unsignedMessage, minGasLimit
 }
 
 func TestSendMessageAlreadyDelivered(t *testing.T) {

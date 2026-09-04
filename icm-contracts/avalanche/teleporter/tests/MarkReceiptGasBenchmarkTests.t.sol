@@ -36,8 +36,9 @@ import {
  */
 contract MarkReceiptGasBenchmarkTest is TeleporterMessengerTest {
     // Sample sizes. Marginal cost comes from differences between them, so the fixed cost of the
-    // receive path cancels out. Three sizes rather than two so the result also shows whether the
-    // cost is linear in the receipt count - if it were superlinear, no per-receipt constant in
+    // receive path cancels out. The cost is expected to be linear in the receipt count, since
+    // every receipt does the same fixed amount of work. Three sizes rather than two so the result
+    // also confirms that expectation: if the cost were superlinear, no per-receipt constant in
     // gas_utils.go could cover it and the relayer would need a hard cap instead.
     uint256 private constant _FEW_RECEIPTS = 5;
     uint256 private constant _MID_RECEIPTS = 105;
@@ -52,11 +53,15 @@ contract MarkReceiptGasBenchmarkTest is TeleporterMessengerTest {
     TeleporterMessageReceipt[] private _midReceipts;
     TeleporterMessageReceipt[] private _manyReceipts;
 
+    // Seed for deriving relayer reward addresses. Incremented on every use so that no two
+    // receipts, within or across batches, can share an address.
+    uint256 private _nextRewardAddressSeed;
+
     function setUp() public virtual override {
         TeleporterMessengerTest.setUp();
-        _stageReceipts(_fewReceipts, _FEW_RECEIPTS, 1);
-        _stageReceipts(_midReceipts, _MID_RECEIPTS, 2);
-        _stageReceipts(_manyReceipts, _MANY_RECEIPTS, 3);
+        _stageReceipts(_fewReceipts, _FEW_RECEIPTS);
+        _stageReceipts(_midReceipts, _MID_RECEIPTS);
+        _stageReceipts(_manyReceipts, _MANY_RECEIPTS);
     }
 
     function testMarginalGasPerReceipt() public {
@@ -111,21 +116,20 @@ contract MarkReceiptGasBenchmarkTest is TeleporterMessengerTest {
 
     /**
      * @dev Sends `count` fee-bearing messages and records a receipt for each into `receipts`.
-     * Every receipt names a distinct, never-before-used relayer reward address so that marking it
-     * pays a cold zero-to-nonzero SSTORE on _relayerRewardAmounts.
+     * Every receipt names a distinct, never-before-used relayer reward address, derived from the
+     * monotonically increasing _nextRewardAddressSeed, so that marking it pays a cold
+     * zero-to-nonzero SSTORE on _relayerRewardAmounts.
      */
-    function _stageReceipts(
-        TeleporterMessageReceipt[] storage receipts,
-        uint256 count,
-        uint256 salt
-    ) private {
+    function _stageReceipts(TeleporterMessageReceipt[] storage receipts, uint256 count) private {
         for (uint256 i; i < count; ++i) {
             uint256 nonce = _getNextMessageNonce();
             _sendTestMessageWithFee(DEFAULT_SOURCE_BLOCKCHAIN_ID, 1 ether);
             receipts.push(
                 TeleporterMessageReceipt({
                     receivedMessageNonce: nonce,
-                    relayerRewardAddress: address(uint160(uint256(keccak256(abi.encode(salt, i)))))
+                    relayerRewardAddress: address(
+                        uint160(uint256(keccak256(abi.encode(_nextRewardAddressSeed++))))
+                    )
                 })
             );
         }

@@ -168,6 +168,10 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	// limit. Signers and predicate chunks are not known until the signature is aggregated;
 	// omitting them makes this a lower bound on the limit SendMessage will compute, so this
 	// never declines a message that would have fit.
+	//
+	// RequiredGasLimit is a Solidity uint256 (*big.Int). CalculateReceiveMessageGasLimit returns
+	// an error for any value that does not fit in a uint64, which is treated as exceeding the
+	// block gas limit.
 	minGasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
 		0,
 		m.teleporterMessage.RequiredGasLimit,
@@ -178,7 +182,7 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	if err != nil || minGasLimit > destBlockGasLimit {
 		m.logger.Info(
 			"Delivery gas limit exceeds destination block gas limit",
-			zap.Uint64("requiredGasLimit", m.teleporterMessage.RequiredGasLimit.Uint64()),
+			zap.Stringer("requiredGasLimit", m.teleporterMessage.RequiredGasLimit),
 			zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
 			zap.Uint64("minDeliveryGasLimit", minGasLimit),
 			zap.Uint64("blockGasLimit", destBlockGasLimit),
