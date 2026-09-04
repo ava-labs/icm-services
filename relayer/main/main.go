@@ -19,9 +19,7 @@ import (
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	merklevalidatorsetregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
-	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
@@ -349,14 +347,7 @@ func main() {
 	// Start validator set updaters for configured external EVM destinations
 	for _, extDest := range cfg.ExternalEVMDestinations {
 		errGroup.Go(func() error {
-			switch extDest.ContractType {
-			case "diff":
-				return startDiffSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
-			case "merkle":
-				return startMerkleSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
-			default:
-				return startSubsetSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
-			}
+			return startMerkleSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
 		})
 	}
 
@@ -643,146 +634,6 @@ func createHealthTrackers(cfg *config.Config) map[ids.ID]*atomic.Bool {
 	return healthTrackers
 }
 
-func startSubsetSetUpdater(
-	ctx context.Context,
-	logger logging.Logger,
-	extDest *config.ExternalEVMDestination,
-	signatureAggregator *aggregator.SignatureAggregator,
-	cfg *config.Config,
-) error {
-	blockchainID, err := ids.FromString(extDest.BlockchainID)
-	if err != nil {
-		return fmt.Errorf("invalid blockchain ID %q: %w", extDest.BlockchainID, err)
-	}
-	subnetID, err := ids.FromString(extDest.SubnetID)
-	if err != nil {
-		return fmt.Errorf("invalid subnet ID %q: %w", extDest.SubnetID, err)
-	}
-	ethClient, err := ethclient.DialContext(ctx, extDest.RPCEndpoint)
-	if err != nil {
-		return fmt.Errorf("failed to connect to external EVM at %s: %w", extDest.RPCEndpoint, err)
-	}
-	chainID, err := ethClient.ChainID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get chain ID: %w", err)
-	}
-
-	privateKey, err := crypto.HexToECDSA(extDest.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("invalid private key: %w", err)
-	}
-	txOpts, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	if err != nil {
-		return fmt.Errorf("failed to create transactor: %w", err)
-	}
-
-	contractAddr := common.HexToAddress(extDest.ContractAddress)
-	contract, err := subsetupdater.NewSubsetUpdater(contractAddr, ethClient)
-	if err != nil {
-		return fmt.Errorf("failed to bind SubsetUpdater contract: %w", err)
-	}
-
-	pChainClient := clients.NewCanonicalValidatorClient(cfg.PChainAPI)
-
-	infoClient := info.NewClient(cfg.InfoAPI.BaseURL)
-	networkID, err := infoClient.GetNetworkID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get network ID: %w", err)
-	}
-
-	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
-	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-
-	updater := validatorupdater.NewSubsetSetUpdater(
-		logger,
-		pChainClient,
-		signatureAggregator,
-		ethClient,
-		contract,
-		contractAddr,
-		txOpts,
-		networkID,
-		blockchainID,
-		subnetID,
-		extDest.ShardSize,
-		pollInterval,
-		extDest.WeightChangeThresholdPct,
-		maxUpdateInterval,
-	)
-
-	return updater.Start(ctx)
-}
-
-func startDiffSetUpdater(
-	ctx context.Context,
-	logger logging.Logger,
-	extDest *config.ExternalEVMDestination,
-	signatureAggregator *aggregator.SignatureAggregator,
-	cfg *config.Config,
-) error {
-	blockchainID, err := ids.FromString(extDest.BlockchainID)
-	if err != nil {
-		return fmt.Errorf("invalid blockchain ID %q: %w", extDest.BlockchainID, err)
-	}
-	subnetID, err := ids.FromString(extDest.SubnetID)
-	if err != nil {
-		return fmt.Errorf("invalid subnet ID %q: %w", extDest.SubnetID, err)
-	}
-	ethClient, err := ethclient.DialContext(ctx, extDest.RPCEndpoint)
-	if err != nil {
-		return fmt.Errorf("failed to connect to external EVM at %s: %w", extDest.RPCEndpoint, err)
-	}
-	chainID, err := ethClient.ChainID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get chain ID: %w", err)
-	}
-
-	privateKey, err := crypto.HexToECDSA(extDest.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("invalid private key: %w", err)
-	}
-	txOpts, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	if err != nil {
-		return fmt.Errorf("failed to create transactor: %w", err)
-	}
-
-	contractAddr := common.HexToAddress(extDest.ContractAddress)
-	contract, err := diffupdater.NewDiffUpdater(contractAddr, ethClient)
-	if err != nil {
-		return fmt.Errorf("failed to bind DiffUpdater contract: %w", err)
-	}
-
-	pChainClient := clients.NewCanonicalValidatorClient(cfg.PChainAPI)
-
-	infoClient := info.NewClient(cfg.InfoAPI.BaseURL)
-	networkID, err := infoClient.GetNetworkID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get network ID: %w", err)
-	}
-
-	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
-	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-
-	updater := validatorupdater.NewDiffSetUpdater(
-		logger,
-		pChainClient,
-		signatureAggregator,
-		ethClient,
-		contract,
-		contractAddr,
-		txOpts,
-		networkID,
-		blockchainID,
-		subnetID,
-		extDest.ShardSize,
-		pollInterval,
-		extDest.WeightChangeThresholdPct,
-		maxUpdateInterval,
-	)
-
-	return updater.Start(ctx)
-}
-
 func startMerkleSetUpdater(
 	ctx context.Context,
 	logger logging.Logger,
@@ -830,11 +681,8 @@ func startMerkleSetUpdater(
 		return fmt.Errorf("failed to get network ID: %w", err)
 	}
 
-	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
+	pollInterval := extDest.GetPollInterval()
 	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-	if pollInterval == 0 {
-		pollInterval = validatorupdater.DefaultPollInterval
-	}
 	updater := validatorupdater.NewMerkleSetUpdater(
 		logger,
 		pChainClient,
