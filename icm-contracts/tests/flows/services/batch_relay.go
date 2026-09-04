@@ -110,7 +110,9 @@ func BatchRelay(
 		batchMessengerAddressB,
 		common.Address{},
 		big.NewInt(0),
-		big.NewInt(int64(300000*numMessages)),
+		// Per message, not for the batch as a whole: sendMessages applies this
+		// requiredGasLimit to each of the messages it sends.
+		big.NewInt(300000),
 		sentMessages.List(),
 	)
 	Expect(err).Should(BeNil())
