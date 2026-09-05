@@ -21,9 +21,7 @@ import (
 )
 
 const (
-	retrySubscribeTimeout = 10 * time.Second
-	// TODO attempt to resubscribe in perpetuity once we are able to process missed blocks and
-	// refresh the chain config on reconnect.
+	retrySubscribeTimeout   = 10 * time.Second
 	retryResubscribeTimeout = 10 * time.Second
 )
 
@@ -157,21 +155,22 @@ func newListener(
 		protocol:                     protocol,
 	}
 
-	// Open the subscription. We must do this before processing any missed messages, otherwise we may
-	// miss an incoming message in between fetching the latest block and subscribing.
+	// Open the log subscription before starting the live loop so no matching
+	// log is missed between the loop starting and the subscription opening.
 	err = lstnr.Subscriber.Subscribe(retrySubscribeTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe to node: %w", err)
 	}
 
+	go lstnr.Subscriber.Run(ctx, startingHeight)
+
 	return &lstnr, nil
 }
 
-// Listens to the Subscriber logs channel to process them.
+// Listens to the Subscriber blocks channel to process them.
 // On subscriber error, attempts to reconnect and errors if unable.
 // Exits if context is cancelled by another goroutine.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
-	// Error channel for application relayer errors
 	needsCatchup := true
 	for {
 		select {
@@ -180,8 +179,9 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			lstnr.logger.Error("Listener received error", zap.Error(err))
 			return fmt.Errorf("listener received error: %w", err)
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
-			// Catchup should run on startup, and after any reconnects. It will wait for the first block
-			// received from the subscriber, so that it has an accurate bound on which blocks to process.
+			// Catchup runs on startup and after any reconnect. It waits for the
+			// first live block from the subscriber so it has an accurate upper
+			// bound on which blocks to process.
 			if needsCatchup && !icmBlockInfo.IsCatchup {
 				needsCatchup = false
 				go lstnr.Subscriber.ProcessFromHeight(
@@ -218,13 +218,9 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 }
 
 func (lstnr *Listener) reconnectToSubscriber() error {
-	// Attempt to reconnect the subscription
-	err := lstnr.Subscriber.Subscribe(retryResubscribeTimeout)
-	if err != nil {
+	if err := lstnr.Subscriber.Subscribe(retryResubscribeTimeout); err != nil {
 		return fmt.Errorf("failed to resubscribe to node: %w", err)
 	}
-
-	// Success
 	lstnr.healthStatus.Store(true)
 	return nil
 }
