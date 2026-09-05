@@ -272,19 +272,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
             "TeleporterMessengerV2: invalid origin teleporter address"
         );
 
-        // We need to copy this to memory
-        TeleporterMessageReceipt[] memory receipts = teleporterMessageV2.receipts;
-
-        TeleporterMessage memory teleporterMessage = TeleporterMessage({
-            messageNonce: teleporterMessageV2.messageNonce,
-            originSenderAddress: teleporterMessageV2.originSenderAddress,
-            destinationBlockchainID: teleporterMessageV2.destinationBlockchainID,
-            destinationAddress: teleporterMessageV2.destinationAddress,
-            requiredGasLimit: teleporterMessageV2.requiredGasLimit,
-            allowedRelayerAddresses: teleporterMessageV2.allowedRelayerAddresses,
-            receipts: receipts,
-            message: teleporterMessageV2.message
-        });
+        TeleporterMessage memory teleporterMessage = _toLegacyMessage(teleporterMessageV2);
 
         // Require that the message was intended for this blockchain.
         require(
@@ -338,8 +326,10 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         );
 
         // Execute the message.
-        if (teleporterMessage.message.length > 0) {
-            _handleInitialMessageExecution(messageID, message.sourceBlockchainID, teleporterMessage);
+        if (teleporterMessageV2.message.length > 0) {
+            _handleInitialMessageExecution(
+                messageID, message.sourceBlockchainID, teleporterMessageV2
+            );
         }
     }
 
@@ -750,7 +740,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
     function _handleInitialMessageExecution(
         bytes32 messageID,
         bytes32 sourceBlockchainID,
-        TeleporterMessage memory message
+        TeleporterMessageV2 calldata message
     ) private {
         // Check that the message delivery was provided the required gas amount as specified by the sender.
         // If the required gas amount is provided, the message will be considered received whether or not
@@ -822,16 +812,38 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
     /**
      * @dev Stores the hash of a message that has been successfully received but fails to execute properly
      * such that the message execution can be retried by anyone in the future.
+     *
+     * The hash must be taken over the `TeleporterMessageV2` representation of the message, since that is
+     * the representation that `retryMessageExecution` re-hashes to authenticate the retried message.
      */
     function _storeFailedMessageExecution(
         bytes32 messageID,
         bytes32 sourceBlockchainID,
-        TeleporterMessage memory message
+        TeleporterMessageV2 calldata message
     ) private {
         receivedFailedMessageHashes[messageID] = keccak256(abi.encode(message));
 
         // Emit a failed execution event for anyone monitoring unsuccessful messages to retry.
-        emit MessageExecutionFailed(messageID, sourceBlockchainID, message);
+        emit MessageExecutionFailed(messageID, sourceBlockchainID, _toLegacyMessage(message));
+    }
+
+    /**
+     * @dev Converts a message to the legacy `TeleporterMessage` representation, which drops
+     * `originTeleporterAddress`. Only used for the events shared with the V1 messenger interface.
+     */
+    function _toLegacyMessage(
+        TeleporterMessageV2 calldata message
+    ) private pure returns (TeleporterMessage memory) {
+        return TeleporterMessage({
+            messageNonce: message.messageNonce,
+            originSenderAddress: message.originSenderAddress,
+            destinationBlockchainID: message.destinationBlockchainID,
+            destinationAddress: message.destinationAddress,
+            requiredGasLimit: message.requiredGasLimit,
+            allowedRelayerAddresses: message.allowedRelayerAddresses,
+            receipts: message.receipts,
+            message: message.message
+        });
     }
 
     /**
