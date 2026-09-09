@@ -39,6 +39,24 @@ const (
 	strictTailBlocks = 10
 )
 
+// BlockHeader is the subset of a block header the relayer uses, decoded leniently
+// so it works across chain families. The node-reported hash is kept verbatim:
+// recomputing it client-side is not reliable for chains whose headers carry
+// fields this client cannot encode (e.g. SAE chains). The upstream header types
+// cannot be reused here: each family's generated decoder requires fields the
+// other family omits, and their "hash" is a marshal-only computed field that is
+// dropped on unmarshal.
+//
+// If more header fields are needed later, the wire format is defined by
+// HeaderSerializable in avalanchego's
+// graft/coreth/plugin/evm/customtypes/header_ext.go (C-Chain, including the
+// SAE settlement fields) and
+// graft/subnet-evm/plugin/evm/customtypes/header_ext.go (subnet-evm chains).
+type BlockHeader struct {
+	Hash   common.Hash  `json:"hash"`
+	Number *hexutil.Big `json:"number"`
+}
+
 type SubscriberRPCClient interface {
 	BlockNumber(ctx context.Context) (uint64, error)
 	// BlockHeaderByNumber returns the block header with its node-reported hash, or an
@@ -73,12 +91,27 @@ func (c RPCHeaderClient) BlockHeaderByNumber(ctx context.Context, number *big.In
 // log subscription. All of its methods must be served by the node the
 // subscription is open with, i.e. over that same connection: the subscriber
 // relies on BlockNumber to bound which blocks the subscription will deliver,
-// and on FilterLogs reaching a node that has the notified block's receipts
-// (see blocksInfoFromLogs). An *ethclient.Client over the WS connection
-// satisfies this.
+// and on FilterLogs reaching a node that has the receipts of every block up to
+// that bound (see filterLogsByBlockHash). An *ethclient.Client over the WS
+// connection satisfies this.
 type SubscriberWSClient interface {
 	BlockNumber(ctx context.Context) (uint64, error)
 	ethereum.LogFilterer
+}
+
+// ICMBlockInfo describes a contiguous range of source chain blocks together with the logs they
+// contain that match the subscriber's event filter. ICMBlockInfo instances are populated by the
+// subscriber, and forwarded to the Listener to process.
+//
+// Blocks without matching logs are not reported on their own: the subscriber folds them into the
+// range of a neighbouring block, so that processing every ICMBlockInfo accounts for every block
+// and the checkpoint manager can advance past blocks that produced no logs.
+type ICMBlockInfo struct {
+	// FromBlock and ToBlock are the first and last heights, inclusive, of the blocks covered.
+	FromBlock uint64
+	ToBlock   uint64
+	// Logs are the logs of the covered blocks that match the subscriber's event filter, in order.
+	Logs []types.Log
 }
 
 type Subscriber struct {
@@ -201,7 +234,7 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 		return fmt.Errorf("failed to get header for block %d: %w", height, err)
 	}
 
-	logs, err := FilterLogsByBlockHash(s.logger, s.rpcClient, s.filter, header.Hash)
+	logs, err := s.filterLogsByBlockHash(header.Hash)
 	if err != nil {
 		return err
 	}
@@ -258,6 +291,51 @@ func (s *Subscriber) processBlockRange(
 		}
 	}
 	return nil
+}
+
+// filterLogsByBlockHash fetches the logs of the block with hash [blockHash]
+// that match the event filter.
+//
+// Logs are fetched over the WS connection rather than the HTTP client: the
+// subscribed node is guaranteed to have the block's receipts on disk, both for
+// blocks it notified about and for catch-up blocks, which never go beyond its
+// chain head. An HTTP request may instead be routed to a different node behind
+// a load balancer that has not yet executed the block. On SAE chains such a
+// node returns empty logs without an error, which would cause the block's
+// messages to be silently skipped.
+func (s *Subscriber) filterLogsByBlockHash(blockHash common.Hash) ([]types.Log, error) {
+	var logs []types.Log
+	// Query by hash: a node that doesn't know the block errors ("unknown
+	// block") and is retried below, whereas a by-number query would return
+	// empty logs with no error and the block would be silently skipped.
+	operation := func() (err error) {
+		// Fresh context per attempt so retries aren't killed by an
+		// already-expired deadline.
+		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+		defer cancel()
+		logs, err = s.wsClient.FilterLogs(cctx, ethereum.FilterQuery{
+			Addresses: s.filter.Addresses,
+			Topics:    s.filter.Topics,
+			BlockHash: &blockHash,
+		})
+		return err
+	}
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"getting ICM block from logs failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
+
+	// Blocks are learned of via WS before every node behind a load-balanced RPC
+	// endpoint knows them, so allow several retries for the "unknown block"
+	// case above.
+	timeout := utils.DefaultRPCTimeout * 6
+	if err := utils.WithRetriesTimeout(operation, notify, timeout); err != nil {
+		return nil, fmt.Errorf("failed to get logs for block: %w", err)
+	}
+	return logs, nil
 }
 
 func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock uint64) ([]types.Log, error) {
@@ -408,14 +486,7 @@ func (s *Subscriber) blocksInfoFromLogs() {
 			continue
 		}
 
-		// Fetch logs over the WS connection rather than the HTTP client: the
-		// node that emitted this log is guaranteed to have the block's
-		// receipts on disk, whereas an HTTP request may be routed to a
-		// different node behind a load balancer that has not yet executed the
-		// block. On SAE chains such a node returns empty logs without an
-		// error, which would cause this block's messages to be silently
-		// skipped.
-		logs, err := FilterLogsByBlockHash(s.logger, s.wsClient, s.filter, log.BlockHash)
+		logs, err := s.filterLogsByBlockHash(log.BlockHash)
 		if err != nil {
 			s.errChan <- fmt.Errorf("getting ICM block logs: %w", err)
 			return
