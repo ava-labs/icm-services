@@ -47,6 +47,12 @@ func SignatureAggregatorAPI(
 		log,
 		[]testinfo.L1TestInfo{l1AInfo, l1BInfo},
 	)
+	// Track l1B so the aggregator connects to its validators on startup and its readiness health
+	// check requires a quorum of l1B stake to be connected. Without this, the health check only
+	// covers the primary network, and the B -> A request below races the aggregator's first
+	// connections to l1B's validators: a single request round against freshly connected nodes
+	// can come up short of quorum and fail the request.
+	signatureAggregatorConfig.TrackedSubnetIDs = []string{l1BInfo.SubnetID.String()}
 
 	signatureAggregatorConfigPath := utils.WriteSignatureAggregatorConfig(
 		log,
@@ -64,9 +70,10 @@ func SignatureAggregatorAPI(
 	)
 	defer signatureAggregatorCancel()
 
-	// Wait for signature-aggregator to start up
-	log.Info("Waiting for the relayer to start up")
-	startupCtx, startupCancel := context.WithTimeout(ctx, 15*time.Second)
+	// Wait for signature-aggregator to start up. The health check waits for connections to a
+	// quorum of both the primary network and l1B validators, so allow it more time.
+	log.Info("Waiting for the signature aggregator to start up")
+	startupCtx, startupCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer startupCancel()
 	utils.WaitForChannelClose(startupCtx, readyChan)
 
