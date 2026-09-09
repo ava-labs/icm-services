@@ -29,8 +29,7 @@ type ICMBlockInfo struct {
 	FromBlock uint64
 	ToBlock   uint64
 	// Logs are the logs of the covered blocks that match the subscriber's event filter, in order.
-	Logs      []types.Log
-	IsCatchup bool
+	Logs []types.Log
 }
 
 // EventFilter selects the source chain logs that carry a message protocol's messages, following
@@ -106,7 +105,6 @@ func NewICMBlockInfo(
 		FromBlock: blockNumber,
 		ToBlock:   blockNumber,
 		Logs:      logs,
-		IsCatchup: false,
 	}, nil
 }
 

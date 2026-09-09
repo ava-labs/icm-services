@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -90,12 +91,22 @@ type Subscriber struct {
 	icmBlocks        chan *ICMBlockInfo
 	sub              ethereum.Subscription
 
+	// highestDispatchedBlock is the highest source chain block that has been
+	// dispatched for processing, either by catch-up or from the subscription.
+	// Every block up to it is accounted for, so when the subscription reports
+	// a block above it, the blocks in between contain no matching logs and
+	// are folded into that block's range. It is updated both by Subscribe and
+	// by the goroutine that consumes the subscription.
+	highestDispatchedBlock uint64
+	highestDispatchedLock  sync.Mutex
+
 	errChan chan error
 
 	logger logging.Logger
 }
 
-// NewSubscriber returns a Subscriber
+// NewSubscriber returns a Subscriber that accounts for every block from
+// [startingHeight] onward.
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
@@ -104,17 +115,19 @@ func NewSubscriber(
 	rpcClient SubscriberRPCClient,
 	errChan chan error,
 	filter EventFilter,
+	startingHeight uint64,
 ) *Subscriber {
 	subscriber := &Subscriber{
-		blockchainID:     blockchainID,
-		isPrimaryNetwork: isPrimaryNetwork,
-		filter:           filter,
-		wsClient:         wsClient,
-		rpcClient:        rpcClient,
-		logger:           logger,
-		icmBlocks:        make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
-		logs:             make(chan types.Log, maxClientSubscriptionBuffer),
-		errChan:          errChan,
+		blockchainID:           blockchainID,
+		isPrimaryNetwork:       isPrimaryNetwork,
+		filter:                 filter,
+		wsClient:               wsClient,
+		rpcClient:              rpcClient,
+		logger:                 logger,
+		icmBlocks:              make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
+		logs:                   make(chan types.Log, maxClientSubscriptionBuffer),
+		highestDispatchedBlock: startingHeight - 1,
+		errChan:                errChan,
 	}
 	go subscriber.blocksInfoFromLogs()
 	return subscriber
@@ -195,7 +208,6 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 	if err != nil {
 		return err
 	}
-	block.IsCatchup = true
 	s.icmBlocks <- block
 	return nil
 }
@@ -234,7 +246,6 @@ func (s *Subscriber) processBlockRange(
 			FromBlock: nextBlock,
 			ToBlock:   blockNumber,
 			Logs:      logs[start:end],
-			IsCatchup: true,
 		}
 		nextBlock = blockNumber + 1
 		start = end
@@ -243,7 +254,6 @@ func (s *Subscriber) processBlockRange(
 		s.icmBlocks <- &ICMBlockInfo{
 			FromBlock: nextBlock,
 			ToBlock:   toBlock,
-			IsCatchup: true,
 		}
 	}
 	return nil
@@ -278,11 +288,13 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock uint6
 }
 
 // Subscribe subscribes to the source chain logs matching the event filter,
-// replacing the current subscription if there is one. It returns the height of
-// the subscribed node's chain head once the subscription is open: the
-// subscription delivers the logs of every block after that height, so the
-// caller must process the blocks up to and including it via ProcessFromHeight.
-func (s *Subscriber) Subscribe(retryTimeout time.Duration) (uint64, error) {
+// replacing the current subscription if there is one, and dispatches catch-up
+// of the blocks the subscription will not deliver: those up to and including
+// the subscribed node's chain head that have not been dispatched yet, i.e. the
+// blocks missed while the relayer was down or the previous subscription was
+// broken. The subscription is opened before catch-up is bounded, so no block
+// can fall between the two.
+func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 	// Unsubscribe before resubscribing
 	// s.sub should only be nil on the first call to Subscribe
 	if s.sub != nil {
@@ -291,7 +303,7 @@ func (s *Subscriber) Subscribe(retryTimeout time.Duration) (uint64, error) {
 
 	err := s.subscribe(retryTimeout)
 	if err != nil {
-		return 0, fmt.Errorf("failed to subscribe to node: %w", err)
+		return fmt.Errorf("failed to subscribe to node: %w", err)
 	}
 
 	// The head must be read from the subscribed node (over the WS connection)
@@ -300,9 +312,20 @@ func (s *Subscriber) Subscribe(retryTimeout time.Duration) (uint64, error) {
 	// logs for, leaving a gap between catch-up and the subscription.
 	head, err := s.headBlockNumber()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get chain head of subscribed node: %w", err)
+		return fmt.Errorf("failed to get chain head of subscribed node: %w", err)
 	}
-	return head, nil
+
+	s.highestDispatchedLock.Lock()
+	catchupStart := s.highestDispatchedBlock + 1
+	s.highestDispatchedBlock = max(s.highestDispatchedBlock, head)
+	s.highestDispatchedLock.Unlock()
+
+	// Run catch-up in a separate goroutine so that new blocks can be processed
+	// as soon as possible. ProcessFromHeight returns immediately if there is
+	// nothing to catch up on, e.g. if the newly subscribed node is behind the
+	// previously subscribed one.
+	go s.ProcessFromHeight(catchupStart, head)
+	return nil
 }
 
 // subscribe until it succeeds or reached timeout.
@@ -397,13 +420,40 @@ func (s *Subscriber) blocksInfoFromLogs() {
 			return
 		}
 		s.icmBlocks <- &ICMBlockInfo{
-			FromBlock: log.BlockNumber,
+			FromBlock: s.dispatchLiveBlock(log.BlockNumber),
 			ToBlock:   log.BlockNumber,
 			Logs:      logs,
-			IsCatchup: false,
 		}
 		lastBlockHash = log.BlockHash
 	}
+}
+
+// dispatchLiveBlock records that the subscription reported [blockNumber] and
+// returns the first block of the range it should be reported as. The
+// subscription only reports blocks that contain matching logs, and reports
+// them in order, so the blocks between the highest dispatched block and this
+// one contain no matching logs and are folded into its range for the
+// checkpoint manager to account for. A block at or below the highest
+// dispatched block was already covered by catch-up and is reported as is; it
+// is processed again, which is safe because relaying is idempotent.
+func (s *Subscriber) dispatchLiveBlock(blockNumber uint64) uint64 {
+	s.highestDispatchedLock.Lock()
+	defer s.highestDispatchedLock.Unlock()
+
+	if blockNumber <= s.highestDispatchedBlock {
+		// Only expected for blocks accepted between opening the subscription
+		// and reading the chain head, which catch-up also covers, or after
+		// resubscribing to a node that is behind the previously subscribed one.
+		s.logger.Warn(
+			"Subscription reported an already dispatched block",
+			zap.Uint64("blockNumber", blockNumber),
+			zap.Uint64("highestDispatchedBlock", s.highestDispatchedBlock),
+		)
+		return blockNumber
+	}
+	fromBlock := s.highestDispatchedBlock + 1
+	s.highestDispatchedBlock = blockNumber
+	return fromBlock
 }
 
 func (s *Subscriber) ICMBlocks() <-chan *ICMBlockInfo {

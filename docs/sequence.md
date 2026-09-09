@@ -11,9 +11,9 @@ sequenceDiagram
     participant CheckpointManager
     participant RelayerDatabase
 
-    Subscriber->>Listener : (async) New block with Warp logs
+    Subscriber->>Subscriber : Extend block range over preceding empty blocks
+    Subscriber->>Listener : (async) New block range with Warp logs
     activate Listener
-    Listener->>Listener : Extend block range over preceding empty blocks
     Listener->>Listener : Create handlers for each message
     Listener-->>ApplicationRelayer : (async) Pass message handlers for block range
     deactivate Listener

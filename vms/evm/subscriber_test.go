@@ -81,6 +81,9 @@ func stubLog(blockNumber uint64, index uint) types.Log {
 	}
 }
 
+// testStartingHeight is the first block the subscribers under test account for.
+const testStartingHeight = 1
+
 func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscriber, *subscriberClientStub) {
 	sourceSubnet := config.SourceBlockchain{
 		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
@@ -101,6 +104,7 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 		stubRPCClient,
 		errChan,
 		EventFilter{Topics: [][]common.Hash{{warp.WarpABI.Events["SendWarpMessage"].ID}}},
+		testStartingHeight,
 	)
 
 	return subscriber, stubRPCClient
@@ -194,7 +198,6 @@ func TestProcessFromHeight(t *testing.T) {
 				require.GreaterOrEqual(t, block.ToBlock, block.FromBlock)
 				require.LessOrEqual(t, block.ToBlock, tc.latest)
 				require.Empty(t, block.Logs)
-				require.True(t, block.IsCatchup)
 				nextBlock = block.ToBlock + 1
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
@@ -221,16 +224,15 @@ func TestProcessBlockRangeGroupsLogsByBlock(t *testing.T) {
 	require.Equal(t, 1, stubRPCClient.numFilterLogCalls)
 
 	expected := []*ICMBlockInfo{
-		{FromBlock: 100, ToBlock: 103, Logs: []types.Log{stubLog(103, 0), stubLog(103, 1)}, IsCatchup: true},
-		{FromBlock: 104, ToBlock: 107, Logs: []types.Log{stubLog(107, 0)}, IsCatchup: true},
-		{FromBlock: 108, ToBlock: 120, IsCatchup: true},
+		{FromBlock: 100, ToBlock: 103, Logs: []types.Log{stubLog(103, 0), stubLog(103, 1)}},
+		{FromBlock: 104, ToBlock: 107, Logs: []types.Log{stubLog(107, 0)}},
+		{FromBlock: 108, ToBlock: 120},
 	}
 	for _, want := range expected {
 		got := <-subscriberUnderTest.ICMBlocks()
 		require.Equal(t, want.FromBlock, got.FromBlock)
 		require.Equal(t, want.ToBlock, got.ToBlock)
 		require.Equal(t, want.Logs, got.Logs)
-		require.True(t, got.IsCatchup)
 	}
 	require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
 }
@@ -251,7 +253,8 @@ func TestProcessBlockRangeLogsInLastBlock(t *testing.T) {
 }
 
 // Each block that the subscription notifies about is reported once, with all of its matching
-// logs fetched by block hash on the first notification.
+// logs fetched by block hash on the first notification. Its range starts right after the highest
+// block dispatched so far, so that the empty blocks in between are accounted for.
 func TestBlocksInfoFromLogs(t *testing.T) {
 	errChan := make(chan error, 1)
 	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
@@ -272,16 +275,14 @@ func TestBlocksInfoFromLogs(t *testing.T) {
 	subscriberUnderTest.logs <- removed
 
 	block := <-subscriberUnderTest.ICMBlocks()
-	require.Equal(t, uint64(10), block.FromBlock)
+	require.Equal(t, uint64(testStartingHeight), block.FromBlock)
 	require.Equal(t, uint64(10), block.ToBlock)
 	require.Equal(t, stubRPCClient.logs[:3], block.Logs)
-	require.False(t, block.IsCatchup)
 
 	block = <-subscriberUnderTest.ICMBlocks()
-	require.Equal(t, uint64(15), block.FromBlock)
+	require.Equal(t, uint64(11), block.FromBlock)
 	require.Equal(t, uint64(15), block.ToBlock)
 	require.Equal(t, stubRPCClient.logs[3:], block.Logs)
-	require.False(t, block.IsCatchup)
 
 	select {
 	case block := <-subscriberUnderTest.ICMBlocks():
@@ -291,4 +292,62 @@ func TestBlocksInfoFromLogs(t *testing.T) {
 	require.Empty(t, errChan)
 	// One fetch per block, regardless of the number of notifications for it.
 	require.Equal(t, 2, stubRPCClient.numFilterLogCalls)
+}
+
+// Subscribing dispatches catch-up of every block up to the subscribed node's head, and blocks
+// reported by the subscription afterwards continue from the head. Blocks the subscription reports
+// that catch-up already covers are reported as is.
+func TestSubscribeDispatchesCatchup(t *testing.T) {
+	errChan := make(chan error, 1)
+	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
+	const head = 30
+	stubRPCClient.blockNumber = head
+	// Block 5 is served by catch-up's range query. Block 25 is in catch-up's strict tail, where
+	// the stub's empty bloom filter skips the log fetch, so catch-up reports it without logs.
+	stubRPCClient.logs = []types.Log{stubLog(5, 0), stubLog(25, 0), stubLog(40, 0)}
+
+	require.NoError(t, subscriberUnderTest.Subscribe(time.Second))
+	require.Equal(t, 1, stubRPCClient.numSubscribeFilterLogsCalls)
+
+	// Catch-up tiles [testStartingHeight, head], reporting block 5's log along the way.
+	nextBlock := uint64(testStartingHeight)
+	var caughtUpLogs []types.Log
+	for nextBlock <= head {
+		block := <-subscriberUnderTest.ICMBlocks()
+		require.Equal(t, nextBlock, block.FromBlock)
+		require.LessOrEqual(t, block.ToBlock, uint64(head))
+		caughtUpLogs = append(caughtUpLogs, block.Logs...)
+		nextBlock = block.ToBlock + 1
+	}
+	require.Equal(t, []types.Log{stubLog(5, 0)}, caughtUpLogs)
+	require.Empty(t, errChan)
+
+	// A block the subscription reports that catch-up already covered is reported as is.
+	subscriberUnderTest.logs <- stubLog(25, 0)
+	block := <-subscriberUnderTest.ICMBlocks()
+	require.Equal(t, uint64(25), block.FromBlock)
+	require.Equal(t, uint64(25), block.ToBlock)
+
+	// The next block above the head is reported from right after the head.
+	subscriberUnderTest.logs <- stubLog(40, 0)
+	block = <-subscriberUnderTest.ICMBlocks()
+	require.Equal(t, uint64(head+1), block.FromBlock)
+	require.Equal(t, uint64(40), block.ToBlock)
+	require.Equal(t, []types.Log{stubLog(40, 0)}, block.Logs)
+
+	// Resubscribing to a node that is behind has nothing to catch up on, and the next block
+	// continues from the highest block dispatched so far.
+	stubRPCClient.blockNumber = 35
+	require.NoError(t, subscriberUnderTest.Subscribe(time.Second))
+	subscriberUnderTest.logs <- stubLog(42, 0)
+	block = <-subscriberUnderTest.ICMBlocks()
+	require.Equal(t, uint64(41), block.FromBlock)
+	require.Equal(t, uint64(42), block.ToBlock)
+
+	select {
+	case block := <-subscriberUnderTest.ICMBlocks():
+		require.Fail(t, "unexpected block", "block %d", block.ToBlock)
+	case <-time.After(50 * time.Millisecond):
+	}
+	require.Empty(t, errChan)
 }
