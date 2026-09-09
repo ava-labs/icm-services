@@ -99,7 +99,6 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 	subscriber := NewSubscriber(
 		logging.NoLog{},
 		blockchainID,
-		false,
 		stubRPCClient,
 		stubRPCClient,
 		errChan,
@@ -170,21 +169,20 @@ func TestProcessFromHeight(t *testing.T) {
 
 			stubRPCClient.blockNumber = tc.latest
 
-			// The last strictTailBlocks blocks are processed one by one via
-			// BlockHeaderByNumber (no FilterLogs here: the stub's bloom is empty and
-			// the test chain is not the primary network, so the bloom gate
-			// skips the log fetch); everything older is served by chunked
-			// range queries.
-			var expectedFilterLogCalls, expectedHeadCalls uint64
+			// The last strictTailBlocks blocks are processed one by one, each
+			// with a BlockHeaderByNumber call and a FilterLogs call by hash;
+			// everything older is served by chunked range queries.
+			var expectedFilterLogCalls, expectedHeaderCalls uint64
 			if tc.latest >= tc.input {
 				span := tc.latest - tc.input + 1
 				if span > strictTailBlocks {
-					expectedHeadCalls = strictTailBlocks
+					expectedHeaderCalls = strictTailBlocks
 					rangeSpan := span - strictTailBlocks
 					expectedFilterLogCalls = (rangeSpan + MaxBlocksPerRequest - 1) / MaxBlocksPerRequest
 				} else {
-					expectedHeadCalls = span
+					expectedHeaderCalls = span
 				}
+				expectedFilterLogCalls += expectedHeaderCalls
 			}
 
 			subscriberUnderTest.ProcessFromHeight(tc.input, tc.latest)
@@ -202,7 +200,7 @@ func TestProcessFromHeight(t *testing.T) {
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
 			require.EqualValues(t, expectedFilterLogCalls, stubRPCClient.numFilterLogCalls)
-			require.EqualValues(t, expectedHeadCalls, stubRPCClient.numBlockHeaderByNumberCalls)
+			require.EqualValues(t, expectedHeaderCalls, stubRPCClient.numBlockHeaderByNumberCalls)
 		})
 	}
 }
@@ -302,14 +300,13 @@ func TestSubscribeDispatchesCatchup(t *testing.T) {
 	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
 	const head = 30
 	stubRPCClient.blockNumber = head
-	// Block 5 is served by catch-up's range query. Block 25 is in catch-up's strict tail, where
-	// the stub's empty bloom filter skips the log fetch, so catch-up reports it without logs.
+	// Block 5 is served by catch-up's range query, block 25 by its strict tail.
 	stubRPCClient.logs = []types.Log{stubLog(5, 0), stubLog(25, 0), stubLog(40, 0)}
 
 	require.NoError(t, subscriberUnderTest.Subscribe(time.Second))
 	require.Equal(t, 1, stubRPCClient.numSubscribeFilterLogsCalls)
 
-	// Catch-up tiles [testStartingHeight, head], reporting block 5's log along the way.
+	// Catch-up tiles [testStartingHeight, head], reporting the logs of blocks 5 and 25 on the way.
 	nextBlock := uint64(testStartingHeight)
 	var caughtUpLogs []types.Log
 	for nextBlock <= head {
@@ -319,7 +316,7 @@ func TestSubscribeDispatchesCatchup(t *testing.T) {
 		caughtUpLogs = append(caughtUpLogs, block.Logs...)
 		nextBlock = block.ToBlock + 1
 	}
-	require.Equal(t, []types.Log{stubLog(5, 0)}, caughtUpLogs)
+	require.Equal(t, []types.Log{stubLog(5, 0), stubLog(25, 0)}, caughtUpLogs)
 	require.Empty(t, errChan)
 
 	// A block the subscription reports that catch-up already covered is reported as is.

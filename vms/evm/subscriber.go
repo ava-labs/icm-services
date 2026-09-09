@@ -82,14 +82,13 @@ type SubscriberWSClient interface {
 }
 
 type Subscriber struct {
-	wsClient         SubscriberWSClient
-	rpcClient        SubscriberRPCClient
-	blockchainID     ids.ID
-	isPrimaryNetwork bool
-	filter           EventFilter
-	logs             chan types.Log
-	icmBlocks        chan *ICMBlockInfo
-	sub              ethereum.Subscription
+	wsClient     SubscriberWSClient
+	rpcClient    SubscriberRPCClient
+	blockchainID ids.ID
+	filter       EventFilter
+	logs         chan types.Log
+	icmBlocks    chan *ICMBlockInfo
+	sub          ethereum.Subscription
 
 	// highestDispatchedBlock is the highest source chain block that has been
 	// dispatched for processing, either by catch-up or from the subscription.
@@ -110,7 +109,6 @@ type Subscriber struct {
 func NewSubscriber(
 	logger logging.Logger,
 	blockchainID ids.ID,
-	isPrimaryNetwork bool,
 	wsClient SubscriberWSClient,
 	rpcClient SubscriberRPCClient,
 	errChan chan error,
@@ -119,7 +117,6 @@ func NewSubscriber(
 ) *Subscriber {
 	subscriber := &Subscriber{
 		blockchainID:           blockchainID,
-		isPrimaryNetwork:       isPrimaryNetwork,
 		filter:                 filter,
 		wsClient:               wsClient,
 		rpcClient:              rpcClient,
@@ -204,11 +201,15 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 		return fmt.Errorf("failed to get header for block %d: %w", height, err)
 	}
 
-	block, err := NewICMBlockInfo(s.logger, header, s.rpcClient, s.filter, s.isPrimaryNetwork)
+	logs, err := FilterLogsByBlockHash(s.logger, s.rpcClient, s.filter, header.Hash)
 	if err != nil {
 		return err
 	}
-	s.icmBlocks <- block
+	s.icmBlocks <- &ICMBlockInfo{
+		FromBlock: height,
+		ToBlock:   height,
+		Logs:      logs,
+	}
 	return nil
 }
 

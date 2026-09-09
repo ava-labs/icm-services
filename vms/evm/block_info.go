@@ -70,42 +70,6 @@ func (f EventFilter) IsEmpty() bool {
 type BlockHeader struct {
 	Hash   common.Hash  `json:"hash"`
 	Number *hexutil.Big `json:"number"`
-	Bloom  types.Bloom  `json:"logsBloom"`
-}
-
-// NewICMBlockInfo extracts the logs matching [filter] from the block with header [header], if any.
-func NewICMBlockInfo(
-	logger logging.Logger,
-	header *BlockHeader,
-	ethClient ethereum.LogFilterer,
-	filter EventFilter,
-	isPrimaryNetwork bool,
-) (*ICMBlockInfo, error) {
-	var (
-		logs []types.Log
-		err  error
-	)
-	// Only fetch logs when the block's bloom filter indicates that the filter's emitting
-	// addresses and event topics are present. A bloom match may be a false positive; the
-	// FilterLogs call below performs the precise filtering.
-	//
-	// On the primary network (C-Chain) the header bloom filter cannot be relied on
-	// as a shortcut: it summarises a settled predecessor range rather than the
-	// block's own receipts, so the shortcut would silently miss events. Bypass the
-	// bloom check there and always fetch the logs.
-	if isPrimaryNetwork || bloomMatchesFilter(header.Bloom, filter) {
-		logs, err = FilterLogsByBlockHash(logger, ethClient, filter, header.Hash)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	blockNumber := header.Number.ToInt().Uint64()
-	return &ICMBlockInfo{
-		FromBlock: blockNumber,
-		ToBlock:   blockNumber,
-		Logs:      logs,
-	}, nil
 }
 
 // FilterLogsByBlockHash fetches the logs of the block with hash [blockHash] that match [filter].
@@ -147,38 +111,4 @@ func FilterLogsByBlockHash(
 		return nil, fmt.Errorf("failed to get logs for block: %w", err)
 	}
 	return logs, nil
-}
-
-// bloomMatchesFilter reports whether the block's bloom filter indicates the presence of logs
-// matching [filter]: at least one of the filter's emitting addresses and at least one of its
-// event-signature topics (the first topic position, Topics[0]). Filter dimensions that are not
-// constrained are conservatively treated as matching so that logs are still fetched. A positive
-// result may be a false positive due to the probabilistic nature of bloom filters; callers must
-// perform precise filtering afterwards.
-func bloomMatchesFilter(bloom types.Bloom, filter EventFilter) bool {
-	if len(filter.Addresses) > 0 {
-		anyAddress := false
-		for _, address := range filter.Addresses {
-			if bloom.Test(address[:]) {
-				anyAddress = true
-				break
-			}
-		}
-		if !anyAddress {
-			return false
-		}
-	}
-	if len(filter.Topics) > 0 && len(filter.Topics[0]) > 0 {
-		anyTopic := false
-		for _, eventTopic := range filter.Topics[0] {
-			if bloom.Test(eventTopic[:]) {
-				anyTopic = true
-				break
-			}
-		}
-		if !anyTopic {
-			return false
-		}
-	}
-	return true
 }

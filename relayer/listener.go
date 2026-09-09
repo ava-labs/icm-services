@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -132,7 +131,6 @@ func newListener(
 	sub := evm.NewSubscriber(
 		logger,
 		blockchainID,
-		sourceBlockchain.GetSubnetID() == constants.PrimaryNetworkID,
 		ethclient.NewClient(wsRPCClient),
 		evm.NewRPCHeaderClient(ethRPCClient),
 		errChan,
