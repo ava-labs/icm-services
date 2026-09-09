@@ -40,32 +40,32 @@ const (
 
 type SubscriberRPCClient interface {
 	BlockNumber(ctx context.Context) (uint64, error)
-	// HeadByNumber returns the block head with its node-reported hash, or an
+	// BlockHeaderByNumber returns the block header with its node-reported hash, or an
 	// error — ethereum.NotFound when the serving node does not have the block,
 	// which callers treat as retryable.
-	HeadByNumber(ctx context.Context, number *big.Int) (*BlockHead, error)
+	BlockHeaderByNumber(ctx context.Context, number *big.Int) (*BlockHeader, error)
 	ethereum.LogFilterer
 }
 
-// RPCHeadClient augments an ethclient with verbatim-hash head fetches by
+// RPCHeaderClient augments an ethclient with verbatim-hash header fetches by
 // number, satisfying SubscriberRPCClient. The hash must come from the node
 // rather than be recomputed client-side, which is unreliable for chains whose
 // headers carry fields this client cannot encode (e.g. SAE chains).
-type RPCHeadClient struct {
+type RPCHeaderClient struct {
 	*ethclient.Client
 }
 
-func NewRPCHeadClient(client *ethclient.Client) RPCHeadClient {
-	return RPCHeadClient{Client: client}
+func NewRPCHeaderClient(client *ethclient.Client) RPCHeaderClient {
+	return RPCHeaderClient{Client: client}
 }
 
-func (c RPCHeadClient) HeadByNumber(ctx context.Context, number *big.Int) (*BlockHead, error) {
-	var head *BlockHead
-	err := c.Client.Client().CallContext(ctx, &head, "eth_getBlockByNumber", hexutil.EncodeBig(number), false)
-	if err == nil && head == nil {
+func (c RPCHeaderClient) BlockHeaderByNumber(ctx context.Context, number *big.Int) (*BlockHeader, error) {
+	var header *BlockHeader
+	err := c.Client.Client().CallContext(ctx, &header, "eth_getBlockByNumber", hexutil.EncodeBig(number), false)
+	if err == nil && header == nil {
 		err = ethereum.NotFound
 	}
-	return head, err
+	return header, err
 }
 
 // SubscriberWSClient is the client for the WS connection that delivers the
@@ -169,29 +169,29 @@ func (s *Subscriber) ProcessFromHeight(startingHeight uint64, endingHeight uint6
 // the node-reported hash. A by-number range query over these blocks could be
 // served by a lagging node and silently omit them.
 func (s *Subscriber) processBlockStrict(height uint64) error {
-	var head *BlockHead
+	var header *BlockHeader
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
-		head, err = s.rpcClient.HeadByNumber(cctx, new(big.Int).SetUint64(height))
+		header, err = s.rpcClient.BlockHeaderByNumber(cctx, new(big.Int).SetUint64(height))
 		return err
 	}
 	notify := func(err error, duration time.Duration) {
 		s.logger.Info(
-			"get head by number failed, retrying...",
+			"get block header by number failed, retrying...",
 			zap.Uint64("blockNumber", height),
 			zap.Duration("retryIn", duration),
 			zap.Error(err),
 		)
 	}
 
-	// Same window as the live path: heads near the chain tip may not yet be
+	// Same window as the live path: headers near the chain tip may not yet be
 	// known to every node behind a load-balanced endpoint.
 	if err := utils.WithRetriesTimeout(operation, notify, utils.DefaultRPCTimeout*6); err != nil {
-		return fmt.Errorf("failed to get head for block %d: %w", height, err)
+		return fmt.Errorf("failed to get header for block %d: %w", height, err)
 	}
 
-	block, err := NewICMBlockInfo(s.logger, head, s.rpcClient, s.filter, s.isPrimaryNetwork)
+	block, err := NewICMBlockInfo(s.logger, header, s.rpcClient, s.filter, s.isPrimaryNetwork)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func (s *Subscriber) Subscribe(retryTimeout time.Duration) (uint64, error) {
 	// logs for, leaving a gap between catch-up and the subscription.
 	head, err := s.headBlockNumber()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get head of subscribed node: %w", err)
+		return 0, fmt.Errorf("failed to get chain head of subscribed node: %w", err)
 	}
 	return head, nil
 }

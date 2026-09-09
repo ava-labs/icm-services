@@ -28,9 +28,9 @@ type subscriberClientStub struct {
 	blockNumber                 uint64
 	numFilterLogCalls           int
 	numSubscribeFilterLogsCalls int
-	numHeadByNumberCalls        int
+	numBlockHeaderByNumberCalls int
 	// logs served by FilterLogs, filtered by the query's block range or block hash. Block hashes
-	// are those produced by HeadByNumber, i.e. the block number as a hash.
+	// are those produced by BlockHeaderByNumber, i.e. the block number as a hash.
 	logs []types.Log
 }
 
@@ -38,9 +38,9 @@ func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) 
 	return c.blockNumber, nil
 }
 
-func (c *subscriberClientStub) HeadByNumber(ctx context.Context, number *big.Int) (*BlockHead, error) {
-	c.numHeadByNumberCalls++
-	return &BlockHead{
+func (c *subscriberClientStub) BlockHeaderByNumber(ctx context.Context, number *big.Int) (*BlockHeader, error) {
+	c.numBlockHeaderByNumberCalls++
+	return &BlockHeader{
 		Hash:   common.BigToHash(number),
 		Number: (*hexutil.Big)(new(big.Int).Set(number)),
 	}, nil
@@ -72,7 +72,7 @@ func (c *subscriberClientStub) SubscribeFilterLogs(
 	return nil, nil
 }
 
-// stubLog returns a log in block [blockNumber] with the block hash produced by HeadByNumber.
+// stubLog returns a log in block [blockNumber] with the block hash produced by BlockHeaderByNumber.
 func stubLog(blockNumber uint64, index uint) types.Log {
 	return types.Log{
 		BlockNumber: blockNumber,
@@ -167,7 +167,7 @@ func TestProcessFromHeight(t *testing.T) {
 			stubRPCClient.blockNumber = tc.latest
 
 			// The last strictTailBlocks blocks are processed one by one via
-			// HeadByNumber (no FilterLogs here: the stub's bloom is empty and
+			// BlockHeaderByNumber (no FilterLogs here: the stub's bloom is empty and
 			// the test chain is not the primary network, so the bloom gate
 			// skips the log fetch); everything older is served by chunked
 			// range queries.
@@ -199,7 +199,7 @@ func TestProcessFromHeight(t *testing.T) {
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
 			require.EqualValues(t, expectedFilterLogCalls, stubRPCClient.numFilterLogCalls)
-			require.EqualValues(t, expectedHeadCalls, stubRPCClient.numHeadByNumberCalls)
+			require.EqualValues(t, expectedHeadCalls, stubRPCClient.numBlockHeaderByNumberCalls)
 		})
 	}
 }

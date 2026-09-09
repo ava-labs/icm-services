@@ -55,7 +55,7 @@ func (f EventFilter) IsEmpty() bool {
 	return len(f.Addresses) == 0 && len(f.Topics) == 0
 }
 
-// BlockHead is the subset of a block header the relayer uses, decoded leniently
+// BlockHeader is the subset of a block header the relayer uses, decoded leniently
 // so it works across chain families. The node-reported hash is kept verbatim:
 // recomputing it client-side is not reliable for chains whose headers carry
 // fields this client cannot encode (e.g. SAE chains). The upstream header types
@@ -68,16 +68,16 @@ func (f EventFilter) IsEmpty() bool {
 // graft/coreth/plugin/evm/customtypes/header_ext.go (C-Chain, including the
 // SAE settlement fields) and
 // graft/subnet-evm/plugin/evm/customtypes/header_ext.go (subnet-evm chains).
-type BlockHead struct {
+type BlockHeader struct {
 	Hash   common.Hash  `json:"hash"`
 	Number *hexutil.Big `json:"number"`
 	Bloom  types.Bloom  `json:"logsBloom"`
 }
 
-// NewICMBlockInfo extracts the logs matching [filter] from the block with head [head], if any.
+// NewICMBlockInfo extracts the logs matching [filter] from the block with header [header], if any.
 func NewICMBlockInfo(
 	logger logging.Logger,
-	head *BlockHead,
+	header *BlockHeader,
 	ethClient ethereum.LogFilterer,
 	filter EventFilter,
 	isPrimaryNetwork bool,
@@ -94,14 +94,14 @@ func NewICMBlockInfo(
 	// as a shortcut: it summarises a settled predecessor range rather than the
 	// block's own receipts, so the shortcut would silently miss events. Bypass the
 	// bloom check there and always fetch the logs.
-	if isPrimaryNetwork || bloomMatchesFilter(head.Bloom, filter) {
-		logs, err = FilterLogsByBlockHash(logger, ethClient, filter, head.Hash)
+	if isPrimaryNetwork || bloomMatchesFilter(header.Bloom, filter) {
+		logs, err = FilterLogsByBlockHash(logger, ethClient, filter, header.Hash)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	blockNumber := head.Number.ToInt().Uint64()
+	blockNumber := header.Number.ToInt().Uint64()
 	return &ICMBlockInfo{
 		FromBlock: blockNumber,
 		ToBlock:   blockNumber,

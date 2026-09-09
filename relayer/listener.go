@@ -139,7 +139,7 @@ func newListener(
 		blockchainID,
 		sourceBlockchain.GetSubnetID() == constants.PrimaryNetworkID,
 		ethclient.NewClient(wsRPCClient),
-		evm.NewRPCHeadClient(ethRPCClient),
+		evm.NewRPCHeaderClient(ethRPCClient),
 		errChan,
 		eventFilter,
 	)
