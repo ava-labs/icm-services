@@ -7,6 +7,7 @@ import (
 	"context"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/ids"
@@ -28,6 +29,9 @@ type subscriberClientStub struct {
 	numFilterLogCalls           int
 	numSubscribeFilterLogsCalls int
 	numHeadByNumberCalls        int
+	// logs served by FilterLogs, filtered by the query's block range or block hash. Block hashes
+	// are those produced by HeadByNumber, i.e. the block number as a hash.
+	logs []types.Log
 }
 
 func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) {
@@ -44,7 +48,19 @@ func (c *subscriberClientStub) HeadByNumber(ctx context.Context, number *big.Int
 
 func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
 	c.numFilterLogCalls++
-	return []types.Log{}, nil
+	matching := []types.Log{}
+	for _, log := range c.logs {
+		if q.BlockHash != nil {
+			if log.BlockHash == *q.BlockHash {
+				matching = append(matching, log)
+			}
+			continue
+		}
+		if log.BlockNumber >= q.FromBlock.Uint64() && log.BlockNumber <= q.ToBlock.Uint64() {
+			matching = append(matching, log)
+		}
+	}
+	return matching, nil
 }
 
 func (c *subscriberClientStub) SubscribeFilterLogs(
@@ -56,11 +72,13 @@ func (c *subscriberClientStub) SubscribeFilterLogs(
 	return nil, nil
 }
 
-func (c *subscriberClientStub) SubscribeNewHeads(
-	ctx context.Context,
-	ch chan<- *BlockHead,
-) (ethereum.Subscription, error) {
-	return nil, nil
+// stubLog returns a log in block [blockNumber] with the block hash produced by HeadByNumber.
+func stubLog(blockNumber uint64, index uint) types.Log {
+	return types.Log{
+		BlockNumber: blockNumber,
+		BlockHash:   common.BigToHash(new(big.Int).SetUint64(blockNumber)),
+		Index:       index,
+	}
 }
 
 func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscriber, *subscriberClientStub) {
@@ -168,17 +186,109 @@ func TestProcessFromHeight(t *testing.T) {
 			subscriberUnderTest.ProcessFromHeight(tc.input, tc.latest)
 			require.Empty(t, errChan)
 
-			if tc.latest >= tc.input {
-				for i := tc.input; i <= tc.latest; i++ {
-					block := <-subscriberUnderTest.ICMBlocks()
-					require.Equal(t, i, block.BlockNumber)
-					require.Empty(t, block.Logs)
-					require.True(t, block.IsCatchup)
-				}
+			// The reported ranges must tile [input, latest] contiguously and in order.
+			nextBlock := tc.input
+			for nextBlock <= tc.latest {
+				block := <-subscriberUnderTest.ICMBlocks()
+				require.Equal(t, nextBlock, block.FromBlock)
+				require.GreaterOrEqual(t, block.ToBlock, block.FromBlock)
+				require.LessOrEqual(t, block.ToBlock, tc.latest)
+				require.Empty(t, block.Logs)
+				require.True(t, block.IsCatchup)
+				nextBlock = block.ToBlock + 1
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
 			require.EqualValues(t, expectedFilterLogCalls, stubRPCClient.numFilterLogCalls)
 			require.EqualValues(t, expectedHeadCalls, stubRPCClient.numHeadByNumberCalls)
 		})
 	}
+}
+
+// Blocks with logs are reported individually, folding in the empty blocks before them; the empty
+// blocks after the last block with logs are reported as one range.
+func TestProcessBlockRangeGroupsLogsByBlock(t *testing.T) {
+	errChan := make(chan error, 1)
+	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
+	stubRPCClient.logs = []types.Log{
+		stubLog(103, 0),
+		stubLog(103, 1),
+		stubLog(107, 0),
+		// Outside the processed range, must not be reported.
+		stubLog(150, 0),
+	}
+
+	require.NoError(t, subscriberUnderTest.processBlockRange(100, 120))
+	require.Equal(t, 1, stubRPCClient.numFilterLogCalls)
+
+	expected := []*ICMBlockInfo{
+		{FromBlock: 100, ToBlock: 103, Logs: []types.Log{stubLog(103, 0), stubLog(103, 1)}, IsCatchup: true},
+		{FromBlock: 104, ToBlock: 107, Logs: []types.Log{stubLog(107, 0)}, IsCatchup: true},
+		{FromBlock: 108, ToBlock: 120, IsCatchup: true},
+	}
+	for _, want := range expected {
+		got := <-subscriberUnderTest.ICMBlocks()
+		require.Equal(t, want.FromBlock, got.FromBlock)
+		require.Equal(t, want.ToBlock, got.ToBlock)
+		require.Equal(t, want.Logs, got.Logs)
+		require.True(t, got.IsCatchup)
+	}
+	require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
+}
+
+// A range whose last block contains logs has no trailing empty range.
+func TestProcessBlockRangeLogsInLastBlock(t *testing.T) {
+	errChan := make(chan error, 1)
+	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
+	stubRPCClient.logs = []types.Log{stubLog(120, 0)}
+
+	require.NoError(t, subscriberUnderTest.processBlockRange(100, 120))
+
+	got := <-subscriberUnderTest.ICMBlocks()
+	require.Equal(t, uint64(100), got.FromBlock)
+	require.Equal(t, uint64(120), got.ToBlock)
+	require.Equal(t, []types.Log{stubLog(120, 0)}, got.Logs)
+	require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
+}
+
+// Each block that the subscription notifies about is reported once, with all of its matching
+// logs fetched by block hash on the first notification.
+func TestBlocksInfoFromLogs(t *testing.T) {
+	errChan := make(chan error, 1)
+	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
+	stubRPCClient.logs = []types.Log{
+		stubLog(10, 0),
+		stubLog(10, 1),
+		stubLog(10, 2),
+		stubLog(15, 0),
+	}
+
+	// The subscription delivers the block's logs one at a time.
+	for _, log := range stubRPCClient.logs {
+		subscriberUnderTest.logs <- log
+	}
+	// A removed log is ignored altogether.
+	removed := stubLog(16, 0)
+	removed.Removed = true
+	subscriberUnderTest.logs <- removed
+
+	block := <-subscriberUnderTest.ICMBlocks()
+	require.Equal(t, uint64(10), block.FromBlock)
+	require.Equal(t, uint64(10), block.ToBlock)
+	require.Equal(t, stubRPCClient.logs[:3], block.Logs)
+	require.False(t, block.IsCatchup)
+
+	block = <-subscriberUnderTest.ICMBlocks()
+	require.Equal(t, uint64(15), block.FromBlock)
+	require.Equal(t, uint64(15), block.ToBlock)
+	require.Equal(t, stubRPCClient.logs[3:], block.Logs)
+	require.False(t, block.IsCatchup)
+
+	select {
+	case block := <-subscriberUnderTest.ICMBlocks():
+		require.Fail(t, "unexpected block", "block %d", block.ToBlock)
+	case <-time.After(50 * time.Millisecond):
+	}
+	require.Empty(t, errChan)
+	// One fetch per block, regardless of the number of notifications for it.
+	require.Equal(t, 2, stubRPCClient.numFilterLogCalls)
 }

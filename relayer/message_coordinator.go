@@ -245,8 +245,9 @@ func (mc *MessageCoordinator) ProcessBlock(
 	errChan chan error,
 ) {
 	mc.logger.Debug(
-		"Processing block",
-		zap.Uint64("blockNumber", icmBlockInfo.BlockNumber),
+		"Processing blocks",
+		zap.Uint64("fromBlock", icmBlockInfo.FromBlock),
+		zap.Uint64("toBlock", icmBlockInfo.ToBlock),
 		zap.Stringer("blockchainID", blockchainID),
 		zap.Stringer("protocolAddress", protocolAddress),
 	)
@@ -289,15 +290,16 @@ func (mc *MessageCoordinator) ProcessBlock(
 		if appRelayer.relayerID.SourceBlockchainID != blockchainID {
 			continue
 		}
-		// Dispatch all messages in the block to the appropriate application relayer.
-		// An empty slice is still a valid argument to ProcessHeight; in this case the height is immediately committed.
+		// Dispatch all messages in the blocks to the appropriate application relayer.
+		// An empty slice is still a valid argument to ProcessBlocks; in this case the range is
+		// immediately committed.
 		handlers := messageHandlers[appRelayer.relayerID.ID]
 		mc.logger.Verbo(
 			"Dispatching to app relayer",
 			zap.Stringer("relayerID", appRelayer.relayerID.ID),
 			zap.Int("numMessages", len(handlers)),
 		)
-		go appRelayer.ProcessHeight(icmBlockInfo.BlockNumber, handlers, errChan)
+		go appRelayer.ProcessBlocks(icmBlockInfo.FromBlock, icmBlockInfo.ToBlock, handlers, errChan)
 	}
 }
 

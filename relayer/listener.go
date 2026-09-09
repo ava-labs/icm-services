@@ -29,17 +29,21 @@ const (
 
 // Listener handles all messages sent from a given source chain
 type Listener struct {
-	Subscriber                   *evm.Subscriber
-	currentRequestID             uint32
-	logger                       logging.Logger
-	sourceBlockchainID           ids.ID
-	healthStatus                 *atomic.Bool
-	ethClient                    *ethclient.Client
-	messageCoordinator           *MessageCoordinator
-	maxConcurrentMsg             uint64
-	errChan                      chan error
-	lastSubscriberBlockProcessed uint64
-	protocol                     config.Protocol
+	Subscriber         *evm.Subscriber
+	currentRequestID   uint32
+	logger             logging.Logger
+	sourceBlockchainID ids.ID
+	healthStatus       *atomic.Bool
+	ethClient          *ethclient.Client
+	messageCoordinator *MessageCoordinator
+	maxConcurrentMsg   uint64
+	errChan            chan error
+	// highestDispatchedBlock is the highest source chain block that has been
+	// dispatched for processing, either by catch-up or from the subscription.
+	// Every block up to it is accounted for, so when the subscription reports
+	// a block above it, the blocks in between contain no matching logs.
+	highestDispatchedBlock uint64
+	protocol               config.Protocol
 }
 
 // RunListener creates a Listener instance and the ApplicationRelayers for a subnet.
@@ -119,8 +123,6 @@ func newListener(
 		)
 	}
 
-	// Dial the WS endpoint as a raw RPC client so newHeads notifications can
-	// be decoded with the node-reported block hash preserved.
 	wsRPCClient, err := utils.DialWithConfig(
 		ctx,
 		sourceBlockchain.WSEndpoint.BaseURL,
@@ -136,7 +138,7 @@ func newListener(
 		logger,
 		blockchainID,
 		sourceBlockchain.GetSubnetID() == constants.PrimaryNetworkID,
-		evm.NewWSHeadClient(wsRPCClient),
+		ethclient.NewClient(wsRPCClient),
 		evm.NewRPCHeadClient(ethRPCClient),
 		errChan,
 		eventFilter,
@@ -144,22 +146,21 @@ func newListener(
 
 	logger.Info("Creating relayer")
 	lstnr := Listener{
-		Subscriber:                   sub,
-		currentRequestID:             rand.Uint32(), // Initialize to a random value to mitigate requestID collision
-		logger:                       logger,
-		sourceBlockchainID:           blockchainID,
-		errChan:                      errChan,
-		healthStatus:                 relayerHealth,
-		ethClient:                    ethRPCClient,
-		messageCoordinator:           messageCoordinator,
-		maxConcurrentMsg:             maxConcurrentMsg,
-		lastSubscriberBlockProcessed: startingHeight - 1,
-		protocol:                     protocol,
+		Subscriber:             sub,
+		currentRequestID:       rand.Uint32(), // Initialize to a random value to mitigate requestID collision
+		logger:                 logger,
+		sourceBlockchainID:     blockchainID,
+		errChan:                errChan,
+		healthStatus:           relayerHealth,
+		ethClient:              ethRPCClient,
+		messageCoordinator:     messageCoordinator,
+		maxConcurrentMsg:       maxConcurrentMsg,
+		highestDispatchedBlock: startingHeight - 1,
+		protocol:               protocol,
 	}
 
-	// Open the subscription. We must do this before processing any missed messages, otherwise we may
-	// miss an incoming message in between fetching the latest block and subscribing.
-	err = lstnr.Subscriber.Subscribe(retrySubscribeTimeout)
+	// Open the subscription, which also dispatches catch-up of any missed blocks.
+	err = lstnr.subscribe(retrySubscribeTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe to node: %w", err)
 	}
@@ -167,12 +168,28 @@ func newListener(
 	return &lstnr, nil
 }
 
-// Listens to the Subscriber logs channel to process them.
+// subscribe opens the subscription to the source chain's logs and dispatches catch-up of the blocks
+// the subscription will not deliver: those up to and including the subscribed node's head that have
+// not been dispatched yet, i.e. the blocks missed while the relayer was down or the previous
+// subscription was broken. The subscription is opened before catch-up is bounded, so no block can
+// fall between the two.
+func (lstnr *Listener) subscribe(retryTimeout time.Duration) error {
+	head, err := lstnr.Subscriber.Subscribe(retryTimeout)
+	if err != nil {
+		return err
+	}
+	// Run catch-up in a separate goroutine so that the main processing loop can start processing
+	// new blocks as soon as possible. ProcessFromHeight returns immediately if there is nothing to
+	// catch up on, e.g. if the newly subscribed node is behind the previously subscribed one.
+	go lstnr.Subscriber.ProcessFromHeight(lstnr.highestDispatchedBlock+1, head)
+	lstnr.highestDispatchedBlock = max(lstnr.highestDispatchedBlock, head)
+	return nil
+}
+
+// Listens to the Subscriber blocks channel to process them.
 // On subscriber error, attempts to reconnect and errors if unable.
 // Exits if context is cancelled by another goroutine.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
-	// Error channel for application relayer errors
-	needsCatchup := true
 	for {
 		select {
 		case err := <-lstnr.errChan:
@@ -180,18 +197,17 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			lstnr.logger.Error("Listener received error", zap.Error(err))
 			return fmt.Errorf("listener received error: %w", err)
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
-			// Catchup should run on startup, and after any reconnects. It will wait for the first block
-			// received from the subscriber, so that it has an accurate bound on which blocks to process.
-			if needsCatchup && !icmBlockInfo.IsCatchup {
-				needsCatchup = false
-				go lstnr.Subscriber.ProcessFromHeight(
-					lstnr.lastSubscriberBlockProcessed+1,
-					icmBlockInfo.BlockNumber-1,
-				)
-			}
-
-			if !icmBlockInfo.IsCatchup && icmBlockInfo.BlockNumber > lstnr.lastSubscriberBlockProcessed {
-				lstnr.lastSubscriberBlockProcessed = icmBlockInfo.BlockNumber
+			if !icmBlockInfo.IsCatchup {
+				// The subscription only reports blocks that contain matching logs, and reports
+				// them in order. The blocks between the highest dispatched block and this one
+				// were therefore not reported because they contain no matching logs, so they
+				// are folded into this block's range for the checkpoint manager to account
+				// for. A block at or below the highest dispatched block was already covered
+				// by catch-up and is processed again as is; relaying is idempotent.
+				if icmBlockInfo.FromBlock > lstnr.highestDispatchedBlock+1 {
+					icmBlockInfo.FromBlock = lstnr.highestDispatchedBlock + 1
+				}
+				lstnr.highestDispatchedBlock = max(lstnr.highestDispatchedBlock, icmBlockInfo.ToBlock)
 			}
 
 			go lstnr.messageCoordinator.ProcessBlock(
@@ -201,7 +217,6 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				lstnr.errChan,
 			)
 		case subError := <-lstnr.Subscriber.SubscribeErr():
-			needsCatchup = true
 			lstnr.logger.Info("Received error from subscribed node", zap.Error(subError))
 			subError = lstnr.reconnectToSubscriber()
 			if subError != nil {
@@ -217,9 +232,10 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 	}
 }
 
+// reconnectToSubscriber reopens the subscription, which also dispatches catch-up of the blocks
+// missed while it was broken.
 func (lstnr *Listener) reconnectToSubscriber() error {
-	// Attempt to reconnect the subscription
-	err := lstnr.Subscriber.Subscribe(retryResubscribeTimeout)
+	err := lstnr.subscribe(retryResubscribeTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to resubscribe to node: %w", err)
 	}

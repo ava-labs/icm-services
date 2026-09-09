@@ -4,19 +4,21 @@
 package evm
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
-	"github.com/ava-labs/libevm/rpc"
 	"go.uber.org/zap"
 )
 
@@ -66,38 +68,16 @@ func (c RPCHeadClient) HeadByNumber(ctx context.Context, number *big.Int) (*Bloc
 	return head, err
 }
 
+// SubscriberWSClient is the client for the WS connection that delivers the
+// log subscription. All of its methods must be served by the node the
+// subscription is open with, i.e. over that same connection: the subscriber
+// relies on BlockNumber to bound which blocks the subscription will deliver,
+// and on FilterLogs reaching a node that has the notified block's receipts
+// (see blocksInfoFromLogs). An *ethclient.Client over the WS connection
+// satisfies this.
 type SubscriberWSClient interface {
-	SubscribeNewHeads(ctx context.Context, ch chan<- *BlockHead) (ethereum.Subscription, error)
-	// Used to fetch logs for live blocks; see blocksInfoFromHeaders for why
-	// these fetches must use the WS connection.
+	BlockNumber(ctx context.Context) (uint64, error)
 	ethereum.LogFilterer
-}
-
-// WSHeadClient adapts a raw rpc.Client to SubscriberWSClient. It decodes
-// newHeads notifications into BlockHead, keeping the node-reported block hash,
-// which cannot be recomputed client-side for chains whose headers carry fields
-// unknown to this client (e.g. SAE chains).
-//
-// The embedded ethclient.Client wraps the same rpc.Client, so log fetches are
-// issued over the same connection as the newHeads notification that triggered
-// them, and therefore reach the same node.
-type WSHeadClient struct {
-	client *rpc.Client
-	*ethclient.Client
-}
-
-func NewWSHeadClient(client *rpc.Client) WSHeadClient {
-	return WSHeadClient{
-		client: client,
-		Client: ethclient.NewClient(client),
-	}
-}
-
-func (w WSHeadClient) SubscribeNewHeads(
-	ctx context.Context,
-	ch chan<- *BlockHead,
-) (ethereum.Subscription, error) {
-	return w.client.EthSubscribe(ctx, ch, "newHeads")
 }
 
 type Subscriber struct {
@@ -106,7 +86,7 @@ type Subscriber struct {
 	blockchainID     ids.ID
 	isPrimaryNetwork bool
 	filter           EventFilter
-	headers          chan *BlockHead
+	logs             chan types.Log
 	icmBlocks        chan *ICMBlockInfo
 	sub              ethereum.Subscription
 
@@ -133,10 +113,10 @@ func NewSubscriber(
 		rpcClient:        rpcClient,
 		logger:           logger,
 		icmBlocks:        make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
-		headers:          make(chan *BlockHead, maxClientSubscriptionBuffer),
+		logs:             make(chan types.Log, maxClientSubscriptionBuffer),
 		errChan:          errChan,
 	}
-	go subscriber.blocksInfoFromHeaders()
+	go subscriber.blocksInfoFromLogs()
 	return subscriber
 }
 
@@ -220,7 +200,11 @@ func (s *Subscriber) processBlockStrict(height uint64) error {
 	return nil
 }
 
-// Process Warp messages from the block range [fromBlock, toBlock], inclusive
+// Process Warp messages from the block range [fromBlock, toBlock], inclusive.
+// Each block that contains matching logs is reported as its own [ICMBlockInfo],
+// covering the empty blocks before it as well. Empty blocks after the last such
+// block are reported as one trailing range, so the whole of [fromBlock, toBlock]
+// is accounted for.
 func (s *Subscriber) processBlockRange(
 	fromBlock, toBlock uint64,
 ) error {
@@ -233,19 +217,33 @@ func (s *Subscriber) processBlockRange(
 	if err != nil {
 		return fmt.Errorf("failed to get header by number after max attempts: %w", err)
 	}
+	// eth_getLogs returns logs in block order; sort defensively so that the
+	// ranges below are never inverted.
+	slices.SortStableFunc(logs, func(a, b types.Log) int {
+		return cmp.Compare(a.BlockNumber, b.BlockNumber)
+	})
 
-	logIndex := 0
-	for i := fromBlock; i <= toBlock; i++ {
-		blockLogs := []types.Log{}
-		for logIndex < len(logs) && logs[logIndex].BlockNumber == i {
-			blockLogs = append(blockLogs, logs[logIndex])
-			logIndex++
+	nextBlock := fromBlock
+	for start := 0; start < len(logs); {
+		blockNumber := logs[start].BlockNumber
+		end := start
+		for end < len(logs) && logs[end].BlockNumber == blockNumber {
+			end++
 		}
-		// Blocks with no ICM messages also need to be explicitly processed.
 		s.icmBlocks <- &ICMBlockInfo{
-			BlockNumber: i,
-			Logs:        blockLogs,
-			IsCatchup:   true,
+			FromBlock: nextBlock,
+			ToBlock:   blockNumber,
+			Logs:      logs[start:end],
+			IsCatchup: true,
+		}
+		nextBlock = blockNumber + 1
+		start = end
+	}
+	if nextBlock <= toBlock {
+		s.icmBlocks <- &ICMBlockInfo{
+			FromBlock: nextBlock,
+			ToBlock:   toBlock,
+			IsCatchup: true,
 		}
 	}
 	return nil
@@ -279,8 +277,12 @@ func (s *Subscriber) getFilterLogsByBlockRangeRetryable(fromBlock, toBlock uint6
 	return logs, nil
 }
 
-// Loops forever iff maxResubscribeAttempts == 0
-func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
+// Subscribe subscribes to the source chain logs matching the event filter,
+// replacing the current subscription if there is one. It returns the height of
+// the subscribed node's chain head once the subscription is open: the
+// subscription delivers the logs of every block after that height, so the
+// caller must process the blocks up to and including it via ProcessFromHeight.
+func (s *Subscriber) Subscribe(retryTimeout time.Duration) (uint64, error) {
 	// Unsubscribe before resubscribing
 	// s.sub should only be nil on the first call to Subscribe
 	if s.sub != nil {
@@ -289,9 +291,18 @@ func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 
 	err := s.subscribe(retryTimeout)
 	if err != nil {
-		return fmt.Errorf("failed to subscribe to node: %w", err)
+		return 0, fmt.Errorf("failed to subscribe to node: %w", err)
 	}
-	return nil
+
+	// The head must be read from the subscribed node (over the WS connection)
+	// after the subscription is open. A node that is behind the subscribed
+	// node could report a height that the subscription will never deliver
+	// logs for, leaving a gap between catch-up and the subscription.
+	head, err := s.headBlockNumber()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get head of subscribed node: %w", err)
+	}
+	return head, nil
 }
 
 // subscribe until it succeeds or reached timeout.
@@ -300,7 +311,10 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	operation := func() (err error) {
 		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
 		defer cancel()
-		sub, err = s.wsClient.SubscribeNewHeads(cctx, s.headers)
+		sub, err = s.wsClient.SubscribeFilterLogs(cctx, ethereum.FilterQuery{
+			Addresses: s.filter.Addresses,
+			Topics:    s.filter.Topics,
+		}, s.logs)
 		return err
 	}
 	notify := func(err error, duration time.Duration) {
@@ -320,23 +334,75 @@ func (s *Subscriber) subscribe(retryTimeout time.Duration) error {
 	return nil
 }
 
-// blocksInfoFromHeaders listens to the header channel and converts the headers to [ICMBlockInfo]
-// and writes them to the blocks channel consumed by the listener
-func (s *Subscriber) blocksInfoFromHeaders() {
-	for head := range s.headers {
+// headBlockNumber returns the current chain head of the subscribed node.
+func (s *Subscriber) headBlockNumber() (uint64, error) {
+	var head uint64
+	operation := func() (err error) {
+		cctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+		defer cancel()
+		head, err = s.wsClient.BlockNumber(cctx)
+		return err
+	}
+	notify := func(err error, duration time.Duration) {
+		s.logger.Info(
+			"get block number failed, retrying...",
+			zap.Duration("retryIn", duration),
+			zap.Error(err),
+		)
+	}
+
+	if err := utils.WithRetriesTimeout(operation, notify, utils.DefaultRPCTimeout); err != nil {
+		return 0, fmt.Errorf("failed to get block number: %w", err)
+	}
+	return head, nil
+}
+
+// blocksInfoFromLogs listens to the log channel of the subscription, converts
+// the logs to one [ICMBlockInfo] per block and writes them to the blocks
+// channel consumed by the listener.
+//
+// A block's matching logs are delivered one notification at a time with no
+// indication of which is the last, so the block's complete set of matching
+// logs is fetched when its first notification arrives and the block's remaining
+// notifications are ignored. Notifications arrive in block order, so a block's
+// notifications are contiguous.
+func (s *Subscriber) blocksInfoFromLogs() {
+	var lastBlockHash common.Hash
+	for log := range s.logs {
+		if log.Removed {
+			// Removed logs are only sent when a block is reorged out, which
+			// does not happen to accepted blocks on Avalanche chains.
+			s.logger.Warn(
+				"Ignoring removed log",
+				zap.Uint64("blockNumber", log.BlockNumber),
+				zap.Stringer("blockHash", log.BlockHash),
+				zap.Stringer("txHash", log.TxHash),
+			)
+			continue
+		}
+		if log.BlockHash == lastBlockHash {
+			continue
+		}
+
 		// Fetch logs over the WS connection rather than the HTTP client: the
-		// node that emitted this head is guaranteed to have the block's
+		// node that emitted this log is guaranteed to have the block's
 		// receipts on disk, whereas an HTTP request may be routed to a
 		// different node behind a load balancer that has not yet executed the
 		// block. On SAE chains such a node returns empty logs without an
 		// error, which would cause this block's messages to be silently
 		// skipped.
-		block, err := NewICMBlockInfo(s.logger, head, s.wsClient, s.filter, s.isPrimaryNetwork)
+		logs, err := FilterLogsByBlockHash(s.logger, s.wsClient, s.filter, log.BlockHash)
 		if err != nil {
-			s.errChan <- fmt.Errorf("creating warp block info: %w", err)
+			s.errChan <- fmt.Errorf("getting ICM block logs: %w", err)
 			return
 		}
-		s.icmBlocks <- block
+		s.icmBlocks <- &ICMBlockInfo{
+			FromBlock: log.BlockNumber,
+			ToBlock:   log.BlockNumber,
+			Logs:      logs,
+			IsCatchup: false,
+		}
+		lastBlockHash = log.BlockHash
 	}
 }
 
