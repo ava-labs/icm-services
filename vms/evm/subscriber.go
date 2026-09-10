@@ -130,7 +130,11 @@ type Subscriber struct {
 	// are folded into that block's range. It is updated both by Subscribe and
 	// by the goroutine that consumes the subscription.
 	highestDispatchedBlock uint64
-	highestDispatchedLock  sync.Mutex
+	// dispatchedSinceIdleCheck records whether the subscription has reported a
+	// new block since the last call to ProcessIdleBlocks. Guarded by
+	// highestDispatchedLock.
+	dispatchedSinceIdleCheck bool
+	highestDispatchedLock    sync.Mutex
 
 	errChan chan error
 
@@ -389,6 +393,33 @@ func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 	// after the subscription is open. A node that is behind the subscribed
 	// node could report a height that the subscription will never deliver
 	// logs for, leaving a gap between catch-up and the subscription.
+	return s.catchUpToHead()
+}
+
+// ProcessIdleBlocks dispatches catch-up from the highest dispatched block to
+// the subscribed node's current chain head, unless the subscription has
+// reported a new block since the previous call. It is meant to be called
+// periodically so that the checkpointed height keeps advancing on chains that
+// go long periods without producing logs matching the filter; the subscription
+// alone only reports blocks that do.
+//
+// The range is caught up rather than assumed empty: a notification the node
+// has already sent may not have been consumed yet when the head is read, and
+// catch-up will find and relay its logs instead of checkpointing past them.
+func (s *Subscriber) ProcessIdleBlocks() error {
+	s.highestDispatchedLock.Lock()
+	dispatched := s.dispatchedSinceIdleCheck
+	s.dispatchedSinceIdleCheck = false
+	s.highestDispatchedLock.Unlock()
+	if dispatched {
+		return nil
+	}
+	return s.catchUpToHead()
+}
+
+// catchUpToHead reads the subscribed node's chain head and dispatches catch-up
+// of the blocks between the highest dispatched block and it.
+func (s *Subscriber) catchUpToHead() error {
 	head, err := s.headBlockNumber()
 	if err != nil {
 		return fmt.Errorf("failed to get chain head of subscribed node: %w", err)
@@ -525,6 +556,7 @@ func (s *Subscriber) dispatchLiveBlock(blockNumber uint64) uint64 {
 	}
 	fromBlock := s.highestDispatchedBlock + 1
 	s.highestDispatchedBlock = blockNumber
+	s.dispatchedSinceIdleCheck = true
 	return fromBlock
 }
 

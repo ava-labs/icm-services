@@ -348,3 +348,63 @@ func TestSubscribeDispatchesCatchup(t *testing.T) {
 	}
 	require.Empty(t, errChan)
 }
+
+// drainCatchup reads the catch-up ranges tiling [fromBlock, toBlock] off the blocks channel,
+// returning the logs they carried.
+func drainCatchup(t *testing.T, subscriber *Subscriber, fromBlock, toBlock uint64) []types.Log {
+	var logs []types.Log
+	nextBlock := fromBlock
+	for nextBlock <= toBlock {
+		block := <-subscriber.ICMBlocks()
+		require.Equal(t, nextBlock, block.FromBlock)
+		require.LessOrEqual(t, block.ToBlock, toBlock)
+		logs = append(logs, block.Logs...)
+		nextBlock = block.ToBlock + 1
+	}
+	return logs
+}
+
+// ProcessIdleBlocks catches up to the chain head only if the subscription has not reported a new
+// block since the previous call.
+func TestProcessIdleBlocks(t *testing.T) {
+	errChan := make(chan error, 1)
+	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
+	stubRPCClient.blockNumber = 30
+	require.NoError(t, subscriberUnderTest.Subscribe(time.Second))
+	require.Empty(t, drainCatchup(t, subscriberUnderTest, testStartingHeight, 30))
+
+	// Nothing reported since subscribing: catch up to the new head, finding a log on the way.
+	stubRPCClient.blockNumber = 60
+	stubRPCClient.logs = []types.Log{stubLog(45, 0)}
+	require.NoError(t, subscriberUnderTest.ProcessIdleBlocks())
+	require.Equal(t, []types.Log{stubLog(45, 0)}, drainCatchup(t, subscriberUnderTest, 31, 60))
+
+	// A block reported by the subscription continues from the caught-up head...
+	stubRPCClient.logs = append(stubRPCClient.logs, stubLog(70, 0))
+	subscriberUnderTest.logs <- stubLog(70, 0)
+	block := <-subscriberUnderTest.ICMBlocks()
+	require.Equal(t, uint64(61), block.FromBlock)
+	require.Equal(t, uint64(70), block.ToBlock)
+
+	// ...and suppresses the next idle check, since the checkpoint advanced with it.
+	stubRPCClient.blockNumber = 80
+	require.NoError(t, subscriberUnderTest.ProcessIdleBlocks())
+	select {
+	case block := <-subscriberUnderTest.ICMBlocks():
+		require.Fail(t, "unexpected block", "block %d", block.ToBlock)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// The check after that is idle again and catches up to the head.
+	require.NoError(t, subscriberUnderTest.ProcessIdleBlocks())
+	require.Empty(t, drainCatchup(t, subscriberUnderTest, 71, 80))
+
+	// A head that has not moved has nothing to catch up on.
+	require.NoError(t, subscriberUnderTest.ProcessIdleBlocks())
+	select {
+	case block := <-subscriberUnderTest.ICMBlocks():
+		require.Fail(t, "unexpected block", "block %d", block.ToBlock)
+	case <-time.After(50 * time.Millisecond):
+	}
+	require.Empty(t, errChan)
+}

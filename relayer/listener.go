@@ -24,6 +24,9 @@ const (
 	// TODO attempt to resubscribe in perpetuity once we are able to process missed blocks and
 	// refresh the chain config on reconnect.
 	retryResubscribeTimeout = 10 * time.Second
+	// idleCheckpointInterval is how often the listener checkpoints up to the chain head when the
+	// subscription has not reported any block with matching logs in the meantime.
+	idleCheckpointInterval = time.Hour
 )
 
 // Listener handles all messages sent from a given source chain
@@ -165,6 +168,8 @@ func newListener(
 // On subscriber error, attempts to reconnect and errors if unable.
 // Exits if context is cancelled by another goroutine.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
+	idleCheckpointTicker := time.NewTicker(idleCheckpointInterval)
+	defer idleCheckpointTicker.Stop()
 	for {
 		select {
 		case err := <-lstnr.errChan:
@@ -178,6 +183,11 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 				lstnr.protocol.Address,
 				lstnr.errChan,
 			)
+		case <-idleCheckpointTicker.C:
+			// Not fatal: the next tick, or the next block with matching logs, will try again.
+			if err := lstnr.Subscriber.ProcessIdleBlocks(); err != nil {
+				lstnr.logger.Warn("Failed to checkpoint idle blocks", zap.Error(err))
+			}
 		case subError := <-lstnr.Subscriber.SubscribeErr():
 			lstnr.logger.Info("Received error from subscribed node", zap.Error(subError))
 			subError = lstnr.reconnectToSubscriber()
