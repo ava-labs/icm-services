@@ -389,6 +389,16 @@ func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 		s.sub.Unsubscribe()
 	}
 
+	// Hold the dispatch lock from before the subscription opens until the
+	// catch-up range is fixed. A log the new subscription delivers in the
+	// meantime would otherwise reach dispatchLiveBlock first and fold every
+	// block from the highest dispatched one up to it into that block's range
+	// as if they held no matching logs, and catch-up would then start above
+	// it, skipping them. Live dispatch instead waits on the lock; the logs
+	// channel buffers what arrives in the meantime.
+	s.highestDispatchedLock.Lock()
+	defer s.highestDispatchedLock.Unlock()
+
 	err := s.subscribe(retryTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to node: %w", err)
@@ -413,27 +423,26 @@ func (s *Subscriber) Subscribe(retryTimeout time.Duration) error {
 // catch-up will find and relay its logs instead of checkpointing past them.
 func (s *Subscriber) ProcessIdleBlocks() error {
 	s.highestDispatchedLock.Lock()
-	dispatched := s.dispatchedSinceIdleCheck
-	s.dispatchedSinceIdleCheck = false
-	s.highestDispatchedLock.Unlock()
-	if dispatched {
+	defer s.highestDispatchedLock.Unlock()
+	if s.dispatchedSinceIdleCheck {
+		s.dispatchedSinceIdleCheck = false
 		return nil
 	}
 	return s.catchUpToHead()
 }
 
 // catchUpToHead reads the subscribed node's chain head and dispatches catch-up
-// of the blocks between the highest dispatched block and it.
+// of the blocks between the highest dispatched block and it. The caller must
+// hold highestDispatchedLock, so that no live block is dispatched between
+// reading the head and fixing the catch-up range.
 func (s *Subscriber) catchUpToHead() error {
 	head, err := s.headBlockNumber()
 	if err != nil {
 		return fmt.Errorf("failed to get chain head of subscribed node: %w", err)
 	}
 
-	s.highestDispatchedLock.Lock()
 	catchupStart := s.highestDispatchedBlock + 1
 	s.highestDispatchedBlock = max(s.highestDispatchedBlock, head)
-	s.highestDispatchedLock.Unlock()
 
 	// Run catch-up in a separate goroutine so that new blocks can be processed
 	// as soon as possible. ProcessFromHeight returns immediately if there is

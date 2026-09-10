@@ -6,6 +6,7 @@ package evm
 import (
 	"context"
 	"math/big"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,20 +27,26 @@ var _ SubscriberWSClient = (*subscriberClientStub)(nil)
 
 type subscriberClientStub struct {
 	blockNumber                 uint64
-	numFilterLogCalls           int
-	numSubscribeFilterLogsCalls int
-	numBlockHeaderByNumberCalls int
+	numFilterLogCalls           atomic.Int64
+	numSubscribeFilterLogsCalls atomic.Int64
+	numBlockHeaderByNumberCalls atomic.Int64
 	// logs served by FilterLogs, filtered by the query's block range or block hash. Block hashes
 	// are those produced by BlockHeaderByNumber, i.e. the block number as a hash.
 	logs []types.Log
+	// blockNumberDelay is how long BlockNumber takes to answer.
+	blockNumberDelay time.Duration
+	// onSubscribe, if set, is called by SubscribeFilterLogs with the subscription's channel, so
+	// that a test can deliver logs as soon as the subscription opens.
+	onSubscribe func(ch chan<- types.Log)
 }
 
 func (c *subscriberClientStub) BlockNumber(ctx context.Context) (uint64, error) {
+	time.Sleep(c.blockNumberDelay)
 	return c.blockNumber, nil
 }
 
 func (c *subscriberClientStub) BlockHeaderByNumber(ctx context.Context, number *big.Int) (*BlockHeader, error) {
-	c.numBlockHeaderByNumberCalls++
+	c.numBlockHeaderByNumberCalls.Add(1)
 	return &BlockHeader{
 		Hash:   common.BigToHash(number),
 		Number: (*hexutil.Big)(new(big.Int).Set(number)),
@@ -47,7 +54,7 @@ func (c *subscriberClientStub) BlockHeaderByNumber(ctx context.Context, number *
 }
 
 func (c *subscriberClientStub) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
-	c.numFilterLogCalls++
+	c.numFilterLogCalls.Add(1)
 	matching := []types.Log{}
 	for _, log := range c.logs {
 		if q.BlockHash != nil {
@@ -68,7 +75,10 @@ func (c *subscriberClientStub) SubscribeFilterLogs(
 	q ethereum.FilterQuery,
 	ch chan<- types.Log,
 ) (ethereum.Subscription, error) {
-	c.numSubscribeFilterLogsCalls++
+	c.numSubscribeFilterLogsCalls.Add(1)
+	if c.onSubscribe != nil {
+		c.onSubscribe(ch)
+	}
 	return nil, nil
 }
 
@@ -217,8 +227,8 @@ func TestProcessFromHeight(t *testing.T) {
 				nextBlock = block.ToBlock + 1
 			}
 			require.Zero(t, len(subscriberUnderTest.ICMBlocks()))
-			require.EqualValues(t, expectedFilterLogCalls, stubRPCClient.numFilterLogCalls)
-			require.EqualValues(t, expectedHeaderCalls, stubRPCClient.numBlockHeaderByNumberCalls)
+			require.EqualValues(t, expectedFilterLogCalls, stubRPCClient.numFilterLogCalls.Load())
+			require.EqualValues(t, expectedHeaderCalls, stubRPCClient.numBlockHeaderByNumberCalls.Load())
 		})
 	}
 }
@@ -237,7 +247,7 @@ func TestProcessBlockRangeGroupsLogsByBlock(t *testing.T) {
 	}
 
 	require.NoError(t, subscriberUnderTest.processBlockRange(100, 120))
-	require.Equal(t, 1, stubRPCClient.numFilterLogCalls)
+	require.EqualValues(t, 1, stubRPCClient.numFilterLogCalls.Load())
 
 	expected := []*ICMBlockInfo{
 		{FromBlock: 100, ToBlock: 103, Logs: []types.Log{stubLog(103, 0), stubLog(103, 1)}},
@@ -307,7 +317,7 @@ func TestBlocksInfoFromLogs(t *testing.T) {
 	}
 	require.Empty(t, errChan)
 	// One fetch per block, regardless of the number of notifications for it.
-	require.Equal(t, 2, stubRPCClient.numFilterLogCalls)
+	require.EqualValues(t, 2, stubRPCClient.numFilterLogCalls.Load())
 }
 
 // Subscribing dispatches catch-up of every block up to the subscribed node's head, and blocks
@@ -322,7 +332,7 @@ func TestSubscribeDispatchesCatchup(t *testing.T) {
 	stubRPCClient.logs = []types.Log{stubLog(5, 0), stubLog(25, 0), stubLog(40, 0)}
 
 	require.NoError(t, subscriberUnderTest.Subscribe(time.Second))
-	require.Equal(t, 1, stubRPCClient.numSubscribeFilterLogsCalls)
+	require.EqualValues(t, 1, stubRPCClient.numSubscribeFilterLogsCalls.Load())
 
 	// Catch-up tiles [testStartingHeight, head], reporting the logs of blocks 5 and 25 on the way.
 	nextBlock := uint64(testStartingHeight)
@@ -384,6 +394,41 @@ func drainCatchup(t *testing.T, subscriber *Subscriber, fromBlock, toBlock uint6
 
 // ProcessIdleBlocks catches up to the chain head only if the subscription has not reported a new
 // block since the previous call.
+// A log the subscription delivers while Subscribe is still reading the chain head must wait until
+// the catch-up range is fixed. Dispatched first, it would fold the whole catch-up range into its
+// own as if those blocks held no matching logs, and catch-up would then skip them.
+func TestSubscribeLiveLogDuringCatchupSetup(t *testing.T) {
+	errChan := make(chan error, 1)
+	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
+	const head = 30
+	const liveBlock = head + 1
+	stubRPCClient.blockNumber = head
+	stubRPCClient.logs = []types.Log{stubLog(5, 0), stubLog(liveBlock, 0)}
+	// Deliver the live block the moment the subscription opens, and make the head read slow
+	// enough that the live path would otherwise reach the dispatch lock first.
+	stubRPCClient.onSubscribe = func(ch chan<- types.Log) { ch <- stubLog(liveBlock, 0) }
+	stubRPCClient.blockNumberDelay = 100 * time.Millisecond
+
+	require.NoError(t, subscriberUnderTest.Subscribe(time.Second))
+
+	// Catch-up tiles [testStartingHeight, head] and the live block is reported on its own;
+	// the two are dispatched by different goroutines, so their order is not fixed.
+	var logs []types.Log
+	covered := uint64(0)
+	for covered < liveBlock-testStartingHeight+1 {
+		block := <-subscriberUnderTest.ICMBlocks()
+		if block.ToBlock == liveBlock {
+			require.Equal(t, uint64(liveBlock), block.FromBlock, "live block folded over catch-up range")
+		} else {
+			require.LessOrEqual(t, block.ToBlock, uint64(head))
+		}
+		covered += block.ToBlock - block.FromBlock + 1
+		logs = append(logs, block.Logs...)
+	}
+	require.ElementsMatch(t, []types.Log{stubLog(5, 0), stubLog(liveBlock, 0)}, logs)
+	require.Empty(t, errChan)
+}
+
 func TestProcessIdleBlocks(t *testing.T) {
 	errChan := make(chan error, 1)
 	subscriberUnderTest, stubRPCClient := makeSubscriberWithMockEthClient(t, errChan)
