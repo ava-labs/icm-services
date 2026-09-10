@@ -109,6 +109,24 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 	return subscriber, stubRPCClient
 }
 
+// A starting height of 0 must not wrap the highest dispatched block around to
+// MaxUint64, which would make every live block look already dispatched.
+func TestNewSubscriberStartingHeightZero(t *testing.T) {
+	subscriber := NewSubscriber(
+		logging.NoLog{},
+		ids.Empty,
+		&subscriberClientStub{},
+		&subscriberClientStub{},
+		make(chan error, 1),
+		EventFilter{},
+		0,
+	)
+	require.Equal(t, uint64(0), subscriber.highestDispatchedBlock)
+	// Genesis counts as dispatched, so the first live block's range starts at 1.
+	require.Equal(t, uint64(1), subscriber.dispatchLiveBlock(5))
+	require.Equal(t, uint64(5), subscriber.highestDispatchedBlock)
+}
+
 func TestProcessFromHeight(t *testing.T) {
 	testCases := []struct {
 		name   string

@@ -152,6 +152,11 @@ func NewSubscriber(
 	filter EventFilter,
 	startingHeight uint64,
 ) *Subscriber {
+	highestDispatchedBlock := uint64(0)
+	if startingHeight > 0 {
+		highestDispatchedBlock = startingHeight - 1
+	}
+	
 	subscriber := &Subscriber{
 		blockchainID:           blockchainID,
 		filter:                 filter,
@@ -160,7 +165,7 @@ func NewSubscriber(
 		logger:                 logger,
 		icmBlocks:              make(chan *ICMBlockInfo, maxClientSubscriptionBuffer),
 		logs:                   make(chan types.Log, maxClientSubscriptionBuffer),
-		highestDispatchedBlock: startingHeight - 1,
+		highestDispatchedBlock: highestDispatchedBlock,
 		errChan:                errChan,
 	}
 	go subscriber.blocksInfoFromLogs()
@@ -265,7 +270,7 @@ func (s *Subscriber) processBlockRange(
 	)
 	logs, err := s.getFilterLogsByBlockRangeRetryable(fromBlock, toBlock)
 	if err != nil {
-		return fmt.Errorf("failed to get header by number after max attempts: %w", err)
+		return fmt.Errorf("failed to get logs for block range [%d, %d] after max attempts: %w", fromBlock, toBlock, err)
 	}
 	// eth_getLogs returns logs in block order; sort defensively so that the
 	// ranges below are never inverted.
