@@ -19,6 +19,9 @@ if ! command -v jq &> /dev/null; then
     echo "jq not found. It is required to be installed before proceeding." && exit 1
 fi
 
+# shellcheck source=scripts/cast_wallet.sh
+source "$REPO_PATH"/scripts/cast_wallet.sh
+
 function printHelp() {
     echo "Usage: ./scripts/deploy_teleporter.sh --version <version> --rpc-url <url> [OPTIONS]"
     echo ""
@@ -33,13 +36,14 @@ Arguments:
     --version <version>              Specify the release version to deploy
     --rpc-url <url>                  Specify the rpc url of the node to use
 Options:
-    --private-key <private_key>      Private key of account to use to fund the Teleporter deployer address, if necessary.
     --help                           Print this help message
 EOF
+    echo ""
+    echo "A signer is only needed if the Teleporter deployer address requires funding."
+    printWalletUsage
 }
 
 teleporter_version=
-user_private_key=
 rpc_url=
 
 while [ $# -gt 0 ]; do
@@ -58,20 +62,19 @@ while [ $# -gt 0 ]; do
                 echo "Invalid rpc url $2" && printHelp && exit 1
             fi 
             shift;;
-        --private-key) 
-            if [[ $2 != --* ]]; then
-                user_private_key=$2
-            else 
-                echo "Invalid private key $2" && printHelp && exit 1
-            fi 
-            shift;;
         --help) 
             printHelp && exit 0 ;;
         *) 
-            echo "Invalid option: $1" && printHelp && exit 1;;
+            if parse_wallet_arg "$1" "$2"; then
+                shift $wallet_arg_shift
+            else
+                echo "Invalid option: $1" && printHelp && exit 1
+            fi;;
     esac
     shift
 done
+
+resolve_cast_wallet_args
 
 if [[ $teleporter_version == "" || $rpc_url == "" ]]; then
     echo "Invalid usage. Teleporter version and RPC URL required."
@@ -116,11 +119,12 @@ if [[ $(echo "$deployer_balance>=$gas_tokens_required" | bc) == 1 ]]; then
 else
     # Calculate how many wei the deployer address needs to create the contract.
     transfer_amount=$(echo "$gas_tokens_required-$deployer_balance" | bc)
-    if [[ $user_private_key == "" ]]; then
-        echo "No private key provided. Deployer address must be funded with $transfer_amount wei to deploy contract" && exit 1
+    if ! walletConfigured; then
+        echo "No signer provided. Deployer address must be funded with $transfer_amount wei to deploy contract"
+        printWalletUsage && exit 1
     fi
     echo "Funding deployer address with $transfer_amount wei"
-    cast send --rpc-url $rpc_url --private-key $user_private_key --value $transfer_amount $teleporter_deployer_address
+    cast send --rpc-url $rpc_url "${cast_wallet_args[@]}" --value $transfer_amount $teleporter_deployer_address
 fi
 
 # Deploy the TeleporterMessenger contract by publishing the raw Nick's method transaction.
