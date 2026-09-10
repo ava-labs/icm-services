@@ -136,6 +136,32 @@ Release versions follow the [semver](https://semver.org/) convention of incompat
 
 For more information on the registry and how to integrate with ICM contracts, see the [Upgradability doc](https://github.com/ava-labs/icm-contracts/blob/main/contracts/teleporter/registry/README.md).
 
+## Signing options
+
+Deploy scripts may require an account to send transactions from. `deploy_registry.sh` always needs a signer to deploy the registry, while `deploy_teleporter.sh` only needs a signer if the Teleporter deployer address still requires funding.
+
+Neither script accepts a raw
+private key: a key passed on a command line is readable by every other user on the host
+through the process listing for as long as the deployment runs, and is saved to your
+shell history. Instead, name the signer with one of the following, none of which put key
+material on a command line:
+
+- `--keystore <path>` An encrypted keystore file (or directory) to sign with
+- `--account <name>` A keystore account name in `~/.foundry/keystores`
+- `--interactive` Prompt for the private key on the terminal
+- `--ledger` / `--trezor` Sign with a hardware wallet
+
+If you hold a raw private key, convert it to a keystore once, entering the key at the
+prompt rather than as an argument:
+
+```bash
+cast wallet import <name> --interactive
+```
+
+The keystore password can be supplied with `--password-file <path>` or the `ETH_PASSWORD`
+environment variable, both of which hold the *path* to a file containing the password. If
+neither is set, `cast` prompts for it.
+
 ## Deploy TeleporterMessenger to an Avalanche L1
 
 From the root of the repo, the TeleporterMessenger contract can be deployed by calling
@@ -151,7 +177,7 @@ Required arguments:
 
 Options:
 
-- `--private-key <private_key>` Funds the deployer address with the account held by `<private_key>`
+- One signing option, needed only if the deployer address still requires funding (see [Signing options](#signing-options))
 
 To ensure that `TeleporterMessenger` can be deployed to the same address on every EVM based chain, it uses [Nick's Method](https://yamenmerhi.medium.com/nicks-method-ethereum-keyless-execution-168a6659479c) to deploy from a static deployer address. ICM Contracts cost exactly `10eth` in the Avalanche L1's native gas token to deploy, which must be sent to the deployer address.
 
@@ -164,14 +190,14 @@ Alternatively for new Avalanche L1s, the `TeleporterMessenger` contract can be d
 There should only be one canonical `TeleporterRegistry` deployed for each chain, but if one does not exist, it is recommended to deploy the registry so ICM contracts can always use the most recent `TeleporterMessenger` version available. The registry does not need to be deployed to the same address on every chain, and therefore does not need a Nick's method transaction. To deploy, run the following command from the root of the repository:
 
 ```bash
-./scripts/deploy_registry.sh --version <version> --rpc-url <url> --private-key <private_key> [OPTIONS]
+./scripts/deploy_registry.sh --version <version> --rpc-url <url> <signing option> [OPTIONS]
 ```
 
 Required arguments:
 
 - `--version <version>` Specify the release version to deploy. These will all be of the form `v1.X.0`.
 - `--rpc-url <url>` Specify the rpc url of the node to use.
-- `--private-key <private_key>` Funds the deployer address with the account held by `<private_key>`
+- One signing option naming the account that deploys the registry (see [Signing options](#signing-options))
 
 `deploy_registry.sh` will deploy a new `TeleporterRegistry` contract for the intended release version, and will also have the corresponding `TeleporterMessenger` contract registered as the initial protocol version.
 
