@@ -156,7 +156,7 @@ func NewSubscriber(
 	if startingHeight > 0 {
 		highestDispatchedBlock = startingHeight - 1
 	}
-	
+
 	subscriber := &Subscriber{
 		blockchainID:           blockchainID,
 		filter:                 filter,
