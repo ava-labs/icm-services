@@ -498,7 +498,7 @@ func (s *Subscriber) headBlockNumber() (uint64, error) {
 		)
 	}
 
-	if err := utils.WithRetriesTimeout(operation, notify, utils.DefaultRPCTimeout); err != nil {
+	if err := utils.WithRetriesTimeout(operation, notify, 5*utils.DefaultRPCTimeout); err != nil {
 		return 0, fmt.Errorf("failed to get block number: %w", err)
 	}
 	return head, nil
