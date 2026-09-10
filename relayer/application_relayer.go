@@ -4,6 +4,7 @@
 package relayer
 
 import (
+	"errors"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -115,6 +116,16 @@ func (r *ApplicationRelayer) ProcessHeight(
 				<-r.processMessageSemaphore
 			}()
 			_, err := r.ProcessMessage(handler)
+			// A deterministic failure will fail identically forever. Surfacing it here would
+			// send it to the listener's errChan, which terminates the relayer, and the height
+			// would never be checkpointed - so every restart would replay this same message and
+			// fail the same way. Skip it and let the height commit instead. The API path calls
+			// ProcessMessage directly and still receives the error.
+			if errors.Is(err, messages.ErrNonRetryable) {
+				logger.Warn("Abandoning message that cannot be delivered", zap.Error(err))
+				r.metrics.IncAbandonedRelayMessageCount(messages.NonRetryableReason(err))
+				return nil
+			}
 			return err
 		})
 	}
@@ -141,6 +152,18 @@ func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (co
 		txHash, err = handler.ProcessMessage()
 		if err == nil {
 			return txHash, nil
+		}
+		// Some failures are deterministic: re-broadcasting would mine the same reverted
+		// transaction again and bill the relayer for it a second time. Stop after the first
+		// such attempt rather than burning the full retry budget.
+		if errors.Is(err, messages.ErrNonRetryable) {
+			r.logger.Error(
+				"failed to process message, not retrying",
+				zap.Int("attempt", i+1),
+				zap.Int64("latencyMS", time.Since(startProcessMessageTime).Milliseconds()),
+				zap.Error(err),
+			)
+			return common.Hash{}, err
 		}
 		r.logger.Warn(
 			"failed to process message",

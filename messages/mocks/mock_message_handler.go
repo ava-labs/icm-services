@@ -114,6 +114,18 @@ func (m *MockMetrics) EXPECT() *MockMetricsMockRecorder {
 	return m.recorder
 }
 
+// IncAbandonedRelayMessageCount mocks base method.
+func (m *MockMetrics) IncAbandonedRelayMessageCount(failureReason string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "IncAbandonedRelayMessageCount", failureReason)
+}
+
+// IncAbandonedRelayMessageCount indicates an expected call of IncAbandonedRelayMessageCount.
+func (mr *MockMetricsMockRecorder) IncAbandonedRelayMessageCount(failureReason any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncAbandonedRelayMessageCount", reflect.TypeOf((*MockMetrics)(nil).IncAbandonedRelayMessageCount), failureReason)
+}
+
 // IncFailedRelayMessageCount mocks base method.
 func (m *MockMetrics) IncFailedRelayMessageCount(failureReason string) {
 	m.ctrl.T.Helper()
