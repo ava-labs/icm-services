@@ -828,6 +828,16 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
     }
 
     /**
+     * @dev Checks if a given message has been received.
+     * @return A boolean representing if the given message has been received or not.
+     */
+    function _messageReceived(
+        bytes32 messageID
+    ) private view returns (bool) {
+        return _receivedMessageNonces[messageID] != 0;
+    }
+
+    /**
      * @dev Converts a message to the legacy `TeleporterMessage` representation, which drops
      * `originTeleporterAddress`. Only used for the events shared with the V1 messenger interface.
      */
@@ -844,15 +854,5 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
             receipts: message.receipts,
             message: message.message
         });
-    }
-
-    /**
-     * @dev Checks if a given message has been received.
-     * @return A boolean representing if the given message has been received or not.
-     */
-    function _messageReceived(
-        bytes32 messageID
-    ) private view returns (bool) {
-        return _receivedMessageNonces[messageID] != 0;
     }
 }

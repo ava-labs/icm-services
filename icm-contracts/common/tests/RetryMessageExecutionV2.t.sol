@@ -17,9 +17,8 @@ import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 // An adapter that accepts every message, so that the tests can focus on the
 // receive and retry logic of TeleporterMessengerV2 rather than on verification.
 contract AcceptAllAdapter is IAdapter {
-    // solhint-disable-next-line no-empty-blocks
     function sendMessage(
-        TeleporterMessageV2 calldata
+        TeleporterMessageV2 calldata // solhint-disable-next-line no-empty-blocks
     ) external {}
 
     function verifyMessage(
