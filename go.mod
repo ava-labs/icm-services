@@ -39,11 +39,11 @@ require (
 require github.com/ava-labs/avalanchego/graft/evm v1.15.0 // indirect
 
 // These are manual replacements pointing to the same commit as the avalanchego module. They must be updated whenever the avalanchego version is updated. Version is ignored but the short commit hash and the timestamp must be accepted by go mod tidy.
-replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260722151048-7093cca1b389
+replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260908201129-70bd6d063b73
 
-replace github.com/ava-labs/avalanchego/graft/evm => github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260722151048-7093cca1b389
+replace github.com/ava-labs/avalanchego/graft/evm => github.com/ava-labs/avalanchego/graft/evm v0.0.0-20260908201129-70bd6d063b73
 
-replace github.com/ava-labs/avalanchego/graft/coreth => github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260722151048-7093cca1b389
+replace github.com/ava-labs/avalanchego/graft/coreth => github.com/ava-labs/avalanchego/graft/coreth v0.0.0-20260908201129-70bd6d063b73
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
