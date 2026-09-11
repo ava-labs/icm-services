@@ -36,7 +36,7 @@ require (
 
 // This is a placeholder require directive since the replacement below is necessary and for replacement to work, the require directive must be present. Separating it out here since it's an indirect requirement.
 
-require github.com/ava-labs/avalanchego/graft/evm v1.15.0-fuji-rc.0 // indirect
+require github.com/ava-labs/avalanchego/graft/evm v1.15.0-fuji-rc.0
 
 // These are manual replacements pointing to the same commit as the avalanchego module. They must be updated whenever the avalanchego version is updated. Version is ignored but the short commit hash and the timestamp must be accepted by go mod tidy.
 replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260722151048-7093cca1b389
