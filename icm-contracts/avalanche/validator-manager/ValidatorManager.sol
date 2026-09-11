@@ -214,8 +214,17 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
             revert InvalidInitializationStatus();
         }
 
-        // Check that the blockchainID and validator manager address in the ConversionData correspond to this contract.
-        // Other validation checks are done by the P-Chain when converting the L1, so are not required here.
+        // Check that the subnetID, blockchainID and validator manager address in the ConversionData
+        // correspond to this contract. Other validation checks are done by the P-Chain when converting
+        // the L1, so are not required here.
+        //
+        // The subnetID check is required because the P-Chain places no restriction on which
+        // (blockchainID, address) pair a subnet names as its manager: anyone can convert their own
+        // subnet naming this contract, and the resulting SubnetToL1ConversionMessage would otherwise
+        // pass every check below with an attacker-chosen initial validator set.
+        if (conversionData.subnetID != $._subnetID) {
+            revert InvalidSubnetID(conversionData.subnetID);
+        }
         if (conversionData.validatorManagerBlockchainID != WARP_MESSENGER.getBlockchainID()) {
             revert InvalidValidatorManagerBlockchainID(conversionData.validatorManagerBlockchainID);
         }

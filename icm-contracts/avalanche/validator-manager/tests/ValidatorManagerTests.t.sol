@@ -387,6 +387,46 @@ abstract contract ValidatorManagerTest is Test {
         manager.initializeValidatorSet(conversionData, 0);
     }
 
+    // The P-Chain lets any subnet name an arbitrary (blockchainID, address) pair as its manager, so a
+    // conversion of an unrelated subnet naming this contract is a genuinely signed P-Chain message.
+    // It must not be accepted as this manager's initial validator set.
+    function testInitializeValidatorSetForeignSubnet() public {
+        vm.prank(address(0x123));
+        IACP99Manager manager = _setUp();
+
+        bytes32 foreignSubnetID =
+            bytes32(hex"8765432187654321876543218765432187654321876543218765432187654321");
+        ConversionData memory conversionData = _defaultConversionData();
+        conversionData.subnetID = foreignSubnetID;
+
+        vm.mockCall(
+            WARP_PRECOMPILE_ADDRESS,
+            abi.encodeWithSelector(IWarpMessenger.getBlockchainID.selector),
+            abi.encode(DEFAULT_SOURCE_BLOCKCHAIN_ID)
+        );
+        vm.mockCall(
+            WARP_PRECOMPILE_ADDRESS,
+            abi.encodeWithSelector(IWarpMessenger.getVerifiedWarpMessage.selector, uint32(0)),
+            abi.encode(
+                WarpMessage({
+                    sourceChainID: validatorManager.P_CHAIN_BLOCKCHAIN_ID(),
+                    originSenderAddress: address(0),
+                    payload: ValidatorMessages.packSubnetToL1ConversionMessage(
+                        sha256(ValidatorMessages.packConversionData(conversionData))
+                    )
+                }),
+                true
+            )
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IValidatorManager.InvalidSubnetID.selector, foreignSubnetID)
+        );
+        manager.initializeValidatorSet(conversionData, 0);
+
+        assertFalse(validatorManager.isValidatorSetInitialized());
+    }
+
     function testRemoveValidatorTotalWeight5() public {
         // Use prank here, because otherwise each test will end up with a different contract address, leading to a different subnet conversion hash.
         vm.prank(address(0x123));
