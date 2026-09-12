@@ -312,7 +312,6 @@ func createMerkleMessageRelayConfig(
 			ContractAddress:          registryAddr.Hex(),
 			BlockchainID:             l1Info.BlockchainID.String(),
 			SubnetID:                 l1Info.SubnetID.String(),
-			ContractType:             "merkle",
 			PollIntervalSeconds:      testPollIntervalSeconds,
 			MaxUpdateIntervalSeconds: merkleMaxUpdateIntervalSeconds,
 

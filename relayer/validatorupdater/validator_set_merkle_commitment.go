@@ -55,9 +55,16 @@ const (
 	aggregateSigSize       = 192 // BLS aggregate signature bytes
 )
 
-// merkleCommitmentCodec registers the same first seven warp message types as
-// current avalanchego development branches, so ValidatorSetMerkleCommitment
-// keeps type ID 6.
+// unusedTypeIDs is the number of codec positions reserved for warp message
+// types this repo no longer defines: ValidatorSetMetadata (4) and
+// ValidatorSetDiff (5). Nothing builds or sends those payloads any more, but
+// their positions must not shift — skipping them is what keeps
+// ValidatorSetMerkleCommitment at type ID 6.
+const unusedTypeIDs = 2
+
+// merkleCommitmentCodec assigns the same first seven type IDs as current
+// avalanchego development branches, so ValidatorSetMerkleCommitment keeps
+// type ID 6.
 var merkleCommitmentCodec codec.Manager
 
 func init() {
@@ -68,8 +75,10 @@ func init() {
 		lc.RegisterType(&message.RegisterL1Validator{}),
 		lc.RegisterType(&message.L1ValidatorRegistration{}),
 		lc.RegisterType(&message.L1ValidatorWeight{}),
-		lc.RegisterType(&ValidatorSetMetadata{}),
-		lc.RegisterType(&ValidatorSetDiff{}),
+	)
+	lc.SkipRegistrations(unusedTypeIDs)
+	err = errors.Join(
+		err,
 		lc.RegisterType(&ValidatorSetMerkleCommitment{}),
 		merkleCommitmentCodec.RegisterCodec(merkleCommitmentCodecVersion, lc),
 	)
@@ -249,6 +258,14 @@ var nullLeafHash = func() [32]byte {
 }()
 
 // nextPow2 returns the smallest power of two >= n (minimum 1).
+func sumWeights(validators []*Validator) uint64 {
+	var total uint64
+	for _, v := range validators {
+		total += v.Weight
+	}
+	return total
+}
+
 func nextPow2(n int) int {
 	p := 1
 	for p < n {

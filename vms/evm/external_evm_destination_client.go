@@ -14,7 +14,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
-	validatorregistry "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -45,7 +44,7 @@ func (p *PrivateKeySigner) SignTx(tx *types.Transaction, evmChainID *big.Int) (*
 }
 
 // ExternalEVMDestinationClient handles communication with external EVM chains
-// that have AvalancheValidatorSetRegistry contracts deployed.
+// that have MerkleValidatorSetRegistry contracts deployed.
 //
 // Implements vms.DestinationClient interface.
 type ExternalEVMDestinationClient struct {
@@ -69,8 +68,6 @@ type ExternalEVMDestinationClient struct {
 	// sourceBlockchainID is the Avalanche chain whose registered commitment height is used
 	// to pin the signing height for delivered messages (Merkle path).
 	sourceBlockchainID ids.ID
-	// contractType selects how the committed P-chain height is read ("merkle" vs default).
-	contractType string
 }
 
 // NewExternalEVMDestinationClient creates a new external EVM destination client.
@@ -87,7 +84,6 @@ func NewExternalEVMDestinationClient(
 	txInclusionTimeoutSeconds uint64,
 	destinationBlockchainID ids.ID,
 	sourceBlockchainID ids.ID,
-	contractType string,
 ) (*ExternalEVMDestinationClient, error) {
 	logger = logger.With(
 		zap.String("chainID", chainID),
@@ -134,7 +130,6 @@ func NewExternalEVMDestinationClient(
 
 		destinationBlockchainID: destinationBlockchainID,
 		sourceBlockchainID:      sourceBlockchainID,
-		contractType:            contractType,
 	}
 
 	// Initialize concurrent senders from private keys
@@ -250,149 +245,20 @@ func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
 func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
 ) (uint64, error) {
-	// For the Merkle registry the committed P-chain height is read directly from the
-	// per-source commitment, so delivered-message signatures are gathered at the exact
-	// height the stored Merkle root was built from.
-	if c.contractType == "merkle" {
-		registry, err := merkleregistry.NewMerkleValidatorSetRegistry(c.registryAddress, c.ethClient)
-		if err != nil {
-			return 0, fmt.Errorf("failed to bind merkle registry: %w", err)
-		}
-		commitment, err := registry.GetValidatorSetCommitment(
-			&bind.CallOpts{Context: ctx}, c.sourceBlockchainID,
-		)
-		if err != nil {
-			return 0, fmt.Errorf("failed to read merkle commitment: %w", err)
-		}
-		return commitment.PChainHeight, nil
-	}
-
-	// Get the current validator set to find its P-chain height
-	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
+	// The committed P-chain height is read directly from the per-source commitment, so
+	// delivered-message signatures are gathered at the exact height the stored Merkle
+	// root was built from.
+	registry, err := merkleregistry.NewMerkleValidatorSetRegistry(c.registryAddress, c.ethClient)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
+		return 0, fmt.Errorf("failed to bind merkle registry: %w", err)
 	}
-
-	// Check if any validator set exists
-	nextID, err := c.GetNextValidatorSetID(ctx)
+	commitment, err := registry.GetValidatorSetCommitment(
+		&bind.CallOpts{Context: ctx}, c.sourceBlockchainID,
+	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get next validator set ID: %w", err)
+		return 0, fmt.Errorf("failed to read merkle commitment: %w", err)
 	}
-	if nextID == 0 {
-		// No validator sets registered yet
-		return 0, nil
-	}
-
-	// Get current validator set ID
-	currentID, err := c.GetCurrentValidatorSetID(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get current validator set ID: %w", err)
-	}
-
-	// Call getValidatorSet to get the validator set details
-	callData, err := registryABI.Pack("getValidatorSet", new(big.Int).SetUint64(currentID))
-	if err != nil {
-		return 0, fmt.Errorf("failed to pack getValidatorSet call: %w", err)
-	}
-
-	result, err := c.ethClient.CallContract(ctx, ethereum.CallMsg{
-		To:   &c.registryAddress,
-		Data: callData,
-	}, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to call getValidatorSet: %w", err)
-	}
-
-	// Unpack the result - ValidatorSet struct has pChainHeight at index 3
-	unpacked, err := registryABI.Unpack("getValidatorSet", result)
-	if err != nil {
-		return 0, fmt.Errorf("failed to unpack getValidatorSet result: %w", err)
-	}
-
-	// The ABI unpacker returns anonymous structs, so we need to use reflection
-	// to extract the pChainHeight field
-	if len(unpacked) > 0 {
-		// Use type assertion with anonymous struct that matches ABI unpacker output
-		validatorSet := unpacked[0].(struct {
-			AvalancheBlockchainID [32]byte `json:"avalancheBlockchainID"`
-			Validators            []struct {
-				BlsPublicKey []uint8 `json:"blsPublicKey"`
-				Weight       uint64  `json:"weight"`
-			} `json:"validators"`
-			TotalWeight     uint64 `json:"totalWeight"`
-			PChainHeight    uint64 `json:"pChainHeight"`
-			PChainTimestamp uint64 `json:"pChainTimestamp"`
-		})
-		return validatorSet.PChainHeight, nil
-	}
-
-	return 0, fmt.Errorf("unexpected result format from getValidatorSet")
-}
-
-// GetNextValidatorSetID queries the registry contract for the next validator set ID.
-// If this returns 0, no validator sets have been registered yet.
-func (c *ExternalEVMDestinationClient) GetNextValidatorSetID(ctx context.Context) (uint32, error) {
-	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
-	}
-
-	callData, err := registryABI.Pack("nextValidatorSetID")
-	if err != nil {
-		return 0, fmt.Errorf("failed to pack nextValidatorSetID call: %w", err)
-	}
-
-	result, err := c.ethClient.CallContract(ctx, ethereum.CallMsg{
-		To:   &c.registryAddress,
-		Data: callData,
-	}, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to call nextValidatorSetID: %w", err)
-	}
-
-	unpacked, err := registryABI.Unpack("nextValidatorSetID", result)
-	if err != nil {
-		return 0, fmt.Errorf("failed to unpack nextValidatorSetID result: %w", err)
-	}
-
-	if len(unpacked) > 0 {
-		return unpacked[0].(uint32), nil
-	}
-
-	return 0, fmt.Errorf("unexpected result format from nextValidatorSetID")
-}
-
-// GetCurrentValidatorSetID queries the registry contract for the current validator set ID.
-func (c *ExternalEVMDestinationClient) GetCurrentValidatorSetID(ctx context.Context) (uint64, error) {
-	registryABI, err := validatorregistry.SubsetUpdaterMetaData.GetAbi()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get registry ABI: %w", err)
-	}
-
-	callData, err := registryABI.Pack("getCurrentValidatorSetID")
-	if err != nil {
-		return 0, fmt.Errorf("failed to pack getCurrentValidatorSetID call: %w", err)
-	}
-
-	result, err := c.ethClient.CallContract(ctx, ethereum.CallMsg{
-		To:   &c.registryAddress,
-		Data: callData,
-	}, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to call getCurrentValidatorSetID: %w", err)
-	}
-
-	unpacked, err := registryABI.Unpack("getCurrentValidatorSetID", result)
-	if err != nil {
-		return 0, fmt.Errorf("failed to unpack getCurrentValidatorSetID result: %w", err)
-	}
-
-	if len(unpacked) > 0 {
-		// Returns *big.Int, convert to uint64
-		return unpacked[0].(*big.Int).Uint64(), nil
-	}
-
-	return 0, fmt.Errorf("unexpected result format from getCurrentValidatorSetID")
+	return commitment.PChainHeight, nil
 }
 
 // SimulateCall simulates a contract call and returns the revert reason if it fails.
