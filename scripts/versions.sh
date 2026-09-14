@@ -34,7 +34,7 @@ export GO_VERSION=${GO_VERSION:-$(getDepVersion go)}
 
 # Currently using an instrumented version for testing; differs from the version in go.mod
 # AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/avalanchego)")}
-AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-7d8d096ab845ceb008dc9ab7605addc50d2732ba}
+AVALANCHEGO_VERSION=${AVALANCHEGO_VERSION:-cf35cc4cbf6254b02593fbf3b0276a4f8da96272}
 LIBEVM_VERSION=${LIBEVM_VERSION:-$(extract_commit "$(getDepVersion github.com/ava-labs/libevm)")}
 
 # Extract the Solidity version from foundry.toml
