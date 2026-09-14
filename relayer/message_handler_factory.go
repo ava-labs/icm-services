@@ -14,7 +14,6 @@ import (
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
-	"google.golang.org/grpc"
 )
 
 // NewMessageHandlerFactory returns the MessageHandlerFactory for the protocol identified
@@ -22,13 +21,12 @@ import (
 func NewMessageHandlerFactory(
 	address common.Address,
 	cfg config.MessageProtocolConfig,
-	deciderConnection *grpc.ClientConn,
 	pChainClient clients.CanonicalValidatorState,
 	sourceSubnetID ids.ID,
 ) (messages.MessageHandlerFactory, error) {
 	switch config.ParseMessageProtocol(cfg.MessageFormat) {
 	case config.TELEPORTER:
-		return teleporter.NewMessageHandlerFactory(address, cfg, deciderConnection)
+		return teleporter.NewMessageHandlerFactory(address, cfg)
 	case config.OFF_CHAIN_REGISTRY:
 		return offchainregistry.NewMessageHandlerFactory(cfg)
 	case config.TELEPORTER_V2:

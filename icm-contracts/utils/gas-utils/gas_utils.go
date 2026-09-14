@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	MarkMessageReceiptGasCost   uint64 = 2500
+	MarkMessageReceiptGasCost   uint64 = 45_000
 	DecodeMessageGasCostPerByte uint64 = 35
 	TeleporterOverheadGasCost   uint64 = 250_000
 
@@ -44,8 +44,9 @@ func (u *graniteActivatedRules) IsGraniteActivated() bool {
 // - The number of Teleporter receipts
 // - Base gas cost for {receiveCrossChainMessage} call
 // - The number of validator signatures included in the aggregate signature
-// TODO: Benchmark to confirm that gas limits estimates are accurate.
-// specifically confirm that numTeleporterMessageBytes and TeleporterOverheadGasCost are correct.
+// The per-receipt term is benchmarked by MarkReceiptGasBenchmarkTests.t.sol.
+// TODO: Benchmark numTeleporterMessageBytes and TeleporterOverheadGasCost as well; neither has
+// been measured against the contract.
 func CalculateReceiveMessageGasLimit(
 	numSigners int,
 	executionRequiredGasLimit *big.Int,

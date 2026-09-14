@@ -5,11 +5,9 @@ package services_test
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"testing"
@@ -39,8 +37,6 @@ var (
 	localNetworkInstance         *network.LocalAvalancheNetwork
 	localEthereumNetworkInstance *network.LocalEthereumNetwork
 	teleporterInfo               utils.TeleporterTestInfo
-
-	decider *exec.Cmd
 
 	e2eFlags *e2e.FlagVars
 )
@@ -184,18 +180,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	err := localNetworkInstance.Restart(networkRestartCtx)
 	Expect(err).Should(BeNil())
 
-	decider = exec.CommandContext(ctx, "./tests/cmd/decider/decider")
-	decider.Start()
-	go func() {
-		err := decider.Wait()
-		// Context cancellation is the only expected way for the process to exit
-		// otherwise log an error but don't panic to allow for easier cleanup
-		if !errors.Is(ctx.Err(), context.Canceled) {
-			log.Error("Decider exited abnormally: ", zap.Error(err))
-		}
-	}()
-	log.Info("Started decider service")
-
 	// Start local Ethereum network for subset updater test
 	localEthereumNetworkInstance = network.StartLocalEthereumNetwork(networkStartCtx)
 	log.Info("Started local Ethereum network", zap.Any("chainID", localEthereumNetworkInstance.ChainID))
@@ -210,9 +194,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 })
 
 func cleanup() {
-	if decider != nil {
-		decider = nil
-	}
 	if localEthereumNetworkInstance != nil {
 		localEthereumNetworkInstance.TearDownNetwork()
 		localEthereumNetworkInstance = nil

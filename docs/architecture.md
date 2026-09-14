@@ -15,11 +15,12 @@ classDiagram
     CanonicalValidatorClient --|> PChainClient
 
     Listener : ProcessLogs()
-    ApplicationRelayer : ProcessHeight()
+    ApplicationRelayer : ProcessBlocks()
     ApplicationRelayer : ProcessMessage()
-    CheckpointManager : StageCommittedHeight()
+    CheckpointManager : StageCommittedHeights()
     Subscriber : Subscribe()
-    Subscriber : Headers()
+    Subscriber : ProcessFromHeight()
+    Subscriber : ICMBlocks()
     DestinationClient : SendTx()
     MessageHandlerFactory : EventFilter()
     MessageHandlerFactory : GetMessageRoutingInfo() MessageRoutingInfo

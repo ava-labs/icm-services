@@ -1,9 +1,9 @@
 build/
 __debug_bin
-tests/cmd/decider/decider
 
 # miscellaneous
 .idea/
+.DS_Store
 icm-contracts/contracts/pkg
 .vscode*
 

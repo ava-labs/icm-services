@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"net/url"
 	"reflect"
 	"strings"
 	"time"
@@ -73,9 +72,8 @@ type Config struct {
 	SourceBlockchains               []*SourceBlockchain       `mapstructure:"source-blockchains" json:"source-blockchains"`           //nolint:lll
 	DestinationBlockchains          []*DestinationBlockchain  `mapstructure:"destination-blockchains" json:"destination-blockchains"` //nolint:lll
 	ProcessMissedBlocks             bool                      `mapstructure:"process-missed-blocks" json:"process-missed-blocks"`     //nolint:lll
-	DeciderURL                      string                    `mapstructure:"decider-url" json:"decider-url"`
-	SignatureCacheSize              uint64                    `mapstructure:"signature-cache-size" json:"signature-cache-size"`     //nolint:lll
-	ManuallyTrackedPeers            []*basecfg.PeerConfig     `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"` //nolint:lll
+	SignatureCacheSize              uint64                    `mapstructure:"signature-cache-size" json:"signature-cache-size"`       //nolint:lll
+	ManuallyTrackedPeers            []*basecfg.PeerConfig     `mapstructure:"manually-tracked-peers" json:"manually-tracked-peers"`   //nolint:lll
 	AllowPrivateIPs                 bool                      `mapstructure:"allow-private-ips" json:"allow-private-ips"`
 	TLSCertPath                     string                    `mapstructure:"tls-cert-path" json:"tls-cert-path,omitempty"` //nolint:lll
 	TLSKeyPath                      string                    `mapstructure:"tls-key-path" json:"tls-key-path,omitempty"`
@@ -171,12 +169,6 @@ func (c *Config) Validate() error {
 		blockchainIDToSubnetID[s.blockchainID] = s.subnetID
 	}
 	c.blockchainIDToSubnetID = blockchainIDToSubnetID
-
-	if len(c.DeciderURL) != 0 {
-		if _, err := url.ParseRequestURI(c.DeciderURL); err != nil {
-			return fmt.Errorf("invalid decider URL: %w", err)
-		}
-	}
 
 	for _, l1ID := range c.blockchainIDToSubnetID {
 		c.trackedSubnets.Add(l1ID)

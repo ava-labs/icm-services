@@ -33,8 +33,6 @@ root=$(
 )
 source "$root"/scripts/constants.sh
 
-go build -o tests/cmd/decider/decider ./tests/cmd/decider/
-
 go generate "$root"/...
 
 go test -tags test -timeout 30s $VERBOSE ./...

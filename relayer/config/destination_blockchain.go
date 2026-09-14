@@ -169,10 +169,10 @@ func (s *DestinationBlockchain) initializeWarpConfigs(ctx context.Context) error
 		s.RPCEndpoint.HTTPHeaders,
 		s.RPCEndpoint.QueryParams,
 	)
-	defer client.Close()
 	if err != nil {
 		return fmt.Errorf("failed to dial destination blockchain %s: %w", blockchainID, err)
 	}
+	defer client.Close()
 	subnetWarpConfig, err := getWarpConfig(&rpcClient{c: client})
 	if err != nil {
 		return fmt.Errorf("failed to fetch warp config for blockchain %s: %w", blockchainID, err)

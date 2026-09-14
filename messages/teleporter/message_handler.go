@@ -19,7 +19,6 @@ import (
 	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages"
-	pbDecider "github.com/ava-labs/icm-services/proto/pb/decider"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/utils"
@@ -29,20 +28,17 @@ import (
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 )
 
 type factory struct {
 	messageConfig   *Config
 	protocolAddress common.Address
-	deciderClient   pbDecider.DeciderServiceClient
 }
 
 type messageHandler struct {
 	logger              logging.Logger
 	teleporterMessage   *teleportermessenger.TeleporterMessage
 	unsignedMessage     *warp.UnsignedMessage
-	deciderClient       pbDecider.DeciderServiceClient
 	destinationClient   vms.DestinationClient
 	signatureAggregator *aggregator.SignatureAggregator
 	metrics             messages.Metrics
@@ -53,38 +49,18 @@ type messageHandler struct {
 	quorumNumerator     uint64
 }
 
-// define an "empty" decider client to use when a connection isn't provided:
-type emptyDeciderClient struct{}
-
-func (s *emptyDeciderClient) ShouldSendMessage(
-	_ context.Context,
-	_ *pbDecider.ShouldSendMessageRequest,
-	_ ...grpc.CallOption,
-) (*pbDecider.ShouldSendMessageResponse, error) {
-	return &pbDecider.ShouldSendMessageResponse{ShouldSendMessage: true}, nil
-}
-
 func NewMessageHandlerFactory(
 	messageProtocolAddress common.Address,
 	messageProtocolConfig config.MessageProtocolConfig,
-	deciderClientConn *grpc.ClientConn,
 ) (messages.MessageHandlerFactory, error) {
 	messageConfig, err := ConfigFromMap(messageProtocolConfig.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("invalid teleporter config: %w", err)
 	}
 
-	var deciderClient pbDecider.DeciderServiceClient
-	if deciderClientConn == nil {
-		deciderClient = &emptyDeciderClient{}
-	} else {
-		deciderClient = pbDecider.NewDeciderServiceClient(deciderClientConn)
-	}
-
 	return &factory{
 		messageConfig:   messageConfig,
 		protocolAddress: messageProtocolAddress,
-		deciderClient:   deciderClient,
 	}, nil
 }
 
@@ -137,7 +113,6 @@ func (f *factory) NewMessageHandler(
 		teleporterMessage: teleporterMessage,
 
 		unsignedMessage:     unsignedMessage,
-		deciderClient:       f.deciderClient,
 		destinationClient:   destinationClient,
 		signatureAggregator: signatureAggregator,
 		metrics:             metrics,
@@ -184,14 +159,34 @@ func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Addr
 
 // ShouldSendMessage returns true if the message should be sent to the destination chain
 func (m *messageHandler) ShouldSendMessage() (bool, error) {
-	requiredGasLimit := m.teleporterMessage.RequiredGasLimit.Uint64()
 	destBlockGasLimit := m.destinationClient.BlockGasLimit()
-	// Check if the specified gas limit is below the maximum threshold
-	if requiredGasLimit > destBlockGasLimit {
+
+	// Check that the whole delivery fits in a block, not just the message's own execution
+	// budget. A message's receipt count is attacker-controlled and unbounded - Teleporter's
+	// sendSpecifiedReceipts is permissionless, caps nothing, and hardcodes requiredGasLimit to
+	// zero - so the receipts, not RequiredGasLimit, are what can push a delivery past the block
+	// limit. Signers and predicate chunks are not known until the signature is aggregated;
+	// omitting them makes this a lower bound on the limit SendMessage will compute, so this
+	// never declines a message that would have fit.
+	//
+	// RequiredGasLimit is a Solidity uint256 (*big.Int). CalculateReceiveMessageGasLimit returns
+	// an error for any value that does not fit in a uint64, which is treated as exceeding the
+	// block gas limit.
+	minGasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
+		0,
+		m.teleporterMessage.RequiredGasLimit,
+		0,
+		len(m.unsignedMessage.Payload),
+		len(m.teleporterMessage.Receipts),
+	)
+	if err != nil || minGasLimit > destBlockGasLimit {
 		m.logger.Info(
-			"Gas limit exceeds maximum threshold",
-			zap.Uint64("requiredGasLimit", m.teleporterMessage.RequiredGasLimit.Uint64()),
+			"Delivery gas limit exceeds destination block gas limit",
+			zap.Stringer("requiredGasLimit", m.teleporterMessage.RequiredGasLimit),
+			zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
+			zap.Uint64("minDeliveryGasLimit", minGasLimit),
 			zap.Uint64("blockGasLimit", destBlockGasLimit),
+			zap.Error(err),
 		)
 		return false, nil
 	}
@@ -217,42 +212,7 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 		return false, nil
 	}
 
-	// Dispatch to the external decider service. If the service is unavailable or returns
-	// an error, then use the decision that has already been made, i.e. return true
-	decision, err := m.getShouldSendMessageFromDecider()
-	if err != nil {
-		m.logger.Warn("Error delegating to decider")
-		return true, nil
-	}
-	if !decision {
-		m.logger.Info("Decider rejected message")
-	}
-	return decision, nil
-}
-
-// Queries the decider service to determine whether this message should be
-// sent. If the decider client is nil, returns true.
-func (m *messageHandler) getShouldSendMessageFromDecider() (bool, error) {
-	warpMsgID := m.unsignedMessage.ID()
-
-	ctx, cancelCtx := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancelCtx()
-	response, err := m.deciderClient.ShouldSendMessage(
-		ctx,
-		&pbDecider.ShouldSendMessageRequest{
-			NetworkId:           m.unsignedMessage.NetworkID,
-			SourceChainId:       m.unsignedMessage.SourceChainID[:],
-			Payload:             m.unsignedMessage.Payload,
-			BytesRepresentation: m.unsignedMessage.Bytes(),
-			Id:                  warpMsgID[:],
-		},
-	)
-	if err != nil {
-		m.logger.Error("Error response from decider.", zap.Error(err))
-		return false, err
-	}
-
-	return response.ShouldSendMessage, nil
+	return true, nil
 }
 
 // SendMessage extracts the gasLimit and packs the call data to call the receiveCrossChainMessage
@@ -276,6 +236,22 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 	if err != nil {
 		m.logger.Error("Failed to calculate gas limit for receiveCrossChainMessage call")
 		return common.Hash{}, err
+	}
+
+	// Re-check against the block gas limit now that the signature fixes the signer and predicate
+	// chunk counts. ShouldSendMessage only had a lower bound, and broadcasting a transaction that
+	// cannot fit in a block would burn the relayer's funds for a guaranteed failure.
+	if blockGasLimit := m.destinationClient.BlockGasLimit(); gasLimit > blockGasLimit {
+		m.logger.Warn(
+			"Delivery gas limit exceeds destination block gas limit, not sending",
+			zap.Uint64("gasLimit", gasLimit),
+			zap.Uint64("blockGasLimit", blockGasLimit),
+			zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
+		)
+		return common.Hash{}, fmt.Errorf(
+			"%w: %d exceeds %d",
+			messages.ErrDeliveryExceedsBlockGasLimit, gasLimit, blockGasLimit,
+		)
 	}
 
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
@@ -319,6 +295,24 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		if delivered {
 			log.Info("Execution reverted: message already delivered to destination.")
 			return txHash, nil
+		}
+
+		// A revert that consumed the entire gas limit is an out-of-gas failure: the same
+		// delivery will fail identically on a retry, so re-broadcasting only bills the relayer
+		// for a second reverted transaction. Reverts that left gas unspent are logic failures
+		// (e.g. Warp verification against a churned validator set) which a fresh signature may
+		// resolve, so those stay retryable.
+		if receipt.GasUsed >= gasLimit {
+			log.Error(
+				"Transaction ran out of gas",
+				zap.Uint64("gasUsed", receipt.GasUsed),
+				zap.Uint64("gasLimit", gasLimit),
+				zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
+			)
+			return common.Hash{}, fmt.Errorf(
+				"%w: used %d of %d",
+				messages.ErrDeliveryOutOfGas, receipt.GasUsed, gasLimit,
+			)
 		}
 
 		log.Error("Transaction failed")
