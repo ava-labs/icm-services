@@ -91,20 +91,23 @@ func NewApplicationRelayer(
 	}, nil
 }
 
-// Process [msgs] at height [height] by relaying each message to the destination chain.
-// Checkpoints the height with the checkpoint manager when all messages are relayed.
-// ProcessHeight is expected to be called for every block greater than or equal to the
-// [startingHeight] provided in the constructor.
-func (r *ApplicationRelayer) ProcessHeight(
-	height uint64,
+// ProcessBlocks relays each message in [handlers], which were sent in the block range
+// [fromHeight, toHeight], to the destination chain, and checkpoints the range with the
+// checkpoint manager once all of them are relayed.
+// Over time, ProcessBlocks is expected to be called with ranges that cover every block greater
+// than or equal to the [startingHeight] provided in the constructor.
+func (r *ApplicationRelayer) ProcessBlocks(
+	fromHeight uint64,
+	toHeight uint64,
 	handlers []messages.MessageHandler,
 	errChan chan error,
 ) {
 	logger := r.logger.With(
-		zap.Uint64("height", height),
+		zap.Uint64("fromHeight", fromHeight),
+		zap.Uint64("toHeight", toHeight),
 		zap.Int("numMessages", len(handlers)),
 	)
-	logger.Verbo("Processing block")
+	logger.Verbo("Processing blocks")
 
 	var eg errgroup.Group
 	for _, handler := range handlers {
@@ -130,12 +133,12 @@ func (r *ApplicationRelayer) ProcessHeight(
 		})
 	}
 	if err := eg.Wait(); err != nil {
-		logger.Error("Failed to process block", zap.Error(err))
+		logger.Error("Failed to process blocks", zap.Error(err))
 		errChan <- err
 		return
 	}
-	r.checkpointManager.StageCommittedHeight(height)
-	logger.Verbo("Processed block")
+	r.checkpointManager.StageCommittedHeights(fromHeight, toHeight)
+	logger.Verbo("Processed blocks")
 }
 
 func (r *ApplicationRelayer) ProcessMessage(handler messages.MessageHandler) (common.Hash, error) {

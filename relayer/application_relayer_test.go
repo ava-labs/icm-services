@@ -57,7 +57,7 @@ func TestProcessMessageRetriesRetryableError(t *testing.T) {
 }
 
 // newTestCheckpointManager builds a real checkpoint manager over a mocked database so that
-// ProcessHeight's StageCommittedHeight call exercises the real code path.
+// ProcessBlocks' StageCommittedHeights call exercises the real code path.
 func newTestCheckpointManager(t *testing.T, ctrl *gomock.Controller) *checkpoint.CheckpointManager {
 	t.Helper()
 	db := mock_database.NewMockRelayerDatabase(ctrl)
@@ -94,7 +94,7 @@ func newTestApplicationRelayer(
 // A message that can never be delivered must not take the relayer down with it. Sending the error
 // on to errChan makes the listener exit, and because the height is then never checkpointed every
 // restart replays the same message - a crash loop that only an operator can break.
-func TestProcessHeightSkipsNonRetryableMessage(t *testing.T) {
+func TestProcessBlocksSkipsNonRetryableMessage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	handler := mocks.NewMockMessageHandler(ctrl)
 	handler.EXPECT().
@@ -109,7 +109,7 @@ func TestProcessHeightSkipsNonRetryableMessage(t *testing.T) {
 
 	relayer := newTestApplicationRelayer(t, ctrl, metrics)
 	errChan := make(chan error, 1)
-	relayer.ProcessHeight(1, []messages.MessageHandler{handler}, errChan)
+	relayer.ProcessBlocks(1, 1, []messages.MessageHandler{handler}, errChan)
 
 	select {
 	case err := <-errChan:
@@ -120,7 +120,7 @@ func TestProcessHeightSkipsNonRetryableMessage(t *testing.T) {
 
 // Failures that are not marked non-retryable keep the existing behaviour: they surface to the
 // listener rather than being silently swallowed.
-func TestProcessHeightSurfacesRetryableFailure(t *testing.T) {
+func TestProcessBlocksSurfacesRetryableFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	handler := mocks.NewMockMessageHandler(ctrl)
 	handler.EXPECT().
@@ -130,7 +130,7 @@ func TestProcessHeightSurfacesRetryableFailure(t *testing.T) {
 
 	relayer := newTestApplicationRelayer(t, ctrl, mocks.NewMockMetrics(ctrl))
 	errChan := make(chan error, 1)
-	relayer.ProcessHeight(1, []messages.MessageHandler{handler}, errChan)
+	relayer.ProcessBlocks(1, 1, []messages.MessageHandler{handler}, errChan)
 
 	select {
 	case err := <-errChan:
