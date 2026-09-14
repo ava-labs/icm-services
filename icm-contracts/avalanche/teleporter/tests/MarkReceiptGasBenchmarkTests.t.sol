@@ -120,7 +120,10 @@ contract MarkReceiptGasBenchmarkTest is TeleporterMessengerTest {
      * monotonically increasing _nextRewardAddressSeed, so that marking it pays a cold
      * zero-to-nonzero SSTORE on _relayerRewardAmounts.
      */
-    function _stageReceipts(TeleporterMessageReceipt[] storage receipts, uint256 count) private {
+    function _stageReceipts(
+        TeleporterMessageReceipt[] storage receipts,
+        uint256 count
+    ) private {
         for (uint256 i; i < count; ++i) {
             uint256 nonce = _getNextMessageNonce();
             _sendTestMessageWithFee(DEFAULT_SOURCE_BLOCKCHAIN_ID, 1 ether);

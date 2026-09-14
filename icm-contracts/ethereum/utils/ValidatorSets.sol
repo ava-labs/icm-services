@@ -268,11 +268,9 @@ library ValidatorSets {
 
         // Perform Merkle multi-inclusion proof verification against the stored root
         // TODO: Switch to multiProofVerifyCalldata once parseMerkleAttestation returns calldata slice offsets instead of a memory struct for additional gas savings
-        if (
-            !MerkleProof.multiProofVerify(
+        if (!MerkleProof.multiProofVerify(
                 att.proof, att.proofFlags, comm.root, leaves, keccakInternalPair
-            )
-        ) {
+            )) {
             return false;
         }
 
@@ -335,16 +333,15 @@ library ValidatorSets {
             // bytes up to VALIDATOR_BYTES from the current byte position.
             uint64 weight = uint64(
                 bytes8(
-                    data[
-                        currentPosition + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:
-                            currentPosition + VALIDATOR_BYTES
+                    data[currentPosition
+                            + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:currentPosition
+                                + VALIDATOR_BYTES
                     ]
                 )
             );
             require(weight > 0, "Validator weight must be greater than 0");
             validators[i] = Validator({
-                blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey),
-                weight: weight
+                blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey), weight: weight
             });
             previousPublicKey = unformattedPublicKey;
             totalWeight += weight;
@@ -374,13 +371,16 @@ library ValidatorSets {
                 BLST.unPadUncompressedBlsPublicKey(validators[i].blsPublicKey);
             assembly ("memory-safe") {
                 mstore(
-                    add(serialized, add(offset, 0x20)), mload(add(uncompressedBlsPublicKey, 0x20))
+                    add(serialized, add(offset, 0x20)),
+                    mload(add(uncompressedBlsPublicKey, 0x20))
                 )
                 mstore(
-                    add(serialized, add(offset, 0x40)), mload(add(uncompressedBlsPublicKey, 0x40))
+                    add(serialized, add(offset, 0x40)),
+                    mload(add(uncompressedBlsPublicKey, 0x40))
                 )
                 mstore(
-                    add(serialized, add(offset, 0x60)), mload(add(uncompressedBlsPublicKey, 0x60))
+                    add(serialized, add(offset, 0x60)),
+                    mload(add(uncompressedBlsPublicKey, 0x60))
                 )
             }
             offset += BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH;
@@ -830,10 +830,10 @@ library ValidatorSets {
     ) internal pure returns (ValidatorSetShard memory) {
         uint64 shardNumber = uint64(bytes8(shardBytes[0:8]));
         bytes32 avalancheBlockchainID = bytes32(shardBytes[8:40]);
-        return ValidatorSetShard({
-            shardNumber: shardNumber,
-            avalancheBlockchainID: avalancheBlockchainID
-        });
+        return
+            ValidatorSetShard({
+                shardNumber: shardNumber, avalancheBlockchainID: avalancheBlockchainID
+            });
     }
 
     /*
@@ -925,7 +925,10 @@ library ValidatorSets {
         );
     }
 
-    function keccakInternalPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+    function keccakInternalPair(
+        bytes32 a,
+        bytes32 b
+    ) internal pure returns (bytes32) {
         return a < b
             ? keccak256(abi.encodePacked(uint256(0), a, b))
             : keccak256(abi.encodePacked(uint256(0), b, a));

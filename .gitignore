@@ -25,6 +25,7 @@ cache/
 target/
 bin/
 */Cargo.lock
+!icm-macros/Cargo.lock
 
 # Binaries
 icm-contracts/cmd/teleporter-cli/teleporter-cli
@@ -41,6 +42,9 @@ icm-contracts/.icm-relayer-storage/
 icm-contracts/UniversalTeleporterDeployerTransaction.txt
 icm-contracts/UniversalTeleporterDeployerAddress.txt
 icm-contracts/UniversalTeleporterMessengerContractAddress.txt
+
+# icm-macros
+icm-macros/testing/**/mismatched/
 
 # debug artifacts
 *.debug.txt

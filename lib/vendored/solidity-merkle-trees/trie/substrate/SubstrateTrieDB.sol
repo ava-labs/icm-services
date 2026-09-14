@@ -86,10 +86,9 @@ library SubstrateTrieDB {
         if (padding && (padLeft(uint8(input.data[input.offset])) != 0)) {
             revert("Bad Format!");
         }
-        uint256 nibbleLen = (
-            (node.nibbleSize + (NibbleSliceOps.NIBBLE_PER_BYTE - 1))
-                / NibbleSliceOps.NIBBLE_PER_BYTE
-        );
+        uint256 nibbleLen =
+            ((node.nibbleSize + (NibbleSliceOps.NIBBLE_PER_BYTE - 1))
+                / NibbleSliceOps.NIBBLE_PER_BYTE);
         nibbledBranch.key =
             NibbleSlice(Bytes.read(input, nibbleLen), node.nibbleSize % NIBBLE_PER_BYTE);
 
@@ -189,7 +188,10 @@ library SubstrateTrieDB {
         return b & ~PADDING_BITMASK;
     }
 
-    function valueAt(uint16 bitmap, uint256 i) internal pure returns (bool) {
+    function valueAt(
+        uint16 bitmap,
+        uint256 i
+    ) internal pure returns (bool) {
         return bitmap & (uint16(1) << uint16(i)) != 0;
     }
 }

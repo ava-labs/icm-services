@@ -54,7 +54,7 @@ jobs:
 
   format-solidity:
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,10 +64,32 @@ jobs:
 
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
-      
+
+      - name: Cache reforge binary
+        id: cache-reforge
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/reforge
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
+      - name: Cache Cargo (icm-macros)
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build reforge
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: ./scripts/build_reforge.sh
+
       - name: Check Solidity Formatting
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           ./scripts/lint.sh --sol-format-check
         
   gomod_check:
@@ -107,6 +129,28 @@ jobs:
       - name: Install Foundry
         run: ./scripts/install_foundry.sh
 
+      - name: Cache reforge binary
+        id: cache-reforge
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/reforge
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+
+      - name: Cache Cargo (icm-macros)
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            icm-macros/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build reforge
+        if: steps.cache-reforge.outputs.cache-hit != 'true'
+        run: ./scripts/build_reforge.sh
+
       - name: Install solc
         run: |
           source ./scripts/versions.sh
@@ -116,7 +160,7 @@ jobs:
 
       - name: Generate ABI Go bindings
         run: |
-          export PATH=$PATH:$HOME/.foundry/bin
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export GOPATH=$HOME/go
           export PATH="$PATH:$GOPATH/bin"
           ./scripts/abi_bindings.sh

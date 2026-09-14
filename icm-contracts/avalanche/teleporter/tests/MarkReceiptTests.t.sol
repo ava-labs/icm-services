@@ -73,8 +73,7 @@ contract MarkReceiptTest is TeleporterMessengerTest {
                 DEFAULT_SOURCE_BLOCKCHAIN_ID,
                 feeRewardInfos[i].relayerRewardAddress,
                 TeleporterFeeInfo({
-                    feeTokenAddress: address(_mockFeeAsset),
-                    amount: feeRewardInfos[i].feeAmount
+                    feeTokenAddress: address(_mockFeeAsset), amount: feeRewardInfos[i].feeAmount
                 })
             );
         }
