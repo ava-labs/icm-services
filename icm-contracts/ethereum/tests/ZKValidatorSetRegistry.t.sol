@@ -27,7 +27,11 @@ contract MockSP1Verifier is ISP1Verifier {
         shouldRevert = v;
     }
 
-    function verifyProof(bytes32, bytes calldata, bytes calldata) external view {
+    function verifyProof(
+        bytes32,
+        bytes calldata,
+        bytes calldata
+    ) external view {
         require(!shouldRevert, "mock: invalid proof");
     }
 }
