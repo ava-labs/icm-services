@@ -29,27 +29,31 @@ const defaultPollInterval = 10 * time.Second
 // validator set fresh) and, when DestinationBlockchainID is set, as a TeleporterV2
 // message-delivery destination (the relayer submits receiveCrossChainMessage transactions to it).
 type ExternalEVMDestination struct {
-	// RPC endpoint of the external EVM chain (e.g. local geth node)
+	// RPC endpoint of the external EVM chain (e.g. local geth node). Used by both the
+	// validator-set updater and, when delivery is enabled, the message-delivery client.
 	RPCEndpoint string `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
 	// Hex-encoded private key used by the validator-set updater to sign
-	// registerValidatorSet/updateValidatorSet transactions.
+	// registerValidatorSet transactions.
 	PrivateKey string `mapstructure:"private-key" json:"private-key" sensitive:"true"`
-	// Address of the deployed updater contract
+	// Address of the deployed MerkleValidatorSetRegistry contract. The validator-set updater
+	// submits registerValidatorSet to it, and the message-delivery client queries it for the
+	// committed P-chain height when verifying delivered messages.
 	ContractAddress string `mapstructure:"contract-address" json:"contract-address"`
-	// The blockchain ID (on the Avalanche side) whose validator set to track
+	// The blockchain ID (on the Avalanche side) whose validator set to track. When delivery is
+	// enabled it is also the source chain whose registered commitment is used to verify
+	// delivered messages.
 	BlockchainID string `mapstructure:"blockchain-id" json:"blockchain-id"`
 	// The subnet ID that the blockchain belongs to
 	SubnetID string `mapstructure:"subnet-id" json:"subnet-id"`
 	// Poll interval in seconds (default 10)
 	PollIntervalSeconds uint64 `mapstructure:"poll-interval-seconds" json:"poll-interval-seconds"`
-	// Maximum duration (in seconds) between on-chain updates. Even if the
-	// weight change is below the threshold, an update is forced after this
-	// interval. 0 means no staleness cap (legacy behavior).
+	// Maximum duration (in seconds) between on-chain updates. An update is forced after this
+	// interval even if the validator set is unchanged. 0 means no staleness cap (legacy behavior).
 	MaxUpdateIntervalSeconds uint64 `mapstructure:"max-update-interval-seconds" json:"max-update-interval-seconds,omitempty"` //nolint:lll
 	// Maximum suggested gas price (in gwei) on the destination chain at which
 	// the relayer will submit a validator-set update transaction. When the
 	// network's suggested gas price exceeds this threshold the update is
-	// deferred and retried on the next poll.
+	// deferred and retried on the next poll. 0 disables the check.
 	MaxGasPriceGwei uint64 `mapstructure:"max-gas-price-gwei" json:"max-gas-price-gwei,omitempty"`
 
 	// --- Message delivery configuration (only used when DestinationBlockchainID is set) ---
@@ -66,15 +70,19 @@ type ExternalEVMDestination struct {
 	// when DestinationBlockchainID is set.
 	DeliveryPrivateKey string `mapstructure:"delivery-private-key" json:"delivery-private-key,omitempty" sensitive:"true"` //nolint:lll
 	// TeleporterAddress is the TeleporterMessengerV2 contract address on the external
-	// chain. With the universal deployer it is identical on the source chain.
+	// chain. With the universal deployer it is identical on the source chain. It is only
+	// validated here; the address used at delivery time comes from the teleporterv2 message
+	// config's teleporter-address.
 	TeleporterAddress string `mapstructure:"teleporter-address" json:"teleporter-address,omitempty"`
-	// QuorumNumerator is the stake-weight quorum (out of 100) required to verify a
-	// delivered message. Defaults to 67 when unset.
+	// QuorumNumerator is the stake-weight quorum (out of 100) used when aggregating
+	// signatures for messages delivered to this chain. Defaults to 67 when unset, which
+	// matches the quorum the registry contract enforces on-chain.
 	QuorumNumerator uint64 `mapstructure:"quorum-numerator" json:"quorum-numerator,omitempty"`
-	// BlockGasLimit caps the gas used for delivery transactions.
+	// BlockGasLimit caps the gas used for delivery transactions. Defaults to 12,000,000
+	// when unset.
 	BlockGasLimit uint64 `mapstructure:"block-gas-limit" json:"block-gas-limit,omitempty"`
 	// TxInclusionTimeoutSeconds bounds how long the relayer waits for a delivery tx to
-	// be mined.
+	// be mined. Defaults to 30 when unset.
 	TxInclusionTimeoutSeconds uint64 `mapstructure:"tx-inclusion-timeout-seconds" json:"tx-inclusion-timeout-seconds,omitempty"` //nolint:lll
 }
 

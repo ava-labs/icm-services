@@ -257,7 +257,6 @@ var nullLeafHash = func() [32]byte {
 	return [32]byte(crypto.Keccak256(buf[:]))
 }()
 
-// nextPow2 returns the smallest power of two >= n (minimum 1).
 func sumWeights(validators []*Validator) uint64 {
 	var total uint64
 	for _, v := range validators {
@@ -266,6 +265,7 @@ func sumWeights(validators []*Validator) uint64 {
 	return total
 }
 
+// nextPow2 returns the smallest power of two >= n (minimum 1).
 func nextPow2(n int) int {
 	p := 1
 	for p < n {
