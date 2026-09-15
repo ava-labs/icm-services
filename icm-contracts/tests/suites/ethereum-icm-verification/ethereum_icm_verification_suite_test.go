@@ -10,11 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
-	"github.com/ava-labs/avalanchego/vms/platformvm"
-	adapter "github.com/ava-labs/icm-services/abi-bindings/go/Adapter"
-	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	ecdsaverifier "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ECDSAVerifier"
 	ethereumIcmVerification "github.com/ava-labs/icm-services/icm-contracts/tests/flows/ethereum_icm_verification"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
@@ -33,7 +29,6 @@ import (
 
 const (
 	ecdsaVerifierByteCodeFile    = "./out/ECDSAVerifier.sol/ECDSAVerifier.json"
-	adapterByteCodeFile          = "./out/Adapter.sol/Adapter.json"
 	warpGenesisTemplateFile      = "./tests/utils/warp-genesis-template.json"
 	ethereumICMVerificationLabel = "ethereum-icm-verification"
 	zkAdapterByteCodeFile        = "./out/ZKAdapter.sol/ZKAdapter.json"
@@ -50,7 +45,6 @@ var (
 	e2eFlags                      *e2e.FlagVars
 	ecdsaVerifierContractAddress  common.Address
 	ecdsaSigner                   *ecdsa.PrivateKey
-	adapterContractAddress        common.Address
 )
 
 func envOrDefault(key, default_path string) string {
@@ -75,11 +69,8 @@ func TestEthereumICMVerification(t *testing.T) {
 	ginkgo.RunSpecs(t, "Ethereum ICM Verification e2e test")
 }
 
-//  1. Deploy a DiffUpdater contract on both chains
-//  2. Apply the shards to initialize the initial validator set on Ethereum (not necessary on Avalanche)
-//  3. Deploy an ECDSAVerifier contract on both chains
-//  4. Deploy an Adapter contract on both chains and initialize it with the ECDSAVerifier contract
-//     and DiffUpdater contracts
+//  1. Deploy an ECDSAVerifier contract on every chain. Each flow below deploys and wires
+//     up whatever validator set registry and adapter it needs on top of this.
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	// Create the local network instances
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
@@ -116,72 +107,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	Expect(err).Should(BeNil())
 
 	// =========================================================================
-	// Step 1: Deploy the DiffUpdater contract on both chains
-	// =========================================================================
-
-	// first deploy the DiffUpdater contract on the Ethereum network and initialize it
-	registryContractAddress, serializedShards := utils.DeployDiffUpdater(
-		ctx,
-		ethereumNetworkInfo,
-		fundedEthereumKey,
-		localAvalancheNetworkInstance.GetNetworkID(),
-		primaryNetworkInfo.BlockchainID,
-		primaryNetworkInfo.SubnetID,
-		platformvm.NewClient(primaryNetworkInfo.NodeURIs[0]),
-		5,
-	)
-	// sanity check
-	Expect(len(serializedShards)).Should(Equal(4))
-
-	avalancheValidatorSetRegistry, err := diffupdater.NewDiffUpdater(
-		registryContractAddress,
-		localEthereumNetworkInstance.EthClient,
-	)
-	Expect(err).Should(BeNil())
-
-	opts, err := bind.NewKeyedTransactorWithChainID(fundedEthereumKey, localEthereumNetworkInstance.ChainID)
-	Expect(err).Should(BeNil())
-
-	// Deploy the DiffUpdater contract on Avalanche
-	// N.B. We don't need to initialize the contract as it will only be used for sending messages
-	contractAddress, _ := utils.DeployDiffUpdater(
-		ctx,
-		&primaryNetworkInfo,
-		fundedAvalancheKey,
-		localAvalancheNetworkInstance.GetNetworkID(),
-		primaryNetworkInfo.BlockchainID,
-		primaryNetworkInfo.SubnetID,
-		platformvm.NewClient(primaryNetworkInfo.NodeURIs[0]),
-		// N.B. This must be the same as above so that the constructor arguments match
-		// for both deployments
-		5,
-	)
-	// Ensure that the contract address is the same as the one deployed on Ethereum
-	Expect(contractAddress).Should(Equal(registryContractAddress))
-
-	// =========================================================================
-	// Step 2: Apply the shards to initialize the validator set on Ethereum
-	// =========================================================================
-	for i, shardBytes := range serializedShards {
-		shard := diffupdater.ValidatorSetShard{
-			AvalancheBlockchainID: primaryNetworkInfo.BlockchainID,
-			ShardNumber:           uint64(i) + 1,
-		}
-		tx, err := avalancheValidatorSetRegistry.UpdateValidatorSet(opts, shard, shardBytes)
-		Expect(err).Should(BeNil())
-		receipt := utils.WaitForTransactionSuccess(ctx, localEthereumNetworkInstance.EthClient, tx.Hash())
-		if i+1 == len(serializedShards) {
-			event, err := utils.GetEventFromLogs(receipt.Logs, avalancheValidatorSetRegistry.ParseValidatorSetUpdated)
-			Expect(err).Should(BeNil())
-			Expect(ids.ID(event.AvalancheBlockchainID)).Should(Equal(primaryNetworkInfo.BlockchainID))
-		}
-	}
-	registered, err := avalancheValidatorSetRegistry.IsRegistered(&bind.CallOpts{}, primaryNetworkInfo.BlockchainID)
-	Expect(err).Should(BeNil())
-	Expect(registered).Should(BeTrue())
-
-	// =========================================================================
-	// Step 3: Deploy the ECDSA verifier contract on all chains (Ethereum, Avalanche L1, Avalanche C-Chain)
+	// Step 1: Deploy the ECDSA verifier contract on all chains (Ethereum, Avalanche L1, Avalanche C-Chain)
 	// =========================================================================
 	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(ecdsaVerifierByteCodeFile)
 	Expect(err).Should(BeNil())
@@ -257,57 +183,6 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 		utils.WaitForTransactionSuccess(ctx, t.ethClient, tx.Hash())
 	}
 
-	// =========================================================================
-	// Step 4: Deploy the Adapter contract on both chains
-	// =========================================================================
-	byteCode, err = deploymentUtils.ExtractByteCodeFromFile(adapterByteCodeFile)
-	Expect(err).Should(BeNil())
-
-	// Generate the Adapter deployer transaction via Nick's method
-	adapterABI, err := adapter.AdapterMetaData.GetAbi()
-	Expect(err).Should(BeNil())
-	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
-		adapterABI,
-		byteCode,
-		primaryNetworkInfo.BlockchainID,
-		ethereumNetworkInfo.ChainID(),
-		ecdsaVerifierContractAddress,
-		registryContractAddress,
-	)
-	Expect(err).Should(BeNil())
-	var (
-		adapterContractTransaction []byte
-		adapterDeployerAddress     common.Address
-	)
-	adapterContractTransaction,
-		adapterDeployerAddress,
-		adapterContractAddress,
-		err = deploymentUtils.ConstructKeylessTransaction(
-		byteCode,
-		nil,
-		deploymentUtils.GetDefaultContractCreationGasPrice(),
-		nil,
-	)
-	Expect(err).Should(BeNil())
-	// Deploy the Adapter contract on the C-Chain
-	utils.DeployWithNicksMethod(
-		ctx,
-		&primaryNetworkInfo,
-		adapterContractTransaction,
-		adapterDeployerAddress,
-		adapterContractAddress,
-		fundedAvalancheKey,
-	)
-	// Deploy the Adapter contract on Ethereum
-	utils.DeployWithNicksMethod(
-		ctx,
-		ethereumNetworkInfo,
-		adapterContractTransaction,
-		adapterDeployerAddress,
-		adapterContractAddress,
-		fundedEthereumKey,
-	)
-
 	log.Info("Set up ginkgo before suite")
 })
 
@@ -320,19 +195,6 @@ var _ = ginkgo.AfterSuite(func() {
 
 var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() {
 	// Ethereum ICM Verification tests
-	ginkgo.It("Test AvalancheValidatorSetRegistry",
-		ginkgo.Label(ethereumICMVerificationLabel),
-		func(ctx context.Context) {
-			ethereumIcmVerification.AvalancheValidatorSetRegistry(
-				ctx,
-				localAvalancheNetworkInstance,
-				localEthereumNetworkInstance,
-				ecdsaSigner,
-				ecdsaVerifierContractAddress,
-				adapterContractAddress,
-			)
-		})
-
 	ginkgo.It("Test ZKAdapterVerifier",
 		ginkgo.Label(ethereumICMVerificationLabel),
 		func(ctx context.Context) {

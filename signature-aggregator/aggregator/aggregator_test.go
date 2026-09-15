@@ -102,6 +102,9 @@ func instantiateAggregator(
 		signatureRequestTimeout,
 	)
 	require.NoError(t, err)
+	// Fail fast when a quorum of validators cannot be connected to. The production default
+	// (utils.ConnectToValidatorsTimeout) is 30s, which would exceed the unit test timeout.
+	aggregator.connectToValidatorsTimeout = 5 * time.Second
 
 	// Return the AppRequestNetwork, handler (for injecting responses), and mocks so tests can set expectations
 	return aggregator, appRequestNetwork, handler, mockNetwork, mockValidatorClient

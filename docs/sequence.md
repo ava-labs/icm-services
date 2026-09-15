@@ -1,5 +1,5 @@
 # Processing the Warp messages in a new block
-Illustration of the sequence of events triggered by a new block containing Warp messages to relay.
+Illustration of the sequence of events triggered by a new block containing Warp messages to relay. The Subscriber is only notified of blocks that contain logs matching the listener's message protocol; the blocks in between, which contain no messages, are checkpointed together with the next block that does.
 ```mermaid
 sequenceDiagram
     participant Subscriber
@@ -11,11 +11,11 @@ sequenceDiagram
     participant CheckpointManager
     participant RelayerDatabase
 
-    Subscriber->>Listener : (async) New block
+    Subscriber->>Subscriber : Extend block range over preceding empty blocks
+    Subscriber->>Listener : (async) New block range with Warp logs
     activate Listener
-    Listener->>Listener : Collect Warp Logs in block
     Listener->>Listener : Create handlers for each message
-    Listener-->>ApplicationRelayer : (async) Pass message handlers for block
+    Listener-->>ApplicationRelayer : (async) Pass message handlers for block range
     deactivate Listener
     activate ApplicationRelayer
     par foreach Warp message in block
@@ -38,7 +38,7 @@ sequenceDiagram
         MessageHandler->>MessageHandler : Wait for receipt
         MessageHandler->>ApplicationRelayer : return
     end
-    ApplicationRelayer->>CheckpointManager : Stage block height
+    ApplicationRelayer->>CheckpointManager : Stage block range
     deactivate ApplicationRelayer
     CheckpointManager-->>RelayerDatabase : (async) Write height
 ```

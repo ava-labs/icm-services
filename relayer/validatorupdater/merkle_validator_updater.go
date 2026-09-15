@@ -16,6 +16,7 @@ import (
 	warppayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	merklevalidatorsetregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	"github.com/ava-labs/icm-services/peers/clients"
+	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -356,7 +357,7 @@ func (s *MerkleSetUpdater) performUpdate(
 		unsignedMsg,
 		nil,
 		signingChain,
-		defaultQuorumPercentage,
+		config.DefaultRegistryQuorumNumerator,
 		onChainPChainHeight,
 	)
 	if err != nil {
