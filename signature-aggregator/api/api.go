@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -52,11 +51,12 @@ type AggregateSignatureErrorResponse struct {
 }
 
 func HandleAggregateSignaturesByRawMsgRequest(
+	mux *http.ServeMux,
 	logger logging.Logger,
 	metrics *metrics.SignatureAggregatorMetrics,
 	signatureAggregator *aggregator.SignatureAggregator,
 ) {
-	http.Handle(
+	mux.Handle(
 		APIPath,
 		signatureAggregationAPIHandler(
 			logger,
@@ -209,8 +209,7 @@ func signatureAggregationAPIHandler(
 		)
 		if err != nil {
 			logger.Warn("Failed to aggregate signatures", zap.Error(err))
-			msg := fmt.Errorf("failed to aggregate signatures. error: %w", err).Error()
-			writeJSONError(logger, w, http.StatusInternalServerError, msg)
+			writeJSONError(logger, w, http.StatusInternalServerError, "failed to aggregate signatures")
 			return
 		}
 		resp, err := json.Marshal(

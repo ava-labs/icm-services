@@ -102,6 +102,9 @@ func instantiateAggregator(
 		signatureRequestTimeout,
 	)
 	require.NoError(t, err)
+	// Fail fast when a quorum of validators cannot be connected to. The production default
+	// (utils.ConnectToValidatorsTimeout) is 30s, which would exceed the unit test timeout.
+	aggregator.connectToValidatorsTimeout = 5 * time.Second
 
 	// Return the AppRequestNetwork, handler (for injecting responses), and mocks so tests can set expectations
 	return aggregator, appRequestNetwork, handler, mockNetwork, mockValidatorClient
@@ -779,10 +782,19 @@ func TestUnmarshalResponse(t *testing.T) {
 	randSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: randSignature})
 	require.NoError(t, err)
 
+	shortSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: randSignature[:bls.SignatureLen-1]})
+	require.NoError(t, err)
+
+	longSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{
+		Signature: append(slices.Clone(randSignature), 0xff),
+	})
+	require.NoError(t, err)
+
 	testCases := []struct {
 		name              string
 		appResponseBytes  []byte
 		expectedSignature blsSignatureBuf
+		expectedErr       error
 	}{
 		{
 			name:              "empty slice",
@@ -804,11 +816,47 @@ func TestUnmarshalResponse(t *testing.T) {
 			appResponseBytes:  randSignatureResponse,
 			expectedSignature: blsSignatureBuf(randSignature),
 		},
+		{
+			// A non-empty protobuf carrying only an unknown field leaves the signature
+			// absent, which must be treated like an empty response rather than converted.
+			name:              "absent signature with unknown field",
+			appResponseBytes:  []byte{0x78, 0x01},
+			expectedSignature: blsSignatureBuf{},
+		},
+		{
+			name:              "single byte signature",
+			appResponseBytes:  []byte{0x0a, 0x01, 0xff},
+			expectedSignature: blsSignatureBuf{},
+			expectedErr:       errInvalidSignatureLength,
+		},
+		{
+			name:              "short signature",
+			appResponseBytes:  shortSignatureResponse,
+			expectedSignature: blsSignatureBuf{},
+			expectedErr:       errInvalidSignatureLength,
+		},
+		{
+			name:              "long signature",
+			appResponseBytes:  longSignatureResponse,
+			expectedSignature: blsSignatureBuf{},
+			expectedErr:       errInvalidSignatureLength,
+		},
+		{
+			name:              "malformed protobuf",
+			appResponseBytes:  []byte{0xff, 0xff, 0xff},
+			expectedSignature: blsSignatureBuf{},
+			expectedErr:       proto.Error,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// A peer-controlled response must never panic the aggregation goroutine.
 			signature, err := aggregator.unmarshalResponse(tc.appResponseBytes)
-			require.NoError(t, err)
+			if tc.expectedErr != nil {
+				require.ErrorIs(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+			}
 			require.Equal(t, tc.expectedSignature, signature)
 		})
 	}

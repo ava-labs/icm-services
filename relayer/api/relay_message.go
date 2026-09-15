@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/http"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/messages"
@@ -17,6 +18,12 @@ const (
 	RelayAPIPath        = "/relay"
 	RelayMessageAPIPath = RelayAPIPath + "/message"
 )
+
+func sanitizeLogValue(value string) string {
+	value = strings.ReplaceAll(value, "\n", "")
+	value = strings.ReplaceAll(value, "\r", "")
+	return value
+}
 
 type RelayMessageRequest struct {
 	// Required. cb58-encoded or "0x" prefixed hex-encoded source blockchain ID for the message
@@ -38,12 +45,12 @@ type ManualWarpMessageRequest struct {
 	SourceAddress        string `json:"source-address"`
 }
 
-func HandleRelayMessage(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
-	http.Handle(RelayMessageAPIPath, relayMessageAPIHandler(logger, messageCoordinator))
+func HandleRelayMessage(mux *http.ServeMux, logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
+	mux.Handle(RelayMessageAPIPath, relayMessageAPIHandler(logger, messageCoordinator))
 }
 
-func HandleRelay(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
-	http.Handle(RelayAPIPath, relayAPIHandler(logger, messageCoordinator))
+func HandleRelay(mux *http.ServeMux, logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) {
+	mux.Handle(RelayAPIPath, relayAPIHandler(logger, messageCoordinator))
 }
 
 func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) http.Handler {
@@ -51,15 +58,15 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 		var req ManualWarpMessageRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
 		if err != nil {
-			logger.Warn("Could not decode request body")
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			logger.Warn("Could not decode request body", zap.Error(err))
+			http.Error(w, "could not decode request body", http.StatusBadRequest)
 			return
 		}
 
 		unsignedMessage, err := utils.UnpackWarpMessage(req.UnsignedMessageBytes)
 		if err != nil {
 			logger.Warn("Error unpacking warp message", zap.Error(err))
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, "error unpacking warp message", http.StatusBadRequest)
 			return
 		}
 
@@ -85,7 +92,7 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 		txHash, err := messageCoordinator.ProcessMessage(sourceMessage)
 		if err != nil {
 			logger.Error("Error processing message", zap.Error(err))
-			http.Error(w, "error processing message: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "error processing message", http.StatusInternalServerError)
 			return
 		}
 
@@ -96,7 +103,7 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 		)
 		if err != nil {
 			logger.Error("Error marshaling response", zap.Error(err))
-			http.Error(w, "error marshaling response: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "error marshaling response", http.StatusInternalServerError)
 			return
 		}
 
@@ -112,28 +119,28 @@ func relayAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageC
 		var req RelayMessageRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
 		if err != nil {
-			logger.Warn("Could not decode request body")
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			logger.Warn("Could not decode request body", zap.Error(err))
+			http.Error(w, "could not decode request body", http.StatusBadRequest)
 			return
 		}
 
 		blockchainID, err := utils.HexOrCB58ToID(req.BlockchainID)
 		if err != nil {
-			logger.Warn("Invalid blockchainID", zap.String("blockchainID", req.BlockchainID))
-			http.Error(w, "invalid blockchainID: "+err.Error(), http.StatusBadRequest)
+			logger.Warn("Invalid blockchainID", zap.String("blockchainID", sanitizeLogValue(req.BlockchainID)), zap.Error(err))
+			http.Error(w, "invalid blockchainID", http.StatusBadRequest)
 			return
 		}
 		messageID, err := utils.HexOrCB58ToID(req.MessageID)
 		if err != nil {
-			logger.Warn("Invalid messageID", zap.String("messageID", req.MessageID))
-			http.Error(w, "invalid messageID: "+err.Error(), http.StatusBadRequest)
+			logger.Warn("Invalid messageID", zap.String("messageID", sanitizeLogValue(req.MessageID)), zap.Error(err))
+			http.Error(w, "invalid messageID", http.StatusBadRequest)
 			return
 		}
 
 		txHash, err := messageCoordinator.ProcessMessageID(blockchainID, messageID, new(big.Int).SetUint64(req.BlockNum))
 		if err != nil {
 			logger.Error("Error processing message", zap.Error(err))
-			http.Error(w, "error processing message: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "error processing message", http.StatusInternalServerError)
 			return
 		}
 
@@ -144,7 +151,7 @@ func relayAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageC
 		)
 		if err != nil {
 			logger.Error("Error marshalling response", zap.Error(err))
-			http.Error(w, "error marshalling response: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "error marshalling response", http.StatusInternalServerError)
 			return
 		}
 

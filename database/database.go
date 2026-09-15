@@ -22,7 +22,6 @@ var (
 
 const (
 	LatestProcessedBlockKey DataKey = iota
-	ZKRelayerStateKey
 )
 
 type DataKey int
@@ -31,8 +30,6 @@ func (k DataKey) String() string {
 	switch k {
 	case LatestProcessedBlockKey:
 		return "latestProcessedBlock"
-	case ZKRelayerStateKey:
-		return "zkRelayerState"
 	}
 	return "unknown"
 }

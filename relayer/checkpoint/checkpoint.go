@@ -11,7 +11,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/database"
-	"github.com/ava-labs/icm-services/utils"
 	"go.uber.org/zap"
 )
 
@@ -27,7 +26,7 @@ type CheckpointManager struct {
 	relayerID       database.RelayerID
 	committedHeight uint64
 	lock            *sync.RWMutex
-	pendingCommits  *utils.UInt64Heap
+	pendingCommits  *blockRangeHeap
 	// Update the dirty flag when committedHeight is updated
 	dirty bool
 }
@@ -42,7 +41,7 @@ func NewCheckpointManager(
 ) (*CheckpointManager, error) {
 	logger = logger.With(zap.Stringer("relayerID", relayerID.ID))
 
-	h := &utils.UInt64Heap{}
+	h := &blockRangeHeap{}
 	heap.Init(h)
 	logger.Info(
 		"Creating checkpoint manager",
@@ -109,43 +108,54 @@ func (cm *CheckpointManager) listenForWriteSignal() {
 	}
 }
 
-// StageCommittedHeight queues a height to be written to the database.
-// Heights are committed in sequence, so if height is not exactly one
-// greater than the current committedHeight, it is instead cached in memory
-// to potentially be committed later.
+// StageCommittedHeights records that every block in [fromHeight, toHeight] has been processed
+// and queues the heights to be written to the database. Heights are committed in sequence, so if
+// [fromHeight] is not directly after the current committedHeight, the range is instead cached in
+// memory until the ranges covering the heights before it have been staged.
+// Ranges may overlap heights that were already committed or staged, e.g. when a block is
+// processed both by catch-up and from the subscription; only their uncommitted heights count.
 // TODO: We should only stage heights once all app relayers for a given source chain have staged
-func (cm *CheckpointManager) StageCommittedHeight(height uint64) {
+func (cm *CheckpointManager) StageCommittedHeights(fromHeight, toHeight uint64) {
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
 
-	log := cm.logger.With(zap.Uint64("stagingHeight", height))
+	log := cm.logger.With(
+		zap.Uint64("stagingFromHeight", fromHeight),
+		zap.Uint64("stagingToHeight", toHeight),
+	)
 
-	if height <= cm.committedHeight {
+	if fromHeight > toHeight {
+		log.Error("Attempting to commit an inverted height range. Skipping.")
+		return
+	}
+	if toHeight <= cm.committedHeight {
 		log.Debug(
-			"Attempting to commit height less than or equal to the committed height. Skipping.",
+			"Attempting to commit heights less than or equal to the committed height. Skipping.",
 			zap.Uint64("committedHeight", cm.committedHeight),
 		)
 		return
 	}
 
-	// First push the height onto the pending commits min heap
+	// First push the range onto the pending commits min heap
 	// This will ensure that the heights are committed in order
-	heap.Push(cm.pendingCommits, height)
+	heap.Push(cm.pendingCommits, blockRange{from: fromHeight, to: toHeight})
 	cm.metrics.UpdatePendingCommitsHeapLength(cm.relayerID, cm.pendingCommits.Len())
 	log.Verbo(
 		"Pending committed heights",
 		zap.Uint64("maxCommittedHeight", cm.committedHeight),
 	)
 
-	for cm.pendingCommits.Peek() == cm.committedHeight+1 {
-		h := heap.Pop(cm.pendingCommits).(uint64)
-		log.Verbo("Committing height")
-		cm.committedHeight = h
+	// Commit every pending range that starts at or below the next uncommitted height.
+	for cm.pendingCommits.Len() > 0 && cm.pendingCommits.Peek().from <= cm.committedHeight+1 {
+		r := heap.Pop(cm.pendingCommits).(blockRange)
+		if r.to <= cm.committedHeight {
+			// Every height in the range was already committed by an overlapping range.
+			continue
+		}
+		log.Verbo("Committing heights", zap.Uint64("toHeight", r.to))
+		cm.committedHeight = r.to
 		cm.dirty = true
 		cm.metrics.UpdateCommittedHeight(cm.relayerID, cm.committedHeight)
-		cm.metrics.UpdatePendingCommitsHeapLength(cm.relayerID, cm.pendingCommits.Len())
-		if cm.pendingCommits.Len() == 0 {
-			break
-		}
 	}
+	cm.metrics.UpdatePendingCommitsHeapLength(cm.relayerID, cm.pendingCommits.Len())
 }
