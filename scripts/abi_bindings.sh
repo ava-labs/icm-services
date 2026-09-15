@@ -26,7 +26,7 @@ ECDSAVerifier ZKStateManager ZKAdapter"
 
 DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2 Adapter"
 
-DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater MerkleValidatorSetRegistry ZKValidatorSetRegistry"
+DEFAULT_ETHEREUM_CONTRACT_LIST="MerkleValidatorSetRegistry ZKValidatorSetRegistry"
 
 VENDORED_CONTRACT_LIST="RiscZeroGroth16Verifier SP1VerifierGroth16"
 
