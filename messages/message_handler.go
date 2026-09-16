@@ -6,6 +6,9 @@
 package messages
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
@@ -13,6 +16,36 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 )
+
+// ErrNonRetryable marks a processing failure that will recur identically on a fresh attempt,
+// so re-broadcasting the delivery would only repeat the same on-chain cost.
+var ErrNonRetryable = errors.New("non-retryable message processing failure")
+
+// Specific non-retryable causes. Each wraps [ErrNonRetryable], so errors.Is matches both the
+// general and the specific form. [NonRetryableReason] maps them to metric labels, so keep this
+// set small and add a case there for every new one.
+var (
+	ErrDeliveryOutOfGas = fmt.Errorf(
+		"%w: delivery reverted out of gas", ErrNonRetryable,
+	)
+	ErrDeliveryExceedsBlockGasLimit = fmt.Errorf(
+		"%w: delivery gas limit exceeds block gas limit", ErrNonRetryable,
+	)
+)
+
+// NonRetryableReason returns a short, bounded description of why a message was abandoned,
+// suitable as a metric label. The full error belongs in the log line; using it as a label would
+// give every abandoned message its own time series, since the errors embed gas amounts.
+func NonRetryableReason(err error) string {
+	switch {
+	case errors.Is(err, ErrDeliveryOutOfGas):
+		return "delivery out of gas"
+	case errors.Is(err, ErrDeliveryExceedsBlockGasLimit):
+		return "delivery exceeds block gas limit"
+	default:
+		return "non-retryable failure"
+	}
+}
 
 // MessageManager is specific to each message protocol. The interface handles choosing which messages to send
 // for each message protocol, and performs the sending to the destination chain.
@@ -56,6 +89,10 @@ type MessageRoutingInfo struct {
 type Metrics interface {
 	IncSuccessfulRelayMessageCount()
 	IncFailedRelayMessageCount(failureReason string)
+	// IncAbandonedRelayMessageCount records a message the relayer gave up on permanently.
+	// Unlike a failure, an abandoned message is never retried and does not survive a restart,
+	// because its height is checkpointed without it.
+	IncAbandonedRelayMessageCount(failureReason string)
 	IncFetchSignatureAppRequestCount()
 	SetCreateSignedMessageLatencyMS(latency float64)
 }

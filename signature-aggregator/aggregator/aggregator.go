@@ -73,6 +73,9 @@ type SignatureAggregator struct {
 	validatorClient         clients.CanonicalValidatorState
 	underfundedL1NodeCache  *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 	signatureRequestTimeout time.Duration
+	// Maximum time to spend retrying to connect to a quorum of validators.
+	// Defaults to utils.ConnectToValidatorsTimeout; overridden in tests.
+	connectToValidatorsTimeout time.Duration
 
 	subnetMapsLock sync.Mutex
 
@@ -94,16 +97,17 @@ func NewSignatureAggregator(
 		return nil, fmt.Errorf("failed to create signature cache: %w", err)
 	}
 	sa := SignatureAggregator{
-		network:                 network,
-		subnetIDsByBlockchainID: map[ids.ID]ids.ID{},
-		subnetIDIsL1:            map[ids.ID]bool{},
-		metrics:                 metrics,
-		currentRequestID:        atomic.Uint32{},
-		signatureCache:          signatureCache,
-		messageCreator:          messageCreator,
-		validatorClient:         validatorClient,
-		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
-		signatureRequestTimeout: signatureRequestTimeout,
+		network:                    network,
+		subnetIDsByBlockchainID:    map[ids.ID]ids.ID{},
+		subnetIDIsL1:               map[ids.ID]bool{},
+		metrics:                    metrics,
+		currentRequestID:           atomic.Uint32{},
+		signatureCache:             signatureCache,
+		messageCreator:             messageCreator,
+		validatorClient:            validatorClient,
+		underfundedL1NodeCache:     cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
+		signatureRequestTimeout:    signatureRequestTimeout,
+		connectToValidatorsTimeout: utils.ConnectToValidatorsTimeout,
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
 	sa.currentRequestID.Store(rand.Uint32() | 1)
@@ -172,7 +176,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 			zap.Error(err),
 		)
 	}
-	err = utils.WithRetriesTimeout(connectOp, notify, utils.ConnectToValidatorsTimeout)
+	err = utils.WithRetriesTimeout(connectOp, notify, s.connectToValidatorsTimeout)
 	if err != nil {
 		return nil, err
 	}
