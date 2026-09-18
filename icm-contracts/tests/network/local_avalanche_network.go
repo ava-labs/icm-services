@@ -424,7 +424,7 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 			}
 		}
 	}
-	utils.PChainProposerVMWorkaround(pChainWallet)
+	utils.WaitForL1ToSeePChainHeight(ctx, utils.GetPChainInfo(cChainInfo), l1)
 	err = utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.EthClient, 5)
 	Expect(err).Should(BeNil())
 
