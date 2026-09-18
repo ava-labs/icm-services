@@ -1817,17 +1817,34 @@ func WaitForL1ToSeePChainHeight(
 	pChainInfo testinfo.L1TestInfo,
 	l1 testinfo.L1TestInfo,
 ) {
-	targetHeight, err := platformvmclient.NewClient(pChainInfo.NodeURIs[0]).GetHeight(ctx)
-	Expect(err).Should(BeNil())
+	deadline := time.Now().Add(pChainHeightWaitTimeout)
+
+	// The node may still be coming back from a restart (ConvertSubnet restarts the bootstrap
+	// nodes right before this wait) and answers 503 until its API is ready, so retry the
+	// height query rather than failing on the first error.
+	pChainURI := pChainInfo.NodeURIs[0]
+	pChainClient := platformvmclient.NewClient(pChainURI)
+	var targetHeight uint64
+	for {
+		var err error
+		targetHeight, err = pChainClient.GetHeight(ctx)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			Expect(err).Should(BeNil(), "querying P-Chain height from %s", pChainURI)
+		}
+		time.Sleep(pChainHeightPollInterval)
+	}
 	log.Info("Waiting for L1 nodes to see P-Chain height",
 		zap.Uint64("height", targetHeight),
 		zap.Int("nodes", len(l1.NodeURIs)),
 	)
 
-	deadline := time.Now().Add(pChainHeightWaitTimeout)
 	for _, uri := range l1.NodeURIs {
 		client := proposervm.NewJSONRPCClient(uri, l1.BlockchainID.String())
 		for {
+			// Errors are retried until the deadline for the same reason as above.
 			height, err := client.GetProposedHeight(ctx)
 			if err == nil && height >= targetHeight {
 				break
