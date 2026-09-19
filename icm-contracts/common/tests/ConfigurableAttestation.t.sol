@@ -74,8 +74,9 @@ contract ConfigurableAttestationTest is Test {
         uint8[] memory subsets = new uint8[](2);
         subsets[0] = 5;
         subsets[1] = 7;
-        ConfigurableAttestationVerifier confVerifier1 =
-            new ConfigurableAttestationVerifier(ConfigurableAttestation.subsetsToConfig(subsets), v);
+        ConfigurableAttestationVerifier confVerifier1 = new ConfigurableAttestationVerifier(
+            ConfigurableAttestation.subsetsToConfig(subsets), v
+        );
         assert(!confVerifier1.verifyMessage(message));
     }
 

@@ -28,9 +28,13 @@ library SafeERC20TransferFrom {
      * increase. Designed for safely handling ERC20 "fee on transfer" and "burn on transfer" implementations.
      */
     // solhint-disable private-vars-leading-underscore
-    function safeTransferFrom(IERC20 erc20, uint256 amount) internal returns (uint256) {
+    function safeTransferFrom(
+        IERC20 erc20,
+        uint256 amount
+    ) internal returns (uint256) {
         return safeTransferFrom(erc20, msg.sender, amount);
     }
+
     // solhint-enable private-vars-leading-underscore
 
     /**

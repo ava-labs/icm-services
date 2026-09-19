@@ -53,7 +53,8 @@ contract StorageSlotTest is Test {
     function testTokenHomeStorageSlot() public {
         bytes32 slot = _erc7201StorageSlot("TokenHome");
         assertEq(
-            new ERC20TokenHomeUpgradeable(ICMInitializable.Disallowed).TOKEN_HOME_STORAGE_LOCATION(),
+            new ERC20TokenHomeUpgradeable(ICMInitializable.Disallowed)
+                .TOKEN_HOME_STORAGE_LOCATION(),
             slot
         );
     }
@@ -72,8 +73,8 @@ contract StorageSlotTest is Test {
     ) private pure returns (bytes32) {
         return keccak256(
             abi.encode(
-                uint256(keccak256(abi.encodePacked("avalanche-ictt.storage.", storageName))) - 1
-            )
+            uint256(keccak256(abi.encodePacked("avalanche-ictt.storage.", storageName))) - 1
+        )
         ) & ~bytes32(uint256(0xff));
     }
 }
