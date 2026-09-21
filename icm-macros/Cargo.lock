@@ -92,7 +92,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -128,7 +128,7 @@ dependencies = [
  "futures",
  "futures-util",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -160,7 +160,7 @@ dependencies = [
  "alloy-rlp",
  "crc",
  "serde",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -186,7 +186,7 @@ dependencies = [
  "borsh",
  "k256",
  "serde",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -237,7 +237,7 @@ dependencies = [
  "alloy-provider",
  "alloy-sol-types",
  "async-trait",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -259,7 +259,7 @@ dependencies = [
  "op-alloy",
  "op-revm",
  "revm",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -313,7 +313,7 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
 ]
 
@@ -340,7 +340,7 @@ dependencies = [
  "futures-utils-wasm",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -371,7 +371,7 @@ dependencies = [
  "op-alloy",
  "op-revm",
  "revm",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -452,7 +452,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "url",
@@ -592,7 +592,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -606,7 +606,7 @@ dependencies = [
  "alloy-serde",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -634,7 +634,7 @@ dependencies = [
  "either",
  "elliptic-curve",
  "k256",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -653,7 +653,7 @@ dependencies = [
  "coins-ledger",
  "futures-util",
  "semver 1.0.28",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
 ]
 
@@ -673,7 +673,7 @@ dependencies = [
  "eth-keystore",
  "k256",
  "rand 0.8.6",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "zeroize",
 ]
 
@@ -689,7 +689,7 @@ dependencies = [
  "alloy-signer",
  "async-trait",
  "semver 1.0.28",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
  "trezor-client",
 ]
@@ -782,7 +782,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tower",
  "tracing",
@@ -857,7 +857,7 @@ dependencies = [
  "nybbles",
  "serde",
  "smallvec",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
 ]
 
@@ -1756,7 +1756,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -1927,7 +1927,7 @@ checksum = "d669bb552908e336ad5681789752033b45566b7e591aeaac7a614e58e5d6d8f2"
 dependencies = [
  "nix 0.31.2",
  "terminfo",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "which",
  "windows-sys 0.61.2",
 ]
@@ -3036,7 +3036,7 @@ checksum = "932dcfbd51320af5f27f1ba02d2e567dec332cac7d2c221ba45d8e767264c4dc"
 [[package]]
 name = "forge"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-dyn-abi",
@@ -3092,7 +3092,7 @@ dependencies = [
  "soldeer-commands",
  "soldeer-core 0.10.0",
  "strum",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "toml_edit 0.24.1+spec-1.1.0",
  "tower-http",
@@ -3107,7 +3107,7 @@ dependencies = [
 [[package]]
 name = "forge-doc"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-primitives",
  "derive_more",
@@ -3124,7 +3124,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solar-compiler",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "toml",
  "tracing",
 ]
@@ -3132,7 +3132,7 @@ dependencies = [
 [[package]]
 name = "forge-fmt"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "foundry-common",
  "foundry-config",
@@ -3144,7 +3144,7 @@ dependencies = [
 [[package]]
 name = "forge-lint"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "eyre",
  "foundry-common",
@@ -3153,13 +3153,13 @@ dependencies = [
  "heck",
  "rayon",
  "solar-compiler",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "forge-script"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3195,7 +3195,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "yansi",
@@ -3204,7 +3204,7 @@ dependencies = [
 [[package]]
 name = "forge-script-sequence"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-network",
  "alloy-primitives",
@@ -3221,7 +3221,7 @@ dependencies = [
 [[package]]
 name = "forge-sol-macro-gen"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-sol-macro-expander",
  "alloy-sol-macro-input",
@@ -3237,7 +3237,7 @@ dependencies = [
 [[package]]
 name = "forge-verify"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -3290,14 +3290,14 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
 ]
 
 [[package]]
 name = "foundry-cheatcodes"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3341,7 +3341,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solar-compiler",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "toml",
  "tracing",
  "walkdir",
@@ -3350,7 +3350,7 @@ dependencies = [
 [[package]]
 name = "foundry-cheatcodes-spec"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-sol-types",
  "foundry-macros",
@@ -3360,7 +3360,7 @@ dependencies = [
 [[package]]
 name = "foundry-cli"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-dyn-abi",
@@ -3406,7 +3406,7 @@ dependencies = [
 [[package]]
 name = "foundry-common"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3449,7 +3449,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solar-compiler",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tower",
  "tracing",
@@ -3463,7 +3463,7 @@ dependencies = [
 [[package]]
 name = "foundry-common-fmt"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -3503,7 +3503,7 @@ dependencies = [
  "solar-compiler",
  "svm-rs",
  "svm-rs-builds",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
  "winnow 0.7.15",
  "yansi",
@@ -3535,7 +3535,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
  "yansi",
 ]
@@ -3570,7 +3570,7 @@ dependencies = [
  "serde",
  "serde_json",
  "svm-rs",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "walkdir",
  "xxhash-rust",
@@ -3579,7 +3579,7 @@ dependencies = [
 [[package]]
 name = "foundry-config"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-primitives",
@@ -3606,7 +3606,7 @@ dependencies = [
  "serde_json",
  "solar-compiler",
  "soldeer-core 0.10.0",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "toml",
  "toml_edit 0.24.1+spec-1.1.0",
  "tracing",
@@ -3618,7 +3618,7 @@ dependencies = [
 [[package]]
 name = "foundry-debugger"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-primitives",
  "crossterm",
@@ -3637,7 +3637,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-evm",
@@ -3663,7 +3663,7 @@ dependencies = [
  "revm-inspectors",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "uuid 1.23.1",
@@ -3672,7 +3672,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-abi"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3685,7 +3685,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-core"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3717,7 +3717,7 @@ dependencies = [
  "revm-inspectors",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "url",
@@ -3726,7 +3726,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-coverage"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-primitives",
  "eyre",
@@ -3743,7 +3743,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-fuzz"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -3762,14 +3762,14 @@ dependencies = [
  "revm",
  "serde",
  "solar-compiler",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
 ]
 
 [[package]]
 name = "foundry-evm-networks"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-chains",
  "alloy-eips",
@@ -3784,7 +3784,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-traces"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -3832,7 +3832,7 @@ dependencies = [
  "revm",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "url",
@@ -3841,19 +3841,19 @@ dependencies = [
 [[package]]
 name = "foundry-linking"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-primitives",
  "foundry-compilers",
  "rayon",
  "semver 1.0.28",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "foundry-macros"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "proc-macro-error2",
  "proc-macro2",
@@ -3864,7 +3864,7 @@ dependencies = [
 [[package]]
 name = "foundry-primitives"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-consensus",
  "alloy-evm",
@@ -3894,14 +3894,14 @@ dependencies = [
  "lalrpop",
  "lalrpop-util",
  "phf 0.11.3",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "unicode-xid",
 ]
 
 [[package]]
 name = "foundry-wallets"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -3926,7 +3926,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempo-primitives",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tower",
  "tower-http",
@@ -4203,7 +4203,7 @@ dependencies = [
  "pest_derive",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4885,7 +4885,7 @@ dependencies = [
  "jni-sys 0.4.1",
  "log",
  "simd_cesu8",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "walkdir",
  "windows-link",
 ]
@@ -5002,7 +5002,7 @@ checksum = "bde5057d6143cc94e861d90f591b9303d6716c6b9602309150bd068853c10899"
 dependencies = [
  "hashbrown 0.16.1",
  "portable-atomic",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -5856,7 +5856,7 @@ dependencies = [
  "alloy-serde",
  "derive_more",
  "serde",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -5906,7 +5906,7 @@ dependencies = [
  "op-alloy-consensus",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -5928,7 +5928,7 @@ dependencies = [
  "serde",
  "sha2",
  "snap",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -6528,22 +6528,22 @@ dependencies = [
  "newtype-uuid",
  "quick-xml 0.38.4",
  "strip-ansi-escapes",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "uuid 1.23.1",
 ]
 
 [[package]]
 name = "quick-junit"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eba1124f9c87c1b2f9e9665f0519ca75b09f9a5504e42e72d23cad8da63b52f"
+checksum = "bae23b8e1a59a90f7bf98caa2f4c8c2eedf6df011c6c88ed633e85a87c84526e"
 dependencies = [
  "chrono",
  "indexmap 2.14.0",
  "newtype-uuid",
  "quick-xml 0.41.0",
  "strip-ansi-escapes",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "uuid 1.23.1",
 ]
 
@@ -6588,7 +6588,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "web-time",
@@ -6610,7 +6610,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "slab",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tinyvec",
  "tracing",
  "web-time",
@@ -6764,7 +6764,7 @@ dependencies = [
  "kasuari",
  "lru",
  "strum",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "unicode-segmentation",
  "unicode-truncate",
  "unicode-width 0.2.2",
@@ -6844,7 +6844,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
 dependencies = [
  "getrandom 0.2.17",
  "libredox",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -6870,7 +6870,7 @@ dependencies = [
 [[package]]
 name = "reforge"
 version = "0.1.0"
-source = "git+https://github.com/ava-labs/reforge?rev=205dca8d42f9c61603bbb75b08899ca070f51fb6#205dca8d42f9c61603bbb75b08899ca070f51fb6"
+source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
 dependencies = [
  "alloy-primitives",
  "chrono",
@@ -6891,14 +6891,14 @@ dependencies = [
  "itertools 0.15.0",
  "libc",
  "opener",
- "quick-junit 0.7.0",
+ "quick-junit 0.8.0",
  "rayon",
  "regex",
  "semver 1.0.28",
  "serde",
  "serde_json",
  "solar-compiler",
- "soldeer-core 0.11.0",
+ "soldeer-core 0.12.0",
  "tokio",
  "tracing",
  "yansi",
@@ -7091,7 +7091,7 @@ dependencies = [
  "revm-state 8.1.1",
  "secp256k1 0.30.0",
  "serde",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -7203,7 +7203,7 @@ dependencies = [
  "revm-primitives 22.1.0",
  "revm-state 9.0.0",
  "serde",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -7258,7 +7258,7 @@ dependencies = [
  "revm",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -8081,7 +8081,7 @@ checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
 dependencies = [
  "num-bigint",
  "num-traits",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "time",
 ]
 
@@ -8205,7 +8205,7 @@ dependencies = [
  "solar-config",
  "solar-data-structures",
  "solar-macros",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tracing",
  "unicode-width 0.2.2",
 ]
@@ -8309,19 +8309,19 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "toml_edit 0.23.10+spec-1.0.0",
  "uuid 1.23.1",
- "zip",
+ "zip 4.6.1",
  "zip-extract",
 ]
 
 [[package]]
 name = "soldeer-core"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d32eb6865b1ba187930003d4bbcfb6bdc71747a55845f9807aa06bbf35ea1fb"
+checksum = "2ca40c75555686674209accf592806aaa42a9a518e87fc4cae03fd62e4efdccd"
 dependencies = [
  "bon",
  "chrono",
@@ -8340,12 +8340,11 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "toml_edit 0.25.11+spec-1.1.0",
  "uuid 1.23.1",
- "zip",
- "zip-extract",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -8546,9 +8545,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "url",
- "zip",
+ "zip 4.6.1",
 ]
 
 [[package]]
@@ -8579,6 +8578,17 @@ name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8742,11 +8752,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.18"
+version = "2.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
+checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
 dependencies = [
- "thiserror-impl 2.0.18",
+ "thiserror-impl 2.0.20",
 ]
 
 [[package]]
@@ -8762,13 +8772,13 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.18"
+version = "2.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
+checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -9201,7 +9211,7 @@ dependencies = [
  "hex",
  "protobuf",
  "rusb",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tracing",
 ]
 
@@ -9226,7 +9236,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "sha1",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "utf-8",
 ]
 
@@ -9243,8 +9253,14 @@ dependencies = [
  "log",
  "rand 0.9.4",
  "sha1",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
+
+[[package]]
+name = "typed-path"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
 
 [[package]]
 name = "typeid"
@@ -9707,7 +9723,7 @@ dependencies = [
  "miette",
  "normalize-path",
  "notify",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "watchexec-events",
@@ -9734,7 +9750,7 @@ checksum = "3fd4537617a323437550d34c73a6aeeb1b489bbcc526e63f044ca3e59347101f"
 dependencies = [
  "miette",
  "nix 0.30.1",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -10349,7 +10365,7 @@ dependencies = [
  "pharos",
  "rustc_version 0.4.1",
  "send_wrapper",
- "thiserror 2.0.18",
+ "thiserror 2.0.20",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -10511,14 +10527,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "zip"
+version = "8.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap 2.14.0",
+ "memchr",
+ "typed-path",
+ "zopfli",
+]
+
+[[package]]
 name = "zip-extract"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fa5b9958fd0b5b685af54f2c3fa21fca05fe295ebaf3e77b6d24d96c4174037"
 dependencies = [
  "log",
- "thiserror 2.0.18",
- "zip",
+ "thiserror 2.0.20",
+ "zip 4.6.1",
 ]
 
 [[package]]
