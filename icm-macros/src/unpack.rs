@@ -144,7 +144,8 @@ pub fn derive_unpack(
             .name
             .as_real()
             .unwrap();
-        data.insert(path, insertion_offset, format!("\n\n{code}\n"));
+        let text = format!("\n\n{code}\n");
+        data.entry(path, &text).insert(insertion_offset);
     }
 
     for enum_def in ctx.hir.enums() {
@@ -176,7 +177,8 @@ pub fn derive_unpack(
             .name
             .as_real()
             .unwrap();
-        data.insert(path, insertion_offset, format!("\n\n{code}\n"));
+        let text = format!("\n\n{code}\n");
+        data.entry(path, &text).insert(insertion_offset);
     }
     Ok(())
 }
