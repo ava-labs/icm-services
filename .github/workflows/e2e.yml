@@ -122,7 +122,16 @@ jobs:
           path: ~/.teleporter-deps/avalanchego
           key: avalanchego-${{ runner.os }}-${{ runner.arch }}-${{ steps.avalanchego.outputs.version }}-go${{ steps.avalanchego.outputs.go-version }}
 
+      # Foundry is pinned in scripts/install_foundry.sh, so the key changes with the pin.
+      - name: Cache Foundry
+        id: foundry-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.foundry
+          key: foundry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install_foundry.sh') }}
+
       - name: Install Foundry
+        if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: ./scripts/install_foundry.sh
 
       - name: Install geth
