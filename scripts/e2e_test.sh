@@ -110,8 +110,9 @@ BASEDIR=${BASEDIR:-"$HOME/.teleporter-deps"}
 # already present (for example restored from the CI cache). The pinned version is a commit hash,
 # so a fresh install clones and compiles avalanchego and subnet-evm, which takes several minutes.
 # The stamp records which version the directory holds so that a version bump triggers a rebuild.
-AVAGO_INSTALL_STAMP=$BASEDIR/avalanchego/.avalanchego-version
-if [[ -x "$BASEDIR/avalanchego/avalanchego" && "$(cat "$AVAGO_INSTALL_STAMP" 2>/dev/null)" == "$AVALANCHEGO_VERSION" ]]; then
+AVAGO_INSTALL_STAMP="$BASEDIR/avalanchego/.avalanchego-version"
+AVAGO_INSTALLED_VERSION="$(cat "$AVAGO_INSTALL_STAMP" 2>/dev/null || true)"
+if [[ -x "$BASEDIR/avalanchego/avalanchego" && "$AVAGO_INSTALLED_VERSION" == "$AVALANCHEGO_VERSION" ]]; then
     echo "Reusing avalanchego $AVALANCHEGO_VERSION at $BASEDIR/avalanchego"
 else
     rm -rf $BASEDIR/avalanchego
