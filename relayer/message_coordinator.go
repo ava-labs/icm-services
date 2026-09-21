@@ -98,7 +98,7 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	}
 
 	messageHandler, err := messageHandlerFactory.NewMessageHandler(
-		appRelayer.logger,
+		appRelayer.logger.With(zap.Stringer("originTxID", message.SourceTxID)),
 		message,
 		appRelayer.destinationClient,
 		appRelayer.signatureAggregator,
