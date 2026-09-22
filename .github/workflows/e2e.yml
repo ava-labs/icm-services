@@ -33,28 +33,24 @@ jobs:
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           filters: |
+            shared: &shared
+              - '.github/workflows/e2e.yml'
+              - 'go.mod'
+              - 'go.sum'
+              - '**/*.go'
+              - 'scripts/**'
+              - 'tests/**'
+              - 'ethereum/**'
             contracts:
-              - '.github/workflows/e2e.yml'
-              - 'go.mod'
-              - 'icm-contracts/contracts/**'
-              - 'icm-contracts/tests/**'
-              - 'icm-contracts/utils/**'
-              - 'scripts/**'
+              - *shared
+              - 'icm-contracts/avalanche/**'
+              - 'icm-contracts/common/**'
+              - 'icm-contracts/ethereum/**'
+              - 'lib/**'
+              - 'foundry.toml'
+              - 'remappings.txt'
             services:
-              - '.github/workflows/e2e.yml'
-              - 'go.mod'
-              - 'icm-contracts/tests/**'
-              - 'icm-contracts/utils/**'
-              - 'config/**'
-              - 'database/**'
-              - 'messages/**'
-              - 'peers/**'
-              - 'relayer/**'
-              - 'signature-aggregator/**'
-              - 'scripts/**'
-              - 'types/**'
-              - 'utils/**'
-              - 'vms/**'
+              - *shared
 
       # Every push to main runs every suite. On pull requests the contract suites run when
       # contracts changed and the services suite runs when services changed. Each entry
