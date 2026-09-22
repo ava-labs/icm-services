@@ -1817,7 +1817,10 @@ func WaitForL1ToSeePChainHeight(
 	pChainInfo testinfo.L1TestInfo,
 	l1 testinfo.L1TestInfo,
 ) {
-	deadline := time.Now().Add(pChainHeightWaitTimeout)
+	ctx, cancel := context.WithTimeout(ctx, pChainHeightWaitTimeout)
+	defer cancel()
+	poll := time.NewTicker(pChainHeightPollInterval)
+	defer poll.Stop()
 
 	// The node may still be coming back from a restart (ConvertSubnet restarts the bootstrap
 	// nodes right before this wait) and answers 503 until its API is ready, so retry the
@@ -1831,10 +1834,11 @@ func WaitForL1ToSeePChainHeight(
 		if err == nil {
 			break
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-poll.C:
+		case <-ctx.Done():
 			Expect(err).Should(BeNil(), "querying P-Chain height from %s", pChainURI)
 		}
-		time.Sleep(pChainHeightPollInterval)
 	}
 	log.Info("Waiting for L1 nodes to see P-Chain height",
 		zap.Uint64("height", targetHeight),
@@ -1844,17 +1848,18 @@ func WaitForL1ToSeePChainHeight(
 	for _, uri := range l1.NodeURIs {
 		client := proposervm.NewJSONRPCClient(uri, l1.BlockchainID.String())
 		for {
-			// Errors are retried until the deadline for the same reason as above.
+			// Errors are retried until the timeout for the same reason as above.
 			height, err := client.GetProposedHeight(ctx)
 			if err == nil && height >= targetHeight {
 				break
 			}
-			if time.Now().After(deadline) {
+			select {
+			case <-poll.C:
+			case <-ctx.Done():
 				Expect(err).Should(BeNil(), "querying proposed P-Chain height of %s", uri)
 				Expect(height).Should(BeNumerically(">=", targetHeight),
 					"node %s did not reach P-Chain height %d within %s", uri, targetHeight, pChainHeightWaitTimeout)
 			}
-			time.Sleep(pChainHeightPollInterval)
 		}
 	}
 }
