@@ -54,6 +54,7 @@ func BuildExecutionProof(
 	anchorBlock *ssz.Node,
 	anchorState *ssz.Node,
 	targetState *ssz.Node,
+	execHeader *ssz.Node,
 	anchorBlockRoot common.Hash,
 	anchorSlot uint64,
 	targetSlot uint64,
@@ -100,11 +101,11 @@ func BuildExecutionProof(
 	// 4. Receipts proof: execution payload header root -> receipts root.
 
 	// First, get the execution header node from the target beacon state tree.
-	execHeaderNode, err := targetState.Get(gIndexExecPayloadHeader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract execution payload header subtree: %w", err)
 	}
-	receiptsProof, err := proveAgainst(execHeaderNode, gIndexReceiptsRoot, execHeaderRoot)
+	// The execHeader is passed in, but execHeaderRoot is verified against the chain of trust.
+	receiptsProof, err := proveAgainst(execHeader, gIndexReceiptsRoot, execHeaderRoot)
 	if err != nil {
 		return nil, fmt.Errorf("receipts root proof generation failed: %w", err)
 	}
