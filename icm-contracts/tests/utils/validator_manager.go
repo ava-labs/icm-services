@@ -17,9 +17,11 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
+	platformvmclient "github.com/ava-labs/avalanchego/vms/platformvm"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpMessage "github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
+	"github.com/ava-labs/avalanchego/vms/proposervm"
 	pwallet "github.com/ava-labs/avalanchego/wallet/chain/p/wallet"
 	proxyadmin "github.com/ava-labs/icm-services/abi-bindings/go/ProxyAdmin"
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
@@ -52,6 +54,12 @@ const (
 	DefaultWeightToValueFactor     uint64 = 1e12
 	DefaultPChainAddress           string = "P-local18jma8ppw3nhx5r4ap8clazz0dps7rv5u00z96u"
 	DefaultRewardRecipientAddress  string = "0x000000000000000000000000000000000000002a"
+)
+
+const (
+	// How long WaitForL1ToSeePChainHeight polls before failing the test.
+	pChainHeightWaitTimeout  = 60 * time.Second
+	pChainHeightPollInterval = 500 * time.Millisecond
 )
 
 type ValidatorManagerConcreteType int
@@ -596,7 +604,7 @@ func InitiateAndCompleteNativeValidatorRegistration(
 		signedWarpMessage.Bytes(),
 	)
 	Expect(err).Should(BeNil())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -677,7 +685,7 @@ func InitiateAndCompleteERC20ValidatorRegistration(
 		signedWarpMessage.Bytes(),
 	)
 	Expect(err).Should(BeNil())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -748,7 +756,7 @@ func InitiateAndCompletePoAValidatorRegistration(
 		signedWarpMessage.Bytes(),
 	)
 	Expect(err).Should(BeNil())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, ownerKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1154,7 +1162,7 @@ func InitiateAndCompleteEndInitialPoSValidation(
 
 	// Deliver the Warp message to the P-Chain
 	pchainWallet.IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1257,7 +1265,7 @@ func InitiateAndCompleteEndPoSValidation(
 
 	// Deliver the Warp message to the P-Chain
 	pchainWallet.IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1339,7 +1347,7 @@ func InitiateAndCompleteEndInitialPoAValidation(
 
 	// Deliver the Warp message to the P-Chain
 	pchainWallet.IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, ownerKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1794,11 +1802,66 @@ func PackInitialValidator(iv interface{}) ([]byte, error) {
 	return b, nil
 }
 
-func PChainProposerVMWorkaround(
-	pchainWallet pwallet.Wallet,
+// WaitForL1ToSeePChainHeight blocks until every node of [l1] would build its next block on a
+// P-Chain height at least as high as the one currently accepted by the node the P-Chain wallet
+// issues through (pChainInfo.NodeURIs[0]). Call it after issuing a P-Chain transaction and
+// before advancing the L1, so that the L1's subsequent blocks, and the validator set and Warp
+// messages derived from them, reflect that transaction.
+//
+// The nodes run with proposervm-use-current-height, so this normally resolves within a couple
+// of seconds. It also covers nodes that are still restarting, since they cannot answer until
+// they are back up. It replaces a fixed 30 second sleep that accounted for roughly half of the
+// validator-manager suite's runtime.
+func WaitForL1ToSeePChainHeight(
+	ctx context.Context,
+	pChainInfo testinfo.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 ) {
-	log.Info("Waiting for P-Chain...")
-	time.Sleep(30 * time.Second)
+	ctx, cancel := context.WithTimeout(ctx, pChainHeightWaitTimeout)
+	defer cancel()
+	poll := time.NewTicker(pChainHeightPollInterval)
+	defer poll.Stop()
+
+	// The node may still be coming back from a restart (ConvertSubnet restarts the bootstrap
+	// nodes right before this wait) and answers 503 until its API is ready, so retry the
+	// height query rather than failing on the first error.
+	pChainURI := pChainInfo.NodeURIs[0]
+	pChainClient := platformvmclient.NewClient(pChainURI)
+	var targetHeight uint64
+	for {
+		var err error
+		targetHeight, err = pChainClient.GetHeight(ctx)
+		if err == nil {
+			break
+		}
+		select {
+		case <-poll.C:
+		case <-ctx.Done():
+			Expect(err).Should(BeNil(), "querying P-Chain height from %s", pChainURI)
+		}
+	}
+	log.Info("Waiting for L1 nodes to see P-Chain height",
+		zap.Uint64("height", targetHeight),
+		zap.Int("nodes", len(l1.NodeURIs)),
+	)
+
+	for _, uri := range l1.NodeURIs {
+		client := proposervm.NewJSONRPCClient(uri, l1.BlockchainID.String())
+		for {
+			// Errors are retried until the timeout for the same reason as above.
+			height, err := client.GetProposedHeight(ctx)
+			if err == nil && height >= targetHeight {
+				break
+			}
+			select {
+			case <-poll.C:
+			case <-ctx.Done():
+				Expect(err).Should(BeNil(), "querying proposed P-Chain height of %s", uri)
+				Expect(height).Should(BeNumerically(">=", targetHeight),
+					"node %s did not reach P-Chain height %d within %s", uri, targetHeight, pChainHeightWaitTimeout)
+			}
+		}
+	}
 }
 
 func AdvanceProposerVM(
