@@ -20,8 +20,7 @@ contract ReceiptQueueTest is Test {
 
     // Add 3 elements to the queue.
     TeleporterMessageReceipt private _receipt1 = TeleporterMessageReceipt({
-        receivedMessageNonce: 543,
-        relayerRewardAddress: 0x10eB43ef5982628728E3E4bb9F78834f67Fbb40b
+        receivedMessageNonce: 543, relayerRewardAddress: 0x10eB43ef5982628728E3E4bb9F78834f67Fbb40b
     });
     TeleporterMessageReceipt private _receipt2 = TeleporterMessageReceipt({
         receivedMessageNonce: 684384,

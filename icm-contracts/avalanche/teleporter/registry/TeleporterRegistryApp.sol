@@ -64,7 +64,10 @@ abstract contract TeleporterRegistryApp is Context, ITeleporterReceiver, Reentra
      * @param minTeleporterVersion The minimum Teleporter version allowed for delivering messages.
      * The minimum version should be less than or equal to the latest Teleporter version, and greater than 0.
      */
-    constructor(address teleporterRegistryAddress, uint256 minTeleporterVersion) {
+    constructor(
+        address teleporterRegistryAddress,
+        uint256 minTeleporterVersion
+    ) {
         require(
             teleporterRegistryAddress != address(0),
             "TeleporterRegistryApp: zero Teleporter registry address"
@@ -253,9 +256,8 @@ abstract contract TeleporterRegistryApp is Context, ITeleporterReceiver, Reentra
                 messageInput.feeInfo.feeTokenAddress != address(0),
                 "TeleporterRegistryApp: zero fee token address"
             );
-            IERC20(messageInput.feeInfo.feeTokenAddress).safeIncreaseAllowance(
-                address(teleporterMessenger), messageInput.feeInfo.amount
-            );
+            IERC20(messageInput.feeInfo.feeTokenAddress)
+                .safeIncreaseAllowance(address(teleporterMessenger), messageInput.feeInfo.amount);
         }
         return teleporterMessenger.sendCrossChainMessage(messageInput);
     }

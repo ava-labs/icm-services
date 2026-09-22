@@ -132,7 +132,10 @@ library ScaleCodec {
     }
 
     // Read a byte at a specific index and return it as type uint8
-    function readByteAtIndex(bytes memory data, uint8 index) internal pure returns (uint8) {
+    function readByteAtIndex(
+        bytes memory data,
+        uint8 index
+    ) internal pure returns (uint8) {
         return uint8(data[index]);
     }
 
