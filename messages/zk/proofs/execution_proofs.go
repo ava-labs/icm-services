@@ -99,11 +99,6 @@ func BuildExecutionProof(
 	execHeaderRoot := common.BytesToHash(execHeaderProof.Leaf)
 
 	// 4. Receipts proof: execution payload header root -> receipts root.
-
-	// First, get the execution header node from the target beacon state tree.
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract execution payload header subtree: %w", err)
-	}
 	// The execHeader is passed in, but execHeaderRoot is verified against the chain of trust.
 	receiptsProof, err := proveAgainst(execHeader, gIndexReceiptsRoot, execHeaderRoot)
 	if err != nil {
