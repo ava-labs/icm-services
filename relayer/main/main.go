@@ -322,8 +322,7 @@ func main() {
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		for _, protocol := range sourceBlockchain.Protocols() {
-			// We don't need to spawn a listener for the off-chain registry.
-			if protocol.Type == config.OFF_CHAIN_REGISTRY {
+			if !protocol.HasListener() {
 				continue
 			}
 			// errgroup will cancel the context when the first goroutine returns an error
@@ -555,6 +554,15 @@ func createApplicationRelayersForSourceChain(
 	// Each ApplicationRelayer determines its starting height based on the configuration and database state.
 	// The Listener begins processing messages starting from the minimum height across all the ApplicationRelayers
 	// If catch up is disabled, the first block the ApplicationRelayer processes is the next block after the current height
+	//
+	// Only the relayers of protocols with a listener count towards the minimum. A relayer's
+	// checkpoint is only advanced by its own protocol's listener, so the checkpoint of a
+	// listener-less relayer never moves and would otherwise pin the starting height forever.
+	protocolHasListener := make(map[common.Address]bool)
+	for _, protocol := range sourceBlockchain.Protocols() {
+		protocolHasListener[protocol.Address] = protocol.HasListener()
+	}
+
 	var height, minHeight uint64
 	if !cfg.ProcessMissedBlocks {
 		logger.Info("processed-missed-blocks set to false, starting processing from chain head")
@@ -585,7 +593,7 @@ func createApplicationRelayersForSourceChain(
 			}
 
 			// Update the min height. This is the height that the listener will start processing from
-			if minHeight == 0 || height < minHeight {
+			if protocolHasListener[relayerID.ProtocolAddress] && (minHeight == 0 || height < minHeight) {
 				minHeight = height
 			}
 		}
