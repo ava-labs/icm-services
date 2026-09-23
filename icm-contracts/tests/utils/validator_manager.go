@@ -1282,10 +1282,9 @@ func waitForNodeToReportUptime(
 		case <-poll.C:
 		case <-ctx.Done():
 			Expect(ctx.Err()).Should(BeNil(),
-				"node %s did not report positive uptime for validation %s within %s (last error: %v, last seen: %+v)",
+				"node %s did not report positive uptime for validation %s before the context deadline (last error: %v, last seen: %+v)",
 				vdr.NodeID,
 				validationID,
-				validatorUptimeWaitTimeout,
 				err,
 				reported,
 			)
