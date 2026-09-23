@@ -66,7 +66,10 @@ func BuildExecutionProof(
 	if anchorSlot-targetSlot > StateRootsVectorSize {
 		return nil, fmt.Errorf(
 			"target slot (%d) is outside the anchor slot's (%d) state_roots window (%d slots)",
-			targetSlot, anchorSlot, StateRootsVectorSize)
+			targetSlot,
+			anchorSlot,
+			StateRootsVectorSize,
+		)
 	}
 
 	// 1. Anchor state proof: trusted anchor beacon block root -> anchor beacon state root, where the beacon block
@@ -164,7 +167,8 @@ func proveAgainst(node *ssz.Node, gIndex int, expectedRoot common.Hash) (*ssz.Pr
 	if !ok {
 		return nil, fmt.Errorf(
 			"proof for gindex %d does not verify against expected root %s (wrong or mismatched input tree)",
-			gIndex, expectedRoot.Hex())
+			gIndex, expectedRoot.Hex(),
+		)
 	}
 	return proof, nil
 }

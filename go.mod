@@ -13,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.4
 	github.com/aws/aws-sdk-go-v2/service/kms v1.60.0
 	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/ferranbt/fastssz v0.1.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
@@ -36,10 +37,7 @@ require (
 
 // This is a placeholder require directive since the replacement below is necessary and for replacement to work, the require directive must be present. Separating it out here since it's an indirect requirement.
 
-require (
-	github.com/ava-labs/avalanchego/graft/evm v1.15.0
-	github.com/ferranbt/fastssz v0.1.2
-)
+require github.com/ava-labs/avalanchego/graft/evm v1.15.0
 
 // These are manual replacements pointing to the same commit as the avalanchego module. They must be updated whenever the avalanchego version is updated. Version is ignored but the short commit hash and the timestamp must be accepted by go mod tidy.
 replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260908201129-70bd6d063b73
