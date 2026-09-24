@@ -3,7 +3,6 @@ package staking
 import (
 	"context"
 	"math/big"
-	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/units"
@@ -107,7 +106,6 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
 	)
-	validatorStartTime := time.Now()
 	validationID := ids.ID(registrationInitiatedEvent.ValidationID)
 
 	//
@@ -279,7 +277,7 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 		nodes[0],
 		1,
 		true,
-		validatorStartTime,
+		nodes,
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
 	)
