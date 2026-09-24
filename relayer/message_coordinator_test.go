@@ -108,7 +108,7 @@ func committedHeight(t *testing.T, registry *prometheus.Registry, id database.Re
 			}
 		}
 	}
-	t.Fatalf("no committed height metric for relayer %s", id.ID)
+	t.Fatalf("no committed height metric for relayer %s", id.ID.String())
 	return 0
 }
 
