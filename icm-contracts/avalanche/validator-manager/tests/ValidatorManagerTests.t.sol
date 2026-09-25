@@ -387,6 +387,31 @@ abstract contract ValidatorManagerTest is Test {
         manager.initializeValidatorSet(conversionData, 0);
     }
 
+    // The conversionID authenticates only the packed bytes, in which BLS keys carry no length prefix. A key of
+    // the wrong length must be rejected even though the data hashes to the attested conversionID, otherwise the
+    // same bytes could be re-split into different keys and weights.
+    function testInitializeValidatorSetInvalidBLSKeyLength() public {
+        vm.prank(address(0x123));
+        IACP99Manager manager = _setUp();
+
+        _mockGetBlockchainID();
+
+        uint256[2] memory badLengths = [uint256(47), uint256(49)];
+        for (uint256 i; i < badLengths.length; ++i) {
+            ConversionData memory conversionData = _defaultConversionData();
+            conversionData.initialValidators[0].blsPublicKey = new bytes(badLengths[i]);
+            bytes32 id = sha256(ValidatorMessages.packConversionData(conversionData));
+
+            _mockGetPChainWarpMessage(ValidatorMessages.packSubnetToL1ConversionMessage(id), true);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    IValidatorManager.InvalidBLSKeyLength.selector, badLengths[i]
+                )
+            );
+            manager.initializeValidatorSet(conversionData, 0);
+        }
+    }
+
     function testRemoveValidatorTotalWeight5() public {
         // Use prank here, because otherwise each test will end up with a different contract address, leading to a different subnet conversion hash.
         vm.prank(address(0x123));

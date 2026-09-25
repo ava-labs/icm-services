@@ -215,7 +215,8 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
         }
 
         // Check that the blockchainID and validator manager address in the ConversionData correspond to this contract.
-        // Other validation checks are done by the P-Chain when converting the L1, so are not required here.
+        // Other validation checks are done by the P-Chain when converting the L1, so are not required here, except
+        // for the field lengths checked below, which the hash comparison alone cannot guarantee.
         if (conversionData.validatorManagerBlockchainID != WARP_MESSENGER.getBlockchainID()) {
             revert InvalidValidatorManagerBlockchainID(conversionData.validatorManagerBlockchainID);
         }
@@ -243,6 +244,13 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
             }
             if (initialValidator.nodeID.length != NODE_ID_LENGTH) {
                 revert InvalidNodeID(initialValidator.nodeID);
+            }
+            // The conversionID only authenticates the packed bytes, and the BLS public key is packed without a
+            // length prefix. Its length must therefore be pinned to the P-Chain's fixed size, otherwise a
+            // different split of the same bytes into keys and weights would pass the hash check and register
+            // validators with weights the P-Chain never agreed to.
+            if (initialValidator.blsPublicKey.length != BLS_PUBLIC_KEY_LENGTH) {
+                revert InvalidBLSKeyLength(initialValidator.blsPublicKey.length);
             }
 
             // Validation ID of the initial validators is the sha256 hash of the
