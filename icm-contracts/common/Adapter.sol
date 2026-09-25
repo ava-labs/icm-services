@@ -42,13 +42,13 @@ contract Adapter is IAdapter {
         }
     }
 
-    /// @notice Routes an outbound message to the inner adapter to its destination chain.
-    /// @dev Enforces msg.sender == originTeleporterAddress at the wrapper level, which is the
-    /// entry-point for messaging protocols like Teleporter. The inner adapters make their own
-    /// check as well (see {ITeleporterMessengerV2-messageSender}): they accept this contract as a caller because
-    /// the messenger named in the message is configured to send through it, and reject anyone
-    /// else, so bypassing this wrapper does not bypass the check. The flow is:
-    /// Teleporter -> Adapter (this contract) -> inner adapter (e.g. a registry contract).
+    /// @notice Routes an outbound message through the inner adapter to its destination chain.
+    /// @dev Enforces that msg.sender is the message's originTeleporterAddress. This contract is the
+    /// entry-point for messaging protocols like Teleporter. Inner adapters also perform their own check
+    /// (see {ITeleporterMessengerV2-messageSender}): they accept this contract as a caller because the
+    /// messenger named in the message is configured to send through it, and reject anyone else, so
+    /// bypassing this wrapper does not bypass the check.
+    /// Flow: Teleporter -> Adapter (this contract) -> inner adapter (e.g., a registry contract).
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
