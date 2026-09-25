@@ -254,4 +254,14 @@ interface ITeleporterMessengerV2 {
         bytes32 sourceBlockchainID,
         uint256 index
     ) external view returns (TeleporterMessageReceipt memory);
+
+    /**
+     * @notice The adapter this messenger sends its messages through.
+     * @dev Contracts that turn messages into attestable cross-chain messages (e.g. by emitting them
+     * through the Warp precompile) must only accept a message from its originTeleporterAddress or
+     * from that messenger's messageSender, which itself only forwards messages from the messenger.
+     * A destination messenger only accepts messages naming its own address as the origin, so this
+     * is what stops anyone else from originating a message the destination would accept.
+     */
+    function messageSender() external view returns (IMessageSender);
 }
