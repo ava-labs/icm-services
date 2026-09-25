@@ -775,9 +775,11 @@ func TestUnmarshalResponse(t *testing.T) {
 	emptySignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: []byte{}})
 	require.NoError(t, err)
 
-	randSignature := make([]byte, 96)
+	randSignature := make([]byte, bls.SignatureLen)
 	_, err = rand.Read(randSignature)
 	require.NoError(t, err)
+	var expectedRandSignature blsSignatureBuf
+	copy(expectedRandSignature[:], randSignature)
 
 	randSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: randSignature})
 	require.NoError(t, err)
@@ -814,7 +816,7 @@ func TestUnmarshalResponse(t *testing.T) {
 		{
 			name:              "random signature",
 			appResponseBytes:  randSignatureResponse,
-			expectedSignature: blsSignatureBuf(randSignature),
+			expectedSignature: expectedRandSignature,
 		},
 		{
 			// A non-empty protobuf carrying only an unknown field leaves the signature
