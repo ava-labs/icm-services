@@ -7,7 +7,10 @@ pragma solidity 0.8.30;
 
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {
-    IAdapter, TeleporterMessageV2, TeleporterICMMessage
+    IAdapter,
+    ITeleporterMessengerV2,
+    TeleporterMessageV2,
+    TeleporterICMMessage
 } from "@common/ITeleporterMessengerV2.sol";
 
 /**
@@ -31,13 +34,22 @@ contract WarpAdapter is IAdapter {
     IWarpMessenger public constant WARP_MESSENGER =
         IWarpMessenger(0x0200000000000000000000000000000000000005);
 
-    // This function signature can be changed to accept bytes to make it more generic, but I think
-    // having the TeleporterMessage struct is more clear for now.
-    // We should also consider having the warp message just be the hash of the teleporter message to save gas.
-    // As-is, we need to pass the full teleporter message in the transaction predicate, and the transaction data.
+    /**
+     * @notice Emits [message] through the Warp precompile so this chain's validators can attest to it.
+     * @dev Only the message's originTeleporterAddress, or the adapter that messenger sends through (e.g. an
+     * Adapter wrapper), may call this. verifyMessage on the destination chain accepts any Warp message emitted
+     * by this same address, so without this check anyone could originate a message that is delivered as if the
+     * messenger had sent it. See {ITeleporterMessengerV2-messageSender}.
+     */
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external override {
+        require(
+            msg.sender == message.originTeleporterAddress
+                || msg.sender
+                    == address(ITeleporterMessengerV2(message.originTeleporterAddress).messageSender()),
+            "WarpAdapter: unauthorized sender"
+        );
         // Submit the message to the Warp precompile.
         WARP_MESSENGER.sendWarpMessage(abi.encode(message));
     }

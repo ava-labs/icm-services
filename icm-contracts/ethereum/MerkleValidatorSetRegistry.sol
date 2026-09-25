@@ -11,7 +11,7 @@ import {
     TeleporterICMMessage,
     TeleporterMessageV2
 } from "@common/TeleporterMessageV2.sol";
-import {IAdapter} from "@common/ITeleporterMessengerV2.sol";
+import {IAdapter, ITeleporterMessengerV2} from "@common/ITeleporterMessengerV2.sol";
 import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 
 /**
@@ -58,13 +58,22 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         });
     }
 
-    /// @dev sendMessage has no msg.sender == originTeleporterAddress check. This check must live in
-    /// the contract that the messenger (Teleporter) calls directly, currently in Adapter.sol,
-    /// in order to prevent unauthorized calls to sendMessage. To clarify, this contract cannot be used as the
-    /// direct messaging entry-point.
+    /**
+     * @notice Emits [message] through the Warp precompile so the source chain's validators can attest to it.
+     * @dev Only the message's originTeleporterAddress, or the adapter that messenger sends through (e.g. an
+     * Adapter wrapper), may call this. The message becomes verifiable on the destination chain exactly as
+     * emitted, so the check must be made here, where the attestable message is produced, and not only in an
+     * optional wrapper. See {ITeleporterMessengerV2-messageSender}.
+     */
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {
+        require(
+            msg.sender == message.originTeleporterAddress
+                || msg.sender
+                    == address(ITeleporterMessengerV2(message.originTeleporterAddress).messageSender()),
+            "unauthorized sender"
+        );
         IWarpMessenger(_WARP_PRECOMPILE_ADDRESS).sendWarpMessage(
             TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message)
         );
