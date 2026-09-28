@@ -10,16 +10,20 @@ import {
     IAdapter,
     TeleporterICMMessage,
     TeleporterMessageV2,
-    TeleporterMessageReceipt
+    TeleporterMessageInput,
+    TeleporterMessageReceipt,
+    TeleporterFeeInfo
 } from "../ITeleporterMessengerV2.sol";
 import {TeleporterMessengerV2} from "../TeleporterMessengerV2.sol";
 
 /// @dev Adapter that accepts every message, so tests can reach the messenger's own checks.
 contract AcceptAllAdapter is IAdapter {
+    event MessageSent(TeleporterMessageV2 message);
+
     function sendMessage(
-        TeleporterMessageV2 calldata
-    ) external pure {
-        revert("AcceptAllAdapter: sendMessage not supported");
+        TeleporterMessageV2 calldata message
+    ) external {
+        emit MessageSent(message);
     }
 
     function verifyMessage(
@@ -94,6 +98,38 @@ contract TeleporterMessengerV2InitializeTest is Test {
         _teleporter.receiveCrossChainMessage(message, address(0));
     }
 
+    /// @dev Sends must also wait for initialization, otherwise the message ID would be derived from
+    /// the zero blockchain ID and could never be matched by later retries or receipts.
+    function testSendRevertsWhenUninitialized() public {
+        vm.expectRevert("TeleporterMessenger: zero blockchain ID");
+        _teleporter.sendCrossChainMessage(_buildMessageInput());
+    }
+
+    function testSendSpecifiedReceiptsRevertsWhenUninitialized() public {
+        vm.expectRevert("TeleporterMessenger: zero blockchain ID");
+        _teleporter.sendSpecifiedReceipts(
+            _OTHER_BLOCKCHAIN_ID,
+            new bytes32[](0),
+            TeleporterFeeInfo({feeTokenAddress: address(0), amount: 0}),
+            new address[](0)
+        );
+    }
+
+    function testGetNextMessageIDRevertsWhenUninitialized() public {
+        vm.expectRevert("TeleporterMessenger: zero blockchain ID");
+        _teleporter.getNextMessageID(_OTHER_BLOCKCHAIN_ID);
+    }
+
+    function testSendAfterInitialize() public {
+        vm.prank(_INITIALIZER);
+        _teleporter.initialize(_BLOCKCHAIN_ID);
+
+        bytes32 expectedMessageID = _teleporter.getNextMessageID(_OTHER_BLOCKCHAIN_ID);
+        bytes32 messageID = _teleporter.sendCrossChainMessage(_buildMessageInput());
+        assertEq(messageID, expectedMessageID);
+        assertEq(messageID, _teleporter.calculateMessageID(_BLOCKCHAIN_ID, _OTHER_BLOCKCHAIN_ID, 1));
+    }
+
     function testReceiveRevertsWrongDestinationAfterInitialize() public {
         vm.prank(_INITIALIZER);
         _teleporter.initialize(_BLOCKCHAIN_ID);
@@ -127,6 +163,17 @@ contract TeleporterMessengerV2InitializeTest is Test {
             sourceNetworkID: 1,
             sourceBlockchainID: _OTHER_BLOCKCHAIN_ID,
             attestation: hex""
+        });
+    }
+
+    function _buildMessageInput() private pure returns (TeleporterMessageInput memory) {
+        return TeleporterMessageInput({
+            destinationBlockchainID: _OTHER_BLOCKCHAIN_ID,
+            destinationAddress: address(0xCAFE),
+            feeInfo: TeleporterFeeInfo({feeTokenAddress: address(0), amount: 0}),
+            requiredGasLimit: 100_000,
+            allowedRelayerAddresses: new address[](0),
+            message: hex"deadbeef"
         });
     }
 }

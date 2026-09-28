@@ -307,8 +307,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
 
         // Require that the message was intended for this blockchain. The blockchain ID must have
         // been initialized, otherwise a message destined for the zero blockchain ID would be accepted.
-        bytes32 blockchainID_ = blockchainID;
-        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
+        bytes32 blockchainID_ = _getBlockchainID();
         require(
             teleporterMessage.destinationBlockchainID == blockchainID_,
             "TeleporterMessenger: invalid destination chain ID"
@@ -578,8 +577,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
     function getNextMessageID(
         bytes32 destinationBlockchainID
     ) external view returns (bytes32) {
-        bytes32 blockchainID_ = blockchainID;
-        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
+        bytes32 blockchainID_ = _getBlockchainID();
         uint256 nextMessageNonce = messageNonce + 1;
         return calculateMessageID(blockchainID_, destinationBlockchainID, nextMessageNonce);
     }
@@ -649,10 +647,13 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         TeleporterMessageInput memory messageInput,
         TeleporterMessageReceipt[] memory receipts
     ) private returns (bytes32) {
-        // Get the message ID to use for this message by incrementing it.
+        // Get the message ID to use for this message by incrementing it. The blockchain ID must have
+        // been initialized so that the message ID is derived from this chain's canonical ID; otherwise
+        // the message could never be matched by later retries or receipts.
         uint256 messageNonce_ = ++messageNonce;
-        bytes32 messageID =
-            calculateMessageID(blockchainID, messageInput.destinationBlockchainID, messageNonce_);
+        bytes32 messageID = calculateMessageID(
+            _getBlockchainID(), messageInput.destinationBlockchainID, messageNonce_
+        );
 
         // Construct and serialize the message.
         TeleporterMessageV2 memory teleporterMessage = TeleporterMessageV2({
@@ -854,6 +855,17 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
 
         // Emit a failed execution event for anyone monitoring unsuccessful messages to retry.
         emit MessageExecutionFailed(messageID, sourceBlockchainID, message);
+    }
+
+    /**
+     * @dev Returns the blockchain ID of this chain, reverting if {initialize} has not been called yet.
+     * Every path that derives a message ID from this chain's ID must go through this so that no
+     * message is ever keyed or delivered under the zero blockchain ID.
+     */
+    function _getBlockchainID() private view returns (bytes32) {
+        bytes32 blockchainID_ = blockchainID;
+        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
+        return blockchainID_;
     }
 
     /**
