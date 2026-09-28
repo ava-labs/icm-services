@@ -69,6 +69,13 @@ contract ZKStateManager is AccessControl {
     uint256 public immutable sourceChainId;
 
     /**
+     * @notice Unix timestamp of the tracked beacon chain's genesis, i.e. the start of slot 0
+     * @dev Converts the epochs carried in consensus states to wall-clock time for the
+     * staleness check in {_permissibleTransition}.
+     */
+    uint256 public immutable genesisTime;
+
+    /**
      * @notice The current consensus state of the beacon chain
      * @dev Updated atomically through state transitions to ensure consistency
      */
@@ -100,8 +107,9 @@ contract ZKStateManager is AccessControl {
     address public verifier;
 
     /**
-     * @notice Maximum allowed time span for state transitions in seconds
-     * @dev Used to prevent acceptance of stale beacon state transitions
+     * @notice Maximum age of a state transition, in seconds
+     * @dev Bounds both how far behind the current block time a post-state's finalized epoch may
+     * lie and how much chain time a single transition may span. See {_permissibleTransition}.
      */
     uint24 public permissibleTimespan;
 
@@ -135,7 +143,8 @@ contract ZKStateManager is AccessControl {
      * @param newSourceChainId The ID of the chain this contract will track
      * @param startingState The initial consensus state of the beacon chain
      * @param beaconConfig The beacon config used to verify execution layer data
-     * @param permissibleTimespan_ Maximum allowed time span for state transitions in seconds
+     * @param genesisTime_ Unix timestamp of the beacon chain's genesis (start of slot 0)
+     * @param permissibleTimespan_ Maximum age of a state transition in seconds
      * @param verifier_ Address of the RISC Zero verifier contract for proof validation
      * @param imageID_ The RISC Zero image ID for the beacon state transition program
      * @param admin Address to be granted the ADMIN_ROLE
@@ -145,6 +154,7 @@ contract ZKStateManager is AccessControl {
         uint256 newSourceChainId,
         Consensus.State memory startingState,
         Execution.BeaconConfig memory beaconConfig,
+        uint256 genesisTime_,
         uint24 permissibleTimespan_,
         address verifier_,
         bytes32 imageID_,
@@ -152,7 +162,9 @@ contract ZKStateManager is AccessControl {
         address superAdmin
     ) {
         require(newSourceChainId != 0, "Invalid chain ID");
+        require(genesisTime_ != 0, "Invalid genesis time");
         sourceChainId = newSourceChainId;
+        genesisTime = genesisTime_;
 
         _grantRole(ADMIN_ROLE, admin);
         _grantRole(DEFAULT_ADMIN_ROLE, superAdmin);
@@ -256,6 +268,15 @@ contract ZKStateManager is AccessControl {
     }
 
     /**
+     * @notice Returns the wall-clock time at which `epoch` begins on the tracked beacon chain.
+     */
+    function epochTimestamp(
+        uint64 epoch
+    ) public view returns (uint256) {
+        return genesisTime + uint256(epoch) * SLOT_PER_EPOCH * SECONDS_PER_SLOT;
+    }
+
+    /**
      * @notice Transitions and updates the consensus state of the contract to the new post-state.
      */
     function _transition(Journal memory journal, uint64 finalizedSlot) internal {
@@ -306,12 +327,18 @@ contract ZKStateManager is AccessControl {
     }
 
     /**
-     * @notice Checks that a transition advances finality and does not span more chain time
-     * than `permissibleTimespan`.
-     * @dev The chain time covered by the transition is the epoch distance between the pre-
-     * and post-state finalized checkpoints, converted to seconds via SLOT_PER_EPOCH and
-     * SECONDS_PER_SLOT. Bounding it forces updates to be applied regularly. A proof that
-     * jumps the contract across a long-stale gap in a single transition is rejected.
+     * @notice Checks that a transition advances finality, is recent, and does not span more chain
+     * time than `permissibleTimespan`.
+     * @dev Three conditions must hold:
+     * 1. The post-state's finalized epoch is later than the pre-state's, so finality only advances.
+     * 2. The post-state's finalized epoch began no more than `permissibleTimespan` seconds before
+     *    the current block time, and not in the future. This is what makes a proof unusable once
+     *    it is stale: a valid historical proof whose pre-state happens to match the contract's
+     *    state again, for example after an admin recovery via {manualTransition}, is rejected
+     *    rather than replayed to move the contract onto an outdated view of the chain.
+     * 3. The chain time between the pre- and post-state finalized epochs is at most
+     *    `permissibleTimespan`, so a single transition cannot jump the contract across a long gap.
+     * Epochs are converted to seconds with {epochTimestamp}.
      */
     function _permissibleTransition(
         Consensus.State memory preState,
@@ -322,6 +349,15 @@ contract ZKStateManager is AccessControl {
         if (postEpoch <= preEpoch) {
             return false;
         }
+
+        uint256 postTimestamp = epochTimestamp(postEpoch);
+        if (postTimestamp > block.timestamp) {
+            return false;
+        }
+        if (block.timestamp - postTimestamp > permissibleTimespan) {
+            return false;
+        }
+
         uint256 transitionTimespan =
             uint256(postEpoch - preEpoch) * SLOT_PER_EPOCH * SECONDS_PER_SLOT;
         return transitionTimespan <= permissibleTimespan;
