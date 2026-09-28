@@ -159,6 +159,21 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	require.ErrorContains(t, err, "no signatures")
 }
 
+// A request that cannot fit in a p2p message must be rejected before the signing subnet is
+// resolved or any validator is contacted. The mocks carry no expectations, so any lookup or
+// send would fail the test.
+func TestCreateSignedMessageRejectsOversizedRequest(t *testing.T) {
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
+	msg, err := warp.NewUnsignedMessage(constants.UnitTestID, ids.GenerateTestID(), utils.RandomBytes(1234))
+	require.NoError(t, err)
+
+	// The justification alone fills the limit, so with the message and framing the request exceeds it.
+	justification := utils.RandomBytes(MaxRequestSize)
+	_, err = aggregator.CreateSignedMessage(
+		t.Context(), logging.NoLog{}, msg, justification, ids.Empty, 67, pchainapi.ProposedHeight)
+	require.ErrorIs(t, err, ErrRequestTooLarge)
+}
+
 func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
