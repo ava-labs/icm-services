@@ -105,8 +105,12 @@ func MerkleMessageRelay(
 	)
 	Expect(registryAddrL1).Should(Equal(registryAddr))
 
-	ethTeleporterAddr := utils.DeployTeleporterV2(ctx, ethInfo, registryAddr, ethFundedKey)
-	l1TeleporterAddr := utils.DeployTeleporterV2(ctx, &l1Info, registryAddr, fundedKey)
+	// The initializer address is a constructor argument, so the same key must be used on both
+	// chains for the contracts to land at the same address. Fund it on Ethereum so it can send
+	// the initialize tx.
+	ethereumNetwork.FundAccount(ctx, fundedAddress, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(10)))
+	ethTeleporterAddr := utils.DeployTeleporterV2(ctx, ethInfo, registryAddr, ethFundedKey, fundedKey)
+	l1TeleporterAddr := utils.DeployTeleporterV2(ctx, &l1Info, registryAddr, fundedKey, fundedKey)
 	Expect(l1TeleporterAddr).Should(Equal(ethTeleporterAddr))
 
 	registry, err := merkleregistry.NewMerkleValidatorSetRegistry(registryAddr, ethereumNetwork.EthClient)

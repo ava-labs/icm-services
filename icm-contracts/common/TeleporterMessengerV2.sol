@@ -54,9 +54,20 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
     IMessageVerifier public immutable messageVerifier;
 
     /**
+     * @notice The only address permitted to call {initialize}.
+     * @dev Fixed at construction so that it is part of the deterministic Nick's method deployment: the
+     * keyless deploy transaction is public and chain-agnostic, so anyone can deploy this contract at
+     * the canonical address on any chain. Without this restriction, whoever deployed (or front-ran the
+     * deployer) could set an arbitrary `blockchainID`, which is the anchor for the destination and replay
+     * protection checks in {receiveCrossChainMessage}. Use the same address on every chain so that the
+     * contract address remains identical across chains.
+     */
+    address public immutable initializerAddress;
+
+    /**
      * @notice The blockchain ID of the chain the contract is deployed on.
-     * @dev Can be initialized by calling initializeBlockchainID, or will be initialized
-     * automatically on the first successful call to send or receive a message.
+     * @dev Set exactly once by {initialize}, which may only be called by {initializerAddress}.
+     * Sending and receiving messages is not possible until it has been set.
      */
     bytes32 public blockchainID;
 
@@ -113,17 +124,25 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
             => mapping(address feeTokenContract => uint256 redeemableRewardAmount)
     ) internal _relayerRewardAmounts;
 
-    constructor(
-        address verifierSender
-    ) {
+    constructor(address verifierSender, address initializerAddress_) {
+        require(verifierSender != address(0), "TeleporterMessenger: zero adapter address");
+        require(initializerAddress_ != address(0), "TeleporterMessenger: zero initializer address");
         messageVerifier = IMessageVerifier(verifierSender);
         messageSender = IMessageSender(verifierSender);
+        initializerAddress = initializerAddress_;
     }
 
+    /**
+     * @notice Sets the blockchain ID of the chain this contract is deployed on.
+     * @dev Can only be called once, and only by {initializerAddress}. The value cannot be derived
+     * on-chain in a chain-agnostic way (the Warp precompile is only available on Avalanche chains),
+     * so it is supplied by the trusted initializer instead of being accepted from an arbitrary caller.
+     */
     function initialize(
         bytes32 blockchainID_
     ) external initializer {
-        // TODO: Determine how we want to set this
+        require(msg.sender == initializerAddress, "TeleporterMessenger: unauthorized initializer");
+        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
         blockchainID = blockchainID_;
     }
 
@@ -286,15 +305,18 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
             message: teleporterMessageV2.message
         });
 
-        // Require that the message was intended for this blockchain.
+        // Require that the message was intended for this blockchain. The blockchain ID must have
+        // been initialized, otherwise a message destined for the zero blockchain ID would be accepted.
+        bytes32 blockchainID_ = blockchainID;
+        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
         require(
-            teleporterMessage.destinationBlockchainID == blockchainID,
+            teleporterMessage.destinationBlockchainID == blockchainID_,
             "TeleporterMessenger: invalid destination chain ID"
         );
 
         // Calculate the message ID of the message given the source blockchain ID and message nonce.
         bytes32 messageID = calculateMessageID(
-            message.sourceBlockchainID, blockchainID, teleporterMessage.messageNonce
+            message.sourceBlockchainID, blockchainID_, teleporterMessage.messageNonce
         );
 
         // Require that the message has not been received previously.
