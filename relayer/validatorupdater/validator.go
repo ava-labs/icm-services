@@ -48,7 +48,7 @@ func ValidatorsFromWarpSet(warpSet validators.WarpSet) []*Validator {
 	vdrs := make([]*Validator, len(warpSet.Validators))
 	for i, vdr := range warpSet.Validators {
 		vdrs[i] = &Validator{
-			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKeyBytes),
 			Weight:                     vdr.Weight,
 		}
 	}
@@ -68,12 +68,18 @@ func FetchCanonicalValidators(
 	nodeValidators, err := pChainClient.GetValidatorsAt(ctx, subnetID, pChainHeight)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validators for subnet %s at height %d: %w",
-			subnetID, pChainHeight, err)
+			subnetID,
+			pChainHeight,
+			err,
+		)
 	}
 	warpSet, err := validators.FlattenValidatorSet(nodeValidators)
 	if err != nil {
 		return nil, fmt.Errorf("failed to flatten validators for subnet %s at height %d: %w",
-			subnetID, pChainHeight, err)
+			subnetID,
+			pChainHeight,
+			err,
+		)
 	}
 	return ValidatorsFromWarpSet(warpSet), nil
 }
