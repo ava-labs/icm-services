@@ -180,9 +180,10 @@ func ZKAdapterVerifier(
 	// keeps it inside the timespan regardless of when the fixture was generated.
 	journalPostState := parseConsensusState(boundlessFixture.PostState)
 	postEpochStart := int64(journalPostState.FinalizedCheckpoint.Epoch) * slotsPerEpoch * secondsPerSlot
-	genesisTime := big.NewInt(time.Now().Unix() - postEpochStart - int64(time.Hour.Seconds()))
+	block, err := primaryNetworkInfo.EthClient.BlockByNumber(ctx, nil)
+	Expect(err).Should(BeNil())
+	genesisTime := big.NewInt(int64(block.Time()) - postEpochStart - int64(time.Hour.Seconds()))
 	permissibleTimespan := big.NewInt(int64((24 * time.Hour).Seconds()))
-
 	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
 		zkAdapterABI,
 		byteCode,
