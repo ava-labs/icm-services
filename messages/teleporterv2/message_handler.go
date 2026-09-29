@@ -170,31 +170,15 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	return m.relay(func(ctx context.Context) (common.Hash, error) {
 		sourceChainID := m.unsignedMessage.SourceChainID
 
-		// Read the registry's stored validator set commitment for the source chain, which pins the
-		// P-chain height the committed Merkle root was built from. The signature must be aggregated
-		// over the exact set (and P-chain height) the root was built from, so the signer bitset and
-		// weights match the committed total and the leaves resolve against the stored root.
-		registry, err := merkleregistry.NewMerkleValidatorSetRegistry(
-			m.messageConfig.registryAddress(),
-			m.destinationClient.Client(),
-		)
-		if err != nil {
-			m.metrics.IncFailedRelayMessageCount("failed to read committed validator set")
-			m.logger.Error("Failed to bind merkle registry", zap.Error(err))
-			return common.Hash{}, fmt.Errorf("failed to bind merkle registry: %w", err)
-		}
-		commitment, err := registry.GetValidatorSetCommitment(&bind.CallOpts{Context: ctx}, sourceChainID)
+		// Fetch the validator set commitment stored under the registry's Merkle root. The signature
+		// must be aggregated over the exact set (and P-chain height) the root was built from, so the
+		// signer bitset and weights match the committed total and the leaves resolve against the
+		// stored root.
+		commitment, err := m.fetchCommitment(ctx, sourceChainID)
 		if err != nil {
 			m.metrics.IncFailedRelayMessageCount("failed to read committed validator set")
 			m.logger.Error("Failed to read committed validator set", zap.Error(err))
-			return common.Hash{}, fmt.Errorf("failed to read committed validator set: %w", err)
-		}
-		if commitment.TotalWeight == 0 {
-			m.metrics.IncFailedRelayMessageCount("failed to read committed validator set")
-			m.logger.Error("No validator set registered for source chain",
-				zap.Stringer("sourceChainID", sourceChainID),
-			)
-			return common.Hash{}, fmt.Errorf("no validator set registered for source chain %s", sourceChainID)
+			return common.Hash{}, err
 		}
 
 		// Fetch the canonical warp validator set at the committed P-chain height. This is the same
@@ -266,6 +250,31 @@ func (m *messageHandler) SendMessage(
 
 	// No access list: verification reads the attestation from calldata, not a predicate.
 	return m.sendTxAndConfirm(nil, gasLimit, callData)
+}
+
+// fetchCommitment reads the registry's stored validator set commitment for the source chain,
+// which pins the P-chain height the committed Merkle root was built from.
+func (m *messageHandler) fetchCommitment(
+	ctx context.Context,
+	sourceChainID ids.ID,
+) (merkleregistry.ValidatorSetMerkleCommitment, error) {
+	registry, err := merkleregistry.NewMerkleValidatorSetRegistry(
+		m.messageConfig.registryAddress(),
+		m.destinationClient.Client(),
+	)
+	if err != nil {
+		return merkleregistry.ValidatorSetMerkleCommitment{}, fmt.Errorf("failed to bind merkle registry: %w", err)
+	}
+
+	commitment, err := registry.GetValidatorSetCommitment(&bind.CallOpts{Context: ctx}, sourceChainID)
+	if err != nil {
+		return merkleregistry.ValidatorSetMerkleCommitment{}, fmt.Errorf("failed to read committed validator set: %w", err)
+	}
+	if commitment.TotalWeight == 0 {
+		return merkleregistry.ValidatorSetMerkleCommitment{},
+			fmt.Errorf("no validator set registered for source chain %s", sourceChainID)
+	}
+	return commitment, nil
 }
 
 // estimateGasLimit estimates the gas for the receiveCrossChainMessage call and applies a safety
