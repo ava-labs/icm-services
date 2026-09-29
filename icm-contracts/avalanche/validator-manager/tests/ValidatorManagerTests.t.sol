@@ -16,6 +16,7 @@ import {
     ConversionData,
     InitialValidator,
     PChainOwner,
+    Validator,
     ValidatorStatus
 } from "../interfaces/IACP99Manager.sol";
 import {OwnableUpgradeable} from
@@ -579,6 +580,59 @@ abstract contract ValidatorManagerTest is Test {
         validatorManager.completeValidatorRemoval(0);
     }
 
+    function testMigrateFromV1UnauthorizedCaller() public {
+        bytes32 validationID = sha256("legacy");
+        _seedLegacyValidator(validationID, DEFAULT_NODE_ID, 3);
+
+        vm.prank(address(0x123));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0x123)
+            )
+        );
+        validatorManager.migrateFromV1(validationID, 3);
+
+        // The legacy entry must still be migratable by the owner afterwards.
+        vm.prank(validatorManager.owner());
+        validatorManager.migrateFromV1(validationID, 0);
+        assertEq(validatorManager.getValidator(validationID).receivedNonce, 0);
+    }
+
+    function testMigrateFromV1() public {
+        bytes32 validationID = sha256("legacy");
+        uint64 messageNonce = 3;
+        _seedLegacyValidator(validationID, DEFAULT_NODE_ID, messageNonce);
+
+        vm.startPrank(validatorManager.owner());
+        validatorManager.migrateFromV1(validationID, 2);
+
+        Validator memory validator = validatorManager.getValidator(validationID);
+        assertEq(uint8(validator.status), uint8(ValidatorStatus.Active));
+        assertEq(validator.nodeID, DEFAULT_NODE_ID);
+        assertEq(validator.startingWeight, DEFAULT_WEIGHT);
+        assertEq(validator.sentNonce, messageNonce);
+        assertEq(validator.receivedNonce, 2);
+        assertEq(validator.weight, DEFAULT_WEIGHT);
+        assertEq(validator.startTime, DEFAULT_REGISTRATION_TIMESTAMP);
+        assertEq(validator.endTime, 0);
+
+        // Migration is one-shot per validation ID.
+        vm.expectRevert(
+            abi.encodeWithSelector(IValidatorManager.InvalidValidationID.selector, validationID)
+        );
+        validatorManager.migrateFromV1(validationID, 2);
+        vm.stopPrank();
+    }
+
+    function testMigrateFromV1InvalidNonce() public {
+        bytes32 validationID = sha256("legacy");
+        _seedLegacyValidator(validationID, DEFAULT_NODE_ID, 3);
+
+        vm.prank(validatorManager.owner());
+        vm.expectRevert(abi.encodeWithSelector(IValidatorManager.InvalidNonce.selector, 4));
+        validatorManager.migrateFromV1(validationID, 4);
+    }
+
     function testValidatorManagerStorageSlot() public view {
         assertEq(
             _erc7201StorageSlot("ValidatorManager"),
@@ -590,6 +644,40 @@ abstract contract ValidatorManagerTest is Test {
     function _newNodeID() internal returns (bytes memory) {
         nodeIDCounter++;
         return abi.encodePacked(bytes20(sha256(new bytes(nodeIDCounter))));
+    }
+
+    /**
+     * @dev Writes an active V1 `ValidatorLegacy` entry directly into the ValidatorManager's
+     * ERC-7201 storage, mirroring the state a V1 contract would leave behind before an upgrade.
+     * `_validationPeriodsLegacy` is the 6th member of `ValidatorManagerStorage` (offset 5, after
+     * `_subnetID`, the packed churn settings, the two-slot `_churnTracker`, and
+     * `_pendingRegisterValidationMessages`).
+     */
+    function _seedLegacyValidator(
+        bytes32 validationID,
+        bytes memory nodeID,
+        uint64 messageNonce
+    ) internal {
+        require(nodeID.length <= 31, "nodeID must be a short bytes value");
+        uint256 mappingSlot = uint256(validatorManager.VALIDATOR_MANAGER_STORAGE_LOCATION()) + 5;
+        uint256 base = uint256(keccak256(abi.encode(validationID, mappingSlot)));
+
+        // status
+        vm.store(address(validatorManager), bytes32(base), bytes32(uint256(ValidatorStatus.Active)));
+        // nodeID: short bytes are stored in place, left-aligned, with length * 2 in the lowest byte.
+        bytes32 nodeIDWord =
+            abi.decode(abi.encodePacked(nodeID, new bytes(32 - nodeID.length)), (bytes32));
+        vm.store(
+            address(validatorManager),
+            bytes32(base + 1),
+            nodeIDWord | bytes32(uint256(nodeID.length * 2))
+        );
+        // startingWeight | messageNonce | weight | startedAt, packed as four uint64s.
+        uint256 packed = uint256(DEFAULT_WEIGHT) | (uint256(messageNonce) << 64)
+            | (uint256(DEFAULT_WEIGHT) << 128) | (uint256(DEFAULT_REGISTRATION_TIMESTAMP) << 192);
+        vm.store(address(validatorManager), bytes32(base + 2), bytes32(packed));
+        // endedAt
+        vm.store(address(validatorManager), bytes32(base + 3), bytes32(0));
     }
 
     function _setUpInitiateValidatorRegistration(
