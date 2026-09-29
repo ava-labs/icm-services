@@ -50,7 +50,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         TeleporterFeeInfo feeInfo;
     }
 
-    IMessageSender public immutable messageSender;
+    IMessageSender public immutable override messageSender;
     IMessageVerifier public immutable messageVerifier;
 
     /**

@@ -5,7 +5,6 @@ package evm
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"time"
@@ -14,11 +13,11 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
+	"github.com/ava-labs/icm-services/vms/evm/signer"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
-	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
@@ -29,19 +28,6 @@ const (
 	// gasLimitForSimulation is the gas limit used when simulating calls
 	gasLimitForSimulation = 2_000_000
 )
-
-type PrivateKeySigner struct {
-	privateKey *ecdsa.PrivateKey
-}
-
-func (p *PrivateKeySigner) Address() common.Address {
-	return crypto.PubkeyToAddress(p.privateKey.PublicKey)
-}
-
-func (p *PrivateKeySigner) SignTx(tx *types.Transaction, evmChainID *big.Int) (*types.Transaction, error) {
-	signer := types.LatestSignerForChainID(evmChainID)
-	return types.SignTx(tx, signer, p.privateKey)
-}
 
 // ExternalEVMDestinationClient handles communication with external EVM chains
 // that have MerkleValidatorSetRegistry contracts deployed.
@@ -135,12 +121,12 @@ func NewExternalEVMDestinationClient(
 	// Initialize concurrent senders from private keys
 	concurrentSenders := make([]*readonlyConcurrentSigner, len(privateKeyHexes))
 	for i, pkHex := range privateKeyHexes {
-		privateKey, err := crypto.HexToECDSA(pkHex)
+		txSigner, err := signer.NewTxSigner(pkHex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse private key %d: %w", i, err)
 		}
 
-		address := crypto.PubkeyToAddress(privateKey.PublicKey)
+		address := txSigner.Address()
 		senderLogger := logger.With(zap.Stringer("senderAddress", address))
 
 		// Get current nonce for this sender
@@ -151,7 +137,7 @@ func NewExternalEVMDestinationClient(
 
 		cs := &concurrentSigner{
 			logger:             senderLogger,
-			signer:             &PrivateKeySigner{privateKey: privateKey},
+			signer:             txSigner,
 			currentNonce:       nonce,
 			messageChan:        make(chan txData),
 			queuedTxSemaphore:  make(chan struct{}, externalEVMPoolTxsPerAccount),

@@ -57,6 +57,17 @@ const (
 	l1ValidatorBalanceTTL = 2 * time.Second
 )
 
+// MaxRequestSize is the largest serialized ACP-118 signature request that can be sent to a
+// validator. avalanchego refuses to build an outbound p2p message larger than
+// constants.DefaultMaxMessageSize, so a larger request could never reach any validator.
+// CreateSignedMessage rejects such a request up front, before the signing subnet is resolved or
+// any validator is contacted, so an attacker-sized payload costs no network work.
+const MaxRequestSize = constants.DefaultMaxMessageSize
+
+// ErrRequestTooLarge is returned by CreateSignedMessage when the unsigned message and
+// justification serialize to a signature request larger than MaxRequestSize.
+var ErrRequestTooLarge = errors.New("signature request exceeds the maximum p2p message size")
+
 var (
 	// Errors
 	errNotEnoughSignatures     = errors.New("failed to collect a threshold of signatures")
@@ -622,6 +633,23 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		return nil, fmt.Errorf("invalid quorum percentage: %d", requiredQuorumPercentage)
 	}
 
+	// Serialize the request first, so one that cannot fit in a p2p message is rejected before
+	// the signing subnet is resolved or any validator is contacted.
+	reqBytes, err := s.marshalRequest(unsignedMessage, justification)
+	if err != nil {
+		msg := "Failed to marshal request bytes"
+		log.Error(msg, zap.Error(err))
+		return nil, fmt.Errorf("%s: %w", msg, err)
+	}
+	if len(reqBytes) > MaxRequestSize {
+		log.Warn(
+			"Rejecting oversized signature request",
+			zap.Int("requestBytes", len(reqBytes)),
+			zap.Int("maxRequestBytes", MaxRequestSize),
+		)
+		return nil, fmt.Errorf("%w: %d > %d bytes", ErrRequestTooLarge, len(reqBytes), MaxRequestSize)
+	}
+
 	log.Debug("Creating signed message")
 	signingSubnet, sourceSubnet, err := s.selectSigningSubnet(ctx, log, unsignedMessage, inputSigningSubnet)
 	if err != nil {
@@ -696,13 +724,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		s.metrics.SignatureCacheMisses.Add(float64(
 			len(vdrs.ValidatorSet.Validators) - len(signatureMap),
 		))
-	}
-
-	reqBytes, err := s.marshalRequest(unsignedMessage, justification)
-	if err != nil {
-		msg := "Failed to marshal request bytes"
-		log.Error(msg, zap.Error(err))
-		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
 	// Collect signatures from validators in weight-prioritized batches.

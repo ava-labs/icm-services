@@ -113,7 +113,7 @@ jobs:
       # avalanchego and subnet-evm from source on a cache miss, which takes several minutes.
       # It reuses this directory when the version stamp inside it matches.
       - name: Cache avalanchego build
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.teleporter-deps/avalanchego
           key: avalanchego-${{ runner.os }}-${{ runner.arch }}-${{ steps.avalanchego.outputs.version }}-go${{ steps.avalanchego.outputs.go-version }}
@@ -121,7 +121,7 @@ jobs:
       # Foundry is pinned in scripts/install_foundry.sh, so the key changes with the pin.
       - name: Cache Foundry
         id: foundry-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.foundry
           key: foundry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install_foundry.sh') }}

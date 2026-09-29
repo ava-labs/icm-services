@@ -12,8 +12,11 @@ The V1 `PoAValidatorManager` does not track any state, so migrating from a V1 to
 
 1. Upgrade the proxy contract's implementation to a newly deployed V2 `ValidatorManager` using standard methods
 2. For each validator (active or expired), call `migrateFromV1` with its `validationID`. The `receivedNonce` argument can be set to 0, since V1 `PoAValidatorManager`s do not support weight changes.
+3. Transfer ownership of the `ValidatorManager` to the `PoAManager` as described above.
 
 Some notes on this process:
+
+- `migrateFromV1` may only be called by the `ValidatorManager` owner. Perform the migration before transferring ownership to the `PoAManager`, since the `PoAManager` does not expose a way to call it.
 - `migrateFromV1` may only be called once per `validationID`. Any active validators will not be able to be removed until they are migrated.
 - It is up to the contract owner to track all of the `validationID`s to be migrated. This is because Solidity mappings are not iterable, so there is no getter to retreive all `validationID`s as a batch.
 

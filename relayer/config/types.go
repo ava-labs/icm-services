@@ -11,6 +11,13 @@ type Protocol struct {
 	Type    MessageProtocol
 }
 
+// HasListener reports whether the protocol's messages are read from the source chain's logs by
+// a listener. The off-chain registry has no listener: its messages are submitted through the
+// API, so its application relayers never process block heights.
+func (p Protocol) HasListener() bool {
+	return p.Type != OFF_CHAIN_REGISTRY
+}
+
 // Supported Message Protocols
 type MessageProtocol int
 
