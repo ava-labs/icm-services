@@ -171,7 +171,7 @@ func (s *LiteBeaconState) assemble(
 		root := s.fieldRoots[i]
 		leaves[i] = ssz.LeafFromBytes(root[:])
 	}
-	tree, err := ssz.TreeFromNodes(leaves)
+	tree, err := ssz.TreeFromNodes(leaves, len(leaves))
 	if err != nil {
 		return nil, fmt.Errorf("failed to assemble lite state tree: %w", err)
 	}

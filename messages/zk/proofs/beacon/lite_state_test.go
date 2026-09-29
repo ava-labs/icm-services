@@ -69,7 +69,7 @@ func TestRootsListRoot(t *testing.T) {
 	lengthChunk := uint64Root(1)
 	expected := sha256.Sum256(append(chunksRoot[:], lengthChunk[:]...))
 
-	require.Equal(t, [32]byte(expected), rootsListRoot([]phase0.Root{r}, 2))
+	require.Equal(t, expected, rootsListRoot([]phase0.Root{r}, 2))
 }
 
 // merkleizeToLimit must virtually pad to the limit's depth: a single chunk
@@ -84,11 +84,11 @@ func TestMerkleizeToLimit(t *testing.T) {
 	zeroPair := sha256.Sum256(append(zero[:], zero[:]...))
 	expected := sha256.Sum256(append(level0[:], zeroPair[:]...))
 
-	require.Equal(t, [32]byte(expected), merkleizeToLimit([][32]byte{chunk}, 4))
+	require.Equal(t, expected, merkleizeToLimit([][32]byte{chunk}, 4))
 
 	// An empty list at limit 4 is the pure zero tree of depth 2.
 	expectedEmpty := sha256.Sum256(append(zeroPair[:], zeroPair[:]...))
-	require.Equal(t, [32]byte(expectedEmpty), merkleizeToLimit(nil, 4))
+	require.Equal(t, expectedEmpty, merkleizeToLimit(nil, 4))
 }
 
 // The per-field decomposition of the execution payload header, merkleized,
