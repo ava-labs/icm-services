@@ -19,10 +19,10 @@ import {IRewardCalculator} from "./interfaces/IRewardCalculator.sol";
 import {IWarpMessenger, WarpMessage} from "@subnet-evm/IWarpMessenger.sol";
 import {
     ReentrancyGuardUpgradeable
-} from "@openzeppelin/contracts-upgradeable@5.0.2/utils/ReentrancyGuardUpgradeable.sol";
+} from "@openzeppelin/contracts-upgradeable@5.1.0/utils/ReentrancyGuardUpgradeable.sol";
 import {
     ContextUpgradeable
-} from "@openzeppelin/contracts-upgradeable@5.0.2/utils/ContextUpgradeable.sol";
+} from "@openzeppelin/contracts-upgradeable@5.1.0/utils/ContextUpgradeable.sol";
 
 /**
  * @dev Implementation of the {IStakingManager} interface.

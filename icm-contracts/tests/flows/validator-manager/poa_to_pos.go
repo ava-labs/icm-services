@@ -200,7 +200,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 		nodes[0],
 		1,
 		false,
-		time.Time{},
+		nodes,
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
 	)
@@ -218,7 +218,6 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
 	)
-	validatorStartTime := time.Now()
 	posValidationID := posRegistrationInitiatedEvent.ValidationID
 
 	// Delist the PoS validator
@@ -236,7 +235,7 @@ func PoAMigrationToPoS(ctx context.Context, network *localnetwork.LocalAvalanche
 		nodes[0],
 		1,
 		true,
-		validatorStartTime,
+		nodes,
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
 	)

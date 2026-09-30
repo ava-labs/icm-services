@@ -10,7 +10,7 @@ import {ValidatorMessages} from "../ValidatorMessages.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 import {
     OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+} from "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
 
 contract PoAManagerTest is ValidatorManagerTest {
     PoAManager public poaManager;

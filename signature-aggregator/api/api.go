@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/units"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
@@ -22,6 +24,15 @@ import (
 const (
 	APIPath                 = "/aggregate-signatures"
 	DefaultQuorumPercentage = 67
+
+	// MaxRequestBodySize bounds the size of an /aggregate-signatures request body. The message and
+	// justification are hex encoded, so a body of this size can still carry a request at the
+	// aggregator's p2p size limit, while anything larger could never be sent to a validator and is
+	// rejected before it is buffered in full.
+	MaxRequestBodySize = 2*aggregator.MaxRequestSize + 4*units.KiB
+
+	// maxLoggedFieldLen caps how much of a rejected request field is copied into a log line.
+	maxLoggedFieldLen = 128
 )
 
 // Defines a request interface for signature aggregation for a raw unsigned message.
@@ -92,18 +103,38 @@ func writeJSONError(
 	}
 }
 
+// truncateForLog returns at most maxLoggedFieldLen characters of [s]. Rejected request fields are
+// attacker controlled and may be megabytes long, so they are not copied into logs in full.
+func truncateForLog(s string) string {
+	if len(s) <= maxLoggedFieldLen {
+		return s
+	}
+	return s[:maxLoggedFieldLen] + "..."
+}
+
 func signatureAggregationAPIHandler(
 	logger logging.Logger,
 	metrics *metrics.SignatureAggregatorMetrics,
-	aggregator *aggregator.SignatureAggregator,
+	signatureAggregator *aggregator.SignatureAggregator,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metrics.AggregateSignaturesRequestCount.Inc()
 		startTime := time.Now()
 
+		// Fail oversized bodies before they are buffered, and before any hex decoding, so a single
+		// request cannot allocate memory proportional to an attacker-chosen size.
+		r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBodySize)
+
 		var req AggregateSignatureRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
 		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				msg := "Request body too large"
+				logger.Warn(msg, zap.Int64("limit", maxBytesErr.Limit))
+				writeJSONError(logger, w, http.StatusRequestEntityTooLarge, msg)
+				return
+			}
 			msg := "Could not decode request body"
 			logger.Warn(msg, zap.Error(err))
 			writeJSONError(logger, w, http.StatusBadRequest, msg)
@@ -117,7 +148,7 @@ func signatureAggregationAPIHandler(
 			msg := "Could not decode message"
 			logger.Warn(
 				msg,
-				zap.String("msg", req.Message),
+				zap.String("msg", truncateForLog(req.Message)),
 				zap.Error(err),
 			)
 			writeJSONError(logger, w, http.StatusBadRequest, msg)
@@ -138,7 +169,7 @@ func signatureAggregationAPIHandler(
 			msg := "Could not decode justification"
 			logger.Warn(
 				msg,
-				zap.String("justification", req.Justification),
+				zap.String("justification", truncateForLog(req.Justification)),
 				zap.Error(err),
 			)
 			writeJSONError(logger, w, http.StatusBadRequest, msg)
@@ -198,7 +229,7 @@ func signatureAggregationAPIHandler(
 		ctx, cancel := context.WithTimeout(r.Context(), utils.DefaultCreateSignedMessageTimeout)
 		defer cancel()
 
-		signedMessage, err := aggregator.CreateSignedMessage(
+		signedMessage, err := signatureAggregator.CreateSignedMessage(
 			ctx,
 			logger,
 			message,
@@ -208,6 +239,11 @@ func signatureAggregationAPIHandler(
 			pchainHeight, // ACP-181: Use determined P-Chain height for validator set selection
 		)
 		if err != nil {
+			if errors.Is(err, aggregator.ErrRequestTooLarge) {
+				logger.Warn("Rejected oversized signature request", zap.Error(err))
+				writeJSONError(logger, w, http.StatusRequestEntityTooLarge, err.Error())
+				return
+			}
 			logger.Warn("Failed to aggregate signatures", zap.Error(err))
 			writeJSONError(logger, w, http.StatusInternalServerError, "failed to aggregate signatures")
 			return

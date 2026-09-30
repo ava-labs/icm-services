@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"time"
 
+	evmclient "github.com/ava-labs/avalanchego/graft/subnet-evm/plugin/evm/client"
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/warp/messages"
 	"github.com/ava-labs/avalanchego/ids"
@@ -17,9 +18,11 @@ import (
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/evm/predicate"
+	platformvmclient "github.com/ava-labs/avalanchego/vms/platformvm"
 	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpMessage "github.com/ava-labs/avalanchego/vms/platformvm/warp/message"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
+	"github.com/ava-labs/avalanchego/vms/proposervm"
 	pwallet "github.com/ava-labs/avalanchego/wallet/chain/p/wallet"
 	proxyadmin "github.com/ava-labs/icm-services/abi-bindings/go/ProxyAdmin"
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/mocks/ExampleERC20"
@@ -52,6 +55,18 @@ const (
 	DefaultWeightToValueFactor     uint64 = 1e12
 	DefaultPChainAddress           string = "P-local18jma8ppw3nhx5r4ap8clazz0dps7rv5u00z96u"
 	DefaultRewardRecipientAddress  string = "0x000000000000000000000000000000000000002a"
+)
+
+const (
+	// How long WaitForL1ToSeePChainHeight polls before failing the test.
+	pChainHeightWaitTimeout  = 60 * time.Second
+	pChainHeightPollInterval = 500 * time.Millisecond
+
+	// How long WaitForValidatorUptime polls before failing the test. subnet-evm
+	// refreshes its uptime tracker from the P-Chain once a minute, so this must
+	// comfortably exceed one sync period.
+	validatorUptimeWaitTimeout  = 3 * time.Minute
+	validatorUptimePollInterval = 2 * time.Second
 )
 
 type ValidatorManagerConcreteType int
@@ -596,7 +611,7 @@ func InitiateAndCompleteNativeValidatorRegistration(
 		signedWarpMessage.Bytes(),
 	)
 	Expect(err).Should(BeNil())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -677,7 +692,7 @@ func InitiateAndCompleteERC20ValidatorRegistration(
 		signedWarpMessage.Bytes(),
 	)
 	Expect(err).Should(BeNil())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -748,7 +763,7 @@ func InitiateAndCompletePoAValidatorRegistration(
 		signedWarpMessage.Bytes(),
 	)
 	Expect(err).Should(BeNil())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, ownerKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1154,7 +1169,7 @@ func InitiateAndCompleteEndInitialPoSValidation(
 
 	// Deliver the Warp message to the P-Chain
 	pchainWallet.IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1187,6 +1202,97 @@ func InitiateAndCompleteEndInitialPoSValidation(
 	Expect(validationEndedEvent.ValidationID[:]).Should(Equal(validationID[:]))
 }
 
+// WaitForValidatorUptime polls the subnet-evm validators API of every L1
+// validator other than [subject] until each of them reports [validationID]
+// with a positive tracked uptime, and returns the smallest value reported.
+//
+// subnet-evm only refreshes its uptime tracker from the P-Chain once a minute
+// and only accrues uptime it has observed itself, so a wall-clock estimate of
+// the validator's uptime is regularly ahead of what the signers will attest
+// to. Claiming a value every signer has already reported guarantees the
+// uptime proof will be signed. [subject] is skipped because a node never
+// tracks its own uptime.
+func WaitForValidatorUptime(
+	ctx context.Context,
+	l1 testinfo.L1TestInfo,
+	l1Validators []Node,
+	subject Node,
+	validationID ids.ID,
+) uint64 {
+	ctx, cancel := context.WithTimeout(ctx, validatorUptimeWaitTimeout)
+	defer cancel()
+
+	var (
+		minUptime uint64
+		queried   int
+	)
+	for _, vdr := range l1Validators {
+		if vdr.NodeID == subject.NodeID || vdr.URI == "" {
+			continue
+		}
+		uptime := waitForNodeToReportUptime(ctx, l1, vdr, subject, validationID)
+		if queried == 0 || uptime < minUptime {
+			minUptime = uptime
+		}
+		queried++
+	}
+	Expect(queried).Should(BeNumerically(">", 0),
+		"no L1 validators with a known URI to attest to uptime for %s", validationID,
+	)
+	return minUptime
+}
+
+func waitForNodeToReportUptime(
+	ctx context.Context,
+	l1 testinfo.L1TestInfo,
+	vdr Node,
+	subject Node,
+	validationID ids.ID,
+) uint64 {
+	client := evmclient.NewClient(vdr.URI, l1.BlockchainID.String())
+	poll := time.NewTicker(validatorUptimePollInterval)
+	defer poll.Stop()
+
+	log.Info("Waiting for validator to report uptime",
+		zap.Stringer("nodeID", vdr.NodeID),
+		zap.Stringer("validationID", validationID),
+	)
+	for {
+		var reported *evmclient.CurrentValidator
+		validators, err := client.GetCurrentValidators(ctx, []ids.NodeID{subject.NodeID})
+		if err == nil {
+			for i := range validators {
+				if validators[i].ValidationID == validationID {
+					reported = &validators[i]
+					break
+				}
+			}
+		}
+		if reported != nil && reported.UptimeSeconds > 0 {
+			log.Info("Validator reported uptime",
+				zap.Stringer("nodeID", vdr.NodeID),
+				zap.Stringer("validationID", validationID),
+				zap.Uint64("uptimeSeconds", reported.UptimeSeconds),
+				zap.Bool("isConnected", reported.IsConnected),
+			)
+			return reported.UptimeSeconds
+		}
+
+		select {
+		case <-poll.C:
+		case <-ctx.Done():
+			Expect(ctx.Err()).Should(BeNil(),
+				"node %s did not report positive uptime for validation %s before the context deadline "+
+					"(last error: %v, last seen: %+v)",
+				vdr.NodeID,
+				validationID,
+				err,
+				reported,
+			)
+		}
+	}
+}
+
 func InitiateAndCompleteEndPoSValidation(
 	ctx context.Context,
 	signatureAggregator *SignatureAggregator,
@@ -1201,7 +1307,7 @@ func InitiateAndCompleteEndPoSValidation(
 	node Node,
 	nonce uint64,
 	includeUptime bool,
-	validatorStartTime time.Time,
+	l1Validators []Node,
 	pchainWallet pwallet.Wallet,
 	networkID uint32,
 ) {
@@ -1210,10 +1316,7 @@ func InitiateAndCompleteEndPoSValidation(
 
 	var receipt *types.Receipt
 	if includeUptime {
-		// Without this sleep we're signing an uptime proof is ~2 seconds of uptime.
-		// This shouldn't cause an issue, but it is for unclear reasons.
-		time.Sleep(10 * time.Second)
-		uptime := uint64(time.Since(validatorStartTime).Seconds())
+		uptime := WaitForValidatorUptime(ctx, l1Info, l1Validators, node, validationID)
 		receipt = ForceInitiateEndPoSValidationWithUptime(
 			ctx,
 			networkID,
@@ -1257,7 +1360,7 @@ func InitiateAndCompleteEndPoSValidation(
 
 	// Deliver the Warp message to the P-Chain
 	pchainWallet.IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, fundedKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1339,7 +1442,7 @@ func InitiateAndCompleteEndInitialPoAValidation(
 
 	// Deliver the Warp message to the P-Chain
 	pchainWallet.IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-	PChainProposerVMWorkaround(pchainWallet)
+	WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1Info)
 	AdvanceProposerVM(ctx, l1Info, ownerKey, 5)
 
 	// Construct a L1ValidatorRegistrationMessage Warp message from the P-Chain
@@ -1794,11 +1897,66 @@ func PackInitialValidator(iv interface{}) ([]byte, error) {
 	return b, nil
 }
 
-func PChainProposerVMWorkaround(
-	pchainWallet pwallet.Wallet,
+// WaitForL1ToSeePChainHeight blocks until every node of [l1] would build its next block on a
+// P-Chain height at least as high as the one currently accepted by the node the P-Chain wallet
+// issues through (pChainInfo.NodeURIs[0]). Call it after issuing a P-Chain transaction and
+// before advancing the L1, so that the L1's subsequent blocks, and the validator set and Warp
+// messages derived from them, reflect that transaction.
+//
+// The nodes run with proposervm-use-current-height, so this normally resolves within a couple
+// of seconds. It also covers nodes that are still restarting, since they cannot answer until
+// they are back up. It replaces a fixed 30 second sleep that accounted for roughly half of the
+// validator-manager suite's runtime.
+func WaitForL1ToSeePChainHeight(
+	ctx context.Context,
+	pChainInfo testinfo.L1TestInfo,
+	l1 testinfo.L1TestInfo,
 ) {
-	log.Info("Waiting for P-Chain...")
-	time.Sleep(30 * time.Second)
+	ctx, cancel := context.WithTimeout(ctx, pChainHeightWaitTimeout)
+	defer cancel()
+	poll := time.NewTicker(pChainHeightPollInterval)
+	defer poll.Stop()
+
+	// The node may still be coming back from a restart (ConvertSubnet restarts the bootstrap
+	// nodes right before this wait) and answers 503 until its API is ready, so retry the
+	// height query rather than failing on the first error.
+	pChainURI := pChainInfo.NodeURIs[0]
+	pChainClient := platformvmclient.NewClient(pChainURI)
+	var targetHeight uint64
+	for {
+		var err error
+		targetHeight, err = pChainClient.GetHeight(ctx)
+		if err == nil {
+			break
+		}
+		select {
+		case <-poll.C:
+		case <-ctx.Done():
+			Expect(err).Should(BeNil(), "querying P-Chain height from %s", pChainURI)
+		}
+	}
+	log.Info("Waiting for L1 nodes to see P-Chain height",
+		zap.Uint64("height", targetHeight),
+		zap.Int("nodes", len(l1.NodeURIs)),
+	)
+
+	for _, uri := range l1.NodeURIs {
+		client := proposervm.NewJSONRPCClient(uri, l1.BlockchainID.String())
+		for {
+			// Errors are retried until the timeout for the same reason as above.
+			height, err := client.GetProposedHeight(ctx)
+			if err == nil && height >= targetHeight {
+				break
+			}
+			select {
+			case <-poll.C:
+			case <-ctx.Done():
+				Expect(err).Should(BeNil(), "querying proposed P-Chain height of %s", uri)
+				Expect(height).Should(BeNumerically(">=", targetHeight),
+					"node %s did not reach P-Chain height %d within %s", uri, targetHeight, pChainHeightWaitTimeout)
+			}
+		}
+	}
 }
 
 func AdvanceProposerVM(

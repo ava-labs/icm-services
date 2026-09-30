@@ -60,14 +60,28 @@ func TestProcessMessageRetriesRetryableError(t *testing.T) {
 // ProcessBlocks' StageCommittedHeights call exercises the real code path.
 func newTestCheckpointManager(t *testing.T, ctrl *gomock.Controller) *checkpoint.CheckpointManager {
 	t.Helper()
+	id := database.RelayerID{ID: common.BytesToHash([]byte("test-relayer"))}
+	metrics := checkpoint.NewCheckpointManagerMetrics(prometheus.NewRegistry())
+	return newTestCheckpointManagerForRelayer(t, ctrl, id, metrics)
+}
+
+// newTestCheckpointManagerForRelayer is newTestCheckpointManager for a specific relayer ID,
+// reporting to [metrics] so that tests can read back the committed height. Managers that share a
+// registry must share [metrics], since the collectors can only be registered once.
+func newTestCheckpointManagerForRelayer(
+	t *testing.T,
+	ctrl *gomock.Controller,
+	id database.RelayerID,
+	metrics *checkpoint.CheckpointManagerMetrics,
+) *checkpoint.CheckpointManager {
+	t.Helper()
 	db := mock_database.NewMockRelayerDatabase(ctrl)
 	db.EXPECT().Get(gomock.Any(), gomock.Any()).Return([]byte("0"), nil).AnyTimes()
 	db.EXPECT().Put(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-	id := database.RelayerID{ID: common.BytesToHash([]byte("test-relayer"))}
 	cm, err := checkpoint.NewCheckpointManager(
 		logging.NoLog{},
-		checkpoint.NewCheckpointManagerMetrics(prometheus.NewRegistry()),
+		metrics,
 		db,
 		make(chan struct{}, 1),
 		id,

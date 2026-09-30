@@ -13,7 +13,7 @@ import {TeleporterRegistryApp} from "../TeleporterRegistryApp.sol";
 import {BaseTeleporterRegistryAppTest} from "./BaseTeleporterRegistryAppTests.t.sol";
 import {
     OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+} from "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
 import {ITeleporterMessenger, TeleporterMessageInput} from "@teleporter/ITeleporterMessenger.sol";
 
 contract ExampleRegistryOwnableAppUpgradeable is TeleporterRegistryOwnableAppUpgradeable {

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: LicenseRef-Ecosystem
 pragma solidity 0.8.30;
 
-import {IERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts@5.0.2/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
 import {
     TeleporterMessageReceipt,
     TeleporterMessageInput,
@@ -22,7 +22,7 @@ import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 import {ReentrancyGuards} from "@utilities/ReentrancyGuards.sol";
 import {
     Initializable
-} from "@openzeppelin/contracts-upgradeable@5.0.2/proxy/utils/Initializable.sol";
+} from "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -51,7 +51,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         TeleporterFeeInfo feeInfo;
     }
 
-    IMessageSender public immutable messageSender;
+    IMessageSender public immutable override messageSender;
     IMessageVerifier public immutable messageVerifier;
 
     /**

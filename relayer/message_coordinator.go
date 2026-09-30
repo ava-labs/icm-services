@@ -238,6 +238,10 @@ func (mc *MessageCoordinator) ProcessMessageID(
 // Meant to be ran asynchronously. Errors should be sent to errChan.
 // The logs of [icmBlockInfo] are expected to match the event filter of the message protocol at
 // [protocolAddress], since that is what the subscriber that produced them filtered on.
+// The block range is only dispatched to the application relayers of that protocol. Each
+// protocol has its own listener, and a relayer's checkpoint must only advance once its own
+// listener has delivered the relayer's messages in the range; dispatching the range to another
+// protocol's relayers would commit it for them before their listener has even seen it.
 func (mc *MessageCoordinator) ProcessBlock(
 	icmBlockInfo *evm.ICMBlockInfo,
 	blockchainID ids.ID,
@@ -287,7 +291,8 @@ func (mc *MessageCoordinator) ProcessBlock(
 	}
 	// Initiate message relay of all registered messages
 	for _, appRelayer := range mc.applicationRelayers {
-		if appRelayer.relayerID.SourceBlockchainID != blockchainID {
+		if appRelayer.relayerID.SourceBlockchainID != blockchainID ||
+			appRelayer.relayerID.ProtocolAddress != protocolAddress {
 			continue
 		}
 		// Dispatch all messages in the blocks to the appropriate application relayer.

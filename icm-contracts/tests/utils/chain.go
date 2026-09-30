@@ -77,6 +77,9 @@ type Node struct {
 	NodeID  ids.NodeID
 	NodePoP *signer.ProofOfPossession
 	Weight  uint64
+	// URI is the node's HTTP endpoint, when known. Used to query the node's
+	// own view of the L1 (e.g. the uptime it tracks for other validators).
+	URI string
 }
 
 //

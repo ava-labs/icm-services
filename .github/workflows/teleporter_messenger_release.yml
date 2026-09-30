@@ -29,7 +29,16 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      # Foundry is pinned in scripts/install_foundry.sh, so the key changes with the pin.
+      - name: Cache Foundry
+        id: foundry-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.foundry
+          key: foundry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install_foundry.sh') }}
+
       - name: Install Foundry
+        if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: ./scripts/install_foundry.sh
 
       - name: Cache reforge binary

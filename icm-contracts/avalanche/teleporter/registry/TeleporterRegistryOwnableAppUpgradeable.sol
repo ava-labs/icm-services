@@ -8,7 +8,7 @@ pragma solidity 0.8.30;
 import {TeleporterRegistryAppUpgradeable} from "./TeleporterRegistryAppUpgradeable.sol";
 import {
     OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable@5.0.2/access/OwnableUpgradeable.sol";
+} from "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
 
 /**
  * @dev Contract that inherits {TeleporterRegistryAppUpgradeable} and allows

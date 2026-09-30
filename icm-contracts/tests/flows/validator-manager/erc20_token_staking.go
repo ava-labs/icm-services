@@ -3,7 +3,6 @@ package staking
 import (
 	"context"
 	"math/big"
-	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/units"
@@ -107,7 +106,6 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
 	)
-	validatorStartTime := time.Now()
 	validationID := ids.ID(registrationInitiatedEvent.ValidationID)
 
 	//
@@ -160,7 +158,7 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 
 		// Issue a tx to update the validator's weight on the P-Chain
 		network.GetPChainWallet().IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-		utils.PChainProposerVMWorkaround(network.GetPChainWallet())
+		utils.WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1AInfo)
 		utils.AdvanceProposerVM(ctx, l1AInfo, fundedKey, 5)
 
 		// Construct an L1ValidatorWeightMessage Warp message from the P-Chain
@@ -228,7 +226,7 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 
 		// Issue a tx to update the validator's weight on the P-Chain
 		network.GetPChainWallet().IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
-		utils.PChainProposerVMWorkaround(network.GetPChainWallet())
+		utils.WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1AInfo)
 		utils.AdvanceProposerVM(ctx, l1AInfo, fundedKey, 5)
 
 		// Construct an L1ValidatorWeightMessage Warp message from the P-Chain
@@ -279,7 +277,7 @@ func ERC20TokenStakingManager(ctx context.Context, network *localnetwork.LocalAv
 		nodes[0],
 		1,
 		true,
-		validatorStartTime,
+		nodes,
 		network.GetPChainWallet(),
 		network.GetNetworkID(),
 	)

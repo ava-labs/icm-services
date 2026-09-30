@@ -156,7 +156,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 		// Issue a tx to update the validator's weight on the P-Chain
 		_, err = network.GetPChainWallet().IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
 		Expect(err).Should(BeNil())
-		utils.PChainProposerVMWorkaround(network.GetPChainWallet())
+		utils.WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1AInfo)
 		utils.AdvanceProposerVM(ctx, l1AInfo, fundedKey, 5)
 
 		// Construct an L1ValidatorWeightMessage Warp message from the P-Chain
@@ -197,7 +197,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 		validationID,
 	)
 	Expect(err).Should(BeNil())
-	utils.PChainProposerVMWorkaround(network.GetPChainWallet())
+	utils.WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1AInfo)
 	utils.AdvanceProposerVM(ctx, l1AInfo, fundedKey, 5)
 
 	//
@@ -236,7 +236,7 @@ func RemoveDelegatorInactiveValidator(ctx context.Context, network *localnetwork
 		// Issue a tx to update the validator's weight on the P-Chain
 		_, err = network.GetPChainWallet().IssueSetL1ValidatorWeightTx(signedWarpMessage.Bytes())
 		Expect(err).Should(BeNil())
-		utils.PChainProposerVMWorkaround(network.GetPChainWallet())
+		utils.WaitForL1ToSeePChainHeight(ctx, pChainInfo, l1AInfo)
 		utils.AdvanceProposerVM(ctx, l1AInfo, fundedKey, 5)
 
 		// Construct an L1ValidatorWeightMessage Warp message from the P-Chain
