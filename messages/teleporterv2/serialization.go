@@ -88,15 +88,14 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	return &msg, nil
 }
 
-// readCount reads the uint32 count prefix at data[offset:] and verifies that [count] elements of
-// [elementLen] bytes, followed by at least [trailingLen] further bytes, fit in the remainder of
-// [data]. The caller must have already ensured that the prefix itself is in bounds.
+// readCount reads the uint32 count prefix at data[offset:] and checks that [count] elements of
+// [elementLen] bytes, plus [trailingLen] more bytes, fit in the rest of [data]. The caller must
+// have already ensured the prefix itself is in bounds.
 //
-// The count is attacker-controlled (the message bytes can arrive via the unauthenticated relay
-// API), so the check must not depend on the platform's int width: it is performed in uint64,
-// where count*elementLen cannot wrap (count < 2^32, elementLen <= 52), and no allocation happens
-// until it has passed. A count that passes is bounded by len(data)/elementLen and is therefore
-// always a valid slice length.
+// This is defensive parsing of untrusted input: messages can arrive via the unauthenticated
+// relay API, so a crafted count could overflow the size arithmetic or trigger a huge
+// allocation. The check is done in uint64, which cannot wrap here, and before any slice is
+// allocated, so a count that passes is always a legitimate, bounded slice length.
 func readCount(data []byte, offset, elementLen, trailingLen int, what string) (int, error) {
 	count := binary.BigEndian.Uint32(data[offset : offset+countLen])
 	remaining := uint64(len(data) - offset - countLen)

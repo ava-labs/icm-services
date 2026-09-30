@@ -104,6 +104,51 @@ func TestParseTeleporterMessageV2Errors(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestReadCount exercises readCount directly, on both the accept and the reject side.
+func TestReadCount(t *testing.T) {
+	const what = "widgets"
+	tests := []struct {
+		name        string
+		offset      int    // where the count prefix sits in data
+		count       uint32 // value written into the prefix
+		elementLen  int
+		trailingLen int
+		remaining   int // bytes present after the prefix
+		wantCount   int
+		wantErr     bool
+	}{
+		// Accept side.
+		{"zero count, nothing after prefix", 0, 0, addressLen, 0, 0, 0, false},
+		{"zero count, only trailing bytes", 0, 0, addressLen, countLen, countLen, 0, false},
+		{"exact fit", 0, 2, addressLen, 0, 2 * addressLen, 2, false},
+		{"exact fit with trailing bytes reserved", 0, 1, addressLen, countLen, addressLen + countLen, 1, false},
+		{"surplus bytes are allowed", 0, 1, receiptLen, 0, receiptLen + 100, 1, false},
+		{"prefix at non-zero offset", 7, 3, receiptLen, 0, 3 * receiptLen, 3, false},
+		// Reject side.
+		{"one element declared, none present", 0, 1, addressLen, 0, 0, 0, true},
+		{"one byte short", 0, 1, addressLen, 0, addressLen - 1, 0, true},
+		{"elements fit but trailing bytes do not", 0, 1, addressLen, countLen, addressLen, 0, true},
+		{"count negative as int32", 0, 1 << 31, addressLen, 0, addressLen, 0, true},
+		{"count max uint32", 0, math.MaxUint32, receiptLen, 0, receiptLen, 0, true},
+		{"byte size wraps int32", 0, uint32(math.MaxInt32/addressLen + 1), addressLen, 0, 1024, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := make([]byte, tt.offset+countLen+tt.remaining)
+			binary.BigEndian.PutUint32(data[tt.offset:], tt.count)
+
+			count, err := readCount(data, tt.offset, tt.elementLen, tt.trailingLen, what)
+			if tt.wantErr {
+				require.ErrorContains(t, err, "truncated reading "+what)
+				require.Zero(t, count)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantCount, count)
+		})
+	}
+}
+
 // TestParseTeleporterMessageV2RejectsCraftedCounts verifies that attacker-controlled count
 // prefixes are rejected with an error before anything is allocated, including values that would
 // go negative or wrap when multiplied by the element size in 32-bit int arithmetic. None of
