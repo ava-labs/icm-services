@@ -97,8 +97,7 @@ func TestMerkleizeToLimit(t *testing.T) {
 func TestExecHeaderFieldRootsMatchesTypedRoot(t *testing.T) {
 	header := testExecHeader()
 
-	fieldRoots, err := execHeaderFieldRoots(header)
-	require.NoError(t, err)
+	fieldRoots := execHeaderFieldRoots(header)
 	require.Len(t, fieldRoots, numExecHeaderLeaves)
 
 	// receipts_root must land at field 3 (gindex 35 in the header subtree).

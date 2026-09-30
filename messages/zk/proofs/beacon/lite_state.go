@@ -19,9 +19,7 @@ import (
 
 // Constants for building the lite beacon state and its Merkle subtrees,
 // derived from the Fulu BeaconState and ExecutionPayloadHeader definitions:
-// https://github.com/ethereum/consensus-specs/blob/63a81afa62c15012f062cfcfba31ef1f27cf46b6/specs/fulu/beacon-chain.md#beaconstate //nolint:lll
-//
-//nolint:lll
+// https://github.com/ethereum/consensus-specs/blob/master/specs/fulu/beacon-chain.md#beaconstate
 const (
 	// numStateFieldLeaves pads the BeaconState's 38 fields to the next
 	// power of 2: 2^6 = 64.
@@ -59,7 +57,7 @@ const (
 // purposes, we only need the full subtrees of 2 fields: the state_roots
 // vector and the latest_execution_payload_header container. All other
 // subtree fields are represented by their Merkle root, avoiding the full
-// state tree which isgigabytes in size, dominated by the millions of
+// state tree which is gigabytes in size, dominated by the millions of
 // validators in the beacon chain.
 type LiteBeaconState struct {
 	fieldRoots           [numStateFieldLeaves][32]byte
@@ -121,11 +119,7 @@ func ParseLiteBeaconState(stateSSZ []byte) (*LiteBeaconState, error) {
 	r[37] = uint64sVectorRoot(validatorIndicesToUint64s(state.ProposerLookahead))
 
 	lite.stateRoots = rootsToFixed(state.StateRoots)
-	var err error
-	lite.execHeaderFieldRoots, err = execHeaderFieldRoots(state.LatestExecutionPayloadHeader)
-	if err != nil {
-		return nil, err
-	}
+	lite.execHeaderFieldRoots = execHeaderFieldRoots(state.LatestExecutionPayloadHeader)
 	r[execPayloadHeaderLeafIndex] = merkleizeChunks(lite.execHeaderFieldRoots)
 
 	return lite, nil
@@ -184,7 +178,7 @@ func (s *LiteBeaconState) assemble(
 
 // execHeaderFieldRoots reduces the execution payload header to per-field
 // roots, padded to numExecHeaderLeaves. receipts_root is field 3 (gindex 35).
-func execHeaderFieldRoots(h *deneb.ExecutionPayloadHeader) ([][32]byte, error) {
+func execHeaderFieldRoots(h *deneb.ExecutionPayloadHeader) [][32]byte {
 	roots := make([][32]byte, numExecHeaderLeaves)
 	roots[0] = h.ParentHash
 	roots[1] = addressRoot(h.FeeRecipient)
@@ -203,7 +197,7 @@ func execHeaderFieldRoots(h *deneb.ExecutionPayloadHeader) ([][32]byte, error) {
 	roots[14] = h.WithdrawalsRoot
 	roots[15] = uint64Root(h.BlobGasUsed)
 	roots[16] = uint64Root(h.ExcessBlobGas)
-	return roots, nil
+	return roots
 }
 
 // --- field root helpers --------------------------------------------------
