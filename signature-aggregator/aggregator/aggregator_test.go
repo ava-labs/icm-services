@@ -29,6 +29,7 @@ import (
 	avago_mocks "github.com/ava-labs/icm-services/peers/avago_mocks"
 	client_mocks "github.com/ava-labs/icm-services/peers/clients/mocks"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
+	icmutils "github.com/ava-labs/icm-services/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -1136,19 +1137,23 @@ func TestGetUnderfundedL1NodesDetachedFromCallerContext(t *testing.T) {
 	fetchEntered := make(chan struct{})
 	releaseFetch := make(chan struct{})
 	var (
-		fetchCtxErr      error
+		fetchEnteredAt   time.Time
+		fetchDeadline    time.Time
 		fetchHasDeadline bool
+		fetchCtxErr      error
 	)
 	// Exactly one RPC must be issued: the initiator starts it and the concurrent caller joins it.
 	mockValidatorClient.EXPECT().
 		GetCurrentValidators(gomock.Any(), signingSubnet).
 		DoAndReturn(func(ctx context.Context, _ ids.ID) ([]platformvm.ClientPermissionlessValidator, error) {
+			// Record the deadline on entry, before blocking, so the hold below doesn't skew it.
+			fetchEnteredAt = time.Now()
+			fetchDeadline, fetchHasDeadline = ctx.Deadline()
 			close(fetchEntered)
 			<-releaseFetch
 			// Simulate the initiating client dropping its connection while the RPC is in flight.
 			cancelInitiator()
 			fetchCtxErr = ctx.Err()
-			_, fetchHasDeadline = ctx.Deadline()
 			if fetchCtxErr != nil {
 				return nil, fetchCtxErr
 			}
@@ -1182,13 +1187,14 @@ func TestGetUnderfundedL1NodesDetachedFromCallerContext(t *testing.T) {
 		select {
 		case res := <-ch:
 			require.NoError(t, res.err)
-			require.True(t, res.nodes.Contains(nodeID))
+			require.Equal(t, set.Of(nodeID), res.nodes)
 		case <-time.After(5 * time.Second):
 			require.Fail(t, "timed out waiting for getUnderfundedL1Nodes")
 		}
 	}
 	require.NoError(t, fetchCtxErr, "fetch context must not be cancelled by the initiating caller")
 	require.True(t, fetchHasDeadline, "fetch context must carry a service-owned deadline")
+	require.WithinDuration(t, fetchEnteredAt.Add(icmutils.DefaultRPCTimeout), fetchDeadline, time.Second)
 }
 
 func TestSelectSigningSubnet(t *testing.T) {
