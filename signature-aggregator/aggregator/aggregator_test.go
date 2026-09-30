@@ -1108,6 +1108,89 @@ func TestGetExcludedValidators(t *testing.T) {
 	}
 }
 
+// TestGetUnderfundedL1NodesDetachedFromCallerContext verifies that the single-flighted
+// underfunded-validator fetch does not run under the initiating caller's request context:
+// cancelling that context mid-fetch must neither fail the initiating call nor any concurrent
+// call for the same subnet that joined the shared fetch.
+func TestGetUnderfundedL1NodesDetachedFromCallerContext(t *testing.T) {
+	aggregator, _, _, _, mockValidatorClient := instantiateDefaultAggregator(t)
+	log := logging.NoLog{}
+	signingSubnet := ids.GenerateTestID()
+
+	underFunded := minimumL1ValidatorBalance - 1
+	nodeID := ids.GenerateTestNodeID()
+	validationID := ids.GenerateTestID()
+	l1Validators := []platformvm.ClientPermissionlessValidator{
+		{
+			ClientStaker: platformvm.ClientStaker{NodeID: nodeID},
+			ClientL1Validator: platformvm.ClientL1Validator{
+				ValidationID: &validationID,
+				Balance:      &underFunded,
+			},
+		},
+	}
+
+	initiatorCtx, cancelInitiator := context.WithCancel(t.Context())
+	defer cancelInitiator()
+
+	fetchEntered := make(chan struct{})
+	releaseFetch := make(chan struct{})
+	var (
+		fetchCtxErr      error
+		fetchHasDeadline bool
+	)
+	// Exactly one RPC must be issued: the initiator starts it and the concurrent caller joins it.
+	mockValidatorClient.EXPECT().
+		GetCurrentValidators(gomock.Any(), signingSubnet).
+		DoAndReturn(func(ctx context.Context, _ ids.ID) ([]platformvm.ClientPermissionlessValidator, error) {
+			close(fetchEntered)
+			<-releaseFetch
+			// Simulate the initiating client dropping its connection while the RPC is in flight.
+			cancelInitiator()
+			fetchCtxErr = ctx.Err()
+			_, fetchHasDeadline = ctx.Deadline()
+			if fetchCtxErr != nil {
+				return nil, fetchCtxErr
+			}
+			return l1Validators, nil
+		}).
+		Times(1)
+
+	type result struct {
+		nodes set.Set[ids.NodeID]
+		err   error
+	}
+	initiatorResult := make(chan result, 1)
+	go func() {
+		nodes, err := aggregator.getUnderfundedL1Nodes(initiatorCtx, log, signingSubnet)
+		initiatorResult <- result{nodes: nodes, err: err}
+	}()
+
+	// Wait until the initiator's fetch is in flight, then have a second, independent caller join it.
+	<-fetchEntered
+	concurrentResult := make(chan result, 1)
+	go func() {
+		nodes, err := aggregator.getUnderfundedL1Nodes(t.Context(), log, signingSubnet)
+		concurrentResult <- result{nodes: nodes, err: err}
+	}()
+	// Give the concurrent caller a moment to block on the shared single-flight before the fetch
+	// proceeds. If it arrives later it is served from the cache instead, which is also correct.
+	time.Sleep(50 * time.Millisecond)
+	close(releaseFetch)
+
+	for _, ch := range []chan result{initiatorResult, concurrentResult} {
+		select {
+		case res := <-ch:
+			require.NoError(t, res.err)
+			require.True(t, res.nodes.Contains(nodeID))
+		case <-time.After(5 * time.Second):
+			require.Fail(t, "timed out waiting for getUnderfundedL1Nodes")
+		}
+	}
+	require.NoError(t, fetchCtxErr, "fetch context must not be cancelled by the initiating caller")
+	require.True(t, fetchHasDeadline, "fetch context must carry a service-owned deadline")
+}
+
 func TestSelectSigningSubnet(t *testing.T) {
 	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 	ctx := t.Context()
