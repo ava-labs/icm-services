@@ -132,10 +132,13 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
 
     /**
      * @notice Migrates a validator from the V1 contract to the V2 contract.
+     * @dev Only callable by the owner. The migration is one-shot per validation ID and the supplied
+     * `receivedNonce` feeds the P-Chain acknowledgement checks for later weight updates, so an
+     * arbitrary caller must not be able to perform (or front-run) it.
      * @param validationID The ID of the validation period to migrate.
      * @param receivedNonce The latest nonce received from the P-Chain.
      */
-    function migrateFromV1(bytes32 validationID, uint32 receivedNonce) external {
+    function migrateFromV1(bytes32 validationID, uint32 receivedNonce) external onlyOwner {
         ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
         ValidatorLegacy storage legacy = $._validationPeriodsLegacy[validationID];
         if (legacy.status == ValidatorStatus.Unknown) {
