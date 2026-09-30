@@ -7,6 +7,14 @@ on:
   pull_request:
     branches:
       - "**"
+    # Building the foundry tree is expensive, so skip it for changes that cannot
+    # affect the macros (Go-only relayer work, for example).
+    paths:
+      - 'icm-macros/**'
+      - 'scripts/build_reforge.sh'
+      - 'scripts/install_foundry.sh'
+      - 'foundry.toml'
+      - '.github/workflows/icm_macros.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -35,7 +43,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Format
@@ -67,7 +75,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build
@@ -76,7 +84,18 @@ jobs:
 
       - name: Test
         working-directory: icm-macros
-        run: cargo test -- --skip tests::test_e2e
+        run: cargo test
+
+      - name: Install solc
+        run: |
+          source ./scripts/versions.sh
+          wget https://github.com/ethereum/solidity/releases/download/v$AVALANCHE_SOLIDITY_VERSION/solc-static-linux
+          chmod +x solc-static-linux
+          sudo mv solc-static-linux /usr/local/bin/solc
+
+      # The tests above only diff generated text, so compile the fixtures too.
+      - name: Compile expected fixtures
+        run: ./scripts/check_macro_fixtures.sh
 
   icm-macros-test-e2e:
     name: ICM Macros E2E Tests
@@ -95,7 +114,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
 
       - name: Cache Cargo (icm-macros)
         if: steps.cache-reforge.outputs.cache-hit != 'true'
@@ -105,7 +124,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge

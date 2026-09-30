@@ -123,7 +123,7 @@ fi
 export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
 export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
 export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
-export PATH=$PATH:$HOME/.foundry/bin
+export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
 
 # Install signature-aggregator binary
 "$REPO_PATH"/scripts/build_signature_aggregator.sh

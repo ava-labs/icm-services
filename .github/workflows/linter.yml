@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
+          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
 
       - name: Cache Cargo (icm-macros)
         if: steps.cache-reforge.outputs.cache-hit != 'true'
@@ -89,7 +89,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build reforge
@@ -146,28 +146,6 @@ jobs:
       - name: Install Foundry
         if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: ./scripts/install_foundry.sh
-
-      - name: Cache reforge binary
-        id: cache-reforge
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.local/bin/reforge
-          key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock') }}
-
-      - name: Cache Cargo (icm-macros)
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            icm-macros/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build reforge
-        if: steps.cache-reforge.outputs.cache-hit != 'true'
-        run: ./scripts/build_reforge.sh
 
       - name: Install solc
         run: |

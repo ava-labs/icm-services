@@ -203,7 +203,7 @@ mod tests {
         let cases = [
             (
                 "testing/unpack/errors/MappingField.sol",
-                "Cannot unpack mapping types without custom methods",
+                "Cannot unpack mapping field `data`",
             ),
             (
                 "testing/unpack/errors/FunctionField.sol",
@@ -211,7 +211,7 @@ mod tests {
             ),
             (
                 "testing/unpack/errors/MappingInArray.sol",
-                "Cannot unpack mapping types without custom methods",
+                "Cannot unpack mapping types",
             ),
             (
                 "testing/unpack/errors/FunctionInArray.sol",
@@ -220,6 +220,22 @@ mod tests {
             (
                 "testing/unpack/errors/BadContract.sol",
                 "contract `NonExistent` specified in #[unpack(contract=...)] was not found",
+            ),
+            (
+                "testing/unpack/errors/FixedArrayField.sol",
+                "Cannot unpack fixed-size array types without custom methods",
+            ),
+            (
+                "testing/unpack/errors/FixedArrayInArray.sol",
+                "Cannot unpack fixed-size array types without custom methods",
+            ),
+            (
+                "testing/unpack/errors/CrossContractField.sol",
+                "Cannot unpack the cross-contract type `Alpha.Thing` without a custom method",
+            ),
+            (
+                "testing/unpack/errors/MappingWithMethod.sol",
+                "Cannot unpack mapping field `data`",
             ),
         ];
         for (path, expected) in cases {

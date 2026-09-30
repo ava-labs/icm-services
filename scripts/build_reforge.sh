@@ -9,12 +9,7 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 ICM_MACROS_DIR="$REPO_ROOT/icm-macros"
 INSTALL_DIR="$HOME/.local/bin"
 
-if ! command -v forge &> /dev/null; then
-    echo "forge not found. Installing foundry..."
-    "$SCRIPT_DIR/install_foundry.sh"
-fi
-
-cargo build --release --manifest-path "$ICM_MACROS_DIR/Cargo.toml"
+cargo build --release --locked --manifest-path "$ICM_MACROS_DIR/Cargo.toml"
 
 mkdir -p "$INSTALL_DIR"
 cp "$ICM_MACROS_DIR/target/release/icm-macros" "$INSTALL_DIR/reforge"

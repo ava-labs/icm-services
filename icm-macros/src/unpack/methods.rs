@@ -152,6 +152,15 @@ pub fn unpack_struct(
         } else {
             format!("{field_type} {local_name};")
         };
+        // Solidity has no memory mappings and a mapping member cannot be assigned, so the
+        // generated local and `result.field = local;` are both invalid no matter what the
+        // method returns. #[unpack(default)] is the only usable option for these fields.
+        if matches!(field.ty.kind, TypeKind::Mapping(_)) {
+            eyre::bail!(
+                "Cannot unpack mapping field `{field_name}`: a custom method cannot work for \
+                 mappings because they cannot live in memory or be assigned; use #[unpack(default)]"
+            );
+        }
         let deserialize_field_code = if let Some(method) = &field_args.method {
             if args.calldata {
                 format!(
@@ -228,6 +237,15 @@ fn inline_unpack(
     Ok(match node.ty {
         TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata),
         TypeKind::Array(arr) => {
+            // Only dynamic arrays are supported: the generated code reads a length prefix
+            // and allocates `new T[](length)`, which cannot be assigned to a `T[N]` field.
+            if arr.size.is_some() {
+                let name = get_type_name(ctx, node.ty, target_contract)?;
+                eyre::bail!(
+                    "Cannot unpack fixed-size array types without custom methods (found `{name}`); \
+                     use a dynamic array or provide #[unpack(method = \"...\")]"
+                );
+            }
             let type_name = get_type_name(ctx, &arr.element.kind, target_contract)?;
             let next_output = format!("{}_{}", node.output, node.depth + 1);
             let next_node = UnpackingTreeNode {
@@ -264,6 +282,17 @@ fn inline_unpack(
         }
         TypeKind::Custom(item_id) => {
             let type_name = custom_type_name(ctx, *item_id);
+            // A type owned by another contract needs both a qualified declaration and a
+            // qualified call, but the generated helper's location depends on that type's
+            // own #[unpack(contract=...)], which is not resolvable from here. Reject rather
+            // than emit code that does not compile.
+            let decl_type_name = get_type_name(ctx, node.ty, target_contract)?;
+            if decl_type_name != type_name {
+                eyre::bail!(
+                    "Cannot unpack the cross-contract type `{decl_type_name}` without a custom \
+                     method; provide #[unpack(method = \"...\")] naming the helper to call"
+                );
+            }
             let output = sanitize_local(&node.output);
             let is_enum = matches!(item_id, ItemId::Enum(_));
             let decl = if is_enum {
@@ -297,7 +326,10 @@ fn inline_unpack(
             }
         }
         TypeKind::Function(_) => eyre::bail!("Cannot unpack function types without custom methods"),
-        TypeKind::Mapping(_) => eyre::bail!("Cannot unpack mapping types without custom methods"),
+        TypeKind::Mapping(_) => eyre::bail!(
+            "Cannot unpack mapping types: they cannot live in memory or be assigned, so no \
+             custom method can work; use #[unpack(default)]"
+        ),
         TypeKind::Err(_) => eyre::bail!("Cannot unpack error types without custom methods"),
     })
 }

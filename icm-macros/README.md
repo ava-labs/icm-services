@@ -1,6 +1,6 @@
 # icm-macros
 
-A [Reforge](../reforge)-based macro preprocessor for ICM Solidity contracts. It is a drop-in `forge` replacement that runs macro expansion over source files before handing them to `solc`.
+A [Reforge](https://github.com/ava-labs/reforge)-based macro preprocessor for ICM Solidity contracts. It is a drop-in `forge` replacement that runs macro expansion over source files before handing them to `solc`.
 
 ## Macros
 
@@ -124,8 +124,10 @@ struct MyStruct {
 | Fixed-size elementary (`uint*`, `int*`, `address`, `bool`, `bytes1`–`bytes32`, …) | Read exact packed byte width; shift/mask as needed |
 | `bytes` / `string` | Read 32-byte length prefix, then copy payload |
 | Array | Read 32-byte element count, then decode each element in a loop |
-| Custom struct/enum/UDVT | `unpack{TypeName}(data)` (must be in scope) |
-| Mapping / function | **Error** — must provide `#[unpack(method = "...")]` or `#[unpack(default)]` |
+| Custom struct/enum/UDVT | `unpack{TypeName}(data)` (must be in scope, and declared in the same contract) |
+| Fixed-size array (`T[N]`) | **Error** — use a dynamic array or `#[unpack(method = "...")]` |
+| Mapping | **Error** — must provide `#[unpack(default)]`; a custom method cannot work because mappings cannot live in memory or be assigned |
+| Function | **Error** — must provide `#[unpack(method = "...")]` or `#[unpack(default)]` |
 
 #### Zero-copy buffer handling — read carefully
 
@@ -172,7 +174,14 @@ testing/{macro}/
 Run the unit tests with:
 
 ```sh
-cargo test -- --skip tests::test_e2e
+cargo test
+```
+
+The snapshot tests only diff generated text, so also check that the fixtures still
+compile:
+
+```sh
+./scripts/check_macro_fixtures.sh
 ```
 
 When a snapshot test fails, the actual output is written to `mismatched/`. Inspect the diff, and if the new output is correct copy it to `expected/`:

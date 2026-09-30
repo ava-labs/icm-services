@@ -61,10 +61,6 @@ if [ "$HELP" = true ]; then
     exit 0
 fi
 
-if ! command -v reforge &> /dev/null; then
-    echo "reforge not found. You can install by calling $REPO_PATH/scripts/build_reforge.sh" && exit 1
-fi
-
 if ! command -v solc &> /dev/null; then
     echo "solc not found. See https://docs.soliditylang.org/en/latest/installing-solidity.html for installation instructions" && exit 1
 fi

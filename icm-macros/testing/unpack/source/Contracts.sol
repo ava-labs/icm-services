@@ -24,7 +24,7 @@ library SecondContract {
 
     // #[unpack()]
     struct Struct {
-        // #[unpack(method="FirstContract.packFreeStanding")]
+        // #[unpack(method="FirstContract.unpackFreeStanding")]
         FreeStanding free;
         string[] names;
     }

@@ -107,7 +107,7 @@ library FirstContract {
 library SecondContract {
     // #[unpack()]
     struct Struct {
-        // #[unpack(method="FirstContract.packFreeStanding")]
+        // #[unpack(method="FirstContract.unpackFreeStanding")]
         FreeStanding free;
         string[] names;
     }
@@ -142,7 +142,7 @@ library SecondContract {
             uint256 _len_before;
             assembly { _len_before := mload(data) }
             uint256 read;
-            (read, free) = FirstContract.packFreeStanding(data);
+            (read, free) = FirstContract.unpackFreeStanding(data);
             assembly {
                 data := add(data, read)
                 mstore(data, sub(_len_before, read))
