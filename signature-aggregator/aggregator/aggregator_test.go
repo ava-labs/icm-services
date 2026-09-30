@@ -294,7 +294,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	require.ErrorIs(
 		t,
 		err,
-		errNotEnoughSignatures,
+		ErrNotEnoughSignatures,
 	)
 }
 
