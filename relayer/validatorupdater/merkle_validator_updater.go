@@ -29,8 +29,10 @@ import (
 // weiPerGwei is the conversion factor between gwei and wei.
 var weiPerGwei = big.NewInt(1_000_000_000)
 
-// errPChainNotRegistered is returned when the registry has no P-chain validator
-// set commitment to anchor a P-chain-signed update against.
+// errPChainNotRegistered is returned when the registry has no usable P-chain
+// validator set commitment to anchor a P-chain-signed update against. The
+// constructor always stores one, but does not reject a zero total weight, and
+// the contract treats zero weight as unregistered.
 var errPChainNotRegistered = errors.New("P-chain validator set is not registered on the contract")
 
 // registryCaller is the read-only subset of the MerkleValidatorSetRegistry
@@ -480,10 +482,7 @@ func (s *MerkleSetUpdater) fetchCanonicalValidators(
 // The registry verifies every P-chain-signed registerValidatorSet message against
 // this stored commitment, so signature aggregation and the attestation for such a
 // message must be built over the primary network's canonical validator set at
-// exactly this height. Neither the target chain's own commitment (zeroed while it
-// is still unregistered) nor the latest P-chain height is a valid substitute: on
-// any network whose primary validator set has changed since the stored entry, a
-// bitset built over a different set fails quorum or the multi-proof on-chain.
+// exactly this height.
 func pChainAnchorHeight(ctx context.Context, registry registryCaller) (uint64, error) {
 	commitment, err := registry.GetValidatorSetCommitment(
 		&bind.CallOpts{Context: ctx},
