@@ -125,29 +125,40 @@ func ParseLiteBeaconState(stateSSZ []byte) (*LiteBeaconState, error) {
 	return lite, nil
 }
 
-// AnchorStateTree builds the lite tree with state_roots expanded, verified
-// against expectedRoot.
+// AnchorStateTree builds the anchor lite beacon state tree, verified against
+// expectedRoot. state_roots is expanded as a real subtree and every other
+// field is kept as a root leaf. To be clear, this is a 64-leaf tree, all
+// collapsed to field roots except state_roots, which is a real 8192-leaf subtree
+// inside it.
 func (s *LiteBeaconState) AnchorStateTree(expectedRoot common.Hash) (*ssz.Node, error) {
-	subtree, err := ssz.TreeFromChunks(toByteSlices(s.stateRoots))
+	stateRootsSubtree, err := ssz.TreeFromChunks(toByteSlices(s.stateRoots))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build state_roots subtree: %w", err)
 	}
-	return s.assemble(map[int]*ssz.Node{stateRootsLeafIndex: subtree}, expectedRoot)
+	return s.assemble(map[int]*ssz.Node{stateRootsLeafIndex: stateRootsSubtree}, expectedRoot)
 }
 
-// TargetStateTree builds the lite tree with the execution payload header
-// expanded, verified against expectedRoot. The header subtree is returned
-// alongside the state tree.
+// TargetStateTree returns two trees:
+//
+//  1. The target lite beacon state tree, whose root is found at the target
+//     slot's position in the anchor state's state_roots vector.
+//  2. The execution payload header subtree, contained inside the target
+//     beacon state tree. Every other field is kept as a root leaf.
+//
+// Two trees are returned, instead of one like AnchorStateTree, because
+// target state execution proofs need both trees: the header inclusion proof
+// against the state tree, and the receipts root proof within the header
+// subtree itself.
 func (s *LiteBeaconState) TargetStateTree(expectedRoot common.Hash) (*ssz.Node, *ssz.Node, error) {
-	subtree, err := ssz.TreeFromChunks(toByteSlices(s.execHeaderFieldRoots))
+	execHeaderSubtree, err := ssz.TreeFromChunks(toByteSlices(s.execHeaderFieldRoots))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build execution header subtree: %w", err)
 	}
-	stateTree, err := s.assemble(map[int]*ssz.Node{execPayloadHeaderLeafIndex: subtree}, expectedRoot)
+	beaconStateTree, err := s.assemble(map[int]*ssz.Node{execPayloadHeaderLeafIndex: execHeaderSubtree}, expectedRoot)
 	if err != nil {
 		return nil, nil, err
 	}
-	return stateTree, subtree, nil
+	return beaconStateTree, execHeaderSubtree, nil
 }
 
 // assemble builds the depth-6 beacon state tree.

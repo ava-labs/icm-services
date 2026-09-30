@@ -6,6 +6,7 @@ tool github.com/golangci/golangci-lint/cmd/golangci-lint
 
 require (
 	github.com/alexliesenfeld/health v0.8.1
+	github.com/attestantio/go-eth2-client v0.29.0
 	github.com/ava-labs/avalanchego v1.15.0
 	github.com/ava-labs/avalanchego/graft/subnet-evm v1.15.0
 	github.com/ava-labs/libevm v1.13.15-0.20260903154605-2eaf73af626c
@@ -15,11 +16,13 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/ferranbt/fastssz v1.0.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/holiman/uint256 v1.3.2
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.43.1
 	github.com/pingcap/errors v0.11.4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_model v0.6.3
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/segmentio/encoding v0.5.4
 	github.com/spf13/cobra v1.10.2
@@ -36,12 +39,7 @@ require (
 )
 
 // This is a placeholder require directive since the replacement below is necessary and for replacement to work, the require directive must be present. Separating it out here since it's an indirect requirement.
-require (
-	github.com/attestantio/go-eth2-client v0.29.0
-	github.com/ava-labs/avalanchego/graft/evm v1.15.0
-	github.com/holiman/uint256 v1.3.2
-	github.com/prometheus/client_model v0.6.3
-)
+require github.com/ava-labs/avalanchego/graft/evm v1.15.0
 
 // These are manual replacements pointing to the same commit as the avalanchego module. They must be updated whenever the avalanchego version is updated. Version is ignored but the short commit hash and the timestamp must be accepted by go mod tidy.
 replace github.com/ava-labs/avalanchego/graft/subnet-evm => github.com/ava-labs/avalanchego/graft/subnet-evm v0.0.0-20260908201129-70bd6d063b73
