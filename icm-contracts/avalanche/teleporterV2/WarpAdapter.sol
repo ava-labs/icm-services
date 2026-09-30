@@ -47,7 +47,9 @@ contract WarpAdapter is IAdapter {
         require(
             msg.sender == message.originTeleporterAddress
                 || msg.sender
-                    == address(ITeleporterMessengerV2(message.originTeleporterAddress).messageSender()),
+                    == address(
+                        ITeleporterMessengerV2(message.originTeleporterAddress).messageSender()
+                    ),
             "WarpAdapter: unauthorized sender"
         );
         // Submit the message to the Warp precompile.

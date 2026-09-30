@@ -123,15 +123,15 @@ fi
 export AVALANCHEGO_BUILD_PATH=$BASEDIR/avalanchego
 export AVALANCHEGO_PATH=$AVALANCHEGO_BUILD_PATH/avalanchego
 export AVAGO_PLUGIN_DIR=$AVALANCHEGO_BUILD_PATH/plugins
-export PATH=$PATH:$HOME/.foundry/bin
+export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
 
 # Install signature-aggregator binary
 "$REPO_PATH"/scripts/build_signature_aggregator.sh
 
 cd "$REPO_PATH"
-forge build --skip test
-FOUNDRY_PROFILE=common forge build --skip test
-FOUNDRY_PROFILE=ethereum forge build --skip test
+reforge build --skip test
+FOUNDRY_PROFILE=common reforge build --skip test
+FOUNDRY_PROFILE=ethereum reforge build --skip test
 
 for component in $(echo $components | tr ',' ' '); do
     echo "Building e2e tests for $component"

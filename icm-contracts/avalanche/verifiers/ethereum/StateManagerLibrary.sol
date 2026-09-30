@@ -27,7 +27,10 @@ library Consensus {
     /**
      * @notice Compares two consensus states structs for equality.
      */
-    function compareState(State memory a, State memory b) internal pure returns (bool) {
+    function compareState(
+        State memory a,
+        State memory b
+    ) internal pure returns (bool) {
         return compareCheckpoint(a.currentJustifiedCheckpoint, b.currentJustifiedCheckpoint)
             && compareCheckpoint(a.finalizedCheckpoint, b.finalizedCheckpoint);
     }
@@ -45,7 +48,10 @@ library Consensus {
     /**
      * @notice Generates a unique hash for block that was included in the chain at the given slot
      */
-    function checkpointHash(uint64 slot, bytes32 root) internal pure returns (bytes32) {
+    function checkpointHash(
+        uint64 slot,
+        bytes32 root
+    ) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(slot, root));
     }
 }

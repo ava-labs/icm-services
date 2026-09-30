@@ -18,12 +18,18 @@ interface IERC20TokenTransferrer is ITokenTransferrer {
      * @param input Specifies information for delivery of the tokens
      * @param amount Amount of tokens to send
      */
-    function send(SendTokensInput calldata input, uint256 amount) external;
+    function send(
+        SendTokensInput calldata input,
+        uint256 amount
+    ) external;
 
     /**
      * @notice Sends ERC20 tokens to the specified destination to be used in a smart contract interaction.
      * @param input Specifies information for delivery of the tokens
      * @param amount Amount of tokens to send
      */
-    function sendAndCall(SendAndCallInput calldata input, uint256 amount) external;
+    function sendAndCall(
+        SendAndCallInput calldata input,
+        uint256 amount
+    ) external;
 }
