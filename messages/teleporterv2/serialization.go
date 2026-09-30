@@ -52,12 +52,12 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	msg.RequiredGasLimit = new(big.Int).SetBytes(data[offset : offset+gasLimitLen])
 	offset += gasLimitLen
 
-	// Allowed relayer addresses.
-	numRelayers := int(binary.BigEndian.Uint32(data[offset : offset+countLen]))
-	offset += countLen
-	if len(data) < offset+numRelayers*addressLen+countLen {
-		return nil, fmt.Errorf("teleporter message v2 truncated reading relayer addresses")
+	// Allowed relayer addresses. The receipts count prefix must also still fit after them.
+	numRelayers, err := readCount(data, offset, addressLen, countLen, "relayer addresses")
+	if err != nil {
+		return nil, err
 	}
+	offset += countLen
 	msg.AllowedRelayerAddresses = make([]common.Address, numRelayers)
 	for i := 0; i < numRelayers; i++ {
 		msg.AllowedRelayerAddresses[i] = common.BytesToAddress(data[offset : offset+addressLen])
@@ -65,11 +65,11 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	}
 
 	// Receipts.
-	numReceipts := int(binary.BigEndian.Uint32(data[offset : offset+countLen]))
-	offset += countLen
-	if len(data) < offset+numReceipts*receiptLen {
-		return nil, fmt.Errorf("teleporter message v2 truncated reading receipts")
+	numReceipts, err := readCount(data, offset, receiptLen, 0, "receipts")
+	if err != nil {
+		return nil, err
 	}
+	offset += countLen
 	msg.Receipts = make([]teleportermessengerv2.TeleporterMessageReceipt, numReceipts)
 	for i := 0; i < numReceipts; i++ {
 		var receipt teleportermessengerv2.TeleporterMessageReceipt
@@ -86,6 +86,29 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	copy(msg.Message, data[offset:])
 
 	return &msg, nil
+}
+
+// readCount reads the uint32 count prefix at data[offset:] and verifies that [count] elements of
+// [elementLen] bytes, followed by at least [trailingLen] further bytes, fit in the remainder of
+// [data]. The caller must have already ensured that the prefix itself is in bounds.
+//
+// The count is attacker-controlled (the message bytes can arrive via the unauthenticated relay
+// API), so the check must not depend on the platform's int width: it is performed in uint64,
+// where count*elementLen cannot wrap (count < 2^32, elementLen <= 52), and no allocation happens
+// until it has passed. A count that passes is bounded by len(data)/elementLen and is therefore
+// always a valid slice length.
+func readCount(data []byte, offset, elementLen, trailingLen int, what string) (int, error) {
+	count := binary.BigEndian.Uint32(data[offset : offset+countLen])
+	remaining := uint64(len(data) - offset - countLen)
+	if uint64(count)*uint64(elementLen)+uint64(trailingLen) > remaining {
+		return 0, fmt.Errorf(
+			"teleporter message v2 truncated reading %s: %d declared, %d bytes remaining",
+			what,
+			count,
+			remaining,
+		)
+	}
+	return int(count), nil
 }
 
 // SerializeTeleporterMessageV2 serializes a TeleporterMessageV2 into the packed format expected by
