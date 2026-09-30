@@ -162,13 +162,18 @@ contract ZKStateManager is AccessControl {
         address superAdmin
     ) {
         require(newSourceChainId != 0, "Invalid chain ID");
-        require(genesisTime_ != 0, "Invalid genesis time");
         sourceChainId = newSourceChainId;
+
+        require(genesisTime_ != 0, "Invalid genesis time");
         genesisTime = genesisTime_;
 
         _grantRole(ADMIN_ROLE, admin);
         _grantRole(DEFAULT_ADMIN_ROLE, superAdmin);
 
+        require(
+            epochTimestamp(startingState.finalizedCheckpoint.epoch) <= block.timestamp,
+            "Starting state in the future"
+        );
         _currentState = startingState;
         _beaconConfig = beaconConfig;
         permissibleTimespan = permissibleTimespan_;

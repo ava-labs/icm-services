@@ -34,41 +34,40 @@ contract ZKStateManagerTest is Test {
     uint64 private constant _START_EPOCH = 1_000;
 
     ZKStateManager private _manager;
+    address private _verifier;
     address private _admin = makeAddr("admin");
 
     function setUp() public {
-        // Execution-layer verification is not exercised here, so the beacon config can be empty.
-        Execution.BeaconConfig memory config;
-        _manager = new ZKStateManager({
-            newSourceChainId: 1,
-            startingState: _state(_START_EPOCH),
-            beaconConfig: config,
-            genesisTime_: _GENESIS_TIME,
-            permissibleTimespan_: _PERMISSIBLE_TIMESPAN,
-            verifier_: address(new AcceptAllVerifier()),
-            imageID_: bytes32(uint256(1)),
-            admin: _admin,
-            superAdmin: _admin
-        });
-        // Finality lags the chain head by about two epochs, so start the clock there.
-        vm.warp(_manager.epochTimestamp(_START_EPOCH + 2));
+        // Finality lags the chain head by about two epochs, so start the clock there. The
+        // constructor rejects a starting checkpoint that lies in the future, so warp first.
+        vm.warp(_epochTimestamp(_START_EPOCH + 2));
+        // Deployed once here so that `vm.expectRevert` in the constructor tests targets the
+        // manager's creation rather than the verifier's.
+        _verifier = address(new AcceptAllVerifier());
+        _manager = _deploy(_START_EPOCH, _GENESIS_TIME);
     }
 
     function testConstructorRejectsZeroGenesisTime() public {
-        Execution.BeaconConfig memory config;
-        address verifier = address(new AcceptAllVerifier());
         vm.expectRevert("Invalid genesis time");
-        new ZKStateManager({
-            newSourceChainId: 1,
-            startingState: _state(_START_EPOCH),
-            beaconConfig: config,
-            genesisTime_: 0,
-            permissibleTimespan_: _PERMISSIBLE_TIMESPAN,
-            verifier_: verifier,
-            imageID_: bytes32(uint256(1)),
-            admin: _admin,
-            superAdmin: _admin
-        });
+        _deploy(_START_EPOCH, 0);
+    }
+
+    function testConstructorRejectsStartingStateInTheFuture() public {
+        vm.warp(_epochTimestamp(_START_EPOCH) - 1);
+        vm.expectRevert("Starting state in the future");
+        _deploy(_START_EPOCH, _GENESIS_TIME);
+    }
+
+    function testConstructorAcceptsStartingStateAtCurrentTime() public {
+        vm.warp(_epochTimestamp(_START_EPOCH));
+        _deploy(_START_EPOCH, _GENESIS_TIME);
+    }
+
+    /// @dev A genesis time that is too far ahead makes the starting checkpoint read as future.
+    function testConstructorRejectsGenesisTimeTooFarAhead() public {
+        uint256 age = block.timestamp - _epochTimestamp(_START_EPOCH);
+        vm.expectRevert("Starting state in the future");
+        _deploy(_START_EPOCH, _GENESIS_TIME + age + 1);
     }
 
     function testTransitionSucceedsWhenRecent() public {
@@ -182,6 +181,22 @@ contract ZKStateManagerTest is Test {
     // Helpers
     // ---------------------------------------------------------------------------------------
 
+    function _deploy(uint64 startEpoch, uint256 genesisTime) private returns (ZKStateManager) {
+        // Execution-layer verification is not exercised here, so the beacon config can be empty.
+        Execution.BeaconConfig memory config;
+        return new ZKStateManager({
+            newSourceChainId: 1,
+            startingState: _state(startEpoch),
+            beaconConfig: config,
+            genesisTime_: genesisTime,
+            permissibleTimespan_: _PERMISSIBLE_TIMESPAN,
+            verifier_: _verifier,
+            imageID_: bytes32(uint256(1)),
+            admin: _admin,
+            superAdmin: _admin
+        });
+    }
+
     function _manualTransition(uint64 preEpoch, uint64 postEpoch) private {
         Journal memory journal = Journal({
             preState: _state(preEpoch),
@@ -190,6 +205,13 @@ contract ZKStateManagerTest is Test {
         });
         vm.prank(_admin);
         _manager.manualTransition(abi.encode(journal), postEpoch * _SLOT_PER_EPOCH);
+    }
+
+    /// @dev Mirrors {ZKStateManager.epochTimestamp} for use before the manager is deployed.
+    function _epochTimestamp(
+        uint64 epoch
+    ) private pure returns (uint256) {
+        return _GENESIS_TIME + uint256(epoch) * _EPOCH_SECONDS;
     }
 
     function _consensusData(
