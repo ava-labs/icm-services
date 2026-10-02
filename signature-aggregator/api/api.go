@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/units"
 	pchainapi "github.com/ava-labs/avalanchego/vms/platformvm/api"
+	avalancheWarp "github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
 	"github.com/ava-labs/icm-services/utils"
@@ -60,6 +61,22 @@ type AggregateSignatureResponse struct {
 type AggregateSignatureErrorResponse struct {
 	Error string `json:"error"`
 }
+
+// signatureAggregator is the part of [aggregator.SignatureAggregator] the API depends on. It is
+// an interface so that handler tests can drive the error paths with a stub.
+type signatureAggregator interface {
+	CreateSignedMessage(
+		ctx context.Context,
+		log logging.Logger,
+		unsignedMessage *avalancheWarp.UnsignedMessage,
+		justification []byte,
+		inputSigningSubnet ids.ID,
+		requiredQuorumPercentage uint64,
+		pchainHeight uint64,
+	) (*avalancheWarp.Message, error)
+}
+
+var _ signatureAggregator = (*aggregator.SignatureAggregator)(nil)
 
 func HandleAggregateSignaturesByRawMsgRequest(
 	mux *http.ServeMux,
@@ -112,10 +129,29 @@ func truncateForLog(s string) string {
 	return s[:maxLoggedFieldLen] + "..."
 }
 
+// classifyAggregationError maps a CreateSignedMessage error to the HTTP status and the fixed
+// message returned to the caller. Only sentinel errors defined by the aggregator package are
+// reported specifically, using their fixed text. Everything else is reported generically: the
+// error chain can wrap upstream RPC transport errors whose text embeds the full request URL,
+// including any API key configured on the P-Chain endpoint, and the endpoint is unauthenticated.
+// The full error is logged server-side by the caller.
+func classifyAggregationError(err error) (int, string) {
+	switch {
+	case errors.Is(err, aggregator.ErrRequestTooLarge):
+		return http.StatusRequestEntityTooLarge, aggregator.ErrRequestTooLarge.Error()
+	case errors.Is(err, aggregator.ErrNotEnoughConnectedStake):
+		return http.StatusInternalServerError, aggregator.ErrNotEnoughConnectedStake.Error()
+	case errors.Is(err, aggregator.ErrNotEnoughSignatures):
+		return http.StatusInternalServerError, aggregator.ErrNotEnoughSignatures.Error()
+	default:
+		return http.StatusInternalServerError, "failed to aggregate signatures"
+	}
+}
+
 func signatureAggregationAPIHandler(
 	logger logging.Logger,
 	metrics *metrics.SignatureAggregatorMetrics,
-	signatureAggregator *aggregator.SignatureAggregator,
+	signatureAggregator signatureAggregator,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metrics.AggregateSignaturesRequestCount.Inc()
@@ -239,13 +275,10 @@ func signatureAggregationAPIHandler(
 			pchainHeight, // ACP-181: Use determined P-Chain height for validator set selection
 		)
 		if err != nil {
-			if errors.Is(err, aggregator.ErrRequestTooLarge) {
-				logger.Warn("Rejected oversized signature request", zap.Error(err))
-				writeJSONError(logger, w, http.StatusRequestEntityTooLarge, err.Error())
-				return
-			}
-			logger.Warn("Failed to aggregate signatures", zap.Error(err))
-			writeJSONError(logger, w, http.StatusInternalServerError, "failed to aggregate signatures")
+			// Never echo err itself to the caller; see classifyAggregationError.
+			status, msg := classifyAggregationError(err)
+			logger.Warn("Failed to aggregate signatures", zap.Int("status", status), zap.Error(err))
+			writeJSONError(logger, w, status, msg)
 			return
 		}
 		resp, err := json.Marshal(
