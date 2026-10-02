@@ -183,16 +183,21 @@ func TestExternalHandlerIgnoresUnexpectedAndDuplicateResponses(t *testing.T) {
 
 func TestExternalHandlerAppErrorCancelsTimeoutOfExpectedResponse(t *testing.T) {
 	handler, timeoutManager := newTestHandler(t)
+	ctx := context.Background()
 	chainID := ids.GenerateTestID()
 	const requestID uint32 = 13
 	nodeA := ids.GenerateTestNodeID()
+	nodeB := ids.GenerateTestNodeID()
 
-	responseChan := handler.RegisterRequestID(requestID, set.Of(nodeA))
+	responseChan := handler.RegisterRequestID(requestID, set.Of(nodeA, nodeB))
 	handler.RegisterAppRequest(timeoutID(nodeA, chainID, requestID))
+	handler.RegisterAppRequest(timeoutID(nodeB, chainID, requestID))
 
 	// Timeouts are keyed by the expected AppResponse op. An AppError reply must cancel that
-	// same timeout, otherwise it fires later and the node is counted a second time.
-	handler.HandleInbound(context.Background(), message.InboundAppError(
+	// same timeout, otherwise it fires later and the node is counted a second time. It must
+	// cancel only the erroring node's timeout: the other node's response is still outstanding,
+	// so the request must remain tracked and its channel open.
+	handler.HandleInbound(ctx, message.InboundAppError(
 		nodeA,
 		chainID,
 		requestID,
@@ -201,7 +206,21 @@ func TestExternalHandlerAppErrorCancelsTimeoutOfExpectedResponse(t *testing.T) {
 	))
 	require.Equal(t, []ids.RequestID{timeoutID(nodeA, chainID, requestID)}, timeoutManager.removes)
 	response := <-responseChan
+	require.Equal(t, nodeA, response.NodeID)
 	require.Equal(t, message.AppErrorOp, response.Op)
+	require.Empty(t, responseChan)
+	requireTrackedRequests(t, handler, 1)
+
+	// The other node's response is still expected; it cancels its own timeout and completes
+	// the request.
+	handler.HandleInbound(ctx, appResponse(nodeB, chainID, requestID))
+	require.Equal(t, []ids.RequestID{
+		timeoutID(nodeA, chainID, requestID),
+		timeoutID(nodeB, chainID, requestID),
+	}, timeoutManager.removes)
+	response = <-responseChan
+	require.Equal(t, nodeB, response.NodeID)
+	require.Equal(t, message.AppResponseOp, response.Op)
 	requireClosed(t, responseChan)
 	requireNoTrackedRequests(t, handler)
 }
