@@ -22,7 +22,7 @@ jobs:
       - name: Install pinned nightly
         run: rustup toolchain install $(cat nightly-toolchain) --component rustfmt
       - name: Install taplo and cargo-sort
-        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
         with:
           tool: taplo-cli,cargo-sort
       - run: make fmt-check
