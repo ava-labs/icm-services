@@ -147,6 +147,30 @@ func TestReadCount(t *testing.T) {
 			require.Equal(t, tt.wantCount, count)
 		})
 	}
+
+	// The prefix itself must be in bounds before it is read. readCount must not rely on the
+	// caller for that, and must reject (not panic on) an offset at which no prefix fits.
+	prefixTests := []struct {
+		name    string
+		dataLen int
+		offset  int
+	}{
+		{"empty data", 0, 0},
+		{"data shorter than prefix", countLen - 1, 0},
+		{"prefix starts at end of data", 8, 8},
+		{"prefix starts past end of data", 8, 12},
+		{"prefix partially past end of data", 8, 8 - countLen + 1},
+		{"negative offset", 8, -1},
+	}
+	for _, tt := range prefixTests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				count, err := readCount(make([]byte, tt.dataLen), tt.offset, addressLen, 0, what)
+				require.ErrorContains(t, err, "truncated reading "+what)
+				require.Zero(t, count)
+			})
+		})
+	}
 }
 
 // TestParseTeleporterMessageV2RejectsCraftedCounts verifies that attacker-controlled count
