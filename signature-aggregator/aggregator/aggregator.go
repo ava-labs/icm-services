@@ -206,7 +206,12 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	signingSubnet ids.ID,
 ) (set.Set[ids.NodeID], error) {
 	fetchUnderfundedL1Nodes := func(subnetID ids.ID) (set.Set[ids.NodeID], error) {
-		validators, err := s.validatorClient.GetCurrentValidators(ctx, subnetID)
+		// This fetch is single-flighted by the cache and its result (or error) is shared with
+		// every concurrent caller for [subnetID], so it must not run under any one caller's
+		// request-scoped context.
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), utils.DefaultRPCTimeout)
+		defer cancel()
+		validators, err := s.validatorClient.GetCurrentValidators(fetchCtx, subnetID)
 		if err != nil {
 			log.Error("Failed to fetch current L1 validators", zap.Error(err))
 			return nil, err
