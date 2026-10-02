@@ -305,6 +305,12 @@ func containersListRoot[T interface{ HashTreeRoot() ([32]byte, error) }](items [
 	return mixinLength(merkleizeToLimit(roots, limit), uint64(len(items)))
 }
 
+// StateRootAt returns the state root the state_roots history vector holds
+// for the given slot.
+func (s *LiteBeaconState) StateRootAt(slot uint64) common.Hash {
+	return common.Hash(s.stateRoots[slot%8192]) // 8192 = state_roots vector size
+}
+
 // --- merkleization primitives ---------------------------------------------
 
 // merkleizeChunks pairwise-hashes chunks up to a single root, zero-padding
