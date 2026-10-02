@@ -147,7 +147,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		return nil
 	}
 
-	newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
+	newValidators, err := s.fetchCanonicalValidators(ctx, s.subnetID, pChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to fetch validators at height %d: %w", pChainHeight, err)
 	}
@@ -236,7 +236,7 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 			return nil
 		}
 
-		newValidators, err := s.fetchSortedValidators(ctx, pChainHeight)
+		newValidators, err := s.fetchCanonicalValidators(ctx, s.subnetID, pChainHeight)
 		if err != nil {
 			return fmt.Errorf("failed to fetch validators after first registration: %w", err)
 		}
@@ -259,7 +259,7 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		return nil
 	}
 
-	validators, err := s.fetchSortedValidators(ctx, onChainVS.PChainHeight)
+	validators, err := s.fetchCanonicalValidators(ctx, s.subnetID, onChainVS.PChainHeight)
 	if err != nil {
 		return fmt.Errorf("failed to fetch P-chain validators at on-chain height %d: %w",
 			onChainVS.PChainHeight, err)
@@ -374,27 +374,16 @@ func (s *MerkleSetUpdater) sendUpdate(
 	signingChain ids.ID,
 ) error {
 	// If the P-Chain signed the message in either initial registration or as a fallback,
-	// fetch the primary network validators used to build that root so the attestation
-	// proof is computed against the correct ordered set.
+	// fetch the primary network's canonical validator set used to build that root so the
+	// attestation proof is computed against the same ordered set the signer bitset refers to.
 	var attestationValidators []*Validator
 	if signingChain == constants.PrimaryNetworkID {
-		allValidatorSets, err := s.pChainClient.GetAllValidatorSets(ctx, onChainPChainHeight)
+		var err error
+		attestationValidators, err = s.fetchCanonicalValidators(ctx, constants.PrimaryNetworkID, onChainPChainHeight)
 		if err != nil {
-			return fmt.Errorf("failed to get P-chain validator sets at height %d for attestation: %w",
+			return fmt.Errorf("failed to get P-chain validators at height %d for attestation: %w",
 				onChainPChainHeight, err)
 		}
-		pChainWarpSet, ok := allValidatorSets[ids.Empty]
-		if !ok {
-			return fmt.Errorf("primary network not found in validator sets at height %d", onChainPChainHeight)
-		}
-		attestationValidators = make([]*Validator, len(pChainWarpSet.Validators))
-		for i, vdr := range pChainWarpSet.Validators {
-			attestationValidators[i] = &Validator{
-				UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
-				Weight:                     vdr.Weight,
-			}
-		}
-		SortValidators(attestationValidators)
 	} else {
 		attestationValidators = s.localValidatorSet
 	}
@@ -428,27 +417,17 @@ func (s *MerkleSetUpdater) sendUpdate(
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-func (s *MerkleSetUpdater) fetchSortedValidators(
+// fetchCanonicalValidators returns [subnetID]'s canonical warp validator set at
+// [pChainHeight] as Merkle leaves. The committed Merkle tree, the attestation
+// ordering, and the signature aggregator's signer bitset must all be derived
+// from this single representation: validators without a BLS key are omitted
+// and validators sharing a BLS key are merged into one entry.
+func (s *MerkleSetUpdater) fetchCanonicalValidators(
 	ctx context.Context,
+	subnetID ids.ID,
 	pChainHeight uint64,
 ) ([]*Validator, error) {
-	subnetValidatorSet, err := s.pChainClient.GetValidatorsAt(ctx, s.subnetID, pChainHeight)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get validator sets: %w", err)
-	}
-
-	validators := make([]*Validator, len(subnetValidatorSet))
-	ix := 0
-	for _, vdr := range subnetValidatorSet {
-		validators[ix] = &Validator{
-			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
-			Weight:                     vdr.Weight,
-		}
-		ix++
-	}
-	SortValidators(validators)
-
-	return validators, nil
+	return FetchCanonicalValidators(ctx, s.pChainClient, subnetID, pChainHeight)
 }
 
 func (s *MerkleSetUpdater) buildICMMessage(

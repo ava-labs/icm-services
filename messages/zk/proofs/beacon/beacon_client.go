@@ -1,7 +1,7 @@
 // Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package proofs
+package beacon
 
 import (
 	"context"

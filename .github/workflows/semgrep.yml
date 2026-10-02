@@ -18,7 +18,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: semgrep ci --dry-run --sarif > semgrep.sarif
+      # The repo keeps descriptive require strings, so skip the rule that asks for custom errors.
+      - run: >-
+          semgrep ci --dry-run --sarif
+          --exclude-rule solidity.performance.use-custom-error-not-require.use-custom-error-not-require
+          > semgrep.sarif
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN_PUB }}
 

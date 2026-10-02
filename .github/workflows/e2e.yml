@@ -141,3 +141,20 @@ jobs:
           export PATH="$PATH:$GOPATH/bin"
           export PATH="$PATH:$HOME/.geth"
           ./scripts/e2e_test.sh --components ${{ matrix.component }}
+
+  # Branch protection requires this job instead of the individual suites. It always runs, so a
+  # pull request that needs no suite still gets a passing check, and it fails when any suite did.
+  e2e-results:
+    name: e2e-results
+    needs: [changes, e2e]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check suite results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: |
+          echo "changes: $CHANGES_RESULT, e2e: $E2E_RESULT"
+          [[ "$CHANGES_RESULT" == "success" ]]
+          [[ "$E2E_RESULT" == "success" || "$E2E_RESULT" == "skipped" ]]
