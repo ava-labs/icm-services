@@ -785,6 +785,87 @@ func TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent(t *testin
 	))
 }
 
+// TestCreateSignedMessageCountsResponsesDeliveredDuringSend verifies that response tracking is
+// registered before the AppRequest is sent: responses that arrive while Send is still executing
+// (the fastest a real validator could possibly reply) must be attributed and counted, and nodes
+// the send did not reach must be dropped from the expected-response set so the request still
+// completes.
+func TestCreateSignedMessageCountsResponsesDeliveredDuringSend(t *testing.T) {
+	connectedValidators, validatorSigners := makeConnectedValidators(5)
+	unreachedNodeID := connectedValidators.ValidatorSet.Validators[0].NodeIDs[0]
+
+	chainID := ids.GenerateTestID()
+	networkID := constants.UnitTestID
+	msg, err := warp.NewUnsignedMessage(networkID, chainID, utils.RandomBytes(64))
+	require.NoError(t, err)
+
+	aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
+
+	subnetID := ids.GenerateTestID()
+	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(subnetID, nil).AnyTimes()
+	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), subnetID).Return(
+		connectedValidators.ValidatorSet, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{subnetID: connectedValidators.ValidatorSet}, nil,
+	).AnyTimes()
+
+	var peerInfos []peer.Info
+	for nodeID := range connectedValidators.ConnectedNodes {
+		peerInfos = append(peerInfos, peer.Info{ID: nodeID})
+	}
+	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfos).AnyTimes()
+	mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+		platformvm.GetSubnetClientResponse{}, nil,
+	).Times(1)
+
+	mockNetwork.EXPECT().Send(
+		gomock.Any(), gomock.Any(), subnetID, subnets.NoOpAllower,
+	).Times(1).DoAndReturn(
+		func(
+			outboundMsg *message.OutboundMessage,
+			config interface{},
+			subnetID ids.ID,
+			allower interface{},
+		) set.Set[ids.NodeID] {
+			sendConfig, ok := config.(avagocommon.SendConfig)
+			require.True(t, ok)
+			require.True(t, sendConfig.NodeIDs.Contains(unreachedNodeID))
+			currentRequestID := aggregator.currentRequestID.Load()
+
+			// Deliver every reached validator's response synchronously, i.e. before Send has
+			// even returned to the aggregator. One node is reported as not reached.
+			sentTo := set.NewSet[ids.NodeID](sendConfig.NodeIDs.Len())
+			for nodeID := range sendConfig.NodeIDs {
+				if nodeID == unreachedNodeID {
+					continue
+				}
+				sentTo.Add(nodeID)
+				idx := connectedValidators.NodeValidatorIndexMap[nodeID]
+				signature, err := validatorSigners[idx].Sign(msg.Bytes())
+				require.NoError(t, err)
+				responseBytes, err := proto.Marshal(&sdk.SignatureResponse{
+					Signature: bls.SignatureToBytes(signature),
+				})
+				require.NoError(t, err)
+				handler.HandleInbound(
+					context.Background(),
+					message.InboundAppResponse(chainID, currentRequestID, responseBytes, nodeID),
+				)
+			}
+			return sentTo
+		},
+	)
+
+	signedMessage, err := aggregator.CreateSignedMessage(
+		t.Context(), logging.NoLog{}, msg, nil, subnetID, 67, pchainapi.ProposedHeight,
+	)
+	require.NoError(t, err)
+	require.NoError(t, signedMessage.Signature.Verify(
+		msg, networkID, connectedValidators.ValidatorSet, 67, 100,
+	))
+}
+
 func TestUnmarshalResponse(t *testing.T) {
 	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 
