@@ -5,6 +5,7 @@ go 1.26.7
 tool github.com/golangci/golangci-lint/cmd/golangci-lint
 
 require (
+	github.com/OffchainLabs/go-bitfield v0.0.0-20251031151322-f427d04d8506
 	github.com/alexliesenfeld/health v0.8.1
 	github.com/attestantio/go-eth2-client v0.29.0
 	github.com/ava-labs/avalanchego v1.15.0
@@ -65,7 +66,6 @@ require (
 	github.com/GaijinEntertainment/go-exhaustruct/v3 v3.3.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/OffchainLabs/go-bitfield v0.0.0-20251031151322-f427d04d8506 // indirect
 	github.com/OpenPeeDeeP/depguard/v2 v2.2.1 // indirect
 	github.com/StephenButtolph/canoto v0.18.0 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.1 // indirect
