@@ -31,11 +31,11 @@ contract AdapterTest is Test {
         _adapter2 = new BtoA();
         _multiplexAdapter =
             new Adapter(_BLOCKCHAIN1, _BLOCKCHAIN2, address(_adapter1), address(_adapter2));
-        _teleporter1 = new TeleporterMessengerV2(address(_multiplexAdapter));
+        _teleporter1 = new TeleporterMessengerV2(address(_multiplexAdapter), address(this));
         _teleporter1.initialize(_BLOCKCHAIN1);
-        _teleporter2 = new TeleporterMessengerV2(address(_multiplexAdapter));
+        _teleporter2 = new TeleporterMessengerV2(address(_multiplexAdapter), address(this));
         _teleporter2.initialize(_BLOCKCHAIN2);
-        _teleporter3 = new TeleporterMessengerV2(address(_multiplexAdapter));
+        _teleporter3 = new TeleporterMessengerV2(address(_multiplexAdapter), address(this));
         _teleporter3.initialize(_BLOCKCHAIN3);
     }
 
@@ -188,7 +188,7 @@ contract AdapterSendMessageAuthTest is Test {
         _adapter2 = new BtoA();
         _multiplexAdapter =
             new Adapter(_BLOCKCHAIN1, _BLOCKCHAIN2, address(_adapter1), address(_adapter2));
-        _teleporter1 = new TeleporterMessengerV2(address(_multiplexAdapter));
+        _teleporter1 = new TeleporterMessengerV2(address(_multiplexAdapter), address(this));
         _teleporter1.initialize(_BLOCKCHAIN1);
     }
 
