@@ -19,12 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testGIndexBlockStateRoot is state_root's gindex in the block tree,
-// duplicated from the proofs package's gIndexBlockStateRoot.
 const testGIndexBlockStateRoot = 11
 
-// The block tree must reproduce attestantio's typed hash of the block
-// message, with state_root at the gindex proof 1 walks to.
+// The block tree built from SSZ bytes must hash to the same root attestantio
+// computes for the block.
 func TestParseBlockTreeMatchesTypedRoot(t *testing.T) {
 	signedBlock := minimalSignedBeaconBlock(t, 100, phase0.Root{0xaa})
 	expectedRoot, err := signedBlock.Message.HashTreeRoot()
@@ -51,7 +49,8 @@ func TestParseBlockTreeRejectsGarbage(t *testing.T) {
 
 // minimalSignedBeaconBlock builds the smallest signed block attestantio will
 // serialize and hash, at the given slot and with the given state_root.
-// Duplicated in the proofs package's tests pending package consolidation.
+// TODO: This is duplicated in the proofs package's tests pending package consolidation.
+// See Issue: https://github.com/ava-labs/icm-services/issues/1541
 func minimalSignedBeaconBlock(t *testing.T, slot uint64, stateRoot phase0.Root) *electra.SignedBeaconBlock {
 	t.Helper()
 	return &electra.SignedBeaconBlock{

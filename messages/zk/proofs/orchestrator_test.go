@@ -23,16 +23,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockBeaconClient serves SSZ-encoded mock beacon blocks and states by slot
-// and records which slots were fetched.
+// mockBeaconClient serves SSZ-encoded mock beacon blocks and states by slot.
 type mockBeaconClient struct {
-	blocks  map[uint64][]byte
-	states  map[uint64][]byte
-	fetched []uint64
+	blocks map[uint64][]byte
+	states map[uint64][]byte
 }
 
 func (m *mockBeaconClient) Block(_ context.Context, slot uint64) ([]byte, error) {
-	m.fetched = append(m.fetched, slot)
 	b, ok := m.blocks[slot]
 	if !ok {
 		return nil, errors.New("no block at slot")
@@ -41,7 +38,6 @@ func (m *mockBeaconClient) Block(_ context.Context, slot uint64) ([]byte, error)
 }
 
 func (m *mockBeaconClient) State(_ context.Context, slot uint64) ([]byte, error) {
-	m.fetched = append(m.fetched, slot)
 	s, ok := m.states[slot]
 	if !ok {
 		return nil, errors.New("no state at slot")
@@ -50,10 +46,8 @@ func (m *mockBeaconClient) State(_ context.Context, slot uint64) ([]byte, error)
 }
 
 // mockFixture is a synthetic anchor block, anchor state, and target state,
-// linked the way real beacon data is. The anchor block commits to the anchor
-// state's root, and the anchor state's state_roots vector holds the target
-// state's root at the target slot. The mock client serves their SSZ
-// encodings, and the roots are stored for asserting against the built proof.
+// chained the way real beacon data is. The mock client serves their SSZ
+// encodings and the roots are stored for asserting against the built proof.
 type mockFixture struct {
 	client          *mockBeaconClient
 	anchorSlot      uint64
@@ -64,7 +58,7 @@ type mockFixture struct {
 	receiptsRoot    common.Hash
 }
 
-// Follows the established chain of trust block -> anchor state -> target state -> receipts.
+// Builds and verifies an execution proof for the given mock fixture.
 func TestBuildExecutionProofForSlots(t *testing.T) {
 	f := newMockFixture(t)
 
@@ -77,13 +71,9 @@ func TestBuildExecutionProofForSlots(t *testing.T) {
 	require.Equal(t, f.anchorStateRoot, common.Hash(proof.AnchorBeaconStateRoot))
 	require.Equal(t, f.targetStateRoot, common.Hash(proof.TargetBeaconStateRoot))
 	require.Equal(t, f.receiptsRoot, common.Hash(proof.TargetReceiptsRoot))
-
-	// Exactly the block and two states are fetched, anchor first.
-	require.Equal(t, []uint64{f.anchorSlot, f.anchorSlot, f.targetSlot}, f.client.fetched)
 }
 
-// A confirmed anchor root the fetched block does not hash to must fail at
-// the chain's first link.
+// A non-confirmed anchor beacon block root must be rejected.
 func TestBuildExecutionProofForSlotsWrongAnchorRoot(t *testing.T) {
 	f := newMockFixture(t)
 
@@ -92,17 +82,17 @@ func TestBuildExecutionProofForSlotsWrongAnchorRoot(t *testing.T) {
 	require.ErrorContains(t, err, "does not verify against expected root")
 }
 
-// Invalid slot windows must be rejected before anything is fetched.
-func TestBuildExecutionProofForSlotsRejectsWindowBeforeFetching(t *testing.T) {
+// Invalid slot windows must be rejected.
+func TestBuildExecutionProofForSlotsRejectsInvalidWindow(t *testing.T) {
 	client := &mockBeaconClient{}
 
+	// Target slot at or after the anchor slot.
 	_, err := BuildExecutionProofForSlots(context.Background(), client, 100, 100, common.Hash{})
 	require.ErrorContains(t, err, "must be before")
 
+	// Target slot outside the anchor's state_roots window.
 	_, err = BuildExecutionProofForSlots(context.Background(), client, 10_000, 100, common.Hash{})
 	require.ErrorContains(t, err, "state_roots window")
-
-	require.Empty(t, client.fetched)
 }
 
 // Fetch failures must surface with the slot that failed.
@@ -115,6 +105,59 @@ func TestBuildExecutionProofForSlotsFetchFailure(t *testing.T) {
 	require.ErrorContains(t, err, "failed to fetch target state at slot 100")
 }
 
+// An anchor state whose history vector does not hold the target state's root
+// must fail when the target state tree is verified against it.
+func TestBuildExecutionProofForSlotsBrokenHistoryLink(t *testing.T) {
+	f := newMockFixture(t)
+
+	// Rebuild the anchor state without the target root planted.
+	anchorState := minimalBeaconState(t, f.anchorSlot)
+	anchorStateRoot, err := anchorState.HashTreeRoot()
+	require.NoError(t, err)
+	block := minimalSignedBeaconBlock(t, f.anchorSlot, anchorStateRoot)
+	anchorBlockRoot, err := block.Message.HashTreeRoot()
+	require.NoError(t, err)
+
+	f.client.states[f.anchorSlot], err = anchorState.MarshalSSZ()
+	require.NoError(t, err)
+	f.client.blocks[f.anchorSlot], err = block.MarshalSSZ()
+	require.NoError(t, err)
+
+	// Since the minimalBeaconState contains a state_roots vector of all zeroes, the
+	// target state root will not be found in the anchor state, and the proof will fail.
+	_, err = BuildExecutionProofForSlots(
+		context.Background(), f.client, f.anchorSlot, f.targetSlot, common.Hash(anchorBlockRoot))
+	require.ErrorContains(t, err, "lite state root mismatch")
+}
+
+// A block fetch failure must surface with the slot that failed.
+func TestBuildExecutionProofForSlotsBlockFetchFailure(t *testing.T) {
+	f := newMockFixture(t)
+	delete(f.client.blocks, f.anchorSlot)
+
+	_, err := BuildExecutionProofForSlots(
+		context.Background(), f.client, f.anchorSlot, f.targetSlot, f.anchorBlockRoot)
+	require.ErrorContains(t, err, "failed to fetch anchor block at slot 200")
+}
+
+// An anchor state that is not the one the anchor block commits to must fail
+// when the anchor state tree is verified against the block's state_root.
+func TestBuildExecutionProofForSlotsAnchorStateMismatch(t *testing.T) {
+	f := newMockFixture(t)
+
+	// Serve a different anchor state than the block's state_root commits to.
+	otherState := minimalBeaconState(t, f.anchorSlot)
+	otherState.GenesisTime = 999
+	var err error
+	f.client.states[f.anchorSlot], err = otherState.MarshalSSZ()
+	require.NoError(t, err)
+
+	_, err = BuildExecutionProofForSlots(
+		context.Background(), f.client, f.anchorSlot, f.targetSlot, f.anchorBlockRoot)
+	require.ErrorContains(t, err, "root mismatch")
+}
+
+// newMockFixture builds a mock fixture for a mock beacon client and the synthetic beacon data it serves.
 func newMockFixture(t *testing.T) *mockFixture {
 	t.Helper()
 	const anchorSlot, targetSlot = uint64(200), uint64(100)

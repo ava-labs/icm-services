@@ -14,11 +14,12 @@ import (
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#beaconblock
 const numBlockFieldLeaves = 8
 
-// ParseBlockTree deserializes an SSZ encoded SignedBeaconBlock and builds the
-// Merkle tree of the inner BeaconBlock message.
+// ParseBlockTree deserializes an SSZ-encoded SignedBeaconBlock and builds the
+// Merkle tree of its BeaconBlock. Note that a "lite tree" (a memory-efficient Merkle tree)
+// is not needed here because we are not expanding any of the anchor beacon block's subtrees.
 //
-// The block's state_root field in raw bytes is also returned, which is the expected root
-// the anchor state tree is verified against.
+// Note the block's state_root field, which is the Merkle root of the anchor beacon state,
+// is also returned.
 func ParseBlockTree(blockSSZ []byte) (*ssz.Node, [32]byte, error) {
 	var signedBlock electra.SignedBeaconBlock
 	if err := signedBlock.UnmarshalSSZ(blockSSZ); err != nil {
