@@ -10,8 +10,7 @@ import (
 	ssz "github.com/ferranbt/fastssz"
 )
 
-// numBlockFieldLeaves pads the BeaconBlock's 5 fields to the next power of 2,
-// which is 8.
+// numBlockFieldLeaves pads the BeaconBlock's 5 fields to 2^3 = 8 leaves.
 // https://github.com/ethereum/consensus-specs/blob/master/specs/phase0/beacon-chain.md#beaconblock
 const numBlockFieldLeaves = 8
 

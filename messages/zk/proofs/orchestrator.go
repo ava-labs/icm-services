@@ -12,31 +12,39 @@ import (
 	"github.com/ava-labs/libevm/common"
 )
 
-// beaconDataSource specifies that whatever beacon client is passed in
-// must implement the Block and State methods, which return the SSZ encoded
-// SignedBeaconBlock and BeaconState respectively. See /beacon/beacon_client.go
-// for the implementation.
-type beaconDataSource interface {
+// Overview: orchestrator.go connects the three main individual components of the proofs package.
+// 1) the beacon client, which fetches SSZ-encoded beacon blocks and states by slot
+// 2) the lite beacon tree builder, which parses the SSZ into lite (memory-efficient) Merkle trees
+// 3) the execution proof builder, which produces a proof from the anchor block root to the target receipts root
+//
+// BuildExecutionProofForSlots is the main entry point for this orchestrator, which takes in a beacon client,
+// an anchor slot, target slot, and the anchor block root, and returns an execution proof ready to be sent to the
+// contract.
+
+type beaconClient interface {
 	Block(ctx context.Context, slot uint64) ([]byte, error)
 	State(ctx context.Context, slot uint64) ([]byte, error)
 }
 
 // BuildExecutionProofForSlots builds the complete execution proof linking
-// targetSlot's receipts root to the confirmed anchor beacon block root at
+// the targetSlot's receipts root to the confirmed anchor beacon block root at
 // anchorSlot.
 //
-// It fetches the anchor block and both beacon states (anchor and target), reduces
-// the states to lite trees, and runs the proof builder over them. anchorBlockRoot
-// is the root the ZKAdapter has confirmed for anchorSlot. Every tree is
-// verified against this chain of trust as it is built, so wrong or
-// inconsistent beacon data fails here rather than on-chain.
-//
-// The two state fetches are ~100-200MB each.
-//
-// TODO: cache the anchor's parsed lite state keyed by slot. Follow up work.
+// In more detail, this function performs the following tasks:
+// 1. Fetches the anchor beacon block and both beacon states (anchor and target)
+// from the beaconClient. Note the anchorBlockRoot si the root ZKAdapter has confirmed for the
+// anchorSlot.
+// 2. Parse the anchor beacon block into a regular Merkle tree, and the two beacon states into
+// lite Merkle trees (to save memory).
+// 3. Use the execution proof builder to create a proof from the parsed trees and provided slots.
+// The execution proof builder will verify each tree against the expected chain of trust.
+
+// TODO: We can cache the anchor's parsed lite state. The reason is that a single anchor beacon state
+// may be used to verify multiple target slots within the 8192-slot window of the anchor state's
+// state_roots vector. Follow up work.
 func BuildExecutionProofForSlots(
 	ctx context.Context,
-	client beaconDataSource,
+	client beaconClient,
 	anchorSlot uint64,
 	targetSlot uint64,
 	anchorBlockRoot common.Hash,
@@ -53,7 +61,7 @@ func BuildExecutionProofForSlots(
 			targetSlot, anchorSlot, StateRootsVectorSize)
 	}
 
-	// Get the SSZ-encoded anchor beacon block and parse it into a tree.
+	// Get the SSZ-encoded anchor beacon block from the beaconClient and parse it into a tree.
 	blockSSZ, err := client.Block(ctx, anchorSlot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch anchor block at slot %d: %w", anchorSlot, err)
@@ -63,7 +71,7 @@ func BuildExecutionProofForSlots(
 		return nil, err
 	}
 
-	// Get the SSZ-encoded anchor becon state and parse it into a lite tree.
+	// Get the SSZ-encoded anchor beacon state from the beaconClient and parse it into a lite tree.
 	anchorStateSSZ, err := client.State(ctx, anchorSlot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch anchor state at slot %d: %w", anchorSlot, err)
@@ -77,7 +85,7 @@ func BuildExecutionProofForSlots(
 		return nil, fmt.Errorf("anchor state at slot %d: %w", anchorSlot, err)
 	}
 
-	// Get the SSZ-encoded target beacon state and parse it into a lite tree.
+	// Get the SSZ-encoded target beacon state from the beaconClient and parse it into a lite tree.
 	targetStateSSZ, err := client.State(ctx, targetSlot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch target state at slot %d: %w", targetSlot, err)
