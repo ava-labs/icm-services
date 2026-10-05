@@ -1,6 +1,8 @@
 // Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+// THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
+
 package proofs
 
 import (
@@ -21,33 +23,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockBeaconClient stores SSZ-encoded mock beacon blocks and state.
+// mockBeaconClient serves SSZ-encoded mock beacon blocks and states by slot
+// and records which slots were fetched.
 type mockBeaconClient struct {
 	blocks  map[uint64][]byte
 	states  map[uint64][]byte
 	fetched []uint64
 }
 
-func (f *mockBeaconClient) Block(_ context.Context, slot uint64) ([]byte, error) {
-	f.fetched = append(f.fetched, slot)
-	b, ok := f.blocks[slot]
+func (m *mockBeaconClient) Block(_ context.Context, slot uint64) ([]byte, error) {
+	m.fetched = append(m.fetched, slot)
+	b, ok := m.blocks[slot]
 	if !ok {
 		return nil, errors.New("no block at slot")
 	}
 	return b, nil
 }
 
-func (f *mockBeaconClient) State(_ context.Context, slot uint64) ([]byte, error) {
-	f.fetched = append(f.fetched, slot)
-	s, ok := f.states[slot]
+func (m *mockBeaconClient) State(_ context.Context, slot uint64) ([]byte, error) {
+	m.fetched = append(m.fetched, slot)
+	s, ok := m.states[slot]
 	if !ok {
 		return nil, errors.New("no state at slot")
 	}
 	return s, nil
 }
 
+// mockFixture is a synthetic anchor block, anchor state, and target state,
+// linked the way real beacon data is. The anchor block commits to the anchor
+// state's root, and the anchor state's state_roots vector holds the target
+// state's root at the target slot. The mock client serves their SSZ
+// encodings, and the roots are stored for asserting against the built proof.
 type mockFixture struct {
-	source          *mockBeaconClient
+	client          *mockBeaconClient
 	anchorSlot      uint64
 	targetSlot      uint64
 	anchorBlockRoot common.Hash
@@ -56,20 +64,71 @@ type mockFixture struct {
 	receiptsRoot    common.Hash
 }
 
-func newChainedFixture(t *testing.T) *mockFixture {
+// Follows the established chain of trust block -> anchor state -> target state -> receipts.
+func TestBuildExecutionProofForSlots(t *testing.T) {
+	f := newMockFixture(t)
+
+	proof, err := BuildExecutionProofForSlots(
+		context.Background(), f.client, f.anchorSlot, f.targetSlot, f.anchorBlockRoot)
+	require.NoError(t, err)
+
+	require.Equal(t, f.anchorSlot, proof.AnchorSlot)
+	require.Equal(t, f.targetSlot, proof.TargetSlot)
+	require.Equal(t, f.anchorStateRoot, common.Hash(proof.AnchorBeaconStateRoot))
+	require.Equal(t, f.targetStateRoot, common.Hash(proof.TargetBeaconStateRoot))
+	require.Equal(t, f.receiptsRoot, common.Hash(proof.TargetReceiptsRoot))
+
+	// Exactly the block and two states are fetched, anchor first.
+	require.Equal(t, []uint64{f.anchorSlot, f.anchorSlot, f.targetSlot}, f.client.fetched)
+}
+
+// A confirmed anchor root the fetched block does not hash to must fail at
+// the chain's first link.
+func TestBuildExecutionProofForSlotsWrongAnchorRoot(t *testing.T) {
+	f := newMockFixture(t)
+
+	_, err := BuildExecutionProofForSlots(
+		context.Background(), f.client, f.anchorSlot, f.targetSlot, common.HexToHash("0xbad"))
+	require.ErrorContains(t, err, "does not verify against expected root")
+}
+
+// Invalid slot windows must be rejected before anything is fetched.
+func TestBuildExecutionProofForSlotsRejectsWindowBeforeFetching(t *testing.T) {
+	client := &mockBeaconClient{}
+
+	_, err := BuildExecutionProofForSlots(context.Background(), client, 100, 100, common.Hash{})
+	require.ErrorContains(t, err, "must be before")
+
+	_, err = BuildExecutionProofForSlots(context.Background(), client, 10_000, 100, common.Hash{})
+	require.ErrorContains(t, err, "state_roots window")
+
+	require.Empty(t, client.fetched)
+}
+
+// Fetch failures must surface with the slot that failed.
+func TestBuildExecutionProofForSlotsFetchFailure(t *testing.T) {
+	f := newMockFixture(t)
+	delete(f.client.states, f.targetSlot)
+
+	_, err := BuildExecutionProofForSlots(
+		context.Background(), f.client, f.anchorSlot, f.targetSlot, f.anchorBlockRoot)
+	require.ErrorContains(t, err, "failed to fetch target state at slot 100")
+}
+
+func newMockFixture(t *testing.T) *mockFixture {
 	t.Helper()
 	const anchorSlot, targetSlot = uint64(200), uint64(100)
 
-	targetState := MinimalBeaconState(t, targetSlot)
+	targetState := minimalBeaconState(t, targetSlot)
 	targetStateRoot, err := targetState.HashTreeRoot()
 	require.NoError(t, err)
 
-	anchorState := MinimalBeaconState(t, anchorSlot)
+	anchorState := minimalBeaconState(t, anchorSlot)
 	anchorState.StateRoots[targetSlot%StateRootsVectorSize] = targetStateRoot
 	anchorStateRoot, err := anchorState.HashTreeRoot()
 	require.NoError(t, err)
 
-	block := MinimalSignedBeaconBlock(t, anchorSlot, anchorStateRoot)
+	block := minimalSignedBeaconBlock(t, anchorSlot, anchorStateRoot)
 	anchorBlockRoot, err := block.Message.HashTreeRoot()
 	require.NoError(t, err)
 
@@ -81,7 +140,7 @@ func newChainedFixture(t *testing.T) *mockFixture {
 	require.NoError(t, err)
 
 	return &mockFixture{
-		source: &mockBeaconClient{
+		client: &mockBeaconClient{
 			blocks: map[uint64][]byte{anchorSlot: blockSSZ},
 			states: map[uint64][]byte{anchorSlot: anchorSSZ, targetSlot: targetSSZ},
 		},
@@ -94,65 +153,14 @@ func newChainedFixture(t *testing.T) *mockFixture {
 	}
 }
 
-// The pipeline must turn fetched bytes into a proof whose roots are exactly
-// the synthetic chain's: block -> anchor state -> target state -> receipts.
-func TestBuildExecutionProofForSlots(t *testing.T) {
-	f := newChainedFixture(t)
-
-	proof, err := BuildExecutionProofForSlots(
-		context.Background(), f.source, f.anchorSlot, f.targetSlot, f.anchorBlockRoot)
-	require.NoError(t, err)
-
-	require.Equal(t, f.anchorSlot, proof.AnchorSlot)
-	require.Equal(t, f.targetSlot, proof.TargetSlot)
-	require.Equal(t, f.anchorStateRoot, common.Hash(proof.AnchorBeaconStateRoot))
-	require.Equal(t, f.targetStateRoot, common.Hash(proof.TargetBeaconStateRoot))
-	require.Equal(t, f.receiptsRoot, common.Hash(proof.TargetReceiptsRoot))
-
-	// Exactly the block and two states are fetched, anchor first.
-	require.Equal(t, []uint64{f.anchorSlot, f.anchorSlot, f.targetSlot}, f.source.fetched)
-}
-
-// A confirmed anchor root the fetched block does not hash to must fail at
-// the chain's first link.
-func TestBuildExecutionProofForSlotsWrongAnchorRoot(t *testing.T) {
-	f := newChainedFixture(t)
-
-	_, err := BuildExecutionProofForSlots(
-		context.Background(), f.source, f.anchorSlot, f.targetSlot, common.HexToHash("0xbad"))
-	require.ErrorContains(t, err, "does not verify against expected root")
-}
-
-// Invalid slot windows must be rejected before anything is fetched.
-func TestBuildExecutionProofForSlotsRejectsWindowBeforeFetching(t *testing.T) {
-	source := &mockBeaconClient{}
-
-	_, err := BuildExecutionProofForSlots(context.Background(), source, 100, 100, common.Hash{})
-	require.ErrorContains(t, err, "must be before")
-
-	_, err = BuildExecutionProofForSlots(context.Background(), source, 10_000, 100, common.Hash{})
-	require.ErrorContains(t, err, "state_roots window")
-
-	require.Empty(t, source.fetched)
-}
-
-// Fetch failures must surface with the slot that failed.
-func TestBuildExecutionProofForSlotsFetchFailure(t *testing.T) {
-	f := newChainedFixture(t)
-	delete(f.source.states, f.targetSlot)
-
-	_, err := BuildExecutionProofForSlots(
-		context.Background(), f.source, f.anchorSlot, f.targetSlot, f.anchorBlockRoot)
-	require.ErrorContains(t, err, "failed to fetch target state at slot 100")
-}
-
-// Satisfy the unused-import check when phase0 is only needed transitively.
-var _ phase0.Root
+// TODO: This is duplicated code from lite_state_test.go. To resolve this,
+// we should flatten the proofs and beacon package into a single package,
+// and move the test helpers into a shared testutil package.
+// Issue: https://github.com/ava-labs/icm-services/issues/1541
 
 // minimalBeaconState builds the smallest fulu.BeaconState that attestantio
-// will serialize and hash: fixed-size vectors at spec length, lists empty,
-// containers populated.
-func minimalBeaconState(t *testing.T) *fulu.BeaconState {
+// will serialize and hash
+func minimalBeaconState(t *testing.T, slot uint64) *fulu.BeaconState {
 	t.Helper()
 
 	syncCommittee := &altair.SyncCommittee{}
@@ -163,14 +171,14 @@ func minimalBeaconState(t *testing.T) *fulu.BeaconState {
 	state := &fulu.BeaconState{
 		GenesisTime:           1,
 		GenesisValidatorsRoot: phase0.Root{0x01},
-		Slot:                  100,
+		Slot:                  phase0.Slot(slot),
 		Fork: &phase0.Fork{
 			PreviousVersion: phase0.Version{0x01},
 			CurrentVersion:  phase0.Version{0x02},
 			Epoch:           1,
 		},
 		LatestBlockHeader: &phase0.BeaconBlockHeader{
-			Slot:       99,
+			Slot:       phase0.Slot(slot) - 1,
 			ParentRoot: phase0.Root{0x02},
 			StateRoot:  phase0.Root{0x03},
 			BodyRoot:   phase0.Root{0x04},
@@ -197,28 +205,23 @@ func minimalBeaconState(t *testing.T) *fulu.BeaconState {
 		InactivityScores:              []uint64{},
 		CurrentSyncCommittee:          syncCommittee,
 		NextSyncCommittee:             syncCommittee,
-		LatestExecutionPayloadHeader:  testExecHeader(),
+		LatestExecutionPayloadHeader:  minimalExecHeader(),
 		NextWithdrawalIndex:           1,
 		NextWithdrawalValidatorIndex:  2,
-		HistoricalSummaries:           nil,
 		DepositRequestsStartIndex:     3,
 		DepositBalanceToConsume:       4,
 		ExitBalanceToConsume:          5,
 		EarliestExitEpoch:             6,
 		ConsolidationBalanceToConsume: 7,
 		EarliestConsolidationEpoch:    8,
-		PendingDeposits:               nil,
-		PendingPartialWithdrawals:     nil,
-		PendingConsolidations:         nil,
 		ProposerLookahead:             make([]phase0.ValidatorIndex, 64),
 	}
-	state.StateRoots[5] = phase0.Root{0x02}
 	return state
 }
 
-// MinimalSignedBeaconBlock builds the smallest signed block attestantio will
+// minimalSignedBeaconBlock builds the smallest signed block attestantio will
 // serialize and hash, at the given slot and with the given state_root.
-func MinimalSignedBeaconBlock(t *testing.T, slot uint64, stateRoot phase0.Root) *electra.SignedBeaconBlock {
+func minimalSignedBeaconBlock(t *testing.T, slot uint64, stateRoot phase0.Root) *electra.SignedBeaconBlock {
 	t.Helper()
 	return &electra.SignedBeaconBlock{
 		Message: &electra.BeaconBlock{
@@ -256,8 +259,8 @@ func MinimalSignedBeaconBlock(t *testing.T, slot uint64, stateRoot phase0.Root) 
 	}
 }
 
-// testExecHeader builds a fully-populated execution payload header.
-func testExecHeader() *deneb.ExecutionPayloadHeader {
+// minimalExecHeader builds a fully-populated execution payload header.
+func minimalExecHeader() *deneb.ExecutionPayloadHeader {
 	return &deneb.ExecutionPayloadHeader{
 		ParentHash:       phase0.Hash32{0x01},
 		FeeRecipient:     [20]byte{0x02},
