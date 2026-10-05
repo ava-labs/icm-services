@@ -56,7 +56,7 @@ func MerkleValidatorSetRegistry(
 	ethereumBlockchainID := ethInfo.ChainID()
 	networkID := avalancheNetwork.GetNetworkID()
 	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
-	_, fundedAvalancheKey := avalancheNetwork.GetFundedAccountInfo()
+	fundedAvalancheAddress, fundedAvalancheKey := avalancheNetwork.GetFundedAccountInfo()
 	ethereumOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, ethereumNetwork.ChainID)
 	Expect(err).Should(BeNil())
 	avalancheOpts, err := bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, l1Info.EVMChainID)
@@ -140,11 +140,18 @@ func MerkleValidatorSetRegistry(
 	)
 	Expect(merkleAdapterAddrL1).Should(Equal(merkleAdapterAddr))
 
-	// Deploy TeleporterMessengerV2 on both chains using the same adapter address
+	// Deploy TeleporterMessengerV2 on both chains using the same adapter address. The initializer
+	// address is a constructor argument, so the same key must be used on both chains for the
+	// contracts to land at the same address. Fund it on Ethereum so it can send the initialize tx.
+	ethereumNetwork.FundAccount(ctx, fundedAvalancheAddress, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(10)))
 	teleporterInfo := localnetwork.NewTeleporterTestInfo(avalancheNetwork, ethereumNetwork)
-	l1TeleporterAddr := utils.DeployTeleporterV2(ctx, &l1Info, merkleAdapterAddr, fundedAvalancheKey)
+	l1TeleporterAddr := utils.DeployTeleporterV2(
+		ctx, &l1Info, merkleAdapterAddr, fundedAvalancheKey, fundedAvalancheKey,
+	)
 	teleporterInfo.SetTeleporterV2(l1TeleporterAddr, l1Info.BlockchainID)
-	ethTeleporterAddr := utils.DeployTeleporterV2(ctx, ethInfo, merkleAdapterAddr, ethFundedKey)
+	ethTeleporterAddr := utils.DeployTeleporterV2(
+		ctx, ethInfo, merkleAdapterAddr, ethFundedKey, fundedAvalancheKey,
+	)
 	teleporterInfo.SetTeleporterV2(ethTeleporterAddr, ethInfo.ChainID())
 	Expect(l1TeleporterAddr).Should(Equal(ethTeleporterAddr))
 
