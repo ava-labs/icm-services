@@ -43,7 +43,7 @@ type beaconClient interface {
 
 // TODO: We can cache the anchor's parsed lite state. The reason is that a single anchor beacon state
 // may be used to verify multiple target slots within the 8192-slot window of the anchor state's
-// state_roots vector. Follow up work.
+// state_roots vector. Issue: https://github.com/ava-labs/icm-services/issues/1542
 func BuildExecutionProofForSlots(
 	ctx context.Context,
 	client beaconClient,
