@@ -997,82 +997,114 @@ func TestSanitizeSlice(t *testing.T) {
 	require.Equal(t, "[REDACTED]", secondElem["secret"])
 }
 
+// Every value of an operator-supplied string map is redacted regardless of its key: credential
+// parameter and header names vary by RPC provider ("key", "token", ...) and cannot be enumerated.
+// Keys are kept so the configured set remains visible.
 func TestSanitizeMap(t *testing.T) {
-	testCases := []struct {
-		name           string
-		inputMap       any
-		expectRedacted bool
-		checkKey       string
-	}{
-		{
-			name: "string map with sensitive keys",
-			inputMap: map[string]string{
-				"api-key":       "secret123",
-				"authorization": "Bearer token",
-				"timeout":       "30s",
-				"user-agent":    "test-agent",
-			},
-			expectRedacted: true,
-			checkKey:       "api-key",
-		},
-		{
-			name: "string map with non-sensitive keys",
-			inputMap: map[string]string{
-				"timeout":    "30s",
-				"user-agent": "test-agent",
-				"version":    "1.0",
-			},
-			expectRedacted: false,
-			checkKey:       "timeout",
-		},
+	input := map[string]string{
+		"api-key":       "secret123",
+		"key":           "provider-key-not-on-any-denylist",
+		"Authorization": "Bearer token",
+		"timeout":       "30s",
+		"user-agent":    "test-agent",
+	}
+	result, ok := sanitizeMap(reflect.ValueOf(input), reflect.TypeOf(input)).(map[string]any)
+	require.True(t, ok, "Expected result to be a map[string]any")
+	require.Len(t, result, len(input))
+	for key := range input {
+		require.Equal(t, redactedValue, result[key], "value for key %q must be redacted", key)
 	}
 
+	// Maps with non-string values are sanitized element-wise instead.
+	nested := map[string]basecfg.APIConfig{
+		"primary": {BaseURL: "https://rpc.example.com/v2/KEY", QueryParams: map[string]string{"key": "K"}},
+	}
+	nestedResult, ok := sanitizeMap(reflect.ValueOf(nested), reflect.TypeOf(nested)).(map[string]any)
+	require.True(t, ok)
+	primary, ok := nestedResult["primary"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "https://rpc.example.com/"+redactedValue, primary["base-url"])
+	require.Equal(t, map[string]any{"key": redactedValue}, primary["query-parameters"])
+}
+
+func TestRedactURLCredentials(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"not a URL", "/path/to/storage", "/path/to/storage"},
+		{"empty", "", ""},
+		{"plain word", "info", "info"},
+		{"bare host", "http://127.0.0.1:9650", "http://127.0.0.1:9650"},
+		{"bare host with trailing slash", "https://node.example.com:9650/", "https://node.example.com:9650/"},
+		{"Infura-style path key", "https://mainnet.infura.io/v3/0123456789abcdef", "https://mainnet.infura.io/[REDACTED]"},
+		{"Alchemy-style path key", "wss://eth-mainnet.g.alchemy.com/v2/abcDEF", "wss://eth-mainnet.g.alchemy.com/[REDACTED]"},
+		{"Avalanche node path", "http://127.0.0.1:9650/ext/bc/C/rpc", "http://127.0.0.1:9650/[REDACTED]"},
+		{"query string key", "https://rpc.example.com/?key=abc", "https://rpc.example.com/[REDACTED]"},
+		{"query without path", "https://rpc.example.com?key=abc", "https://rpc.example.com/[REDACTED]"},
+		{"basic auth userinfo", "https://user:pass@rpc.example.com", "https://rpc.example.com/[REDACTED]"},
+		{"userinfo and port", "https://user:pass@rpc.example.com:8545/", "https://rpc.example.com:8545/[REDACTED]"},
+		{"fragment only", "https://rpc.example.com#frag", "https://rpc.example.com/[REDACTED]"},
+		{"scheme but unparseable", "http://[::1", "[REDACTED]"},
+		{"scheme without host", "file:///etc/passwd", "[REDACTED]"},
+	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			v := reflect.ValueOf(tc.inputMap)
-			mapType := reflect.TypeOf(tc.inputMap)
-			result := sanitizeMap(v, mapType)
-
-			resultMap, ok := result.(map[string]any)
-			require.True(t, ok, "Expected result to be a map[string]interface{}")
-
-			if tc.expectRedacted && isSensitiveMapKey(tc.checkKey) {
-				require.Equal(t, "[REDACTED]", resultMap[tc.checkKey])
-			} else {
-				originalMap := tc.inputMap.(map[string]string)
-				require.Equal(t, originalMap[tc.checkKey], resultMap[tc.checkKey])
-			}
+			require.Equal(t, tc.expected, redactURLCredentials(tc.input))
 		})
 	}
 }
 
-func TestIsSensitiveMapKey(t *testing.T) {
-	testCases := []struct {
-		key         string
-		isSensitive bool
-	}{
-		{"api-key", true},
-		{"API-KEY", true}, // case insensitive
-		{"authorization", true},
-		{"Authorization", true},
-		{"bearer", true},
-		{"token", true},
-		{"secret", true},
-		{"password", true},
-		{"x-api-key", true},
-		{"timeout", false},
-		{"user-agent", false},
-		{"content-type", false},
-		{"version", false},
-		{"", false},
+// End-to-end check of the startup config log: endpoint URLs carrying credentials in the path,
+// query string, or userinfo, and arbitrary query parameters and headers, must not appear in the
+// sanitized output in any form.
+func TestConfigSanitizationRedactsEndpointCredentials(t *testing.T) {
+	const (
+		pathKey   = "INFURA_PATH_KEY_0123456789"
+		queryKey  = "PROVIDER_QUERY_KEY_abcdef"
+		password  = "basic-auth-PASSWORD"
+		headerVal = "Bearer HEADER_TOKEN_xyz"
+		userAgent = "icm-relayer/1.0"
+	)
+	cfg := &Config{
+		LogLevel: "info",
+		PChainAPI: &basecfg.APIConfig{
+			BaseURL:     "https://mainnet.infura.io/v3/" + pathKey,
+			QueryParams: map[string]string{"key": queryKey, "timeout": "30s"},
+			HTTPHeaders: map[string]string{"Authorization": headerVal, "User-Agent": userAgent},
+		},
+		InfoAPI: &basecfg.APIConfig{
+			BaseURL: "https://operator:" + password + "@node.internal.example.com:9650/ext/info",
+		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("key_%s", tc.key), func(t *testing.T) {
-			result := isSensitiveMapKey(tc.key)
-			require.Equal(t, tc.isSensitive, result)
-		})
+	sanitized := cfg.sanitizeForLogging()
+	pchain, ok := sanitized["p-chain-api"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "https://mainnet.infura.io/"+redactedValue, pchain["base-url"])
+	require.Equal(t, map[string]any{"key": redactedValue, "timeout": redactedValue}, pchain["query-parameters"])
+	require.Equal(t,
+		map[string]any{"Authorization": redactedValue, "User-Agent": redactedValue},
+		pchain["http-headers"],
+	)
+	info, ok := sanitized["info-api"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "https://node.internal.example.com:9650/"+redactedValue, info["base-url"])
+
+	// The same guarantee for what actually reaches the log sink.
+	logged, err := json.Marshal(sanitized)
+	require.NoError(t, err)
+	for _, secret := range []string{pathKey, queryKey, password, headerVal, userAgent, "operator:", "/ext/info", "/v3/"} {
+		require.NotContains(t, string(logged), secret)
 	}
+	require.Contains(t, string(logged), "mainnet.infura.io")
+	require.Contains(t, string(logged), "node.internal.example.com:9650")
+
+	// External EVM destinations use a plain string endpoint that flows through the same path.
+	ext := ExternalEVMDestination{RPCEndpoint: "https://eth-mainnet.g.alchemy.com/v2/" + pathKey}
+	extSanitized := sanitizeStruct(reflect.ValueOf(ext), reflect.TypeOf(ext))
+	require.Equal(t, "https://eth-mainnet.g.alchemy.com/"+redactedValue, extSanitized["rpc-endpoint"])
 }
 
 func TestGetJSONTag(t *testing.T) {

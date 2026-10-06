@@ -70,8 +70,12 @@ var ErrRequestTooLarge = errors.New("signature request exceeds the maximum p2p m
 
 var (
 	// Errors
-	errNotEnoughSignatures     = errors.New("failed to collect a threshold of signatures")
-	errNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
+	// ErrNotEnoughSignatures is returned when the validators that responded do not hold enough
+	// stake to meet the requested quorum.
+	ErrNotEnoughSignatures = errors.New("failed to collect a threshold of signatures")
+	// ErrNotEnoughConnectedStake is returned when the aggregator could not connect to validators
+	// holding enough stake to possibly meet the requested quorum.
+	ErrNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
 	errInvalidSignatureLength  = errors.New("signature response has incorrect length")
 )
 
@@ -176,7 +180,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 				zap.Int("numConnectedPeers", vdrs.ConnectedNodes.Len()),
 			)
 			s.metrics.FailuresToConnectToSufficientStake.Inc()
-			return errNotEnoughConnectedStake
+			return ErrNotEnoughConnectedStake
 		}
 		return nil
 	}
@@ -202,7 +206,12 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	signingSubnet ids.ID,
 ) (set.Set[ids.NodeID], error) {
 	fetchUnderfundedL1Nodes := func(subnetID ids.ID) (set.Set[ids.NodeID], error) {
-		validators, err := s.validatorClient.GetCurrentValidators(ctx, subnetID)
+		// This fetch is single-flighted by the cache and its result (or error) is shared with
+		// every concurrent caller for [subnetID], so it must not run under any one caller's
+		// request-scoped context.
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), utils.DefaultRPCTimeout)
+		defer cancel()
+		validators, err := s.validatorClient.GetCurrentValidators(fetchCtx, subnetID)
 		if err != nil {
 			log.Error("Failed to fetch current L1 validators", zap.Error(err))
 			return nil, err
@@ -561,7 +570,7 @@ func (s *SignatureAggregator) collectSignatures(
 
 // requestSignatures sends a single request to [queryNodes] and processes responses as they
 // arrive, returning a signed message once [quorumPercentage] of stake is accumulated, or
-// [errNotEnoughSignatures] if the threshold isn't reached before all responses are in.
+// [ErrNotEnoughSignatures] if the threshold isn't reached before all responses are in.
 func (s *SignatureAggregator) requestSignatures(
 	ctx context.Context,
 	log logging.Logger,
@@ -586,7 +595,7 @@ func (s *SignatureAggregator) requestSignatures(
 		return nil, err
 	}
 	if responseChan == nil {
-		return nil, errNotEnoughSignatures
+		return nil, ErrNotEnoughSignatures
 	}
 	// Drain unprocessed responses in the background so returning early (on quorum or
 	// timeout) doesn't block, while still finishing every response's handler.
@@ -598,7 +607,7 @@ func (s *SignatureAggregator) requestSignatures(
 			return nil, ctx.Err()
 		case response, ok := <-responseChan:
 			if !ok {
-				return nil, errNotEnoughSignatures
+				return nil, ErrNotEnoughSignatures
 			}
 			signedMsg, err := s.handleResponse(
 				log,
@@ -623,7 +632,7 @@ func (s *SignatureAggregator) requestSignatures(
 			}
 		}
 	}
-	return nil, errNotEnoughSignatures
+	return nil, ErrNotEnoughSignatures
 }
 
 func (s *SignatureAggregator) CreateSignedMessage(
