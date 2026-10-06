@@ -7,7 +7,7 @@ rust-version = "1.91.0"
 [dependencies]
 eyre = "0.6.12"
 foundry-compilers = { version = "0.19.14", default-features = false }
-reforge = { git = "https://github.com/ava-labs/reforge", branch = "main" }
+reforge = { git = "https://github.com/ava-labs/reforge", rev = "484b2faf7ad2508163d4a6ed43d0b6c43ea448ed" }
 solar = {package = "solar-compiler", version = "=0.1.8", default-features = false }
 
 [patch.crates-io]

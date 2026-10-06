@@ -1619,7 +1619,7 @@ version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "519bd3116aeeb42d5372c29d982d16d0170d3d4a5ed85fc7dd91642ffff3c67c"
 dependencies = [
- "darling 0.20.11",
+ "darling 0.23.0",
  "ident_case",
  "prettyplease",
  "proc-macro2",
@@ -3057,7 +3057,7 @@ checksum = "932dcfbd51320af5f27f1ba02d2e567dec332cac7d2c221ba45d8e767264c4dc"
 [[package]]
 name = "forge"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-dyn-abi",
@@ -3128,7 +3128,7 @@ dependencies = [
 [[package]]
 name = "forge-doc"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-primitives",
  "derive_more",
@@ -3153,7 +3153,7 @@ dependencies = [
 [[package]]
 name = "forge-fmt"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "foundry-common",
  "foundry-config",
@@ -3165,7 +3165,7 @@ dependencies = [
 [[package]]
 name = "forge-lint"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "eyre",
  "foundry-common",
@@ -3180,7 +3180,7 @@ dependencies = [
 [[package]]
 name = "forge-script"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3225,7 +3225,7 @@ dependencies = [
 [[package]]
 name = "forge-script-sequence"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-network",
  "alloy-primitives",
@@ -3242,7 +3242,7 @@ dependencies = [
 [[package]]
 name = "forge-sol-macro-gen"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-sol-macro-expander",
  "alloy-sol-macro-input",
@@ -3258,7 +3258,7 @@ dependencies = [
 [[package]]
 name = "forge-verify"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -3318,7 +3318,7 @@ dependencies = [
 [[package]]
 name = "foundry-cheatcodes"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3371,7 +3371,7 @@ dependencies = [
 [[package]]
 name = "foundry-cheatcodes-spec"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-sol-types",
  "foundry-macros",
@@ -3381,7 +3381,7 @@ dependencies = [
 [[package]]
 name = "foundry-cli"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-dyn-abi",
@@ -3427,7 +3427,7 @@ dependencies = [
 [[package]]
 name = "foundry-common"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3484,7 +3484,7 @@ dependencies = [
 [[package]]
 name = "foundry-common-fmt"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -3600,7 +3600,7 @@ dependencies = [
 [[package]]
 name = "foundry-config"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-primitives",
@@ -3639,7 +3639,7 @@ dependencies = [
 [[package]]
 name = "foundry-debugger"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-primitives",
  "crossterm",
@@ -3658,7 +3658,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-evm",
@@ -3693,7 +3693,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-abi"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -3706,7 +3706,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-core"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -3747,7 +3747,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-coverage"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-primitives",
  "eyre",
@@ -3764,7 +3764,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-fuzz"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -3790,7 +3790,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-networks"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-chains",
  "alloy-eips",
@@ -3805,7 +3805,7 @@ dependencies = [
 [[package]]
 name = "foundry-evm-traces"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -3862,7 +3862,7 @@ dependencies = [
 [[package]]
 name = "foundry-linking"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-primitives",
  "foundry-compilers",
@@ -3874,7 +3874,7 @@ dependencies = [
 [[package]]
 name = "foundry-macros"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "proc-macro-error2",
  "proc-macro2",
@@ -3885,7 +3885,7 @@ dependencies = [
 [[package]]
 name = "foundry-primitives"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-consensus",
  "alloy-evm",
@@ -3922,7 +3922,7 @@ dependencies = [
 [[package]]
 name = "foundry-wallets"
 version = "1.6.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -4867,7 +4867,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5862,7 +5862,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b685c8311c9171d1bd2895222965d25616b2de2cb5819dd3504ed9250df9fecd"
 dependencies = [
  "ahash",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.0",
  "parking_lot",
  "stable_deref_trait",
 ]
@@ -6936,7 +6936,7 @@ dependencies = [
 [[package]]
 name = "reforge"
 version = "0.1.0"
-source = "git+https://github.com/ava-labs/reforge?branch=main#9df230cadb0a079852277989cc3adea4b7749f48"
+source = "git+https://github.com/ava-labs/reforge?rev=484b2faf7ad2508163d4a6ed43d0b6c43ea448ed#484b2faf7ad2508163d4a6ed43d0b6c43ea448ed"
 dependencies = [
  "alloy-primitives",
  "chrono",
@@ -8273,7 +8273,7 @@ dependencies = [
  "solar-config",
  "solar-data-structures",
  "solar-macros",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "tracing",
  "unicode-width 0.2.2",
 ]
@@ -8613,7 +8613,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "url",
  "zip 4.6.1",
 ]

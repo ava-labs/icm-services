@@ -64,7 +64,7 @@
 mod hooks;
 mod methods;
 
-use reforge::PreprocessingData;
+use reforge::{MacroOriginalLocation, OriginalOffset, PreprocessingData};
 use solar::ast::Span;
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, SourceId};
@@ -79,17 +79,54 @@ fn insertion_point(
     item_contract: Option<ContractId>,
     item_source: SourceId,
     item_span: Span,
-) -> (SourceId, usize) {
+) -> eyre::Result<(SourceId, OriginalOffset)> {
     if let Some(contract_id) = arg_contract.or(item_contract) {
         let contract = ctx.hir.contract(contract_id);
-        let source = ctx.sources.get(contract.source).unwrap();
-        let offset = (contract.span.hi().0 - source.file.start_pos.0) as usize - 1;
-        (contract.source, offset)
+        let source = ctx
+            .sources
+            .get(contract.source)
+            .ok_or_else(|| eyre::eyre!("contract source not found"))?;
+        Ok((
+            contract.source,
+            OriginalOffset::end_of_contract(&source.file, contract)?,
+        ))
     } else {
-        let source = ctx.sources.get(item_source).unwrap();
-        let offset = (item_span.hi().0 - source.file.start_pos.0) as usize;
-        (item_source, offset)
+        let source = ctx
+            .sources
+            .get(item_source)
+            .ok_or_else(|| eyre::eyre!("item source not found"))?;
+        Ok((
+            item_source,
+            OriginalOffset::from_solar_pos(&source.file, item_span.hi())?,
+        ))
     }
+}
+
+/// Locates the `#[unpack(...)]` annotation that triggered generation, so that compiler errors
+/// raised inside the generated code can be attributed to it rather than to the expanded output.
+fn trigger_location(
+    ctx: &Gcx,
+    data: &PreprocessingData<'_>,
+    item_source: SourceId,
+    item_span: Span,
+) -> Option<MacroOriginalLocation> {
+    let source = ctx.sources.get(item_source)?;
+    let path = source.file.name.as_real()?;
+    let content = data.input.get(path)?.content.as_str();
+    let item_start = OriginalOffset::from_solar_pos(&source.file, item_span.lo())
+        .ok()?
+        .get();
+    // The annotation lives in the comment block directly above the item, so search backwards
+    // from the item for the nearest occurrence.
+    let offset = content
+        .get(..item_start.min(content.len()))?
+        .rfind("#[unpack")?;
+    let before = &content[..offset];
+    Some(MacroOriginalLocation {
+        file: path.to_path_buf(),
+        line: before.bytes().filter(|&b| b == b'\n').count() + 1,
+        col: offset - before.rfind('\n').map_or(0, |i| i + 1) + 1,
+    })
 }
 
 fn qualified_type_name(
@@ -125,7 +162,9 @@ pub fn derive_unpack(
             struct_def.contract,
             struct_def.source,
             struct_def.span,
-        );
+        )
+        .map_err(foundry_compilers::error::SolcError::msg)?;
+        let trigger = trigger_location(ctx, data, struct_def.source, struct_def.span);
 
         let type_name = qualified_type_name(
             ctx,
@@ -145,7 +184,12 @@ pub fn derive_unpack(
             .as_real()
             .unwrap();
         let text = format!("\n\n{code}\n");
-        data.entry(path, &text).insert(insertion_offset);
+        if let Some(entry) = data.entry(path, &text) {
+            entry
+                .with("unpack", trigger)
+                .insert(insertion_offset)
+                .map_err(foundry_compilers::error::SolcError::msg)?;
+        }
     }
 
     for enum_def in ctx.hir.enums() {
@@ -163,7 +207,9 @@ pub fn derive_unpack(
             enum_def.contract,
             enum_def.source,
             enum_def.span,
-        );
+        )
+        .map_err(foundry_compilers::error::SolcError::msg)?;
+        let trigger = trigger_location(ctx, data, enum_def.source, enum_def.span);
 
         let type_name =
             qualified_type_name(ctx, enum_def.name.as_str(), enum_def.contract, arg.contract);
@@ -178,7 +224,12 @@ pub fn derive_unpack(
             .as_real()
             .unwrap();
         let text = format!("\n\n{code}\n");
-        data.entry(path, &text).insert(insertion_offset);
+        if let Some(entry) = data.entry(path, &text) {
+            entry
+                .with("unpack", trigger)
+                .insert(insertion_offset)
+                .map_err(foundry_compilers::error::SolcError::msg)?;
+        }
     }
     Ok(())
 }
