@@ -164,13 +164,17 @@ library ValidatorMessages {
         // The approach below of encoding initialValidators using `abi.encodePacked` in a loop
         // was tested against pre-allocating the array and doing manual byte by byte packing and
         // it was found to be more gas efficient.
+        // bytes.concat rather than abi.encodePacked: nodeID and blsPublicKey are both `bytes`,
+        // and encodePacked with several dynamic arguments is flagged as ambiguous even though
+        // this layout is not (nodeID carries a uint32 length prefix and blsPublicKey is fixed
+        // at 48 bytes by the spec). The emitted bytes are identical either way.
         for (uint256 i; i < conversionData.initialValidators.length; ++i) {
-            res = abi.encodePacked(
+            res = bytes.concat(
                 res,
-                uint32(conversionData.initialValidators[i].nodeID.length),
+                bytes4(uint32(conversionData.initialValidators[i].nodeID.length)),
                 conversionData.initialValidators[i].nodeID,
                 conversionData.initialValidators[i].blsPublicKey,
-                conversionData.initialValidators[i].weight
+                bytes8(conversionData.initialValidators[i].weight)
             );
         }
         return res;
@@ -222,17 +226,19 @@ library ValidatorMessages {
             revert InvalidBLSPublicKey();
         }
 
-        // solhint-disable-next-line func-named-parameters
-        bytes memory res = abi.encodePacked(
-            CODEC_ID,
-            REGISTER_L1_VALIDATOR_MESSAGE_TYPE_ID,
+        // bytes.concat rather than abi.encodePacked: see packConversionData. nodeID is length
+        // prefixed and blsPublicKey is checked to be 48 bytes just above, so the layout is
+        // unambiguous; the emitted bytes are identical either way.
+        bytes memory res = bytes.concat(
+            bytes2(CODEC_ID),
+            bytes4(REGISTER_L1_VALIDATOR_MESSAGE_TYPE_ID),
             validationPeriod.subnetID,
-            uint32(validationPeriod.nodeID.length),
+            bytes4(uint32(validationPeriod.nodeID.length)),
             validationPeriod.nodeID,
             validationPeriod.blsPublicKey,
-            validationPeriod.registrationExpiry,
-            validationPeriod.remainingBalanceOwner.threshold,
-            uint32(validationPeriod.remainingBalanceOwner.addresses.length)
+            bytes8(validationPeriod.registrationExpiry),
+            bytes4(validationPeriod.remainingBalanceOwner.threshold),
+            bytes4(uint32(validationPeriod.remainingBalanceOwner.addresses.length))
         );
         for (uint256 i; i < validationPeriod.remainingBalanceOwner.addresses.length; ++i) {
             res = abi.encodePacked(res, validationPeriod.remainingBalanceOwner.addresses[i]);
