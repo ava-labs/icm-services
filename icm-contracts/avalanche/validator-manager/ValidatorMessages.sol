@@ -229,6 +229,7 @@ library ValidatorMessages {
         // bytes.concat rather than abi.encodePacked: see packConversionData. nodeID is length
         // prefixed and blsPublicKey is checked to be 48 bytes just above, so the layout is
         // unambiguous; the emitted bytes are identical either way.
+        // solhint-disable-next-line func-named-parameters
         bytes memory res = bytes.concat(
             bytes2(CODEC_ID),
             bytes4(REGISTER_L1_VALIDATOR_MESSAGE_TYPE_ID),

@@ -276,6 +276,34 @@ contract ValidatorMessagesTest is Test {
         assertEq(recoveredID, validationID);
     }
 
+    function testRegisterL1ValidatorMessageGoldenBytes() public view {
+        (bytes32 validationID, bytes memory packed) = ValidatorMessages.packRegisterL1ValidatorMessage(
+            ValidatorMessages.ValidationPeriod({
+                subnetID: DEFAULT_SUBNET_ID,
+                nodeID: DEFAULT_NODE_ID,
+                registrationExpiry: 1704067200,
+                blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
+                remainingBalanceOwner: DEFAULT_P_CHAIN_OWNER,
+                disableOwner: DEFAULT_P_CHAIN_OWNER,
+                weight: DEFAULT_WEIGHT
+            })
+        );
+
+        assertEq(
+            packed,
+            hex"0000" hex"00000001"
+            hex"1234567812345678123456781234567812345678123456781234567812345678" hex"00000020"
+            hex"1234567812345678123456781234567812345678123456781234567812345678"
+            hex"123456781234567812345678123456781234567812345678123456781234567812345678123456781234567812345678"
+            hex"0000000065920080" hex"00000001" hex"00000001"
+            hex"1234567812345678123456781234567812345678" hex"00000001" hex"00000001"
+            hex"1234567812345678123456781234567812345678" hex"00000000000f4240"
+        );
+        assertEq(
+            validationID, hex"b704025de2f3f69ffc047c085b4a8cd81bd58ed8f0502fdabcd6c63fc72d0540"
+        );
+    }
+
     function testSubnetToL1ConversionMessage() public pure {
         bytes memory packed =
             ValidatorMessages.packSubnetToL1ConversionMessage(DEFAULT_SUBNET_CONVERSION_ID);
@@ -325,34 +353,6 @@ contract ValidatorMessagesTest is Test {
             hex"1234567812345678123456781234567812345678123456781234567812345678"
             hex"123456781234567812345678123456781234567812345678123456781234567812345678123456781234567812345678"
             hex"00000000000f4240"
-        );
-    }
-
-    function testRegisterL1ValidatorMessageGoldenBytes() public view {
-        (bytes32 validationID, bytes memory packed) = ValidatorMessages.packRegisterL1ValidatorMessage(
-            ValidatorMessages.ValidationPeriod({
-                subnetID: DEFAULT_SUBNET_ID,
-                nodeID: DEFAULT_NODE_ID,
-                registrationExpiry: 1704067200,
-                blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
-                remainingBalanceOwner: DEFAULT_P_CHAIN_OWNER,
-                disableOwner: DEFAULT_P_CHAIN_OWNER,
-                weight: DEFAULT_WEIGHT
-            })
-        );
-
-        assertEq(
-            packed,
-            hex"0000" hex"00000001"
-            hex"1234567812345678123456781234567812345678123456781234567812345678" hex"00000020"
-            hex"1234567812345678123456781234567812345678123456781234567812345678"
-            hex"123456781234567812345678123456781234567812345678123456781234567812345678123456781234567812345678"
-            hex"0000000065920080" hex"00000001" hex"00000001"
-            hex"1234567812345678123456781234567812345678" hex"00000001" hex"00000001"
-            hex"1234567812345678123456781234567812345678" hex"00000000000f4240"
-        );
-        assertEq(
-            validationID, hex"b704025de2f3f69ffc047c085b4a8cd81bd58ed8f0502fdabcd6c63fc72d0540"
         );
     }
 
