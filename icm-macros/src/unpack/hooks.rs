@@ -14,6 +14,9 @@ pub struct UnpackArgs {
     pub visibility: String,
     pub calldata: bool,
     pub solhint_disable: bool,
+    /// Type-level post-condition. The capture name is replaced with `result`
+    /// (the decoded struct) in the assertion body.
+    pub assert: Vec<AssertDef>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,12 +27,28 @@ pub enum LengthSpec {
     Constant(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum CaptureType {
+    Element,
+    #[default]
+    Field,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssertDef {
+    pub captured: CaptureType,
+    pub var: String,
+    pub expr: String,
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FieldArgs {
     pub method: Option<String>,
     pub default: bool,
     pub memory: bool,
     pub length: Option<LengthSpec>,
+    /// Field-level post-conditions.
+    pub assert: Vec<AssertDef>,
 }
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
@@ -41,6 +60,7 @@ pub(crate) struct RawUnpackArgs {
     pub visibility: String,
     pub calldata: bool,
     pub solhint_disable: bool,
+    pub assert: Vec<AssertDef>,
 }
 
 /// Fetches the comment preceding the given HIR item and parses any `#[unpack(...)]`
@@ -101,6 +121,7 @@ pub fn parse_args(
         visibility: raw.visibility,
         calldata: raw.calldata,
         solhint_disable: raw.solhint_disable,
+        assert: raw.assert,
     }))
 }
 
@@ -113,16 +134,17 @@ pub(crate) fn parse_comment(
 ) -> Option<RawUnpackArgs> {
     let pack_start = comment.find("#[unpack(")?;
     let args_start = pack_start + "#[unpack(".len();
-    let args_end = args_start + comment[args_start..].find(')')?;
-    let args_str = &comment[args_start..args_end];
+    let args_end = args_start + find_closing_paren(&comment[args_start..])?;
+    let args_str = strip_comment_prefixes(&comment[args_start..args_end]);
 
     let mut contract = None;
     let mut name = None;
     let mut visibility = "public".to_string();
     let mut calldata = false;
     let mut solhint_disable = false;
+    let mut asserts: Vec<AssertDef> = Vec::new();
 
-    for pair in args_str.split(',') {
+    for pair in split_args(&args_str) {
         let pair = pair.trim();
         if let Some((key, val)) = pair.split_once('=') {
             let val = val.trim().trim_matches('"');
@@ -130,6 +152,15 @@ pub(crate) fn parse_comment(
                 "contract" => contract = Some(val.to_string()),
                 "name" => name = Some(val.to_string()),
                 "visibility" => visibility = val.to_string(),
+                "assert" => {
+                    if let Some((captured, var, expr)) = parse_closure(val) {
+                        asserts.push(AssertDef {
+                            captured,
+                            var,
+                            expr,
+                        });
+                    }
+                }
                 _ => {}
             }
         } else {
@@ -153,6 +184,7 @@ pub(crate) fn parse_comment(
         visibility,
         calldata,
         solhint_disable,
+        assert: asserts,
     })
 }
 
@@ -168,44 +200,38 @@ fn type_requires_memory(ty: &Type) -> bool {
 fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
     let Some(comment) = comment else {
         return FieldArgs {
-            method: None,
-            default: false,
             memory,
-            length: None,
+            ..Default::default()
         };
     };
     let Some(pack_start) = comment.find("#[unpack(") else {
         return FieldArgs {
-            method: None,
-            default: false,
             memory,
-            length: None,
+            ..Default::default()
         };
     };
     let args_start = pack_start + "#[unpack(".len();
-    let Some(args_end_rel) = comment[args_start..].find(')') else {
+    let Some(args_end_rel) = find_closing_paren(&comment[args_start..]) else {
         return FieldArgs {
-            method: None,
-            default: false,
             memory,
-            length: None,
+            ..Default::default()
         };
     };
-    let args_str = comment[args_start..args_start + args_end_rel].trim();
+    let args_str = strip_comment_prefixes(comment[args_start..args_start + args_end_rel].trim());
 
     if args_str == "default" {
         return FieldArgs {
-            method: None,
             default: true,
             memory,
-            length: None,
+            ..Default::default()
         };
     }
 
     let mut method = None;
     let mut default = false;
     let mut length = None;
-    for arg in args_str.split(',') {
+    let mut asserts: Vec<AssertDef> = Vec::new();
+    for arg in split_args(&args_str) {
         if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
@@ -221,6 +247,16 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
                         LengthSpec::Constant(v.to_string())
                     });
                 }
+                "assert" => {
+                    let inner = val.trim().trim_matches('"');
+                    if let Some((captured, var, expr)) = parse_closure(inner) {
+                        asserts.push(AssertDef {
+                            captured,
+                            var,
+                            expr,
+                        });
+                    }
+                }
                 _ => {}
             }
         } else if arg.trim() == "default" {
@@ -229,10 +265,9 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
     }
     if default {
         FieldArgs {
-            method: None,
             default: true,
             memory,
-            length: None,
+            ..Default::default()
         }
     } else {
         FieldArgs {
@@ -240,8 +275,151 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
             default: false,
             memory,
             length,
+            assert: asserts,
         }
     }
+}
+
+/// Strips comment-line prefixes (`//`, `///`, `*`) from a multi-line args string.
+///
+/// When `#[unpack(...)]` spans multiple lines each continuation line begins
+/// with a comment prefix that must be removed before parsing keys and values.
+/// Handles both formats that `reforge::get_comment` may produce:
+///   - Newline-separated: `"\n//    arg1,\n//    arg2"`
+///   - Concatenated (no newlines): `"//    arg1,//    arg2"`
+///
+/// Splits on `\n` and on `//` occurrences outside quoted strings, strips
+/// leading whitespace and `*` block-comment markers from each segment, drops
+/// empty segments, and joins the results with a single space.
+fn strip_comment_prefixes(s: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    let mut seg_start = 0;
+    let mut in_quotes = false;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => {
+                in_quotes = !in_quotes;
+                i += 1;
+            }
+            b'\n' if !in_quotes => {
+                segments.push(&s[seg_start..i]);
+                i += 1;
+                seg_start = i;
+            }
+            b'/' if !in_quotes && i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
+                segments.push(&s[seg_start..i]);
+                i += 2;
+                // skip optional third slash (///)
+                if i < bytes.len() && bytes[i] == b'/' {
+                    i += 1;
+                }
+                seg_start = i;
+            }
+            _ => i += 1,
+        }
+    }
+    segments.push(&s[seg_start..]);
+
+    segments
+        .iter()
+        .filter_map(|seg| {
+            let t = seg.trim_start();
+            let t = if let Some(r) = t.strip_prefix('*') {
+                r.trim_start()
+            } else {
+                t
+            };
+            if t.is_empty() { None } else { Some(t) }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Finds the index of the `)` that closes the current paren level, skipping
+/// over any nested `(...)` pairs and `"..."` quoted strings.
+/// Returns `None` if no such `)` exists.
+fn find_closing_paren(s: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_quotes = false;
+    for (i, c) in s.char_indices() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            '(' if !in_quotes => depth += 1,
+            ')' if !in_quotes => {
+                if depth == 0 {
+                    return Some(i);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits `s` on commas that are outside of `"..."` quoted strings.
+fn split_args(s: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut in_quotes = false;
+    for (i, c) in s.char_indices() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => {
+                result.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    result.push(&s[start..]);
+    result
+}
+
+/// Parses a closure of the form `|[each] capture| { body }`.
+/// The `each` keyword (e.g. `|each x|`) sets `CaptureType::Element`; a plain name sets
+/// `CaptureType::Field`. Returns `(CaptureType, var, body)`, or `None` if the syntax
+/// doesn't match.
+fn parse_closure(s: &str) -> Option<(CaptureType, String, String)> {
+    let s = s.trim();
+    let s = s.strip_prefix('|')?;
+    let pipe_end = s.find('|')?;
+    let capture_raw = s[..pipe_end].trim();
+    let (captured, var) = match capture_raw
+        .strip_prefix("each")
+        .filter(|r| r.is_empty() || r.starts_with(char::is_whitespace))
+    {
+        Some(rest) => {
+            let var = rest.trim();
+            if var.is_empty() {
+                return None;
+            }
+            (CaptureType::Element, var.to_string())
+        }
+        None => (CaptureType::Field, capture_raw.to_string()),
+    };
+    let rest = s[pipe_end + 1..].trim();
+    let brace_start = rest.find('{')? + 1;
+    // find the matching closing brace
+    let inner = &rest[brace_start..];
+    let mut depth = 0usize;
+    let brace_end = inner.char_indices().find_map(|(i, c)| match c {
+        '{' => {
+            depth += 1;
+            None
+        }
+        '}' if depth == 0 => Some(i),
+        '}' => {
+            depth -= 1;
+            None
+        }
+        _ => None,
+    })?;
+    let body = inner[..brace_end].trim().to_string();
+    Some((captured, var, body))
 }
 
 #[cfg(test)]
@@ -259,6 +437,7 @@ mod tests {
         assert_eq!(raw.visibility, "public".to_string());
         assert!(!raw.calldata);
         assert!(!raw.solhint_disable);
+        assert!(raw.assert.is_empty());
         let mut expected = vec![FieldArgs::default(); 4];
         expected[1].memory = true;
         assert_eq!(raw.fields, expected);
@@ -276,6 +455,7 @@ mod tests {
         assert_eq!(raw.visibility, "private".to_string());
         assert!(raw.calldata);
         assert!(!raw.solhint_disable);
+        assert!(raw.assert.is_empty());
         let expected = vec![FieldArgs::default(); 4];
         assert_eq!(raw.fields, expected);
     }
@@ -293,6 +473,131 @@ mod tests {
         .unwrap();
         assert!(raw.calldata);
         assert!(raw.solhint_disable);
+    }
+
+    #[test]
+    fn test_assert() {
+        // type-level assert, alone
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 }")]"#,
+            &vec![(None, false); 1],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // assert can appear before other args (no longer required to be last)
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 }", calldata)]"#,
+            &vec![(None, false); 1],
+        )
+        .unwrap();
+        assert!(raw.calldata);
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // multiple asserts
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 }", assert = "|r| { r.x > 0 }")]"#,
+            &vec![(None, false); 1],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![
+                AssertDef {
+                    captured: CaptureType::Field,
+                    var: "r".to_string(),
+                    expr: "r.version == 1".to_string(),
+                },
+                AssertDef {
+                    captured: CaptureType::Field,
+                    var: "r".to_string(),
+                    expr: "r.x > 0".to_string(),
+                },
+            ]
+        );
+
+        // body containing a function call with commas and parens (safe inside quotes)
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { isValid(r, 0) }")]"#,
+            &vec![(None, false); 1],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                expr: "isValid(r, 0)".to_string(),
+            }]
+        );
+
+        // field-level assert
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|b| { b.length == 48 }")]"#.to_string()),
+                true,
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0].assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "b".to_string(),
+                expr: "b.length == 48".to_string(),
+            }]
+        );
+
+        // element-level assert using `each` keyword
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|each x| { x > 0 }")]"#.to_string()),
+                false,
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0].assert,
+            vec![AssertDef {
+                captured: CaptureType::Element,
+                var: "x".to_string(),
+                expr: "x > 0".to_string(),
+            }]
+        );
+
+        // `each` prefix on a variable name that starts with "each" is not treated as the keyword
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|eachItem| { eachItem > 0 }")]"#.to_string()),
+                false,
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0].assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "eachItem".to_string(),
+                expr: "eachItem > 0".to_string(),
+            }]
+        );
     }
 
     #[test]
@@ -327,6 +632,7 @@ mod tests {
                 default: false,
                 memory: false,
                 length: None,
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -336,6 +642,7 @@ mod tests {
                 default: true,
                 memory: true,
                 length: None,
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -345,6 +652,7 @@ mod tests {
                 default: true,
                 memory: false,
                 length: None,
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -354,6 +662,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some(LengthSpec::Type("uint32".to_string())),
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -363,6 +672,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some(LengthSpec::Type("uint64".to_string())),
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -374,6 +684,7 @@ mod tests {
                 length: Some(LengthSpec::Constant(
                     "BLST.BLS_SIGNATURE_LENGTH".to_string()
                 )),
+                assert: vec![],
             }
         );
     }
