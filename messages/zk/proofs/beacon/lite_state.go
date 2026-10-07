@@ -26,9 +26,14 @@ const (
 	// numStateFieldLeaves pads the BeaconState's 38 fields to the next
 	// power of 2: 2^6 = 64.
 	numStateFieldLeaves = 64
+
 	// numExecHeaderLeaves pads the ExecutionPayloadHeader's 17 fields to
 	// 2^5 = 32.
 	numExecHeaderLeaves = 32
+
+	// StateRootsVectorSize is the length of the state_roots vector. An anchor
+	// can prove any slot within this many slots behind it.
+	StateRootsVectorSize = 8192
 
 	// Leaf positions in the BeaconState of the two fields we build
 	// subtrees for.
@@ -310,7 +315,7 @@ func containersListRoot[T interface{ HashTreeRoot() ([32]byte, error) }](items [
 // StateRootAt returns the state root the state_roots history vector holds
 // for the given slot.
 func (s *LiteBeaconState) StateRootAt(slot uint64) common.Hash {
-	return common.Hash(s.stateRoots[slot%8192]) // 8192 = state_roots vector size
+	return common.Hash(s.stateRoots[slot%StateRootsVectorSize])
 }
 
 // --- merkleization primitives ---------------------------------------------

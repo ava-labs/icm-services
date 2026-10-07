@@ -79,7 +79,7 @@ func TestBuildExecutionProofForSlotsWrongAnchorRoot(t *testing.T) {
 
 	_, err := BuildExecutionProofForSlots(
 		context.Background(), f.client, f.anchorSlot, f.targetSlot, common.HexToHash("0xbad"))
-	require.ErrorContains(t, err, "does not verify against expected root")
+	require.ErrorContains(t, err, "expected confirmed root")
 }
 
 // Invalid slot windows must be rejected.
@@ -157,10 +157,29 @@ func TestBuildExecutionProofForSlotsAnchorStateMismatch(t *testing.T) {
 	require.ErrorContains(t, err, "root mismatch")
 }
 
-// newMockFixture builds a mock fixture for a mock beacon client and the synthetic beacon data it serves.
+// The state_roots window is inclusive, matching the contract: a gap of
+// exactly StateRootsVectorSize slots succeeds, one more fails.
+func TestBuildExecutionProofForSlotsWindowBoundary(t *testing.T) {
+	const targetSlot = uint64(100)
+
+	f := newMockFixtureWithSlots(t, targetSlot+StateRootsVectorSize, targetSlot)
+	_, err := BuildExecutionProofForSlots(
+		context.Background(), f.client, f.anchorSlot, f.targetSlot, f.anchorBlockRoot)
+	require.NoError(t, err)
+
+	_, err = BuildExecutionProofForSlots(
+		context.Background(), &mockBeaconClient{}, targetSlot+StateRootsVectorSize+1, targetSlot, common.Hash{})
+	require.ErrorContains(t, err, "state_roots window")
+}
+
+// newMockFixture builds the default fixture: anchor slot 200, target slot 100.
 func newMockFixture(t *testing.T) *mockFixture {
+	return newMockFixtureWithSlots(t, 200, 100)
+}
+
+// newMockFixture builds a mock fixture for a mock beacon client and the synthetic beacon data it serves.
+func newMockFixtureWithSlots(t *testing.T, anchorSlot, targetSlot uint64) *mockFixture {
 	t.Helper()
-	const anchorSlot, targetSlot = uint64(200), uint64(100)
 
 	targetState := minimalBeaconState(t, targetSlot)
 	targetStateRoot, err := targetState.HashTreeRoot()

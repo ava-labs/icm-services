@@ -22,7 +22,7 @@ import (
 // BuildExecutionProofForSlots is the main entry point for this orchestrator, which takes in a beacon client,
 // an anchor slot, target slot, and the anchor block root, and returns an execution proof ready to be sent to the
 // contract.
-
+// TODO: Export in future PR.
 type beaconClient interface {
 	Block(ctx context.Context, slot uint64) ([]byte, error)
 	State(ctx context.Context, slot uint64) ([]byte, error)
@@ -34,13 +34,13 @@ type beaconClient interface {
 //
 // In more detail, this function performs the following tasks:
 // 1. Fetches the anchor beacon block and both beacon states (anchor and target)
-// from the beaconClient. Note the anchorBlockRoot si the root ZKAdapter has confirmed for the
+// from the beaconClient. Note the anchorBlockRoot is the root ZKAdapter has confirmed for the
 // anchorSlot.
 // 2. Parse the anchor beacon block into a regular Merkle tree, and the two beacon states into
 // lite Merkle trees (to save memory).
 // 3. Use the execution proof builder to create a proof from the parsed trees and provided slots.
 // The execution proof builder will verify each tree against the expected chain of trust.
-
+//
 // TODO: We can cache the anchor's parsed lite state. The reason is that a single anchor beacon state
 // may be used to verify multiple target slots within the 8192-slot window of the anchor state's
 // state_roots vector. Issue: https://github.com/ava-labs/icm-services/issues/1542
@@ -51,16 +51,9 @@ func BuildExecutionProofForSlots(
 	targetSlot uint64,
 	anchorBlockRoot common.Hash,
 ) (*zkadapter.ExecutionProof, error) {
-	// Reject invalid slot windows.
-	if targetSlot >= anchorSlot {
-		return nil, fmt.Errorf("target slot %d must be before anchor slot %d", targetSlot, anchorSlot)
-	}
-
-	// Reject an out of bounds target slot in the anchor state.
-	if anchorSlot-targetSlot > StateRootsVectorSize {
-		return nil, fmt.Errorf(
-			"target slot %d is outside the anchor slot %d's state_roots window (%d slots)",
-			targetSlot, anchorSlot, StateRootsVectorSize)
+	// Safety check
+	if err := validateSlotWindow(anchorSlot, targetSlot); err != nil {
+		return nil, err
 	}
 
 	// Get the SSZ-encoded anchor beacon block from the beaconClient and parse it into a tree.
@@ -71,6 +64,13 @@ func BuildExecutionProofForSlots(
 	anchorBlockTree, anchorStateRoot, err := beacon.ParseBlockTree(blockSSZ)
 	if err != nil {
 		return nil, err
+	}
+
+	// Verify the fetched block is the confirmed anchor before fetching ~200MB
+	// of state against it.
+	if got := common.BytesToHash(anchorBlockTree.Hash()); got != anchorBlockRoot {
+		return nil, fmt.Errorf("anchor block at slot %d has root %s, expected confirmed root %s",
+			anchorSlot, got, anchorBlockRoot)
 	}
 
 	// Get the SSZ-encoded anchor beacon state from the beaconClient and parse it into a lite tree.
