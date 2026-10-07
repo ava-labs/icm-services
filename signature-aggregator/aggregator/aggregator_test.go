@@ -172,7 +172,14 @@ func TestCreateSignedMessageRejectsOversizedRequest(t *testing.T) {
 	// The justification alone fills the limit, so with the message and framing the request exceeds it.
 	justification := utils.RandomBytes(MaxRequestSize)
 	_, err = aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, justification, ids.Empty, 67, pchainapi.ProposedHeight)
+		t.Context(),
+		logging.NoLog{},
+		msg,
+		justification,
+		ids.Empty,
+		67,
+		pchainapi.ProposedHeight,
+		networkP2P.SignatureRequestHandlerID)
 	require.ErrorIs(t, err, ErrRequestTooLarge)
 }
 
@@ -862,7 +869,7 @@ func TestCreateSignedMessageCountsResponsesDeliveredDuringSend(t *testing.T) {
 	)
 
 	signedMessage, err := aggregator.CreateSignedMessage(
-		t.Context(), logging.NoLog{}, msg, nil, subnetID, 67, pchainapi.ProposedHeight,
+		t.Context(), logging.NoLog{}, msg, nil, subnetID, 67, pchainapi.ProposedHeight, networkP2P.SignatureRequestHandlerID,
 	)
 	require.NoError(t, err)
 	require.NoError(t, signedMessage.Signature.Verify(

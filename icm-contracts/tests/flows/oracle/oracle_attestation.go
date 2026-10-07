@@ -90,7 +90,7 @@ func OracleAttestation(
 	log.Info("Deployed OracleAdapter", zap.Stringer("address", adapterAddress))
 
 	ginkgo.By("Step 2: Deploy TeleporterMessengerV2 with OracleAdapter as verifier")
-	teleporterAddress := utils.DeployTeleporterV2(ctx, &l1Info, adapterAddress, fundedKey)
+	teleporterAddress := utils.DeployTeleporterV2(ctx, &l1Info, adapterAddress, fundedKey, fundedKey)
 	teleporterContract, err := teleportermessengerv2.NewTeleporterMessengerV2(
 		teleporterAddress, l1Info.EthClient,
 	)
