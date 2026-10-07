@@ -429,6 +429,16 @@ func (n *AppRequestNetwork) RegisterRequestID(
 	return n.handler.RegisterRequestID(requestID, requestedNodes)
 }
 
+// UnregisterRequestedNodes drops [nodeIDs] from the responses expected for [requestID] and
+// cancels their timeouts. See RelayerExternalHandler.UnregisterRequestedNodes.
+func (n *AppRequestNetwork) UnregisterRequestedNodes(
+	requestID uint32,
+	chainID ids.ID,
+	nodeIDs []ids.NodeID,
+) {
+	n.handler.UnregisterRequestedNodes(requestID, chainID, nodeIDs)
+}
+
 func (n *AppRequestNetwork) GetSubnetID(ctx context.Context, blockchainID ids.ID) (ids.ID, error) {
 	return n.validatorManager.GetSubnetID(ctx, blockchainID)
 }
