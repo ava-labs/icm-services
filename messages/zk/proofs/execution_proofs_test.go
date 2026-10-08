@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testdataFixturePath is the Ethereum mainnet generated test fixture in icm-services/testdata/.
+const testdataFixturePath = "testdata/ethereum_fixture.json"
+
 // executionFixture mirrors the executionProof field of the fixture object
 // from the fixture generation script tool.
 // See: scripts/tools/fixture-gen/generate_fixture.mts
@@ -32,10 +35,10 @@ type executionFixture struct {
 	} `json:"executionProof"`
 }
 
-// loadFixture reads the mainnet-generated fixture from testdata.
-func loadFixture(t *testing.T) *executionFixture {
+// loadFixtureFrom reads a fixture from the given path.
+func loadFixture(t *testing.T, path string) *executionFixture {
 	t.Helper()
-	data, err := os.ReadFile("testdata/ethereum_fixture.json")
+	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	var fixture executionFixture
 	require.NoError(t, json.Unmarshal(data, &fixture))
@@ -88,7 +91,7 @@ func newTree(t *testing.T, numLeaves int, leafIndex int, value common.Hash) *ssz
 // correct for the Ethereum mainnet beacon chain. This is anchor beacon block root
 // -> anchor beacon state -> target state -> execution header -> receipts root.
 func TestExecutionFixtureChainOfTrust(t *testing.T) {
-	fixture := loadFixture(t)
+	fixture := loadFixture(t, testdataFixturePath)
 	proof := fixture.ExecutionProof
 
 	// Proof 1: anchor beacon block root -> anchor beacon state root.
@@ -187,7 +190,7 @@ func TestBuildExecutionProofSynthetic(t *testing.T) {
 
 // Corrupted proof must fail to verify.
 func TestExecutionFixtureTamperedProofFails(t *testing.T) {
-	fixture := loadFixture(t)
+	fixture := loadFixture(t, testdataFixturePath)
 	proof := fixture.ExecutionProof
 
 	corrupted := fixtureToProof(
