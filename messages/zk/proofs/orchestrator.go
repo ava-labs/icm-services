@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ava-labs/avalanchego/cache/lru"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/messages/zk/proofs/beacon"
 	"github.com/ava-labs/libevm/common"
@@ -28,6 +29,25 @@ type beaconClient interface {
 	State(ctx context.Context, slot uint64) ([]byte, error)
 }
 
+// liteStateCacheSize is the number of parsed lite beacon states kept in memory. A single anchor
+// beacon state may be used to verify multiple target slots within the 8192-slot window of the
+// anchor state's state_roots vector, so caching avoids refetching ~200MB state.
+const liteStateCacheSize = 16
+
+// ProofBuilder builds execution proofs from beacon data fetched via the beaconClient and
+// cached parsed lite beacon states by slot.
+type ProofBuilder struct {
+	client     beaconClient
+	liteStates *lru.Cache[uint64, *beacon.LiteBeaconState]
+}
+
+func NewProofBuilder(client beaconClient) *ProofBuilder {
+	return &ProofBuilder{
+		client:     client,
+		liteStates: lru.NewCache[uint64, *beacon.LiteBeaconState](liteStateCacheSize),
+	}
+}
+
 // BuildExecutionProofForSlots builds the complete execution proof linking
 // the targetSlot's receipts root to the confirmed anchor beacon block root at
 // anchorSlot.
@@ -35,7 +55,7 @@ type beaconClient interface {
 // In more detail, this function performs the following tasks:
 // 1. Fetches the anchor beacon block and both beacon states (anchor and target)
 // from the beaconClient. Note the anchorBlockRoot is the root ZKAdapter has confirmed for the
-// anchorSlot.
+// anchorSlot. Beacon states are served from the lite state cache when present.
 // 2. Parse the anchor beacon block into a regular Merkle tree, and the two beacon states into
 // lite Merkle trees (to save memory).
 // 3. Use the execution proof builder to create a proof from the parsed trees and provided slots.
@@ -44,9 +64,8 @@ type beaconClient interface {
 // TODO: We can cache the anchor's parsed lite state. The reason is that a single anchor beacon state
 // may be used to verify multiple target slots within the 8192-slot window of the anchor state's
 // state_roots vector. Issue: https://github.com/ava-labs/icm-services/issues/1542
-func BuildExecutionProofForSlots(
+func (b *ProofBuilder) BuildExecutionProofForSlots(
 	ctx context.Context,
-	client beaconClient,
 	anchorSlot uint64,
 	targetSlot uint64,
 	anchorBlockRoot common.Hash,
@@ -57,7 +76,7 @@ func BuildExecutionProofForSlots(
 	}
 
 	// Get the SSZ-encoded anchor beacon block from the beaconClient and parse it into a tree.
-	blockSSZ, err := client.Block(ctx, anchorSlot)
+	blockSSZ, err := b.client.Block(ctx, anchorSlot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch anchor block at slot %d: %w", anchorSlot, err)
 	}
@@ -73,29 +92,25 @@ func BuildExecutionProofForSlots(
 			anchorSlot, got, anchorBlockRoot)
 	}
 
-	// Get the SSZ-encoded anchor beacon state from the beaconClient and parse it into a lite tree.
-	anchorStateSSZ, err := client.State(ctx, anchorSlot)
+	// Get the SSZ-encoded anchor beacon state from the beaconClient or the cache
+	// and parse it into a lite tree.
+	anchorLite, err := b.getLiteState(ctx, anchorSlot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch anchor state at slot %d: %w", anchorSlot, err)
+		return nil, fmt.Errorf("anchor state: %w", err)
 	}
-	anchorLite, err := beacon.ParseLiteBeaconState(anchorStateSSZ)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse anchor state: %w", err)
-	}
+
 	anchorStateTree, err := anchorLite.AnchorStateTree(anchorStateRoot)
 	if err != nil {
 		return nil, fmt.Errorf("anchor state at slot %d: %w", anchorSlot, err)
 	}
 
-	// Get the SSZ-encoded target beacon state from the beaconClient and parse it into a lite tree.
-	targetStateSSZ, err := client.State(ctx, targetSlot)
+	// Get the SSZ-encoded target beacon state from the beaconClient or the cache
+	// and parse it into a lite tree.
+	targetLite, err := b.getLiteState(ctx, targetSlot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch target state at slot %d: %w", targetSlot, err)
+		return nil, fmt.Errorf("target state: %w", err)
 	}
-	targetLite, err := beacon.ParseLiteBeaconState(targetStateSSZ)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse target state: %w", err)
-	}
+
 	targetStateRoot := anchorLite.StateRootAt(targetSlot)
 	targetStateTree, execHeaderTree, err := targetLite.TargetStateTree(targetStateRoot)
 	if err != nil {
@@ -113,4 +128,22 @@ func BuildExecutionProofForSlots(
 		anchorSlot,
 		targetSlot,
 	)
+}
+
+// liteState returns the parsed lite beacon state at the given slot, fetching the SSZ-encoded
+// beacon state from the beaconClient and parsing it on a cache miss.
+func (b *ProofBuilder) getLiteState(ctx context.Context, slot uint64) (*beacon.LiteBeaconState, error) {
+	if lite, ok := b.liteStates.Get(slot); ok {
+		return lite, nil
+	}
+	stateSSZ, err := b.client.State(ctx, slot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch beacon state at slot %d: %w", slot, err)
+	}
+	lite, err := beacon.ParseLiteBeaconState(stateSSZ)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse beacon state at slot %d: %w", slot, err)
+	}
+	b.liteStates.Put(slot, lite)
+	return lite, nil
 }
