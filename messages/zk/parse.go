@@ -11,7 +11,6 @@ import (
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/messages"
-	"github.com/ava-labs/icm-services/messages/teleporterv2"
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
@@ -30,6 +29,10 @@ func getZkAdapterABI() *abi.ABI {
 
 // messageSentTopic is the topic hash (topic0) of the adapter's TeleporterV2MessageSent event
 var messageSentTopic = zkAdapterABI.Events["TeleporterV2MessageSent"].ID
+
+// messageArguments is the ABI of the TeleporterMessageV2 struct, taken from the adapter's
+// sendMessage input. The adapter emits abi.encode(message), which is this argument list's encoding.
+var messageArguments = zkAdapterABI.Methods["sendMessage"].Inputs
 
 // EventFilter returns the source chain log filter matching messages sent by the zk message
 // protocol. Duplicate deliveries are rejected at the TeleporterV2.receiveCrossChainMessage
@@ -58,9 +61,15 @@ func parseMessage(
 	if !ok {
 		return nil, fmt.Errorf("failed extracting encoded message from event")
 	}
-	teleporterMessage, err := teleporterv2.ParseTeleporterMessageV2(encodedMessage)
+	decoded, err := messageArguments.Unpack(encodedMessage)
 	if err != nil {
 		return nil, fmt.Errorf("failed parsing TeleporterV2 message: %w", err)
 	}
+	if len(decoded) != 1 {
+		return nil, fmt.Errorf("unexpected TeleporterV2 message argument count: %d", len(decoded))
+	}
+	teleporterMessage := abi.ConvertType(
+		decoded[0], new(teleportermessengerv2.TeleporterMessageV2),
+	).(*teleportermessengerv2.TeleporterMessageV2)
 	return teleporterMessage, nil
 }
