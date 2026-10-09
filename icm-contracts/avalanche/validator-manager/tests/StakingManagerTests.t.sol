@@ -619,6 +619,182 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         });
     }
 
+    function testForceInitiateDelegatorRemovalByValidatorDefersRewardToCompletion() public {
+        bytes32 validationID = _registerDefaultValidator();
+        bytes32 delegationID = _registerDefaultDelegator(validationID);
+
+        // The validator owner ends the delegation without an uptime proof while the stored uptime
+        // is still zero, which would previously have fixed the delegator's reward at zero.
+        _initiateDelegatorRemovalValidatorActiveWithChecks({
+            validationID: validationID,
+            sender: address(this),
+            delegationID: delegationID,
+            startDelegationTimestamp: DEFAULT_DELEGATOR_INIT_REGISTRATION_TIMESTAMP,
+            endDelegationTimestamp: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
+            expectedValidatorWeight: DEFAULT_WEIGHT,
+            expectedNonce: 2,
+            includeUptime: false,
+            force: true
+        });
+        (, uint256 rewardAtInitiation) = stakingManager.getDelegatorRewardInfo(delegationID);
+        assertEq(rewardAtInitiation, 0);
+
+        // The validator is still active, so anyone may submit a fresh uptime proof.
+        _submitUptimeProofWithChecks(
+            validationID,
+            DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+        );
+
+        // The reward is computed on completion from the fresh uptime, over a delegation period that
+        // still ends when the validator initiated the removal, however late completion happens.
+        vm.warp(DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP + 1 days);
+        uint256 expectedTotalReward = _defaultDelegatorExpectedTotalReward();
+        uint256 expectedValidatorFees =
+            _calculateValidatorFeesFromDelegator(expectedTotalReward, DEFAULT_DELEGATION_FEE_BIPS);
+        _completeDelegatorRemovalWithChecks({
+            validationID: validationID,
+            delegationID: delegationID,
+            delegator: DEFAULT_DELEGATOR_ADDRESS,
+            delegatorWeight: DEFAULT_DELEGATOR_WEIGHT,
+            expectedValidatorFees: expectedValidatorFees,
+            expectedDelegatorReward: expectedTotalReward - expectedValidatorFees,
+            validatorWeight: DEFAULT_WEIGHT,
+            expectedValidatorWeight: DEFAULT_WEIGHT,
+            expectedNonce: 2
+        });
+    }
+
+    function testForceInitiateDelegatorRemovalByValidatorWithoutProofCompletesWithoutReward()
+        public
+    {
+        bytes32 validationID = _registerDefaultValidator();
+        bytes32 delegationID = _registerDefaultDelegator(validationID);
+
+        _initiateDelegatorRemovalValidatorActiveWithChecks({
+            validationID: validationID,
+            sender: address(this),
+            delegationID: delegationID,
+            startDelegationTimestamp: DEFAULT_DELEGATOR_INIT_REGISTRATION_TIMESTAMP,
+            endDelegationTimestamp: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
+            expectedValidatorWeight: DEFAULT_WEIGHT,
+            expectedNonce: 2,
+            includeUptime: false,
+            force: true
+        });
+
+        // No proof is ever submitted, so the stored uptime stays stale and the delegation completes
+        // without a reward, as before. The stake is still returned.
+        _mockGetPChainWarpMessage(
+            ValidatorMessages.packL1ValidatorWeightMessage(validationID, 2, DEFAULT_WEIGHT), true
+        );
+        vm.expectEmit(true, true, true, true, address(stakingManager));
+        emit CompletedDelegatorRemoval(delegationID, validationID, 0, 0);
+        _expectStakeUnlock(DEFAULT_DELEGATOR_ADDRESS, _weightToValue(DEFAULT_DELEGATOR_WEIGHT));
+        stakingManager.completeDelegatorRemoval(delegationID, 0);
+    }
+
+    function testInitiateDelegatorRemovalByDelegatorFixesRewardAtInitiation() public {
+        bytes32 validationID = _registerDefaultValidator();
+        bytes32 delegationID = _registerDefaultDelegator(validationID);
+
+        // The delegator itself chose to end the delegation without a proof, so its reward is fixed
+        // from the stored (zero) uptime right away...
+        _initiateDelegatorRemovalValidatorActiveWithChecks({
+            validationID: validationID,
+            sender: DEFAULT_DELEGATOR_ADDRESS,
+            delegationID: delegationID,
+            startDelegationTimestamp: DEFAULT_DELEGATOR_INIT_REGISTRATION_TIMESTAMP,
+            endDelegationTimestamp: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
+            expectedValidatorWeight: DEFAULT_WEIGHT,
+            expectedNonce: 2,
+            includeUptime: false,
+            force: true
+        });
+
+        // ...and a proof submitted afterwards does not change it.
+        _submitUptimeProofWithChecks(
+            validationID,
+            DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+        );
+
+        _mockGetPChainWarpMessage(
+            ValidatorMessages.packL1ValidatorWeightMessage(validationID, 2, DEFAULT_WEIGHT), true
+        );
+        vm.expectEmit(true, true, true, true, address(stakingManager));
+        emit CompletedDelegatorRemoval(delegationID, validationID, 0, 0);
+        _expectStakeUnlock(DEFAULT_DELEGATOR_ADDRESS, _weightToValue(DEFAULT_DELEGATOR_WEIGHT));
+        stakingManager.completeDelegatorRemoval(delegationID, 0);
+    }
+
+    function testCompleteDelegatorRemovalDeferredRewardAfterValidatorExit() public {
+        bytes32 validationID = _registerDefaultValidator();
+        bytes32 delegationID = _registerDefaultDelegator(validationID);
+
+        // The validator owner ends the delegation without a proof, then exits without a proof,
+        // freezing a stale (zero) stored uptime.
+        _initiateDelegatorRemovalValidatorActiveWithChecks({
+            validationID: validationID,
+            sender: address(this),
+            delegationID: delegationID,
+            startDelegationTimestamp: DEFAULT_DELEGATOR_INIT_REGISTRATION_TIMESTAMP,
+            endDelegationTimestamp: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
+            expectedValidatorWeight: DEFAULT_WEIGHT,
+            expectedNonce: 2,
+            includeUptime: false,
+            force: true
+        });
+        _initiateValidatorRemoval({
+            validationID: validationID,
+            completionTimestamp: DEFAULT_COMPLETION_TIMESTAMP,
+            setWeightMessage: ValidatorMessages.packL1ValidatorWeightMessage(validationID, 3, 0),
+            includeUptime: false,
+            uptimeMessage: new bytes(0),
+            force: true
+        });
+        // The validator exited with stale uptime, so its own reward is zero.
+        _expectRewardIssuance(address(this), 0);
+        _completeValidatorRemoval(
+            ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, false)
+        );
+        assertTrue(validatorManager.getValidator(validationID).status == ValidatorStatus.Completed);
+
+        // A proof is still accepted for the completed validator...
+        _submitUptimeProofWithChecks(
+            validationID, DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+        );
+
+        // ...and the deferred reward is computed from it on completion, over the delegation period
+        // that ended when the validator initiated the removal. No P-Chain acknowledgement is
+        // needed since the validator has completed.
+        uint256 expectedTotalReward = _defaultDelegatorExpectedTotalReward();
+        uint256 expectedValidatorFees =
+            _calculateValidatorFeesFromDelegator(expectedTotalReward, DEFAULT_DELEGATION_FEE_BIPS);
+        uint256 expectedDelegatorReward = expectedTotalReward - expectedValidatorFees;
+
+        vm.expectEmit(true, true, true, true, address(stakingManager));
+        emit CompletedDelegatorRemoval(
+            delegationID, validationID, expectedDelegatorReward, expectedValidatorFees
+        );
+        _expectStakeUnlock(DEFAULT_DELEGATOR_ADDRESS, _weightToValue(DEFAULT_DELEGATOR_WEIGHT));
+        _expectRewardIssuance(DEFAULT_DELEGATOR_ADDRESS, expectedDelegatorReward);
+        // The proof reported uptime past the delegation's end, so the calculator must see it
+        // capped at the validation window that ended when the removal was initiated.
+        vm.expectCall(
+            address(rewardCalculator),
+            abi.encodeCall(
+                IRewardCalculator.calculateReward,
+                (
+                    _weightToValue(DEFAULT_DELEGATOR_WEIGHT),
+                    DEFAULT_REGISTRATION_TIMESTAMP,
+                    DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP,
+                    DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
+                    DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+                )
+            )
+        );
+        stakingManager.completeDelegatorRemoval(delegationID, 0);
+    }
+
     function testResendEndDelegation() public {
         bytes32 validationID = _registerDefaultValidator();
         bytes32 delegationID = _registerDefaultDelegator(validationID);
@@ -1768,32 +1944,66 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         stakingManager.submitUptimeProof(defaultInitialValidationID, 0);
     }
 
-    function testSubmitUptimeProofInactiveValidator() public {
+    function testSubmitUptimeProofPendingAddedValidator() public {
+        bytes32 validationID = _setUpInitiateValidatorRegistration(
+            DEFAULT_NODE_ID,
+            DEFAULT_SUBNET_ID,
+            DEFAULT_WEIGHT,
+            DEFAULT_BLS_PUBLIC_KEY,
+            address(this)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IValidatorManager.InvalidValidatorStatus.selector, ValidatorStatus.PendingAdded
+            )
+        );
+        stakingManager.submitUptimeProof(validationID, 0);
+    }
+
+    function testSubmitUptimeProofPendingRemovedValidator() public {
         bytes32 validationID = _registerDefaultValidator();
 
-        bytes memory setWeightMessage =
-            ValidatorMessages.packL1ValidatorWeightMessage(validationID, 1, 0);
-        bytes memory uptimeMessage = ValidatorMessages.packValidationUptimeMessage(
+        // The validator exits without a proof, leaving the stored uptime stale.
+        _initiateValidatorRemoval({
+            validationID: validationID,
+            completionTimestamp: DEFAULT_COMPLETION_TIMESTAMP,
+            setWeightMessage: ValidatorMessages.packL1ValidatorWeightMessage(validationID, 1, 0),
+            includeUptime: false,
+            uptimeMessage: new bytes(0),
+            force: true
+        });
+        assertTrue(
+            validatorManager.getValidator(validationID).status == ValidatorStatus.PendingRemoved
+        );
+
+        // A proof is still accepted, so delegations ended later are not stuck with stale uptime.
+        _submitUptimeProofWithChecks(
             validationID, DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
         );
+    }
+
+    function testSubmitUptimeProofCompletedValidator() public {
+        bytes32 validationID = _registerDefaultValidator();
 
         _initiateValidatorRemoval({
             validationID: validationID,
             completionTimestamp: DEFAULT_COMPLETION_TIMESTAMP,
-            setWeightMessage: setWeightMessage,
-            includeUptime: true,
-            uptimeMessage: uptimeMessage,
-            force: false
+            setWeightMessage: ValidatorMessages.packL1ValidatorWeightMessage(validationID, 1, 0),
+            includeUptime: false,
+            uptimeMessage: new bytes(0),
+            force: true
         });
-
-        _beforeSend(_weightToValue(DEFAULT_DELEGATOR_WEIGHT), DEFAULT_DELEGATOR_ADDRESS);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IValidatorManager.InvalidValidatorStatus.selector, ValidatorStatus.PendingRemoved
-            )
+        // The validator exited with stale uptime, so its own reward is zero.
+        _expectRewardIssuance(address(this), 0);
+        _completeValidatorRemoval(
+            ValidatorMessages.packL1ValidatorRegistrationMessage(validationID, false)
         );
-        stakingManager.submitUptimeProof(validationID, 0);
+        assertTrue(validatorManager.getValidator(validationID).status == ValidatorStatus.Completed);
+
+        _submitUptimeProofWithChecks(
+            validationID, DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+        );
     }
 
     function testEndValidationPoAValidator() public {
@@ -2670,6 +2880,15 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
     ) internal virtual returns (uint256);
     function _expectStakeUnlock(address account, uint256 amount) internal virtual;
     function _expectRewardIssuance(address account, uint256 amount) internal virtual;
+
+    function _submitUptimeProofWithChecks(bytes32 validationID, uint64 uptime) internal {
+        _mockGetUptimeWarpMessage(
+            ValidatorMessages.packValidationUptimeMessage(validationID, uptime), true
+        );
+        vm.expectEmit(true, true, true, true, address(stakingManager));
+        emit UptimeUpdated(validationID, uptime);
+        stakingManager.submitUptimeProof(validationID, 0);
+    }
 
     function _defaultDelegatorExpectedTotalReward() internal view returns (uint256) {
         return rewardCalculator.calculateReward({

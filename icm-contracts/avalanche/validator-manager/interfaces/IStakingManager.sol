@@ -185,8 +185,10 @@ interface IStakingManager {
     );
 
     /**
-     * @notice Updates the uptime of the validationID if the submitted proof is greated than the stored uptime.
-     * Anybody may call this function to ensure the stored uptime is accurate. Callable only when the validation period is active.
+     * @notice Updates the uptime of the validationID if the submitted proof is greater than the stored uptime.
+     * Anybody may call this function to ensure the stored uptime is accurate. Callable while the validation period
+     * is active, pending removal, or completed, since delegations ended after the validator exits are rewarded
+     * from the stored uptime.
      * @param validationID The ID of the validation period
      * @param messageIndex The index of the ICM message to be received providing the uptime proof
      */
@@ -268,7 +270,11 @@ interface IStakingManager {
      * The delegator must have been previously registered with the given validationID. For the purposes of computing delegation rewards,
      * the delegation period is considered ended when this function is called. Uses the supplied uptime proof to calculate rewards.
      * If none is provided in the call, the latest known uptime will be used. Reverts if the uptime is not eligible for rewards.
-     * Note: This function can only be called by the address that registered the delegation.
+     * Note: This function can be called by the address that registered the delegation, or by the validator's
+     * owner once the validator's minimum stake duration has passed. When the validator owner initiates the
+     * removal of an active delegation, the delegation's reward is not computed in this call but in
+     * {completeDelegatorRemoval}, with the delegation period still considered ended at this call, so that
+     * uptime proofs submitted in between (see {submitUptimeProof}) are honored.
      * Note: Reverts if the uptime is not eligible for rewards.
      * @param delegationID The ID of the delegation being removed.
      * @param includeUptimeProof Whether or not an uptime proof is provided for the validation period.
@@ -289,7 +295,11 @@ interface IStakingManager {
      * The delegator must have been previously registered with the given validationID. For the purposes of computing delegation rewards,
      * the delegation period is considered ended when this function is called. Uses the supplied uptime proof to calculate rewards.
      * If none is provided in the call, the latest known uptime will be used. Reverts if the uptime is not eligible for rewards.
-     * Note: This function can only be called by the address that registered the delegation.
+     * Note: This function can be called by the address that registered the delegation, or by the validator's
+     * owner once the validator's minimum stake duration has passed. When the validator owner initiates the
+     * removal of an active delegation, the delegation's reward is not computed in this call but in
+     * {completeDelegatorRemoval}, with the delegation period still considered ended at this call, so that
+     * uptime proofs submitted in between (see {submitUptimeProof}) are honored.
      * @param delegationID The ID of the delegation being removed.
      * @param includeUptimeProof Whether or not an uptime proof is provided for the validation period.
      * If the validator has completed its validation period, it has already provided an uptime proof, so {includeUptimeProof}
