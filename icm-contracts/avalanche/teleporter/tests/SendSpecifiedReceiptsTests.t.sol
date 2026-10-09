@@ -39,8 +39,7 @@ contract SendSpecifiedReceiptsTest is TeleporterMessengerTest {
                 new TeleporterMessageReceipt[](0)
             );
             expectedReceipts[i] = TeleporterMessageReceipt({
-                receivedMessageNonce: i + 1,
-                relayerRewardAddress: relayerRewardAddresses[i]
+                receivedMessageNonce: i + 1, relayerRewardAddress: relayerRewardAddresses[i]
             });
         }
 
@@ -77,12 +76,10 @@ contract SendSpecifiedReceiptsTest is TeleporterMessengerTest {
 
         TeleporterMessageReceipt[] memory newExpectedReceipts = new TeleporterMessageReceipt[](2);
         newExpectedReceipts[0] = TeleporterMessageReceipt({
-            receivedMessageNonce: 3,
-            relayerRewardAddress: relayerRewardAddresses[2]
+            receivedMessageNonce: 3, relayerRewardAddress: relayerRewardAddresses[2]
         });
         newExpectedReceipts[1] = TeleporterMessageReceipt({
-            receivedMessageNonce: 1,
-            relayerRewardAddress: relayerRewardAddresses[0]
+            receivedMessageNonce: 1, relayerRewardAddress: relayerRewardAddresses[0]
         });
 
         uint256 newExpectedMessageNonce = _getNextMessageNonce();
@@ -152,8 +149,7 @@ contract SendSpecifiedReceiptsTest is TeleporterMessengerTest {
 
         // Mock sending a message to that chain, which should include the 2 copies of the same receipt.
         TeleporterMessageReceipt memory expectedReceipt = TeleporterMessageReceipt({
-            receivedMessageNonce: 1,
-            relayerRewardAddress: DEFAULT_RELAYER_REWARD_ADDRESS
+            receivedMessageNonce: 1, relayerRewardAddress: DEFAULT_RELAYER_REWARD_ADDRESS
         });
         TeleporterMessageReceipt[] memory expectedReceipts = new TeleporterMessageReceipt[](2);
         expectedReceipts[0] = expectedReceipt;

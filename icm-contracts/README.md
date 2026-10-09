@@ -22,6 +22,7 @@ For help getting started with building ICM contracts, refer to [the avalanche-st
 
 - [Ginkgo](https://onsi.github.io/ginkgo/#installing-ginkgo) for running the end-to-end tests.
 - [Foundry](https://book.getfoundry.sh/) Use `./scripts/install_foundry.sh` to install Foundry for building contracts.
+- `reforge`, the macro-expanding `forge` wrapper in [`icm-macros`](../icm-macros). Use `./scripts/build_reforge.sh` to build and install it; the Solidity formatting and E2E scripts invoke it.
 
 ## Structure
 

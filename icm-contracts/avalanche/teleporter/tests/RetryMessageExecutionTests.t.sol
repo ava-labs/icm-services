@@ -240,8 +240,11 @@ contract RetryMessageExecutionTest is TeleporterMessengerTest {
 
     function _successfullyRetryMessage() internal returns (bytes32, TeleporterMessage memory) {
         // First submit a message whose execution fails.
-        (bytes32 sourceBlockchainID, TeleporterMessage memory message, string memory messageString)
-        = _receiveFailedMessage(false);
+        (
+            bytes32 sourceBlockchainID,
+            TeleporterMessage memory message,
+            string memory messageString
+        ) = _receiveFailedMessage(false);
 
         // Now retry the message execution in a block with an odd height, which should succeed.
         vm.roll(13);

@@ -259,7 +259,10 @@ contract CallUtilsTest is Test {
     /// that at exactly that allowance the _target still received gasAmount and the whole payload.
     /// If CALL charged for its input, the library's check would pass at this boundary while the
     /// _target received less than gasAmount, and the gas assertion would fail.
-    function _assertGasAmountForwardedAtMinimum(uint256 payloadSize, uint256 value) private {
+    function _assertGasAmountForwardedAtMinimum(
+        uint256 payloadSize,
+        uint256 value
+    ) private {
         bytes memory payload = _payload(payloadSize);
         bytes memory callData = abi.encodeCall(
             _harness.callWithExactGasAndValue,
@@ -292,7 +295,10 @@ contract CallUtilsTest is Test {
 
     /// @dev Binary search for the smallest gas allowance at which the _harness call does not
     /// revert. Whether the call reverts is monotonic in the allowance, so the search is valid.
-    function _minimumAcceptedGas(bytes memory callData, uint256 hi) private returns (uint256) {
+    function _minimumAcceptedGas(
+        bytes memory callData,
+        uint256 hi
+    ) private returns (uint256) {
         require(_harnessAccepts(callData, hi), "upper bound too low");
         uint256 lo = 0;
         while (lo < hi) {
@@ -306,7 +312,10 @@ contract CallUtilsTest is Test {
         return hi;
     }
 
-    function _harnessAccepts(bytes memory callData, uint256 outerGas) private returns (bool) {
+    function _harnessAccepts(
+        bytes memory callData,
+        uint256 outerGas
+    ) private returns (bool) {
         (bool ok,) = address(_harness).call{gas: outerGas}(callData);
         return ok;
     }
