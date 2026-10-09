@@ -191,6 +191,7 @@ func main() {
 		signatureAggregator,
 	)
 	api.HandleOracleAggregateSignatures(
+		apiMux,
 		logger,
 		metricsInstance,
 		signatureAggregator,

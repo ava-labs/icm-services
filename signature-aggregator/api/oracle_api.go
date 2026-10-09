@@ -22,11 +22,12 @@ const OracleAPIPath = "/oracle/aggregate-signatures"
 // Solana transaction signature or other source-chain lookup hint.
 // Response body: AggregateSignatureResponse with the signed warp message.
 func HandleOracleAggregateSignatures(
+	mux *http.ServeMux,
 	logger logging.Logger,
 	metricsInstance *metrics.SignatureAggregatorMetrics,
 	sigAggregator *aggregator.SignatureAggregator,
 ) {
-	http.Handle(
+	mux.Handle(
 		OracleAPIPath,
 		signatureAggregationAPIHandler(
 			logger,
