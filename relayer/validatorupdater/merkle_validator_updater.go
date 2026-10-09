@@ -7,6 +7,7 @@ package validatorupdater
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -29,6 +30,23 @@ import (
 
 // weiPerGwei is the conversion factor between gwei and wei.
 var weiPerGwei = big.NewInt(1_000_000_000)
+
+// errPChainNotRegistered is returned when the registry has no usable P-chain
+// validator set commitment to anchor a P-chain-signed update against. The
+// constructor always stores one, but does not reject a zero total weight, and
+// the contract treats zero weight as unregistered.
+var errPChainNotRegistered = errors.New("P-chain validator set is not registered on the contract")
+
+// registryCaller is the read-only subset of the MerkleValidatorSetRegistry
+// binding needed to resolve the anchor of a P-chain-signed update.
+type registryCaller interface {
+	GetValidatorSetCommitment(
+		opts *bind.CallOpts,
+		avalancheBlockchainID [32]byte,
+	) (merklevalidatorsetregistry.ValidatorSetMerkleCommitment, error)
+}
+
+var _ registryCaller = (*merklevalidatorsetregistry.MerkleValidatorSetRegistry)(nil)
 
 type MerkleSetUpdater struct {
 	logger              logging.Logger
@@ -170,7 +188,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 		zap.Bool("stale", s.isStale()),
 	)
 
-	err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, s.subnetID)
+	err = s.performUpdate(ctx, validatorSetUpdate, s.subnetID)
 	if err != nil {
 		// Does not retry if the update is for the P-chain itself, or if fallback to P-Chain signing is disabled.
 		if s.subnetID == constants.PrimaryNetworkID || !s.allowPChainFallback {
@@ -186,7 +204,7 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 			zap.Error(err),
 			zap.Stringer("subnetID", s.subnetID),
 		)
-		err = s.performUpdate(ctx, s.localPChainHeight, validatorSetUpdate, constants.PrimaryNetworkID)
+		err = s.performUpdate(ctx, validatorSetUpdate, constants.PrimaryNetworkID)
 		if err != nil {
 			s.logger.Warn("Merkle root P-Chain fallback also failed, retrying on next tick",
 				zap.Error(err),
@@ -250,7 +268,7 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 		s.logger.Info("First registration detected, performing update",
 			zap.Uint64("pChainHeight", pChainHeight),
 		)
-		if err := s.performUpdate(ctx, onChainVS.PChainHeight, cmt, ids.Empty); err != nil {
+		if err := s.performUpdate(ctx, cmt, constants.PrimaryNetworkID); err != nil {
 			return err
 		}
 		s.localValidatorSet = newValidators
@@ -325,9 +343,18 @@ func (s *MerkleSetUpdater) nextUpdate(
 	return nil, nil
 }
 
+// performUpdate has [signingChain]'s validators sign [validatorSetUpdate] and
+// submits it to the registry.
+//
+// The registry verifies the attestation against the commitment it has stored
+// for the signing chain, so the signer bitset, quorum weighting and Merkle
+// multi-proof are only meaningful over the signing chain's canonical validator
+// set at the P-chain height of that stored commitment. Signature aggregation
+// and the attestation are therefore anchored at the registry's P-chain entry
+// when the P-chain signs (first registration and the P-chain fallback), and at
+// the locally tracked height of this chain's own entry when it signs for itself.
 func (s *MerkleSetUpdater) performUpdate(
 	ctx context.Context,
-	onChainPChainHeight uint64,
 	validatorSetUpdate *ValidatorSetMerkleCommitment,
 	signingChain ids.ID,
 ) error {
@@ -335,6 +362,16 @@ func (s *MerkleSetUpdater) performUpdate(
 		return fmt.Errorf("invalid signing chain %s: must be P-Chain or this subnet (%s)",
 			signingChain, s.subnetID)
 	}
+
+	signingPChainHeight := s.localPChainHeight
+	if signingChain == constants.PrimaryNetworkID {
+		var err error
+		signingPChainHeight, err = pChainAnchorHeight(ctx, s.contract)
+		if err != nil {
+			return err
+		}
+	}
+
 	addressedCall, err := warppayload.NewAddressedCall(nil, validatorSetUpdate.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to create addressed call: %w", err)
@@ -351,6 +388,7 @@ func (s *MerkleSetUpdater) performUpdate(
 
 	s.logger.Info("Signing new merkle root",
 		zap.Stringer("signingChain", signingChain),
+		zap.Uint64("signingPChainHeight", signingPChainHeight),
 	)
 
 	signedMsg, err := s.signatureAggregator.CreateSignedMessage(
@@ -360,34 +398,40 @@ func (s *MerkleSetUpdater) performUpdate(
 		nil,
 		signingChain,
 		config.DefaultRegistryQuorumNumerator,
-		onChainPChainHeight,
+		signingPChainHeight,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to sign message: %w", err)
 	}
 
-	return s.sendUpdate(ctx, signedMsg, onChainPChainHeight, signingChain)
+	return s.sendUpdate(ctx, signedMsg, signingPChainHeight, signingChain)
 }
 
 func (s *MerkleSetUpdater) sendUpdate(
 	ctx context.Context,
 	signedMsg *avalancheWarp.Message,
-	onChainPChainHeight uint64,
+	signingPChainHeight uint64,
 	signingChain ids.ID,
 ) error {
-	// If the P-Chain signed the message in either initial registration or as a fallback,
-	// fetch the primary network's canonical validator set used to build that root so the
-	// attestation proof is computed against the same ordered set the signer bitset refers to.
-	var attestationValidators []*Validator
+	// The registry keys commitments by blockchain ID and verifies the attestation
+	// against the commitment stored for the signing chain. When the P-Chain signed
+	// the message (first registration or fallback) that is the registry's P-chain
+	// entry, so the attestation proof is computed over the primary network's
+	// canonical validator set at that entry's height: the same ordered set the
+	// signer bitset refers to. Otherwise it is this chain's own entry, which the
+	// local state mirrors.
+	signingBlockchainID := s.blockchainID
+	attestationValidators := s.localValidatorSet
 	if signingChain == constants.PrimaryNetworkID {
 		var err error
-		attestationValidators, err = s.fetchCanonicalValidators(ctx, constants.PrimaryNetworkID, onChainPChainHeight)
+		signingBlockchainID = constants.PlatformChainID
+		attestationValidators, err = s.fetchCanonicalValidators(ctx, constants.PrimaryNetworkID, signingPChainHeight)
 		if err != nil {
 			return fmt.Errorf("failed to get P-chain validators at height %d for attestation: %w",
-				onChainPChainHeight, err)
+				signingPChainHeight,
+				err,
+			)
 		}
-	} else {
-		attestationValidators = s.localValidatorSet
 	}
 
 	icmMessage, err := s.buildICMMessage(signedMsg, attestationValidators)
@@ -395,8 +439,10 @@ func (s *MerkleSetUpdater) sendUpdate(
 		return err
 	}
 
-	s.logger.Info("Sending registerValidatorSet")
-	tx, err := s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(signingChain))
+	s.logger.Info("Sending registerValidatorSet",
+		zap.Stringer("signingBlockchainID", signingBlockchainID),
+	)
+	tx, err := s.contract.RegisterValidatorSet(s.txOpts, icmMessage, [32]byte(signingBlockchainID))
 	if err != nil {
 		return fmt.Errorf("registerValidatorSet failed: %w", err)
 	}
@@ -430,6 +476,27 @@ func (s *MerkleSetUpdater) fetchCanonicalValidators(
 	pChainHeight uint64,
 ) ([]*Validator, error) {
 	return FetchCanonicalValidators(ctx, s.pChainClient, subnetID, pChainHeight)
+}
+
+// pChainAnchorHeight returns the P-chain height of the primary network validator
+// set currently registered on [registry] under the P-chain's blockchain ID.
+//
+// The registry verifies every P-chain-signed registerValidatorSet message against
+// this stored commitment, so signature aggregation and the attestation for such a
+// message must be built over the primary network's canonical validator set at
+// exactly this height.
+func pChainAnchorHeight(ctx context.Context, registry registryCaller) (uint64, error) {
+	commitment, err := registry.GetValidatorSetCommitment(
+		&bind.CallOpts{Context: ctx},
+		constants.PlatformChainID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get on-chain P-chain validator set commitment: %w", err)
+	}
+	if commitment.TotalWeight == 0 {
+		return 0, errPChainNotRegistered
+	}
+	return commitment.PChainHeight, nil
 }
 
 func (s *MerkleSetUpdater) buildICMMessage(
