@@ -12,6 +12,20 @@ struct Primitives {
     string g;
 }
 
+// #[pack()]
+// #[unpack()]
+struct Sizes {
+    // #[pack(length=uint8)]
+    // #[unpack(length=uint8)]
+    bytes Bytes;
+    // #[pack(length=uint16)]
+    // #[unpack(length=uint16)]
+    string String;
+    // #[pack(length=uint32)]
+    // #[unpack(length=uint32)]
+    address[] Addresses;
+}
+
 // #[pack(contract="RoundTrip")]
 // #[unpack(contract="RoundTrip")]
 enum Choice {
@@ -35,4 +49,20 @@ library RoundTrip {
         Primitives[] primitives;
         Choice choice;
     }
+
+    // #[pack()]
+    // #[unpack(calldata)]
+    struct Sizes {
+        // #[pack(length=uint8)]
+        // #[unpack(length=uint8)]
+        bytes Bytes;
+        // #[pack(length=uint16)]
+        // #[unpack(length=uint16)]
+        string String;
+        // #[pack(length=uint32)]
+        // #[unpack(length=uint32)]
+        address[] Addresses;
+    }
+
+
 }

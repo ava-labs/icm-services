@@ -18,4 +18,14 @@ library PackMethods {
         // #[pack(method="abi.encodePacked")]
         Enum choice;
     }
+
+    // #[pack()]
+    struct DynamicStruct {
+        // #[pack(length=uint8)]
+        bytes Bytes;
+        // #[pack(length=uint16)]
+        string String;
+        // #[pack(length=uint32)]
+        address[] Addresses;
+    }
 }
