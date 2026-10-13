@@ -10,7 +10,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	"github.com/ava-labs/icm-services/messages"
-	"github.com/ava-labs/icm-services/messages/teleporterv2"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -27,7 +26,7 @@ var (
 	destinationAppAddress   = common.HexToAddress("0xa000000000000000000000000000000000006")
 
 	messageProtocolConfig = config.MessageProtocolConfig{
-		MessageFormat: "zk", // TODO: match the registered protocol type
+		MessageFormat: "zk",
 		Settings: map[string]interface{}{
 			"reward-address":      rewardAddress.Hex(),
 			"adapter-address":     messageProtocolAddress.Hex(),
@@ -63,7 +62,10 @@ func init() {
 	}
 
 	// Build the event payload the adapter would emit
-	serialized := teleporterv2.SerializeTeleporterMessageV2(validTeleporterMessage)
+	serialized, err := messageArguments.Pack(*validTeleporterMessage)
+	if err != nil {
+		panic(err)
+	}
 	validEventPayload, err = zkAdapterABI.Events["TeleporterV2MessageSent"].Inputs.Pack(serialized)
 	if err != nil {
 		panic(err)
