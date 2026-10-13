@@ -1,6 +1,8 @@
 // Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+// THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
+
 package proofs
 
 import (
@@ -59,17 +61,9 @@ func BuildExecutionProof(
 	anchorSlot uint64,
 	targetSlot uint64,
 ) (*zkadapter.ExecutionProof, error) {
-	// Safety checks
-	if targetSlot >= anchorSlot {
-		return nil, fmt.Errorf("target slot %d must be before anchor slot %d", targetSlot, anchorSlot)
-	}
-	if anchorSlot-targetSlot > StateRootsVectorSize {
-		return nil, fmt.Errorf(
-			"target slot (%d) is outside the anchor slot's (%d) state_roots window (%d slots)",
-			targetSlot,
-			anchorSlot,
-			StateRootsVectorSize,
-		)
+	// Safety check
+	if err := validateSlotWindow(anchorSlot, targetSlot); err != nil {
+		return nil, err
 	}
 
 	// 1. Anchor state proof: trusted anchor beacon block root -> anchor beacon state root, where the beacon block
@@ -171,4 +165,17 @@ func proveAgainst(node *ssz.Node, gIndex int, expectedRoot common.Hash) (*ssz.Pr
 		)
 	}
 	return proof, nil
+}
+
+// validateSlotWindow mirrors the contract's checks: the target slot must
+// precede the anchor and fall within its state_roots history.
+func validateSlotWindow(anchorSlot, targetSlot uint64) error {
+	if targetSlot >= anchorSlot {
+		return fmt.Errorf("target slot %d must be before anchor slot %d", targetSlot, anchorSlot)
+	}
+	if anchorSlot-targetSlot > StateRootsVectorSize {
+		return fmt.Errorf("target slot %d is outside anchor slot %d's state_roots window (%d slots)",
+			targetSlot, anchorSlot, StateRootsVectorSize)
+	}
+	return nil
 }

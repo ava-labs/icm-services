@@ -125,6 +125,9 @@ func (h *RelayerExternalHandler) Disconnected(nodeID ids.NodeID) {
 // RegisterRequestID registers an AppRequest by requestID, and marks the number of
 // expected responses, equivalent to the number of nodes requested. requestID should
 // be globally unique for the lifetime of the AppRequest. This is upper bounded by the timeout duration.
+// It must be called BEFORE the AppRequest is sent, so that no response can reach the handler
+// before it knows about the request. Nodes the send subsequently fails to reach should be
+// dropped from the expected set with UnregisterRequestedNodes.
 // NOTE: This function must be called at most once per requestID. Multiple calls with the same requestID
 // will result in a fatal log and process termination.
 func (h *RelayerExternalHandler) RegisterRequestID(
@@ -154,12 +157,59 @@ func (h *RelayerExternalHandler) RegisterRequestID(
 	}
 
 	numExpectedResponses := requestedNodes.Len()
+	// Each requested node is forwarded at most once, so the buffer can never fill up and
+	// the forwarding send under h.lock never blocks.
 	responseChan := make(chan message.InboundMessage, numExpectedResponses)
 	h.responseChans[requestID] = responseChan
 	h.responsesCount[requestID] = expectedResponses{
 		expected: numExpectedResponses,
 	}
 	return responseChan
+}
+
+// UnregisterRequestedNodes removes [nodeIDs] from the set of nodes expected to respond to
+// [requestID] (typically because the AppRequest could not be sent to them) and cancels the
+// timeouts registered for them via RegisterAppRequest. Nodes that are not (or no longer)
+// expected to respond are ignored. If no responses remain outstanding afterwards, the
+// response channel is closed and the request's tracking state is released.
+func (h *RelayerExternalHandler) UnregisterRequestedNodes(
+	requestID uint32,
+	chainID ids.ID,
+	nodeIDs []ids.NodeID,
+) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	requestedNodes, ok := h.requestedNodes[requestID]
+	if !ok {
+		return
+	}
+	removed := 0
+	for _, nodeID := range nodeIDs {
+		if !requestedNodes.Contains(nodeID) {
+			continue
+		}
+		requestedNodes.Remove(nodeID)
+		h.timeoutManager.Remove(ids.RequestID{
+			NodeID:    nodeID,
+			ChainID:   chainID,
+			RequestID: requestID,
+			Op:        byte(message.AppResponseOp),
+		})
+		removed++
+	}
+	if removed == 0 {
+		return
+	}
+	h.log.Debug(
+		"Unregistered requested nodes",
+		zap.Uint32("requestID", requestID),
+		zap.Int("numUnregistered", removed),
+	)
+	responses := h.responsesCount[requestID]
+	responses.expected -= removed
+	h.responsesCount[requestID] = responses
+	h.finishRequestIfComplete(requestID)
 }
 
 // RegisterAppRequest registers an AppRequest with the timeout manager.
@@ -178,7 +228,8 @@ func (h *RelayerExternalHandler) RegisterAppRequest(reqID ids.RequestID) {
 	})
 }
 
-// registerAppResponse registers an AppResponse with the timeout manager
+// registerAppResponse attributes an AppResponse (or AppError) to the request and node it
+// answers, cancels that node's timeout, and forwards it to the request's response channel.
 func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.InboundMessage) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
@@ -209,62 +260,69 @@ func (h *RelayerExternalHandler) registerAppResponse(inboundMessage message.Inbo
 		return
 	}
 
-	// Remove the timeout on the request
-	reqID := ids.RequestID{
-		NodeID:    inboundMessage.NodeID,
-		ChainID:   chainID,
-		RequestID: requestID,
-		Op:        byte(inboundMessage.Op),
-	}
-	h.timeoutManager.Remove(reqID)
-
 	log := h.log.With(
-		zap.Stringer("nodeID", reqID.NodeID),
+		zap.Stringer("nodeID", inboundMessage.NodeID),
 		zap.Uint32("requestID", requestID),
 	)
 
-	// If the message is from an unexpected node, we ignore it
-	if !h.isRequestedNode(requestID, reqID.NodeID) {
+	// Attribute the response BEFORE touching any timeout: a response from a node that is not
+	// (or no longer) expected to answer must never cancel a timeout that still guards a live
+	// expected-response slot, otherwise that slot can never be resolved and the request's
+	// channel and tracking state leak.
+	requestedNodes, ok := h.requestedNodes[requestID]
+	if !ok || !requestedNodes.Contains(inboundMessage.NodeID) {
 		log.Debug("Received response from unexpected node")
 		return
 	}
+	// Each requested node is expected to answer exactly once. Consume its slot so a duplicate
+	// response, or the timeout-generated AppError for a node that already answered, is ignored.
+	requestedNodes.Remove(inboundMessage.NodeID)
+
+	// Timeouts are registered under the op of the expected successful response, so map
+	// failure ops (AppError, including this handler's own timeout notifications) back to it.
+	timeoutOp := inboundMessage.Op
+	if responseOp, isFailed := message.FailedToResponseOps[inboundMessage.Op]; isFailed {
+		timeoutOp = responseOp
+	}
+	h.timeoutManager.Remove(ids.RequestID{
+		NodeID:    inboundMessage.NodeID,
+		ChainID:   chainID,
+		RequestID: requestID,
+		Op:        byte(timeoutOp),
+	})
 
 	// Dispatch to the appropriate response channel
-	if responseChan, ok := h.responseChans[requestID]; ok {
-		responseChan <- inboundMessage
-		forwarded = true
-	} else {
-		log.Debug("Could not find response channel for request")
+	responseChan, ok := h.responseChans[requestID]
+	if !ok {
+		log.Error("Could not find response channel for request")
 		return
 	}
+	responseChan <- inboundMessage
+	forwarded = true
 
-	// Check for the expected number of responses, and clear from the map if all expected responses have been received
 	// TODO: we can improve performance here by independently locking the response channel and response count maps
 	responses, ok := h.responsesCount[requestID]
 	if !ok {
 		log.Error("Could not find expected responses for request")
 		return
 	}
-	received := responses.received + 1
-	if received == responses.expected {
-		close(h.responseChans[requestID])
-		delete(h.responseChans, requestID)
-		delete(h.responsesCount, requestID)
-		delete(h.requestedNodes, requestID)
-	} else {
-		h.responsesCount[requestID] = expectedResponses{
-			expected: responses.expected,
-			received: received,
-		}
-	}
+	responses.received++
+	h.responsesCount[requestID] = responses
+	h.finishRequestIfComplete(requestID)
 }
 
-func (h *RelayerExternalHandler) isRequestedNode(
-	requestID uint32,
-	nodeID ids.NodeID,
-) bool {
-	if requestedNodes, ok := h.requestedNodes[requestID]; ok {
-		return requestedNodes.Contains(nodeID)
+// finishRequestIfComplete closes the response channel and releases all tracking state for
+// [requestID] once every expected response has been received (or unregistered).
+// Must be called with h.lock held.
+func (h *RelayerExternalHandler) finishRequestIfComplete(requestID uint32) {
+	responses, ok := h.responsesCount[requestID]
+	if !ok || responses.received < responses.expected {
+		return
 	}
-	return false
+	if responseChan, ok := h.responseChans[requestID]; ok {
+		close(responseChan)
+	}
+	delete(h.responseChans, requestID)
+	delete(h.responsesCount, requestID)
+	delete(h.requestedNodes, requestID)
 }

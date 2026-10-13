@@ -111,7 +111,7 @@ var _ = ginkgo.BeforeSuite(func(ctx context.Context) {
 	if e2eFlags.NetworkDir() == "" {
 		for _, l1 := range localNetworkInstance.GetAllL1Infos() {
 			warpAdapterAddress := utils.DeployWarpAdapterContract(ctx, &l1, fundedKey)
-			teleporterContractAddress := utils.DeployTeleporterV2(ctx, &l1, warpAdapterAddress, fundedKey)
+			teleporterContractAddress := utils.DeployTeleporterV2(ctx, &l1, warpAdapterAddress, fundedKey, fundedKey)
 			teleporterInfo.SetTeleporterV2WarpAdapter(teleporterContractAddress, warpAdapterAddress, l1.BlockchainID)
 			teleporterInfo.DeployTeleporterRegistry(ctx, &l1, fundedKey)
 		}

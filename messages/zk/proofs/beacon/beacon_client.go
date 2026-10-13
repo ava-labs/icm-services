@@ -1,7 +1,9 @@
 // Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package proofs
+// THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
+
+package beacon
 
 import (
 	"context"
@@ -9,10 +11,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ava-labs/libevm/common"
 )
+
+// supportedForkVersion is the consensus fork this package's parsers assume.
+// Blocks decode as Electra types and states as Fulu, both of which the
+// beacon API reports under the Fulu fork name.
+const supportedForkVersion = "fulu"
+
+// maxBeaconObjectBytes bounds response bodies; mainnet states are ~200MB.
+const maxBeaconObjectBytes = 1 << 30
 
 // BeaconClient fetches SSZ encoded beacon objects from a beacon node's REST
 // API. Beacon block sizes are roughly 100KB to 1MB, while beacon block states
@@ -83,5 +94,19 @@ func (c *BeaconClient) fetchSSZBytes(ctx context.Context, url string) ([]byte, e
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("SSZ fetch %s: status %d", url, resp.StatusCode)
 	}
-	return io.ReadAll(resp.Body)
+
+	// Reject unsupported consensus forks.
+	if fork := resp.Header.Get("Eth-Consensus-Version"); !strings.EqualFold(fork, supportedForkVersion) {
+		return nil, fmt.Errorf("unsupported consensus fork %q for %s: expected %s", fork, url, supportedForkVersion)
+	}
+
+	// Check if the response body is too large to read into memory.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBeaconObjectBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("SSZ fetch %s: %w", url, err)
+	}
+	if len(body) > maxBeaconObjectBytes {
+		return nil, fmt.Errorf("SSZ fetch %s: response exceeds %d bytes", url, maxBeaconObjectBytes)
+	}
+	return body, nil
 }

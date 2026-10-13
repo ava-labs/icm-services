@@ -70,8 +70,12 @@ var ErrRequestTooLarge = errors.New("signature request exceeds the maximum p2p m
 
 var (
 	// Errors
-	errNotEnoughSignatures     = errors.New("failed to collect a threshold of signatures")
-	errNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
+	// ErrNotEnoughSignatures is returned when the validators that responded do not hold enough
+	// stake to meet the requested quorum.
+	ErrNotEnoughSignatures = errors.New("failed to collect a threshold of signatures")
+	// ErrNotEnoughConnectedStake is returned when the aggregator could not connect to validators
+	// holding enough stake to possibly meet the requested quorum.
+	ErrNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
 	errInvalidSignatureLength  = errors.New("signature response has incorrect length")
 )
 
@@ -176,7 +180,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 				zap.Int("numConnectedPeers", vdrs.ConnectedNodes.Len()),
 			)
 			s.metrics.FailuresToConnectToSufficientStake.Inc()
-			return errNotEnoughConnectedStake
+			return ErrNotEnoughConnectedStake
 		}
 		return nil
 	}
@@ -202,7 +206,12 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	signingSubnet ids.ID,
 ) (set.Set[ids.NodeID], error) {
 	fetchUnderfundedL1Nodes := func(subnetID ids.ID) (set.Set[ids.NodeID], error) {
-		validators, err := s.validatorClient.GetCurrentValidators(ctx, subnetID)
+		// This fetch is single-flighted by the cache and its result (or error) is shared with
+		// every concurrent caller for [subnetID], so it must not run under any one caller's
+		// request-scoped context.
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), utils.DefaultRPCTimeout)
+		defer cancel()
+		validators, err := s.validatorClient.GetCurrentValidators(fetchCtx, subnetID)
 		if err != nil {
 			log.Error("Failed to fetch current L1 validators", zap.Error(err))
 			return nil, err
@@ -414,9 +423,10 @@ func weightAtLeastPercent(weight, totalWeight, percent uint64) bool {
 	return lhs.Cmp(rhs) >= 0
 }
 
-// sendRequest issues a single AppRequest to [queryNodes], registering response/timeout
-// tracking only for the nodes actually reached. It returns the response channel and the
-// number of responses to expect, or a nil channel and 0 if no node was reached.
+// sendRequest issues a single AppRequest to [queryNodes]. Response and timeout tracking is
+// registered for every queried node before the request is sent, and nodes the send fails to
+// reach are unregistered afterwards. It returns the response channel and the number of
+// responses to expect, or a nil channel and 0 if no node was reached.
 func (s *SignatureAggregator) sendRequest(
 	log logging.Logger,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
@@ -424,6 +434,9 @@ func (s *SignatureAggregator) sendRequest(
 	sourceSubnet ids.ID,
 	queryNodes set.Set[ids.NodeID],
 ) (chan message.InboundMessage, int, error) {
+	if queryNodes.Len() == 0 {
+		return nil, 0, nil
+	}
 	requestID := s.currentRequestID.Add(2)
 	outMsg, err := s.messageCreator.AppRequest(
 		unsignedMessage.SourceChainID,
@@ -435,8 +448,25 @@ func (s *SignatureAggregator) sendRequest(
 		return nil, 0, fmt.Errorf("failed to create app request message: %w", err)
 	}
 
-	// Send first, then register only for the nodes reached, so the handler's expected
-	// response count matches the count returned to the caller.
+	// Register response and timeout tracking for every node we are about to query BEFORE
+	// sending. Send enqueues the message for immediate asynchronous transmission, so a fast
+	// validator's response could otherwise reach the handler before it knows about the
+	// request: the response would be dropped, and if that node's timeout had already been
+	// registered the response would cancel it, orphaning the node's expected-response slot so
+	// the response channel is never closed.
+	responseChan := s.network.RegisterRequestID(requestID, queryNodes)
+	if responseChan == nil {
+		return nil, 0, fmt.Errorf("failed to register request ID %d", requestID)
+	}
+	for nodeID := range queryNodes {
+		s.network.RegisterAppRequest(ids.RequestID{
+			NodeID:    nodeID,
+			ChainID:   unsignedMessage.SourceChainID,
+			RequestID: requestID,
+			Op:        byte(message.AppResponseOp),
+		})
+	}
+
 	sentTo := s.network.Send(outMsg, queryNodes, sourceSubnet, subnets.NoOpAllower)
 	s.metrics.AppRequestCount.Inc()
 
@@ -455,24 +485,15 @@ func (s *SignatureAggregator) sendRequest(
 			zap.Int("numFailures", len(failedSendNodes)),
 			zap.Stringers("failedNodes", failedSendNodes),
 		)
+		// Nodes the request never reached can never respond: drop them (and their timeouts)
+		// so the handler's expected response count matches the count returned to the caller.
+		s.network.UnregisterRequestedNodes(requestID, unsignedMessage.SourceChainID, failedSendNodes)
 	}
 
 	if sentTo.Len() == 0 {
+		// Every node was unregistered above, so the handler has already closed [responseChan]
+		// and released the request's tracking state.
 		return nil, 0, nil
-	}
-
-	for nodeID := range sentTo {
-		s.network.RegisterAppRequest(ids.RequestID{
-			NodeID:    nodeID,
-			ChainID:   unsignedMessage.SourceChainID,
-			RequestID: requestID,
-			Op:        byte(message.AppResponseOp),
-		})
-	}
-
-	responseChan := s.network.RegisterRequestID(requestID, sentTo)
-	if responseChan == nil {
-		return nil, 0, fmt.Errorf("failed to register request ID %d", requestID)
 	}
 
 	log.Debug(
@@ -549,7 +570,7 @@ func (s *SignatureAggregator) collectSignatures(
 
 // requestSignatures sends a single request to [queryNodes] and processes responses as they
 // arrive, returning a signed message once [quorumPercentage] of stake is accumulated, or
-// [errNotEnoughSignatures] if the threshold isn't reached before all responses are in.
+// [ErrNotEnoughSignatures] if the threshold isn't reached before all responses are in.
 func (s *SignatureAggregator) requestSignatures(
 	ctx context.Context,
 	log logging.Logger,
@@ -574,7 +595,7 @@ func (s *SignatureAggregator) requestSignatures(
 		return nil, err
 	}
 	if responseChan == nil {
-		return nil, errNotEnoughSignatures
+		return nil, ErrNotEnoughSignatures
 	}
 	// Drain unprocessed responses in the background so returning early (on quorum or
 	// timeout) doesn't block, while still finishing every response's handler.
@@ -586,7 +607,7 @@ func (s *SignatureAggregator) requestSignatures(
 			return nil, ctx.Err()
 		case response, ok := <-responseChan:
 			if !ok {
-				return nil, errNotEnoughSignatures
+				return nil, ErrNotEnoughSignatures
 			}
 			signedMsg, err := s.handleResponse(
 				log,
@@ -611,7 +632,7 @@ func (s *SignatureAggregator) requestSignatures(
 			}
 		}
 	}
-	return nil, errNotEnoughSignatures
+	return nil, ErrNotEnoughSignatures
 }
 
 func (s *SignatureAggregator) CreateSignedMessage(

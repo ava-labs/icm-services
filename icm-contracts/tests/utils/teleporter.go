@@ -527,11 +527,17 @@ func DeployWarpAdapterContract(
 	return contractAddress
 }
 
+// DeployTeleporterV2 deploys a TeleporterMessengerV2 bound to [adapterAddress] via Nick's method and
+// initializes its blockchain ID. [fundedKey] funds the keyless deployer. [initializerKey] is baked into
+// the constructor as the only address allowed to call initialize, and signs the initialize transaction,
+// so it must hold gas on the target chain. The initializer address is part of the deterministic deploy
+// address, so pass the same key on every chain that should share a TeleporterMessengerV2 address.
 func DeployTeleporterV2(
 	ctx context.Context,
 	testInfo testinfo.NetworkTestInfo,
 	adapterAddress common.Address,
 	fundedKey *ecdsa.PrivateKey,
+	initializerKey *ecdsa.PrivateKey,
 ) common.Address {
 	byteCode, err := deploymentUtils.ExtractByteCodeFromFile("./out/TeleporterMessengerV2.sol/TeleporterMessengerV2.json")
 	Expect(err).Should(BeNil())
@@ -539,7 +545,10 @@ func DeployTeleporterV2(
 	teleporterABI, err := teleportermessengerv2.TeleporterMessengerV2MetaData.GetAbi()
 	Expect(err).Should(BeNil())
 
-	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(teleporterABI, byteCode, adapterAddress)
+	initializerAddress := crypto.PubkeyToAddress(initializerKey.PublicKey)
+	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
+		teleporterABI, byteCode, adapterAddress, initializerAddress,
+	)
 	Expect(err).Should(BeNil())
 
 	transactionBytes, deployerAddress, contractAddress, err := deploymentUtils.ConstructKeylessTransaction(
@@ -559,8 +568,8 @@ func DeployTeleporterV2(
 		fundedKey,
 	)
 
-	// Initialize the contract with the blockchain ID
-	opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, testInfo.GetEVMTestInfo().EVMChainID)
+	// Initialize the contract with the blockchain ID. Only the initializer may do this.
+	opts, err := bind.NewKeyedTransactorWithChainID(initializerKey, testInfo.GetEVMTestInfo().EVMChainID)
 	Expect(err).Should(BeNil())
 	teleporterMessenger, err := teleportermessengerv2.NewTeleporterMessengerV2(
 		contractAddress, testInfo.GetEVMTestInfo().EthClient,

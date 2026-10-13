@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"os"
+	"time"
 
 	risczerogroth16verifier "github.com/ava-labs/icm-services/abi-bindings/go/risc0/groth16/RiscZeroGroth16Verifier"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
@@ -113,6 +114,12 @@ func hexStringsToByteSlices(hexStrings []string) [][]byte {
 	return result
 }
 
+// Beacon chain timing, matching ZKStateManager's SLOT_PER_EPOCH and SECONDS_PER_SLOT.
+const (
+	slotsPerEpoch  = 32
+	secondsPerSlot = 12
+)
+
 // Fulu Ethereum Beacon Config
 var fuluBeaconConfig = zkstatemanager.ExecutionBeaconConfig{
 	GIndexBlockStateRoot: big.NewInt(11),
@@ -166,13 +173,25 @@ func ZKAdapterVerifier(
 	Expect(err).Should(BeNil())
 
 	var signalImageID = common.HexToHash("0x0ccb3d146a7f64e78cc1d146acc26912138ea39bb79b4ca74423389d61b2c30e")
+
+	// The fixture proof finalizes a fixed historical epoch, while ZKStateManager rejects a post-state
+	// whose finalized epoch began more than permissibleTimespan before the current block time. Anchor
+	// the beacon genesis so that the fixture's post-state finalized epoch reads as one hour old, which
+	// keeps it inside the timespan regardless of when the fixture was generated.
+	journalPostState := parseConsensusState(boundlessFixture.PostState)
+	postEpochStart := int64(journalPostState.FinalizedCheckpoint.Epoch) * slotsPerEpoch * secondsPerSlot
+	block, err := primaryNetworkInfo.EthClient.BlockByNumber(ctx, nil)
+	Expect(err).Should(BeNil())
+	genesisTime := big.NewInt(int64(block.Time()) - postEpochStart - int64(time.Hour.Seconds()))
+	permissibleTimespan := big.NewInt(int64((24 * time.Hour).Seconds()))
 	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
 		zkAdapterABI,
 		byteCode,
 		big.NewInt(1), // Ethereum Mainnet
 		startingState,
 		fuluBeaconConfig,
-		big.NewInt(86400),
+		genesisTime,
+		permissibleTimespan,
 		riscZeroVerifierAddress,
 		signalImageID,
 		fundedAddress,
@@ -215,7 +234,6 @@ func ZKAdapterVerifier(
 	utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
 
 	// Verify the beacon block root was stored after transition
-	journalPostState := parseConsensusState(boundlessFixture.PostState)
 	result, err := avalancheZkadapter.GetBeaconBlockRoot(
 		&bind.CallOpts{},
 		boundlessFixture.FinalizedSlot,
