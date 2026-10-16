@@ -13,6 +13,7 @@ import (
 	avalancheCommon "github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
+	"github.com/ava-labs/avalanchego/utils/timer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -223,4 +224,73 @@ func TestExternalHandlerAppErrorCancelsTimeoutOfExpectedResponse(t *testing.T) {
 	require.Equal(t, message.AppResponseOp, response.Op)
 	requireClosed(t, responseChan)
 	requireNoTrackedRequests(t, handler)
+}
+
+const (
+	// testAppRequestTimeout is the fixed AppRequest timeout of handlers built by newTimedTestHandler.
+	testAppRequestTimeout = 100 * time.Millisecond
+	// testWait bounds how long a test waits for a real timeout to resolve a request.
+	testWait = 5 * time.Second
+)
+
+// newTimedTestHandler returns a handler backed by a real timeout manager whose timeouts fire
+// after [testAppRequestTimeout], registering the timeout manager's metrics in [registry]. It is
+// for tests of what happens once a timeout actually fires, which the recording timeout manager
+// never does.
+func newTimedTestHandler(t *testing.T, registry *prometheus.Registry) *RelayerExternalHandler {
+	handler, err := newRelayerExternalHandler(
+		logging.NoLog{},
+		metrics,
+		registry,
+		timer.AdaptiveTimeoutConfig{
+			InitialTimeout:     testAppRequestTimeout,
+			MinimumTimeout:     testAppRequestTimeout,
+			MaximumTimeout:     testAppRequestTimeout,
+			TimeoutCoefficient: 1,
+			TimeoutHalflife:    time.Second,
+		},
+	)
+	require.NoError(t, err)
+	return handler
+}
+
+// timeoutManagerCounter returns the value of the timeout manager's counter named [name].
+func timeoutManagerCounter(t *testing.T, registry *prometheus.Registry, name string) float64 {
+	families, err := registry.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() == name {
+			require.Len(t, family.GetMetric(), 1)
+			return family.GetMetric()[0].GetCounter().GetValue()
+		}
+	}
+	require.Failf(t, "metric not found", "no metric named %q", name)
+	return 0
+}
+
+// A response that reaches the handler before its request is registered is dropped and must not
+// cancel the node's timeout: with a real timeout manager, that timeout is what later resolves the
+// node and lets the request complete instead of leaking.
+func TestExternalHandlerResponseBeforeRegistrationResolvesByTimeout(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	handler := newTimedTestHandler(t, registry)
+	chainID := ids.GenerateTestID()
+	const requestID uint32 = 15
+	nodeID := ids.GenerateTestNodeID()
+
+	handler.RegisterAppRequest(timeoutID(nodeID, chainID, requestID))
+	handler.HandleInbound(context.Background(), appResponse(nodeID, chainID, requestID))
+	responseChan := handler.RegisterRequestID(requestID, set.Of(nodeID))
+
+	select {
+	case response, ok := <-responseChan:
+		require.True(t, ok)
+		require.Equal(t, nodeID, response.NodeID)
+		require.Equal(t, message.AppErrorOp, response.Op)
+	case <-time.After(testWait):
+		require.Fail(t, "request was never resolved by the timeout")
+	}
+	requireClosed(t, responseChan)
+	requireNoTrackedRequests(t, handler)
+	require.Equal(t, float64(1), timeoutManagerCounter(t, registry, "timeouts"))
 }

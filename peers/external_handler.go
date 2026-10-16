@@ -55,7 +55,17 @@ func NewRelayerExternalHandler(
 		TimeoutCoefficient: constants.DefaultNetworkTimeoutCoefficient,
 		TimeoutHalflife:    constants.DefaultNetworkTimeoutHalflife,
 	}
+	return newRelayerExternalHandler(logger, metrics, timeoutManagerRegistry, cfg)
+}
 
+// newRelayerExternalHandler creates a RelayerExternalHandler whose AppRequest timeouts follow
+// [cfg]. Tests use it to run the timeout manager at a shorter timescale.
+func newRelayerExternalHandler(
+	logger logging.Logger,
+	metrics *AppRequestNetworkMetrics,
+	timeoutManagerRegistry prometheus.Registerer,
+	cfg timer.AdaptiveTimeoutConfig,
+) (*RelayerExternalHandler, error) {
 	timeoutManager, err := timer.NewAdaptiveTimeoutManager(&cfg, timeoutManagerRegistry)
 	if err != nil {
 		logger.Error(
