@@ -19,14 +19,21 @@ contract UnitTestMockERC20 {
     // If an address on feeOnTransferSenders is the sender address in a transferFrom call,
     // the amount credited to the receiving account is reduced by the feeAmount set for the
     // sender. This is to mock "fee on token transfer" functionality of select ERC20 contracts.
-    function setFeeOnTransferSender(address sender, uint256 feeAmount) public {
+    function setFeeOnTransferSender(
+        address sender,
+        uint256 feeAmount
+    ) public {
         feeOnTransferSenders[sender] = feeAmount;
     }
 
     // The mock allows anyone to call transferFrom to increment the balance of the
     // receipt address. Neither the call or sender need to have sufficient balances to send,
     // we just increment the balance the of the recipient.
-    function transferFrom(address from, address to, uint256 amount) public returns (bool) {
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) public returns (bool) {
         uint256 feeAmount = feeOnTransferSenders[from];
         mockBalances[to] += (amount - feeAmount);
         return true;
@@ -35,13 +42,19 @@ contract UnitTestMockERC20 {
     // The mock allows anyone to call transferFrom to increment the balance of the
     // receipt address. Neither the caller or sender need to have sufficient balances to send,
     // we just increment the balance the of the recipient.
-    function transfer(address to, uint256 amount) public returns (bool) {
+    function transfer(
+        address to,
+        uint256 amount
+    ) public returns (bool) {
         uint256 feeAmount = feeOnTransferSenders[msg.sender];
         mockBalances[to] += (amount - feeAmount);
         return true;
     }
 
-    function approve(address spender, uint256 amount) public returns (bool) {
+    function approve(
+        address spender,
+        uint256 amount
+    ) public returns (bool) {
         mockAllowances[msg.sender][spender] = amount;
         return true;
     }
@@ -52,7 +65,10 @@ contract UnitTestMockERC20 {
         return mockBalances[account];
     }
 
-    function allowance(address owner, address spender) public view returns (uint256) {
+    function allowance(
+        address owner,
+        address spender
+    ) public view returns (uint256) {
         return mockAllowances[owner][spender];
     }
 }

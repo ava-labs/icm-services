@@ -32,6 +32,7 @@ const (
 // serializeTeleporterMessageV2 into a TeleporterMessageV2 struct.
 func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMessageV2, error) {
 	// Minimum length is the fixed header plus the two count prefixes (relayers, receipts).
+	// readCount bounds-checks each prefix again; this just fails fast with a clearer error.
 	if len(data) < headerLen+countLen+countLen {
 		return nil, fmt.Errorf("teleporter message v2 too short: %d bytes", len(data))
 	}
@@ -52,12 +53,12 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	msg.RequiredGasLimit = new(big.Int).SetBytes(data[offset : offset+gasLimitLen])
 	offset += gasLimitLen
 
-	// Allowed relayer addresses.
-	numRelayers := int(binary.BigEndian.Uint32(data[offset : offset+countLen]))
-	offset += countLen
-	if len(data) < offset+numRelayers*addressLen+countLen {
-		return nil, fmt.Errorf("teleporter message v2 truncated reading relayer addresses")
+	// Allowed relayer addresses. The receipts count prefix must also still fit after them.
+	numRelayers, err := readCount(data, offset, addressLen, countLen, "relayer addresses")
+	if err != nil {
+		return nil, err
 	}
+	offset += countLen
 	msg.AllowedRelayerAddresses = make([]common.Address, numRelayers)
 	for i := 0; i < numRelayers; i++ {
 		msg.AllowedRelayerAddresses[i] = common.BytesToAddress(data[offset : offset+addressLen])
@@ -65,11 +66,11 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	}
 
 	// Receipts.
-	numReceipts := int(binary.BigEndian.Uint32(data[offset : offset+countLen]))
-	offset += countLen
-	if len(data) < offset+numReceipts*receiptLen {
-		return nil, fmt.Errorf("teleporter message v2 truncated reading receipts")
+	numReceipts, err := readCount(data, offset, receiptLen, 0, "receipts")
+	if err != nil {
+		return nil, err
 	}
+	offset += countLen
 	msg.Receipts = make([]teleportermessengerv2.TeleporterMessageReceipt, numReceipts)
 	for i := 0; i < numReceipts; i++ {
 		var receipt teleportermessengerv2.TeleporterMessageReceipt
@@ -86,6 +87,38 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	copy(msg.Message, data[offset:])
 
 	return &msg, nil
+}
+
+// readCount reads the uint32 count prefix at data[offset:] and checks that [count] elements of
+// [elementLen] bytes, plus [trailingLen] more bytes, fit in the rest of [data]. It checks that
+// the prefix itself is in bounds first, so it does not rely on the caller for any bounds check.
+//
+// This is defensive parsing of untrusted input: messages can arrive via the unauthenticated
+// relay API, so a crafted count could overflow the size arithmetic or trigger a huge
+// allocation. The check is done in uint64, which cannot wrap here, and before any slice is
+// allocated, so a count that passes is always a legitimate, bounded slice length.
+func readCount(data []byte, offset, elementLen, trailingLen int, what string) (int, error) {
+	// The prefix must be in bounds before it can be read. This also guarantees that
+	// [remaining] below cannot go negative.
+	if offset < 0 || offset > len(data)-countLen {
+		return 0, fmt.Errorf(
+			"teleporter message v2 truncated reading %s: count prefix at offset %d, %d bytes total",
+			what,
+			offset,
+			len(data),
+		)
+	}
+	count := binary.BigEndian.Uint32(data[offset : offset+countLen])
+	remaining := uint64(len(data) - offset - countLen)
+	if uint64(count)*uint64(elementLen)+uint64(trailingLen) > remaining {
+		return 0, fmt.Errorf(
+			"teleporter message v2 truncated reading %s: %d declared, %d bytes remaining",
+			what,
+			count,
+			remaining,
+		)
+	}
+	return int(count), nil
 }
 
 // SerializeTeleporterMessageV2 serializes a TeleporterMessageV2 into the packed format expected by

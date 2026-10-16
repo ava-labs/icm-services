@@ -29,7 +29,33 @@ import (
 	"go.uber.org/zap"
 )
 
-const merkleMaxUpdateIntervalSeconds uint64 = 60
+const (
+	merkleMaxUpdateIntervalSeconds uint64 = 60
+	testPollIntervalSeconds        uint64 = 5
+)
+
+// fetchSortedL1ValidatorsAtHeight returns the subnet's validators at the given P-chain
+// height in the canonical order the contracts and signature aggregator expect.
+func fetchSortedL1ValidatorsAtHeight(
+	ctx context.Context,
+	pChainClient *clients.CanonicalValidatorClient,
+	subnetID ids.ID,
+	height uint64,
+) []*validatorupdater.Validator {
+	allSets, err := pChainClient.GetAllValidatorSets(ctx, height)
+	Expect(err).Should(BeNil())
+	vdrSet, ok := allSets[subnetID]
+	Expect(ok).Should(BeTrue(), "subnet validators should exist at P-chain height %d", height)
+	validators := make([]*validatorupdater.Validator, len(vdrSet.Validators))
+	for i, vdr := range vdrSet.Validators {
+		validators[i] = &validatorupdater.Validator{
+			UncompressedPublicKeyBytes: [96]byte(vdr.PublicKey.Serialize()),
+			Weight:                     vdr.Weight,
+		}
+	}
+	utils.SortValidators(validators)
+	return validators
+}
 
 // MerkleUpdater tests the relayer's MerkleSetUpdater end-to-end:
 //
@@ -454,7 +480,6 @@ func createMerkleUpdaterRelayerConfig(
 			BlockchainID:             blockchainID,
 			SubnetID:                 subnetID,
 			PollIntervalSeconds:      testPollIntervalSeconds,
-			ContractType:             "merkle",
 			MaxUpdateIntervalSeconds: merkleMaxUpdateIntervalSeconds,
 		},
 	}

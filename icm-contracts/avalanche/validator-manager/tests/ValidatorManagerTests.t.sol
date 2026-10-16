@@ -7,7 +7,9 @@ pragma solidity 0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
 import {
-    IValidatorManager, ValidatorManager, ValidatorManagerSettings
+    IValidatorManager,
+    ValidatorManager,
+    ValidatorManagerSettings
 } from "../ValidatorManager.sol";
 import {ValidatorMessages} from "../ValidatorMessages.sol";
 import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
@@ -16,10 +18,12 @@ import {
     ConversionData,
     InitialValidator,
     PChainOwner,
+    Validator,
     ValidatorStatus
 } from "../interfaces/IACP99Manager.sol";
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
 
 // TODO: Remove this once all unit tests implemented
 // solhint-disable no-empty-blocks
@@ -244,8 +248,7 @@ abstract contract ValidatorManagerTest is Test {
             DEFAULT_BLS_PUBLIC_KEY,
             address(this)
         );
-        (, bytes memory registerL1ValidatorMessage) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (, bytes memory registerL1ValidatorMessage) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 subnetID: DEFAULT_SUBNET_ID,
                 nodeID: DEFAULT_NODE_ID,
@@ -385,6 +388,31 @@ abstract contract ValidatorManagerTest is Test {
         _mockGetPChainWarpMessage(ValidatorMessages.packSubnetToL1ConversionMessage(id), true);
         vm.expectRevert(abi.encodeWithSelector(IValidatorManager.InvalidTotalWeight.selector, 4));
         manager.initializeValidatorSet(conversionData, 0);
+    }
+
+    // The conversionID authenticates only the packed bytes, in which BLS keys carry no length prefix. A key of
+    // the wrong length must be rejected even though the data hashes to the attested conversionID, otherwise the
+    // same bytes could be re-split into different keys and weights.
+    function testInitializeValidatorSetInvalidBLSKeyLength() public {
+        vm.prank(address(0x123));
+        IACP99Manager manager = _setUp();
+
+        _mockGetBlockchainID();
+
+        uint256[2] memory badLengths = [uint256(47), uint256(49)];
+        for (uint256 i; i < badLengths.length; ++i) {
+            ConversionData memory conversionData = _defaultConversionData();
+            conversionData.initialValidators[0].blsPublicKey = new bytes(badLengths[i]);
+            bytes32 id = sha256(ValidatorMessages.packConversionData(conversionData));
+
+            _mockGetPChainWarpMessage(ValidatorMessages.packSubnetToL1ConversionMessage(id), true);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    IValidatorManager.InvalidBLSKeyLength.selector, badLengths[i]
+                )
+            );
+            manager.initializeValidatorSet(conversionData, 0);
+        }
     }
 
     function testRemoveValidatorTotalWeight5() public {
@@ -554,6 +582,59 @@ abstract contract ValidatorManagerTest is Test {
         validatorManager.completeValidatorRemoval(0);
     }
 
+    function testMigrateFromV1UnauthorizedCaller() public {
+        bytes32 validationID = sha256("legacy");
+        _seedLegacyValidator(validationID, DEFAULT_NODE_ID, 3);
+
+        vm.prank(address(0x123));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0x123)
+            )
+        );
+        validatorManager.migrateFromV1(validationID, 3);
+
+        // The legacy entry must still be migratable by the owner afterwards.
+        vm.prank(validatorManager.owner());
+        validatorManager.migrateFromV1(validationID, 0);
+        assertEq(validatorManager.getValidator(validationID).receivedNonce, 0);
+    }
+
+    function testMigrateFromV1() public {
+        bytes32 validationID = sha256("legacy");
+        uint64 messageNonce = 3;
+        _seedLegacyValidator(validationID, DEFAULT_NODE_ID, messageNonce);
+
+        vm.startPrank(validatorManager.owner());
+        validatorManager.migrateFromV1(validationID, 2);
+
+        Validator memory validator = validatorManager.getValidator(validationID);
+        assertEq(uint8(validator.status), uint8(ValidatorStatus.Active));
+        assertEq(validator.nodeID, DEFAULT_NODE_ID);
+        assertEq(validator.startingWeight, DEFAULT_WEIGHT);
+        assertEq(validator.sentNonce, messageNonce);
+        assertEq(validator.receivedNonce, 2);
+        assertEq(validator.weight, DEFAULT_WEIGHT);
+        assertEq(validator.startTime, DEFAULT_REGISTRATION_TIMESTAMP);
+        assertEq(validator.endTime, 0);
+
+        // Migration is one-shot per validation ID.
+        vm.expectRevert(
+            abi.encodeWithSelector(IValidatorManager.InvalidValidationID.selector, validationID)
+        );
+        validatorManager.migrateFromV1(validationID, 2);
+        vm.stopPrank();
+    }
+
+    function testMigrateFromV1InvalidNonce() public {
+        bytes32 validationID = sha256("legacy");
+        _seedLegacyValidator(validationID, DEFAULT_NODE_ID, 3);
+
+        vm.prank(validatorManager.owner());
+        vm.expectRevert(abi.encodeWithSelector(IValidatorManager.InvalidNonce.selector, 4));
+        validatorManager.migrateFromV1(validationID, 4);
+    }
+
     function testValidatorManagerStorageSlot() public view {
         assertEq(
             _erc7201StorageSlot("ValidatorManager"),
@@ -567,6 +648,40 @@ abstract contract ValidatorManagerTest is Test {
         return abi.encodePacked(bytes20(sha256(new bytes(nodeIDCounter))));
     }
 
+    /**
+     * @dev Writes an active V1 `ValidatorLegacy` entry directly into the ValidatorManager's
+     * ERC-7201 storage, mirroring the state a V1 contract would leave behind before an upgrade.
+     * `_validationPeriodsLegacy` is the 6th member of `ValidatorManagerStorage` (offset 5, after
+     * `_subnetID`, the packed churn settings, the two-slot `_churnTracker`, and
+     * `_pendingRegisterValidationMessages`).
+     */
+    function _seedLegacyValidator(
+        bytes32 validationID,
+        bytes memory nodeID,
+        uint64 messageNonce
+    ) internal {
+        require(nodeID.length <= 31, "nodeID must be a short bytes value");
+        uint256 mappingSlot = uint256(validatorManager.VALIDATOR_MANAGER_STORAGE_LOCATION()) + 5;
+        uint256 base = uint256(keccak256(abi.encode(validationID, mappingSlot)));
+
+        // status
+        vm.store(address(validatorManager), bytes32(base), bytes32(uint256(ValidatorStatus.Active)));
+        // nodeID: short bytes are stored in place, left-aligned, with length * 2 in the lowest byte.
+        bytes32 nodeIDWord =
+            abi.decode(abi.encodePacked(nodeID, new bytes(32 - nodeID.length)), (bytes32));
+        vm.store(
+            address(validatorManager),
+            bytes32(base + 1),
+            nodeIDWord | bytes32(uint256(nodeID.length * 2))
+        );
+        // startingWeight | messageNonce | weight | startedAt, packed as four uint64s.
+        uint256 packed = uint256(DEFAULT_WEIGHT) | (uint256(messageNonce) << 64)
+            | (uint256(DEFAULT_WEIGHT) << 128) | (uint256(DEFAULT_REGISTRATION_TIMESTAMP) << 192);
+        vm.store(address(validatorManager), bytes32(base + 2), bytes32(packed));
+        // endedAt
+        vm.store(address(validatorManager), bytes32(base + 3), bytes32(0));
+    }
+
     function _setUpInitiateValidatorRegistration(
         bytes memory nodeID,
         bytes32 subnetID,
@@ -576,8 +691,7 @@ abstract contract ValidatorManagerTest is Test {
     ) internal returns (bytes32) {
         uint64 registrationExpiry = uint64(block.timestamp) + 1 days;
 
-        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 nodeID: nodeID,
                 subnetID: subnetID,
@@ -704,7 +818,10 @@ abstract contract ValidatorManagerTest is Test {
         _completeValidatorRemoval(0);
     }
 
-    function _mockSendWarpMessage(bytes memory payload, bytes32 expectedMessageID) internal {
+    function _mockSendWarpMessage(
+        bytes memory payload,
+        bytes32 expectedMessageID
+    ) internal {
         vm.mockCall(
             WARP_PRECOMPILE_ADDRESS,
             abi.encode(IWarpMessenger.sendWarpMessage.selector),
@@ -715,7 +832,10 @@ abstract contract ValidatorManagerTest is Test {
         );
     }
 
-    function _mockGetPChainWarpMessage(bytes memory expectedPayload, bool valid) internal {
+    function _mockGetPChainWarpMessage(
+        bytes memory expectedPayload,
+        bool valid
+    ) internal {
         vm.mockCall(
             WARP_PRECOMPILE_ADDRESS,
             abi.encodeWithSelector(IWarpMessenger.getVerifiedWarpMessage.selector, uint32(0)),
@@ -733,7 +853,10 @@ abstract contract ValidatorManagerTest is Test {
         );
     }
 
-    function _mockGetUptimeWarpMessage(bytes memory expectedPayload, bool valid) internal {
+    function _mockGetUptimeWarpMessage(
+        bytes memory expectedPayload,
+        bool valid
+    ) internal {
         vm.mockCall(
             WARP_PRECOMPILE_ADDRESS,
             abi.encodeWithSelector(IWarpMessenger.getVerifiedWarpMessage.selector, uint32(0)),
@@ -797,7 +920,10 @@ abstract contract ValidatorManagerTest is Test {
         uint32 messageIndex
     ) internal virtual returns (bytes32);
 
-    function _initiateValidatorRemoval(bytes32 validationID, bool includeUptime) internal virtual;
+    function _initiateValidatorRemoval(
+        bytes32 validationID,
+        bool includeUptime
+    ) internal virtual;
 
     function _forceInitiateValidatorRemoval(
         bytes32 validationID,
@@ -810,7 +936,10 @@ abstract contract ValidatorManagerTest is Test {
 
     function _setUp() internal virtual returns (IACP99Manager);
 
-    function _beforeSend(uint256 amount, address spender) internal virtual;
+    function _beforeSend(
+        uint256 amount,
+        address spender
+    ) internal virtual;
 
     function _beforeRegisterValidator(
         bytes32 validationID,
@@ -926,8 +1055,8 @@ abstract contract ValidatorManagerTest is Test {
     ) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
-                uint256(keccak256(abi.encodePacked("avalanche-icm.storage.", storageName))) - 1
-            )
+            uint256(keccak256(abi.encodePacked("avalanche-icm.storage.", storageName))) - 1
+        )
         ) & ~bytes32(uint256(0xff));
     }
 

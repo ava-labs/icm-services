@@ -52,6 +52,8 @@ The successful `HTTP 200` response format is
 }
 ```
 
+The `message` and `justification` bytes are forwarded to validators in a single p2p message, which avalanchego caps at 2 MiB. A request whose serialized form exceeds that cap, or whose request body exceeds roughly twice that (the hex-encoded equivalent), is rejected with `HTTP 413` before any validator is contacted.
+
 Unsuccessful responses will include an explanatory `application/json` encoded `error` message in the body of the response along with an appropriate `4xx` or `5xx` status code for user input errors or server side errors respectively e.g.:
 
 ```json

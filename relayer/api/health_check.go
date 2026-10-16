@@ -15,11 +15,12 @@ import (
 const HealthAPIPath = "/health"
 
 func HandleHealthCheck(
+	mux *http.ServeMux,
 	logger logging.Logger,
 	relayerHealth map[ids.ID]*atomic.Bool,
 	networkHealth func(context.Context) error,
 ) {
-	http.Handle(HealthAPIPath, healthCheckHandler(logger, relayerHealth, networkHealth))
+	mux.Handle(HealthAPIPath, healthCheckHandler(logger, relayerHealth, networkHealth))
 }
 
 func healthCheckHandler(

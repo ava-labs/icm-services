@@ -18,9 +18,11 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/validatorupdater"
+	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
 	. "github.com/onsi/gomega"
 )
@@ -54,7 +56,7 @@ func MerkleValidatorSetRegistry(
 	ethereumBlockchainID := ethInfo.ChainID()
 	networkID := avalancheNetwork.GetNetworkID()
 	_, ethFundedKey := ethereumNetwork.GetFundedAccountInfo()
-	_, fundedAvalancheKey := avalancheNetwork.GetFundedAccountInfo()
+	fundedAvalancheAddress, fundedAvalancheKey := avalancheNetwork.GetFundedAccountInfo()
 	ethereumOpts, err := bind.NewKeyedTransactorWithChainID(ethFundedKey, ethereumNetwork.ChainID)
 	Expect(err).Should(BeNil())
 	avalancheOpts, err := bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, l1Info.EVMChainID)
@@ -138,11 +140,18 @@ func MerkleValidatorSetRegistry(
 	)
 	Expect(merkleAdapterAddrL1).Should(Equal(merkleAdapterAddr))
 
-	// Deploy TeleporterMessengerV2 on both chains using the same adapter address
+	// Deploy TeleporterMessengerV2 on both chains using the same adapter address. The initializer
+	// address is a constructor argument, so the same key must be used on both chains for the
+	// contracts to land at the same address. Fund it on Ethereum so it can send the initialize tx.
+	ethereumNetwork.FundAccount(ctx, fundedAvalancheAddress, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(10)))
 	teleporterInfo := localnetwork.NewTeleporterTestInfo(avalancheNetwork, ethereumNetwork)
-	l1TeleporterAddr := utils.DeployTeleporterV2(ctx, &l1Info, merkleAdapterAddr, fundedAvalancheKey)
+	l1TeleporterAddr := utils.DeployTeleporterV2(
+		ctx, &l1Info, merkleAdapterAddr, fundedAvalancheKey, fundedAvalancheKey,
+	)
 	teleporterInfo.SetTeleporterV2(l1TeleporterAddr, l1Info.BlockchainID)
-	ethTeleporterAddr := utils.DeployTeleporterV2(ctx, ethInfo, merkleAdapterAddr, ethFundedKey)
+	ethTeleporterAddr := utils.DeployTeleporterV2(
+		ctx, ethInfo, merkleAdapterAddr, ethFundedKey, fundedAvalancheKey,
+	)
 	teleporterInfo.SetTeleporterV2(ethTeleporterAddr, ethInfo.ChainID())
 	Expect(l1TeleporterAddr).Should(Equal(ethTeleporterAddr))
 
@@ -356,4 +365,39 @@ func fetchSortedL1ValidatorsAtHeight(
 	}
 	utils.SortValidators(validators)
 	return validators
+}
+
+// signMessageEcdsa signs a message expected by the ECDSAVerifier according to the EIP-191 standard
+func signMessageEcdsa(
+	message ecdsaverifier.TeleporterMessageV2,
+	blockchainID ids.ID,
+	ecdsaVerifierContractAddress common.Address,
+	signer *ecdsa.PrivateKey,
+) []byte {
+	parsed, err := ecdsaverifier.ECDSAVerifierMetaData.GetAbi()
+	Expect(err).Should(BeNil())
+
+	// Find the TeleporterMessageV2 type from the contract ABI
+	// It's used in the sendMessage function
+	sendMessageMethod := parsed.Methods["sendMessage"]
+	teleporterMessageType := sendMessageMethod.Inputs[0].Type
+	bytes32Ty, _ := abi.NewType("bytes32", "bytes32", nil)
+	addressTy, _ := abi.NewType("address", "address", nil)
+
+	arguments := abi.Arguments{
+		{Type: teleporterMessageType},
+		{Type: bytes32Ty},
+		{Type: addressTy},
+	}
+	encoded, err := arguments.Pack(message, blockchainID, ecdsaVerifierContractAddress)
+	Expect(err).Should(BeNil())
+	eip191Prefix := []byte("\x19Ethereum Signed Message:\n32")
+	digest := crypto.Keccak256(append(eip191Prefix, crypto.Keccak256(encoded)...))
+	sig, err := crypto.Sign(digest, signer)
+	Expect(err).Should(BeNil())
+	// Adjust V from 0/1 to 27/28 format
+	if sig[64] < 27 {
+		sig[64] += 27
+	}
+	return sig
 }

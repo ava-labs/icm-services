@@ -20,8 +20,9 @@ import {SafeERC20TransferFrom} from "@utilities/SafeERC20TransferFrom.sol";
 import {TeleporterMessage} from "@teleporter/ITeleporterMessenger.sol";
 import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 import {ReentrancyGuards} from "@utilities/ReentrancyGuards.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 
 /**
  * THIS IS AN EXAMPLE CONTRACT THAT USES UN-AUDITED CODE.
@@ -50,13 +51,24 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         TeleporterFeeInfo feeInfo;
     }
 
-    IMessageSender public immutable messageSender;
+    IMessageSender public immutable override messageSender;
     IMessageVerifier public immutable messageVerifier;
 
     /**
+     * @notice The only address permitted to call {initialize}.
+     * @dev Fixed at construction so that it is part of the deterministic Nick's method deployment: the
+     * keyless deploy transaction is public and chain-agnostic, so anyone can deploy this contract at
+     * the canonical address on any chain. Without this restriction, whoever deployed (or front-ran the
+     * deployer) could set an arbitrary `blockchainID`, which is the anchor for the destination and replay
+     * protection checks in {receiveCrossChainMessage}. Use the same address on every chain so that the
+     * contract address remains identical across chains.
+     */
+    address public immutable initializerAddress;
+
+    /**
      * @notice The blockchain ID of the chain the contract is deployed on.
-     * @dev Can be initialized by calling initializeBlockchainID, or will be initialized
-     * automatically on the first successful call to send or receive a message.
+     * @dev Set exactly once by {initialize}, which may only be called by {initializerAddress}.
+     * Sending and receiving messages is not possible until it has been set.
      */
     bytes32 public blockchainID;
 
@@ -72,8 +84,9 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
      * @dev The key is the blockchain ID of the other chain, and the value is a queue of pending receipts for messages
      * received from that chain.
      */
-    mapping(bytes32 sourceBlockchainID => ReceiptQueue.TeleporterMessageReceiptQueue receiptQueue)
-        public receiptQueues;
+    mapping(
+        bytes32 sourceBlockchainID => ReceiptQueue.TeleporterMessageReceiptQueue receiptQueue
+    ) public receiptQueues;
 
     /**
      * @notice Tracks the message hash and fee information for each message sent that has yet to be acknowledged
@@ -114,16 +127,27 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
     ) internal _relayerRewardAmounts;
 
     constructor(
-        address verifierSender
+        address verifierSender,
+        address initializerAddress_
     ) {
+        require(verifierSender != address(0), "TeleporterMessenger: zero adapter address");
+        require(initializerAddress_ != address(0), "TeleporterMessenger: zero initializer address");
         messageVerifier = IMessageVerifier(verifierSender);
         messageSender = IMessageSender(verifierSender);
+        initializerAddress = initializerAddress_;
     }
 
+    /**
+     * @notice Sets the blockchain ID of the chain this contract is deployed on.
+     * @dev Can only be called once, and only by {initializerAddress}. The value cannot be derived
+     * on-chain in a chain-agnostic way (the Warp precompile is only available on Avalanche chains),
+     * so it is supplied by the trusted initializer instead of being accepted from an arbitrary caller.
+     */
     function initialize(
         bytes32 blockchainID_
     ) external initializer {
-        // TODO: Determine how we want to set this
+        require(msg.sender == initializerAddress, "TeleporterMessenger: unauthorized initializer");
+        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
         blockchainID = blockchainID_;
     }
 
@@ -286,15 +310,17 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
             message: teleporterMessageV2.message
         });
 
-        // Require that the message was intended for this blockchain.
+        // Require that the message was intended for this blockchain. The blockchain ID must have
+        // been initialized, otherwise a message destined for the zero blockchain ID would be accepted.
+        bytes32 blockchainID_ = _getBlockchainID();
         require(
-            teleporterMessage.destinationBlockchainID == blockchainID,
+            teleporterMessage.destinationBlockchainID == blockchainID_,
             "TeleporterMessenger: invalid destination chain ID"
         );
 
         // Calculate the message ID of the message given the source blockchain ID and message nonce.
         bytes32 messageID = calculateMessageID(
-            message.sourceBlockchainID, blockchainID, teleporterMessage.messageNonce
+            message.sourceBlockchainID, blockchainID_, teleporterMessage.messageNonce
         );
 
         // Require that the message has not been received previously.
@@ -556,8 +582,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
     function getNextMessageID(
         bytes32 destinationBlockchainID
     ) external view returns (bytes32) {
-        bytes32 blockchainID_ = blockchainID;
-        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
+        bytes32 blockchainID_ = _getBlockchainID();
         uint256 nextMessageNonce = messageNonce + 1;
         return calculateMessageID(blockchainID_, destinationBlockchainID, nextMessageNonce);
     }
@@ -627,10 +652,13 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         TeleporterMessageInput memory messageInput,
         TeleporterMessageReceipt[] memory receipts
     ) private returns (bytes32) {
-        // Get the message ID to use for this message by incrementing it.
+        // Get the message ID to use for this message by incrementing it. The blockchain ID must have
+        // been initialized so that the message ID is derived from this chain's canonical ID; otherwise
+        // the message could never be matched by later retries or receipts.
         uint256 messageNonce_ = ++messageNonce;
-        bytes32 messageID =
-            calculateMessageID(blockchainID, messageInput.destinationBlockchainID, messageNonce_);
+        bytes32 messageID = calculateMessageID(
+            _getBlockchainID(), messageInput.destinationBlockchainID, messageNonce_
+        );
 
         // Construct and serialize the message.
         TeleporterMessageV2 memory teleporterMessage = TeleporterMessageV2({
@@ -666,12 +694,10 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         // Store the fee asset and amount to be paid to the relayer of this message upon receiving the receipt.
         // Also store the message hash so that it can be retried until a receipt of its delivery is received back.
         TeleporterFeeInfo memory adjustedFeeInfo = TeleporterFeeInfo({
-            feeTokenAddress: messageInput.feeInfo.feeTokenAddress,
-            amount: adjustedFeeAmount
+            feeTokenAddress: messageInput.feeInfo.feeTokenAddress, amount: adjustedFeeAmount
         });
         sentMessageInfo[messageID] = SentMessageInfo({
-            messageHash: keccak256(teleporterMessageBytes),
-            feeInfo: adjustedFeeInfo
+            messageHash: keccak256(teleporterMessageBytes), feeInfo: adjustedFeeInfo
         });
 
         emit SendCrossChainMessage(
@@ -688,7 +714,10 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
      * given message ID. The message nonce must not be zero in order to be able to distinguish between
      * received and unreceived messages based on their ID.
      */
-    function _markMessageReceived(bytes32 messageID, uint256 messageNonce_) private {
+    function _markMessageReceived(
+        bytes32 messageID,
+        uint256 messageNonce_
+    ) private {
         require(messageNonce_ != 0, "TeleporterMessenger: zero message nonce");
         _receivedMessageNonces[messageID] = messageNonce_;
     }
@@ -726,8 +755,9 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
 
         // Increment the fee/reward amount owed to the relayer for having delivered
         // the message identified in this receipt.
-        _relayerRewardAmounts[receipt.relayerRewardAddress][messageInfo.feeInfo.feeTokenAddress] +=
-            messageInfo.feeInfo.amount;
+        _relayerRewardAmounts[
+            receipt.relayerRewardAddress
+        ][messageInfo.feeInfo.feeTokenAddress] += messageInfo.feeInfo.amount;
 
         emit ReceiptReceived(
             messageID, destinationBlockchainID_, receipt.relayerRewardAddress, messageInfo.feeInfo
@@ -805,16 +835,15 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
         bool success;
         // solhint-disable-next-line no-inline-assembly
         assembly {
-            success :=
-                call(
-                    gasLimit, // gas provided to the call
-                    target, // call target
-                    0, // zero value
-                    add(payload, 0x20), // input data - 0x20 needs to be added to an array because the first 32-byte slot contains the array length (0x20 in hex is 32 in decimal).
-                    mload(payload), // input data size - mload returns mem[p..(p+32)], which is the first 32-byte slot of the array. In this case, the array length.
-                    0, // output
-                    0 // output size
-                )
+            success := call(
+                gasLimit, // gas provided to the call
+                target, // call target
+                0, // zero value
+                add(payload, 0x20), // input data - 0x20 needs to be added to an array because the first 32-byte slot contains the array length (0x20 in hex is 32 in decimal).
+                mload(payload), // input data size - mload returns mem[p..(p+32)], which is the first 32-byte slot of the array. In this case, the array length.
+                0, // output
+                0 // output size
+            )
         }
         return success;
     }
@@ -832,6 +861,17 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
 
         // Emit a failed execution event for anyone monitoring unsuccessful messages to retry.
         emit MessageExecutionFailed(messageID, sourceBlockchainID, message);
+    }
+
+    /**
+     * @dev Returns the blockchain ID of this chain, reverting if {initialize} has not been called yet.
+     * Every path that derives a message ID from this chain's ID must go through this so that no
+     * message is ever keyed or delivered under the zero blockchain ID.
+     */
+    function _getBlockchainID() private view returns (bytes32) {
+        bytes32 blockchainID_ = blockchainID;
+        require(blockchainID_ != bytes32(0), "TeleporterMessenger: zero blockchain ID");
+        return blockchainID_;
     }
 
     /**

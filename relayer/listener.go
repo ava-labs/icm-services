@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/utils"
@@ -25,21 +24,23 @@ const (
 	// TODO attempt to resubscribe in perpetuity once we are able to process missed blocks and
 	// refresh the chain config on reconnect.
 	retryResubscribeTimeout = 10 * time.Second
+	// idleCheckpointInterval is how often the listener checkpoints up to the chain head when the
+	// subscription has not reported any block with matching logs in the meantime.
+	idleCheckpointInterval = time.Hour
 )
 
 // Listener handles all messages sent from a given source chain
 type Listener struct {
-	Subscriber                   *evm.Subscriber
-	currentRequestID             uint32
-	logger                       logging.Logger
-	sourceBlockchainID           ids.ID
-	healthStatus                 *atomic.Bool
-	ethClient                    *ethclient.Client
-	messageCoordinator           *MessageCoordinator
-	maxConcurrentMsg             uint64
-	errChan                      chan error
-	lastSubscriberBlockProcessed uint64
-	protocol                     config.Protocol
+	Subscriber         *evm.Subscriber
+	currentRequestID   uint32
+	logger             logging.Logger
+	sourceBlockchainID ids.ID
+	healthStatus       *atomic.Bool
+	ethClient          *ethclient.Client
+	messageCoordinator *MessageCoordinator
+	maxConcurrentMsg   uint64
+	errChan            chan error
+	protocol           config.Protocol
 }
 
 // RunListener creates a Listener instance and the ApplicationRelayers for a subnet.
@@ -119,8 +120,6 @@ func newListener(
 		)
 	}
 
-	// Dial the WS endpoint as a raw RPC client so newHeads notifications can
-	// be decoded with the node-reported block hash preserved.
 	wsRPCClient, err := utils.DialWithConfig(
 		ctx,
 		sourceBlockchain.WSEndpoint.BaseURL,
@@ -135,30 +134,28 @@ func newListener(
 	sub := evm.NewSubscriber(
 		logger,
 		blockchainID,
-		sourceBlockchain.GetSubnetID() == constants.PrimaryNetworkID,
-		evm.NewWSHeadClient(wsRPCClient),
-		evm.NewRPCHeadClient(ethRPCClient),
+		ethclient.NewClient(wsRPCClient),
+		evm.NewRPCHeaderClient(ethRPCClient),
 		errChan,
 		eventFilter,
+		startingHeight,
 	)
 
 	logger.Info("Creating relayer")
 	lstnr := Listener{
-		Subscriber:                   sub,
-		currentRequestID:             rand.Uint32(), // Initialize to a random value to mitigate requestID collision
-		logger:                       logger,
-		sourceBlockchainID:           blockchainID,
-		errChan:                      errChan,
-		healthStatus:                 relayerHealth,
-		ethClient:                    ethRPCClient,
-		messageCoordinator:           messageCoordinator,
-		maxConcurrentMsg:             maxConcurrentMsg,
-		lastSubscriberBlockProcessed: startingHeight - 1,
-		protocol:                     protocol,
+		Subscriber:         sub,
+		currentRequestID:   rand.Uint32(), // Initialize to a random value to mitigate requestID collision
+		logger:             logger,
+		sourceBlockchainID: blockchainID,
+		errChan:            errChan,
+		healthStatus:       relayerHealth,
+		ethClient:          ethRPCClient,
+		messageCoordinator: messageCoordinator,
+		maxConcurrentMsg:   maxConcurrentMsg,
+		protocol:           protocol,
 	}
 
-	// Open the subscription. We must do this before processing any missed messages, otherwise we may
-	// miss an incoming message in between fetching the latest block and subscribing.
+	// Open the subscription, which also dispatches catch-up of any missed blocks.
 	err = lstnr.Subscriber.Subscribe(retrySubscribeTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe to node: %w", err)
@@ -167,12 +164,12 @@ func newListener(
 	return &lstnr, nil
 }
 
-// Listens to the Subscriber logs channel to process them.
+// Listens to the Subscriber blocks channel to process them.
 // On subscriber error, attempts to reconnect and errors if unable.
 // Exits if context is cancelled by another goroutine.
 func (lstnr *Listener) processLogs(ctx context.Context) error {
-	// Error channel for application relayer errors
-	needsCatchup := true
+	idleCheckpointTicker := time.NewTicker(idleCheckpointInterval)
+	defer idleCheckpointTicker.Stop()
 	for {
 		select {
 		case err := <-lstnr.errChan:
@@ -180,28 +177,18 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 			lstnr.logger.Error("Listener received error", zap.Error(err))
 			return fmt.Errorf("listener received error: %w", err)
 		case icmBlockInfo := <-lstnr.Subscriber.ICMBlocks():
-			// Catchup should run on startup, and after any reconnects. It will wait for the first block
-			// received from the subscriber, so that it has an accurate bound on which blocks to process.
-			if needsCatchup && !icmBlockInfo.IsCatchup {
-				needsCatchup = false
-				go lstnr.Subscriber.ProcessFromHeight(
-					lstnr.lastSubscriberBlockProcessed+1,
-					icmBlockInfo.BlockNumber-1,
-				)
-			}
-
-			if !icmBlockInfo.IsCatchup && icmBlockInfo.BlockNumber > lstnr.lastSubscriberBlockProcessed {
-				lstnr.lastSubscriberBlockProcessed = icmBlockInfo.BlockNumber
-			}
-
 			go lstnr.messageCoordinator.ProcessBlock(
 				icmBlockInfo,
 				lstnr.sourceBlockchainID,
 				lstnr.protocol.Address,
 				lstnr.errChan,
 			)
+		case <-idleCheckpointTicker.C:
+			// Not fatal: the next tick, or the next block with matching logs, will try again.
+			if err := lstnr.Subscriber.ProcessIdleBlocks(); err != nil {
+				lstnr.logger.Warn("Failed to checkpoint idle blocks", zap.Error(err))
+			}
 		case subError := <-lstnr.Subscriber.SubscribeErr():
-			needsCatchup = true
 			lstnr.logger.Info("Received error from subscribed node", zap.Error(subError))
 			subError = lstnr.reconnectToSubscriber()
 			if subError != nil {
@@ -217,8 +204,9 @@ func (lstnr *Listener) processLogs(ctx context.Context) error {
 	}
 }
 
+// reconnectToSubscriber reopens the subscription, which also dispatches catch-up of the blocks
+// missed while it was broken.
 func (lstnr *Listener) reconnectToSubscriber() error {
-	// Attempt to reconnect the subscription
 	err := lstnr.Subscriber.Subscribe(retryResubscribeTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to resubscribe to node: %w", err)

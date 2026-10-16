@@ -105,28 +105,38 @@ func GetConfigRelayerIDs(cfg *config.Config) []RelayerID {
 // Calculates all of the possible relayer keys for a given source blockchain.
 func GetSourceBlockchainRelayerIDs(sourceBlockchain *config.SourceBlockchain) []RelayerID {
 	var ids []RelayerID
+	for _, protocol := range sourceBlockchain.Protocols() {
+		ids = append(ids, GetProtocolRelayerIDs(sourceBlockchain, protocol)...)
+	}
+	return ids
+}
+
+// Calculates all of the possible relayer keys for one message protocol of a source blockchain.
+func GetProtocolRelayerIDs(
+	sourceBlockchain *config.SourceBlockchain,
+	protocol config.Protocol,
+) []RelayerID {
+	var ids []RelayerID
 	srcAddresses := sourceBlockchain.GetAllowedOriginSenderAddresses()
 	// If no addresses are provided, use the zero address to construct the relayer ID
 	if len(srcAddresses) == 0 {
 		srcAddresses = []common.Address{AllAllowedAddress}
 	}
-	for _, protocol := range sourceBlockchain.Protocols() {
-		for _, srcAddress := range srcAddresses {
-			for _, dst := range sourceBlockchain.SupportedDestinations {
-				dstAddresses := dst.GetAddresses()
-				// If no addresses are provided, use the zero address to construct the relayer ID
-				if len(dstAddresses) == 0 {
-					dstAddresses = []common.Address{AllAllowedAddress}
-				}
-				for _, dstAddress := range dstAddresses {
-					ids = append(ids, NewRelayerID(
-						protocol.Address,
-						sourceBlockchain.GetBlockchainID(),
-						dst.GetBlockchainID(),
-						srcAddress,
-						dstAddress,
-					))
-				}
+	for _, srcAddress := range srcAddresses {
+		for _, dst := range sourceBlockchain.SupportedDestinations {
+			dstAddresses := dst.GetAddresses()
+			// If no addresses are provided, use the zero address to construct the relayer ID
+			if len(dstAddresses) == 0 {
+				dstAddresses = []common.Address{AllAllowedAddress}
+			}
+			for _, dstAddress := range dstAddresses {
+				ids = append(ids, NewRelayerID(
+					protocol.Address,
+					sourceBlockchain.GetBlockchainID(),
+					dst.GetBlockchainID(),
+					srcAddress,
+					dstAddress,
+				))
 			}
 		}
 	}

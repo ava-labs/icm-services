@@ -8,14 +8,14 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/params"
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
-	// Force-load precompiles to trigger registration
-	_ "github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/registry"
+	_ "github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/registry" // Force-load precompiles to trigger registration
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
@@ -46,11 +46,8 @@ const (
 
 var defaultLogLevel = logging.Info.String()
 
-var sensitiveKeys = []string{
-	"authorization", "auth", "token", "api-key", "apikey",
-	"api_key", "secret", "password", "pass", "pwd",
-	"x-api-key", "bearer",
-}
+// redactedValue replaces any configuration value that must not appear in logs.
+const redactedValue = "[REDACTED]"
 
 const usageText = `
 Usage:
@@ -383,13 +380,41 @@ func sanitizeValue(v reflect.Value, t reflect.Type) any {
 		return sanitizeSlice(v, t)
 	case reflect.Map:
 		return sanitizeMap(v, t)
+	case reflect.String:
+		// Any string may be an endpoint URL carrying credentials; see redactURLCredentials.
+		return redactURLCredentials(v.String())
 	default:
-		// For primitive types, return as-is
+		// For other primitive types, return as-is
 		if v.CanInterface() {
 			return v.Interface()
 		}
 		return nil
 	}
+}
+
+// redactURLCredentials makes a string safe to log if it is a URL. Endpoint URLs routinely carry
+// credentials outside the userinfo: managed RPC providers put the API key in the path
+// (https://provider.example/v2/<KEY>) or in the query string (?key=<KEY>), and nothing about
+// the string proves a path segment or parameter is not a secret. Only the scheme and host
+// (with port) are kept; any userinfo, path, query or fragment is replaced with a fixed marker.
+// A string with a URL scheme that cannot be parsed is redacted entirely. Strings without a
+// scheme are returned unchanged.
+func redactURLCredentials(s string) string {
+	if !strings.Contains(s, "://") {
+		return s
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return redactedValue
+	}
+	bareHost := u.User == nil &&
+		(u.Path == "" || u.Path == "/") &&
+		u.RawQuery == "" &&
+		u.Fragment == ""
+	if bareHost {
+		return s
+	}
+	return u.Scheme + "://" + u.Host + "/" + redactedValue
 }
 
 // sanitizeStruct handles struct types recursively
@@ -412,7 +437,7 @@ func sanitizeStruct(v reflect.Value, t reflect.Type) map[string]any {
 
 		// Check if field has sensitive tag
 		if field.Tag.Get("sensitive") == "true" {
-			result[jsonTag] = "[REDACTED]"
+			result[jsonTag] = redactedValue
 		} else {
 			// Recursively sanitize the field value
 			result[jsonTag] = sanitizeValue(fieldValue, field.Type)
@@ -437,16 +462,14 @@ func sanitizeSlice(v reflect.Value, t reflect.Type) []any {
 
 // sanitizeMap handles map types
 func sanitizeMap(v reflect.Value, t reflect.Type) any {
-	// Check if this is a string map that might contain sensitive data
+	// The config's string maps are operator-supplied request decorations (query parameters and
+	// HTTP headers), which are exactly where RPC provider credentials go, under whatever key the
+	// provider chose ("key", "token", "x-api-key", ...). A key-name denylist cannot enumerate
+	// them, so fail safe: every value is redacted and only the keys are logged.
 	if t.Key().Kind() == reflect.String && t.Elem().Kind() == reflect.String {
 		mapResult := make(map[string]any)
 		for _, key := range v.MapKeys() {
-			keyStr := key.String()
-			if isSensitiveMapKey(keyStr) {
-				mapResult[keyStr] = "[REDACTED]"
-			} else {
-				mapResult[keyStr] = v.MapIndex(key).Interface()
-			}
+			mapResult[key.String()] = redactedValue
 		}
 		return mapResult
 	}
@@ -467,17 +490,6 @@ func sanitizeMap(v reflect.Value, t reflect.Type) any {
 	}
 
 	return mapResult
-}
-
-// isSensitiveMapKey checks if a map key might contain sensitive data
-func isSensitiveMapKey(key string) bool {
-	keyLower := strings.ToLower(key)
-	for _, sensitiveKey := range sensitiveKeys {
-		if strings.Contains(keyLower, sensitiveKey) {
-			return true
-		}
-	}
-	return false
 }
 
 func getJSONTag(field reflect.StructField) string {

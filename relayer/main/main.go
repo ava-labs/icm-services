@@ -19,9 +19,7 @@ import (
 	"github.com/ava-labs/avalanchego/network/peer"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	diffupdater "github.com/ava-labs/icm-services/abi-bindings/go/DiffUpdater"
 	merklevalidatorsetregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
-	subsetupdater "github.com/ava-labs/icm-services/abi-bindings/go/SubsetUpdater"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
@@ -58,6 +56,8 @@ const (
 	// The size of the FIFO cache for epoched validator sets
 	// The Cache will store validator sets for the most recent N P-Chain heights.
 	validatorSetCacheSize = 100
+
+	apiReadHeaderTimeout = 10 * time.Second
 )
 
 func main() {
@@ -289,14 +289,20 @@ func main() {
 
 	networkHealthFunc := network.GetNetworkHealthFunc(cfg.GetTrackedSubnets().List())
 
+	// The API endpoints are registered on a dedicated mux, rather than http.DefaultServeMux,
+	// so that they are only reachable on the API port and not on the metrics port.
+	apiMux := http.NewServeMux()
+
 	// Each Listener goroutine will have an atomic bool that it can set to false to indicate an unrecoverable error
-	api.HandleHealthCheck(logger, relayerHealth, networkHealthFunc)
-	api.HandleRelay(logger, messageCoordinator)
-	api.HandleRelayMessage(logger, messageCoordinator)
+	api.HandleHealthCheck(apiMux, logger, relayerHealth, networkHealthFunc)
+	api.HandleRelay(apiMux, logger, messageCoordinator)
+	api.HandleRelayMessage(apiMux, logger, messageCoordinator)
 
 	errGroup.Go(func() error {
 		httpServer := &http.Server{
-			Addr: fmt.Sprintf(":%d", cfg.APIPort),
+			Addr:              fmt.Sprintf(":%d", cfg.APIPort),
+			Handler:           apiMux,
+			ReadHeaderTimeout: apiReadHeaderTimeout,
 		}
 		// Handle graceful shutdown
 		go func() {
@@ -316,8 +322,7 @@ func main() {
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		for _, protocol := range sourceBlockchain.Protocols() {
-			// We don't need to spawn a listener for the off-chain registry.
-			if protocol.Type == config.OFF_CHAIN_REGISTRY {
+			if !protocol.HasListener() {
 				continue
 			}
 			// errgroup will cancel the context when the first goroutine returns an error
@@ -341,14 +346,7 @@ func main() {
 	// Start validator set updaters for configured external EVM destinations
 	for _, extDest := range cfg.ExternalEVMDestinations {
 		errGroup.Go(func() error {
-			switch extDest.ContractType {
-			case "diff":
-				return startDiffSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
-			case "merkle":
-				return startMerkleSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
-			default:
-				return startSubsetSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
-			}
+			return startMerkleSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
 		})
 	}
 
@@ -556,6 +554,10 @@ func createApplicationRelayersForSourceChain(
 	// Each ApplicationRelayer determines its starting height based on the configuration and database state.
 	// The Listener begins processing messages starting from the minimum height across all the ApplicationRelayers
 	// If catch up is disabled, the first block the ApplicationRelayer processes is the next block after the current height
+	//
+	// Only the relayers of protocols with a listener count towards the minimum. A relayer's
+	// checkpoint is only advanced by its own protocol's listener, so the checkpoint of a
+	// listener-less relayer never moves and would otherwise pin the starting height forever.
 	var height, minHeight uint64
 	if !cfg.ProcessMissedBlocks {
 		logger.Info("processed-missed-blocks set to false, starting processing from chain head")
@@ -563,66 +565,68 @@ func createApplicationRelayersForSourceChain(
 		minHeight = height
 	}
 
-	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(sourceBlockchain) {
-		log := logger.With(
-			zap.Stringer("relayerID", relayerID.ID),
-			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
-			zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
-			zap.Stringer("destinationAddress", relayerID.DestinationAddress),
-		)
-		// Calculate the catch-up starting block height, and update the min height if necessary
-		if cfg.ProcessMissedBlocks {
-			var err error
-			height, err = database.CalculateStartingBlockHeight(
+	for _, protocol := range sourceBlockchain.Protocols() {
+		for _, relayerID := range database.GetProtocolRelayerIDs(sourceBlockchain, protocol) {
+			log := logger.With(
+				zap.Stringer("relayerID", relayerID.ID),
+				zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
+				zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
+				zap.Stringer("destinationAddress", relayerID.DestinationAddress),
+			)
+			// Calculate the catch-up starting block height, and update the min height if necessary
+			if cfg.ProcessMissedBlocks {
+				var err error
+				height, err = database.CalculateStartingBlockHeight(
+					log,
+					db,
+					relayerID,
+					sourceBlockchain.ProcessHistoricalBlocksFromHeight,
+					currentHeight,
+				)
+				if err != nil {
+					log.Error("Failed to calculate starting block height", zap.Error(err))
+					return nil, 0, err
+				}
+
+				// Update the min height. This is the height that the listener will start processing from
+				if protocol.HasListener() && (minHeight == 0 || height < minHeight) {
+					minHeight = height
+				}
+			}
+
+			checkpointManager, err := checkpoint.NewCheckpointManager(
 				log,
+				checkpointMetrics,
 				db,
+				ticker.Subscribe(),
 				relayerID,
-				sourceBlockchain.ProcessHistoricalBlocksFromHeight,
-				currentHeight,
+				height,
 			)
 			if err != nil {
-				log.Error("Failed to calculate starting block height", zap.Error(err))
+				log.Error("Failed to create checkpoint manager", zap.Error(err))
 				return nil, 0, err
 			}
 
-			// Update the min height. This is the height that the listener will start processing from
-			if minHeight == 0 || height < minHeight {
-				minHeight = height
+			applicationRelayer, err := relayer.NewApplicationRelayer(
+				log,
+				metrics,
+				network,
+				relayerID,
+				destinationClients[relayerID.DestinationBlockchainID],
+				sourceBlockchain,
+				checkpointManager,
+				cfg,
+				signatureAggregator,
+				processMessageSemaphore,
+			)
+			if err != nil {
+				log.Error("Failed to create application relayer", zap.Error(err))
+				return nil, 0, err
 			}
-		}
+			applicationRelayers[relayerID.ID] = applicationRelayer
 
-		checkpointManager, err := checkpoint.NewCheckpointManager(
-			log,
-			checkpointMetrics,
-			db,
-			ticker.Subscribe(),
-			relayerID,
-			height,
-		)
-		if err != nil {
-			log.Error("Failed to create checkpoint manager", zap.Error(err))
-			return nil, 0, err
+			log.Info("Created application relayer")
 		}
-
-		applicationRelayer, err := relayer.NewApplicationRelayer(
-			log,
-			metrics,
-			network,
-			relayerID,
-			destinationClients[relayerID.DestinationBlockchainID],
-			sourceBlockchain,
-			checkpointManager,
-			cfg,
-			signatureAggregator,
-			processMessageSemaphore,
-		)
-		if err != nil {
-			log.Error("Failed to create application relayer", zap.Error(err))
-			return nil, 0, err
-		}
-		applicationRelayers[relayerID.ID] = applicationRelayer
-
-		log.Info("Created application relayer")
 	}
 	return applicationRelayers, minHeight, nil
 }
@@ -633,146 +637,6 @@ func createHealthTrackers(cfg *config.Config) map[ids.ID]*atomic.Bool {
 		healthTrackers[sourceBlockchain.GetBlockchainID()] = atomic.NewBool(true)
 	}
 	return healthTrackers
-}
-
-func startSubsetSetUpdater(
-	ctx context.Context,
-	logger logging.Logger,
-	extDest *config.ExternalEVMDestination,
-	signatureAggregator *aggregator.SignatureAggregator,
-	cfg *config.Config,
-) error {
-	blockchainID, err := ids.FromString(extDest.BlockchainID)
-	if err != nil {
-		return fmt.Errorf("invalid blockchain ID %q: %w", extDest.BlockchainID, err)
-	}
-	subnetID, err := ids.FromString(extDest.SubnetID)
-	if err != nil {
-		return fmt.Errorf("invalid subnet ID %q: %w", extDest.SubnetID, err)
-	}
-	ethClient, err := ethclient.DialContext(ctx, extDest.RPCEndpoint)
-	if err != nil {
-		return fmt.Errorf("failed to connect to external EVM at %s: %w", extDest.RPCEndpoint, err)
-	}
-	chainID, err := ethClient.ChainID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get chain ID: %w", err)
-	}
-
-	privateKey, err := crypto.HexToECDSA(extDest.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("invalid private key: %w", err)
-	}
-	txOpts, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	if err != nil {
-		return fmt.Errorf("failed to create transactor: %w", err)
-	}
-
-	contractAddr := common.HexToAddress(extDest.ContractAddress)
-	contract, err := subsetupdater.NewSubsetUpdater(contractAddr, ethClient)
-	if err != nil {
-		return fmt.Errorf("failed to bind SubsetUpdater contract: %w", err)
-	}
-
-	pChainClient := clients.NewCanonicalValidatorClient(cfg.PChainAPI)
-
-	infoClient := info.NewClient(cfg.InfoAPI.BaseURL)
-	networkID, err := infoClient.GetNetworkID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get network ID: %w", err)
-	}
-
-	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
-	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-
-	updater := validatorupdater.NewSubsetSetUpdater(
-		logger,
-		pChainClient,
-		signatureAggregator,
-		ethClient,
-		contract,
-		contractAddr,
-		txOpts,
-		networkID,
-		blockchainID,
-		subnetID,
-		extDest.ShardSize,
-		pollInterval,
-		extDest.WeightChangeThresholdPct,
-		maxUpdateInterval,
-	)
-
-	return updater.Start(ctx)
-}
-
-func startDiffSetUpdater(
-	ctx context.Context,
-	logger logging.Logger,
-	extDest *config.ExternalEVMDestination,
-	signatureAggregator *aggregator.SignatureAggregator,
-	cfg *config.Config,
-) error {
-	blockchainID, err := ids.FromString(extDest.BlockchainID)
-	if err != nil {
-		return fmt.Errorf("invalid blockchain ID %q: %w", extDest.BlockchainID, err)
-	}
-	subnetID, err := ids.FromString(extDest.SubnetID)
-	if err != nil {
-		return fmt.Errorf("invalid subnet ID %q: %w", extDest.SubnetID, err)
-	}
-	ethClient, err := ethclient.DialContext(ctx, extDest.RPCEndpoint)
-	if err != nil {
-		return fmt.Errorf("failed to connect to external EVM at %s: %w", extDest.RPCEndpoint, err)
-	}
-	chainID, err := ethClient.ChainID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get chain ID: %w", err)
-	}
-
-	privateKey, err := crypto.HexToECDSA(extDest.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("invalid private key: %w", err)
-	}
-	txOpts, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	if err != nil {
-		return fmt.Errorf("failed to create transactor: %w", err)
-	}
-
-	contractAddr := common.HexToAddress(extDest.ContractAddress)
-	contract, err := diffupdater.NewDiffUpdater(contractAddr, ethClient)
-	if err != nil {
-		return fmt.Errorf("failed to bind DiffUpdater contract: %w", err)
-	}
-
-	pChainClient := clients.NewCanonicalValidatorClient(cfg.PChainAPI)
-
-	infoClient := info.NewClient(cfg.InfoAPI.BaseURL)
-	networkID, err := infoClient.GetNetworkID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get network ID: %w", err)
-	}
-
-	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
-	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-
-	updater := validatorupdater.NewDiffSetUpdater(
-		logger,
-		pChainClient,
-		signatureAggregator,
-		ethClient,
-		contract,
-		contractAddr,
-		txOpts,
-		networkID,
-		blockchainID,
-		subnetID,
-		extDest.ShardSize,
-		pollInterval,
-		extDest.WeightChangeThresholdPct,
-		maxUpdateInterval,
-	)
-
-	return updater.Start(ctx)
 }
 
 func startMerkleSetUpdater(
@@ -822,11 +686,8 @@ func startMerkleSetUpdater(
 		return fmt.Errorf("failed to get network ID: %w", err)
 	}
 
-	pollInterval := time.Duration(extDest.PollIntervalSeconds) * time.Second
+	pollInterval := extDest.GetPollInterval()
 	maxUpdateInterval := time.Duration(extDest.MaxUpdateIntervalSeconds) * time.Second
-	if pollInterval == 0 {
-		pollInterval = validatorupdater.DefaultPollInterval
-	}
 	updater := validatorupdater.NewMerkleSetUpdater(
 		logger,
 		pChainClient,

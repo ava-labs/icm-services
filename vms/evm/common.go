@@ -44,6 +44,10 @@ type txData struct {
 	chainID    *big.Int
 	callData   []byte
 	accessList types.AccessList
+	// resultChan receives exactly one txResult, written by either
+	// processIncomingTransactions (on issuance failure) or waitForReceipt.
+	// It must be buffered with capacity 1 so that the writer never blocks
+	// if the SendTx caller has already given up waiting and returned.
 	resultChan chan txResult
 }
 
@@ -330,7 +334,12 @@ func SendTx(
 		return nil, err
 	}
 
-	resultChan := make(chan txResult)
+	// Exactly one value is ever written to resultChan. Buffer it so that the
+	// signer worker (or the waitForReceipt goroutine) can complete its write
+	// even if this function has already returned on timeout. With an unbuffered
+	// channel the write would block forever, permanently deadlocking the
+	// signer's worker goroutine.
+	resultChan := make(chan txResult, 1)
 	messageData := txData{
 		to:         toAddress,
 		gasLimit:   gasLimit,

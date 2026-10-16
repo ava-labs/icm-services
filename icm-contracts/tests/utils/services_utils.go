@@ -20,11 +20,13 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
 	batchcrosschainmessenger "github.com/ava-labs/icm-services/abi-bindings/go/utilities/BatchCrossChainMessenger"
 	"github.com/ava-labs/icm-services/config"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
+	teleporterv2 "github.com/ava-labs/icm-services/messages/teleporterv2"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
 	signatureaggregatorcfg "github.com/ava-labs/icm-services/signature-aggregator/config"
 	relayerUtils "github.com/ava-labs/icm-services/utils"
@@ -133,6 +135,39 @@ func CreateDefaultRelayerConfig(
 		host, port, err := GetURIHostAndPort(l1Info.NodeURIs[0])
 		Expect(err).Should(BeNil())
 
+		messageContracts := map[string]relayercfg.MessageProtocolConfig{
+			offchainregistry.OffChainRegistrySourceAddress.Hex(): {
+				MessageFormat: relayercfg.OFF_CHAIN_REGISTRY.String(),
+				Settings: map[string]interface{}{
+					"teleporter-registry-address": teleporter.TeleporterRegistryAddress(l1Info.BlockchainID).Hex(),
+				},
+			},
+		}
+		teleporterMessengerAddress := teleporter.TeleporterMessengerAddress(l1Info.BlockchainID)
+		switch teleporter.TeleporterProtocol(l1Info.BlockchainID) {
+		case TELEPORTER:
+			messageContracts[teleporterMessengerAddress.Hex()] = relayercfg.MessageProtocolConfig{
+				MessageFormat: relayercfg.TELEPORTER.String(),
+				Settings: map[string]interface{}{
+					"reward-address": fundedAddress.Hex(),
+				},
+			}
+		case TELEPORTER_V2:
+			// TeleporterV2 messages originate from the messenger's verifier adapter contract, so the
+			// message contract entry is keyed by the adapter address. Only the WarpAdapter path is
+			// configured here; Merkle registry tests construct their own configs.
+			warpAdapterAddress := teleporter.WarpAdapterAddress(l1Info.BlockchainID)
+			Expect(warpAdapterAddress).ShouldNot(Equal(common.Address{}))
+			messageContracts[warpAdapterAddress.Hex()] = relayercfg.MessageProtocolConfig{
+				MessageFormat: relayercfg.TELEPORTER_V2.String(),
+				Settings: map[string]interface{}{
+					"reward-address":     fundedAddress.Hex(),
+					"verifier-type":      teleporterv2.VerifierTypeWarp,
+					"teleporter-address": teleporterMessengerAddress.Hex(),
+				},
+			}
+		}
+
 		sources[i] = &relayercfg.SourceBlockchain{
 			SubnetID:     l1Info.SubnetID.String(),
 			BlockchainID: l1Info.BlockchainID.String(),
@@ -143,20 +178,7 @@ func CreateDefaultRelayerConfig(
 				BaseURL: fmt.Sprintf("ws://%s:%d/ext/bc/%s/ws", host, port, l1Info.BlockchainID.String()),
 			},
 
-			MessageContracts: map[string]relayercfg.MessageProtocolConfig{
-				teleporter.TeleporterMessengerAddress(l1Info.BlockchainID).Hex(): {
-					MessageFormat: relayercfg.TELEPORTER.String(),
-					Settings: map[string]interface{}{
-						"reward-address": fundedAddress.Hex(),
-					},
-				},
-				offchainregistry.OffChainRegistrySourceAddress.Hex(): {
-					MessageFormat: relayercfg.OFF_CHAIN_REGISTRY.String(),
-					Settings: map[string]interface{}{
-						"teleporter-registry-address": teleporter.TeleporterRegistryAddress(l1Info.BlockchainID).Hex(),
-					},
-				},
-			},
+			MessageContracts: messageContracts,
 		}
 
 		log.Info(
@@ -354,6 +376,49 @@ func SendBasicTeleporterMessage(
 	return receipt, sendEvent.Message, teleporterMessageID
 }
 
+func SendBasicTeleporterMessageV2(
+	ctx context.Context,
+	log logging.Logger,
+	teleporter TeleporterTestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
+	fundedKey *ecdsa.PrivateKey,
+	destinationAddress common.Address,
+) (*types.Receipt, teleportermessengerv2.TeleporterMessageV2, ids.ID) {
+	input := teleportermessengerv2.TeleporterMessageInput{
+		DestinationBlockchainID: destination.BlockchainID,
+		DestinationAddress:      destinationAddress,
+		FeeInfo: teleportermessengerv2.TeleporterFeeInfo{
+			FeeTokenAddress: common.Address{},
+			Amount:          big.NewInt(0),
+		},
+		RequiredGasLimit:        big.NewInt(1),
+		AllowedRelayerAddresses: []common.Address{},
+		Message:                 []byte{1, 2, 3, 4},
+	}
+
+	// Send a transaction to the Teleporter contract
+	log.Info("Sending teleporter transaction",
+		zap.Stringer("sourceBlockchainID", source.BlockchainID),
+		zap.Stringer("destinationBlockchainID", destination.BlockchainID),
+	)
+	receipt, teleporterMessageID := SendCrossChainMessageV2AndWaitForAcceptance(
+		ctx,
+		teleporter.TeleporterMessengerV2(&source),
+		source,
+		destination,
+		input,
+		fundedKey,
+	)
+	sendEvent, err := GetEventFromLogs(
+		receipt.Logs,
+		teleporter.TeleporterMessengerV2(&source).ParseSendCrossChainMessage,
+	)
+	Expect(err).Should(BeNil())
+
+	return receipt, sendEvent.Message, teleporterMessageID
+}
+
 func RelayBasicMessage(
 	ctx context.Context,
 	log logging.Logger,
@@ -383,11 +448,68 @@ func RelayBasicMessage(
 	Expect(err).Should(BeNil())
 }
 
+func RelayBasicMessageV2(
+	ctx context.Context,
+	log logging.Logger,
+	teleporter TeleporterTestInfo,
+	source testinfo.L1TestInfo,
+	destination testinfo.L1TestInfo,
+	fundedKey *ecdsa.PrivateKey,
+	destinationAddress common.Address,
+) {
+	_, _, teleporterMessageID := SendBasicTeleporterMessageV2(
+		ctx,
+		log,
+		teleporter,
+		source,
+		destination,
+		fundedKey,
+		destinationAddress,
+	)
+
+	log.Info("Waiting for Teleporter message delivery")
+	err := WaitTeleporterMessageDeliveredV2(ctx, teleporter.TeleporterMessengerV2(&destination), teleporterMessageID)
+	Expect(err).Should(BeNil())
+}
+
 // Blocks until the given teleporter message is delivered to the specified TeleporterMessenger
 // before the timeout, or if an error occurred.
 func WaitTeleporterMessageDelivered(
 	ctx context.Context,
 	teleporterMessenger *teleportermessenger.TeleporterMessenger,
+	teleporterMessageID ids.ID,
+) error {
+	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	queryTicker := time.NewTicker(200 * time.Millisecond)
+	defer queryTicker.Stop()
+	for {
+		delivered, err := teleporterMessenger.MessageReceived(
+			&bind.CallOpts{}, teleporterMessageID,
+		)
+		if err != nil {
+			return err
+		}
+
+		if delivered {
+			return nil
+		}
+
+		// Wait for the next round.
+		select {
+		case <-cctx.Done():
+			return cctx.Err()
+		case <-queryTicker.C:
+		}
+	}
+}
+
+// Blocks until the given teleporter message is delivered to the specified TeleporterMessengerV2
+// before the timeout, or if an error occurred.
+func WaitTeleporterMessageDeliveredV2(
+	ctx context.Context,
+	teleporterMessenger *teleportermessengerv2.TeleporterMessengerV2,
 	teleporterMessageID ids.ID,
 ) error {
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -556,6 +678,110 @@ func TriggerProcessMissedBlocks(
 	)
 	Expect(err).Should(BeNil())
 	delivered3, err := teleporter.TeleporterMessenger(&destinationSubnetInfo).MessageReceived(
+		&bind.CallOpts{}, id3,
+	)
+	Expect(err).Should(BeNil())
+	Expect(delivered1).Should(BeFalse())
+	Expect(delivered2).Should(BeFalse())
+	Expect(delivered3).Should(BeTrue())
+}
+
+func TriggerProcessMissedBlocksV2(
+	ctx context.Context,
+	log logging.Logger,
+	teleporter TeleporterTestInfo,
+	sourceL1Info testinfo.L1TestInfo,
+	destinationSubnetInfo testinfo.L1TestInfo,
+	currRelayerCleanup context.CancelFunc,
+	currentRelayerConfig relayercfg.Config,
+	fundedAddress common.Address,
+	fundedKey *ecdsa.PrivateKey,
+) {
+	// First, make sure the relayer is stopped
+	currRelayerCleanup()
+
+	// Subscribe to the destination chain
+	newHeads := make(chan *types.Header, 10)
+	sub, err := destinationSubnetInfo.WSClient.SubscribeNewHead(ctx, newHeads)
+	Expect(err).Should(BeNil())
+	defer sub.Unsubscribe()
+
+	// Send three Teleporter messages from subnet A to subnet B
+	log.Info("Sending three Teleporter messages from subnet A to subnet B")
+	_, _, id1 := SendBasicTeleporterMessageV2(
+		ctx,
+		log,
+		teleporter,
+		sourceL1Info,
+		destinationSubnetInfo,
+		fundedKey,
+		fundedAddress,
+	)
+	_, _, id2 := SendBasicTeleporterMessageV2(
+		ctx,
+		log,
+		teleporter,
+		sourceL1Info,
+		destinationSubnetInfo,
+		fundedKey,
+		fundedAddress,
+	)
+	_, _, id3 := SendBasicTeleporterMessageV2(
+		ctx,
+		log,
+		teleporter,
+		sourceL1Info,
+		destinationSubnetInfo,
+		fundedKey,
+		fundedAddress,
+	)
+
+	currHeight, err := sourceL1Info.EthClient.BlockNumber(ctx)
+	Expect(err).Should(BeNil())
+	log.Info("Current block height", zap.Uint64("height", currHeight))
+
+	// Configure the relayer such that it will only process the last of the three messages sent above.
+	// The relayer DB stores the height of the block *before* the first message, so by setting the
+	// ProcessHistoricalBlocksFromHeight to the block height of the *third* message, we expect the relayer to skip
+	// the first two messages on startup, but process the third.
+	modifiedRelayerConfig := currentRelayerConfig
+	modifiedRelayerConfig.SourceBlockchains[0].ProcessHistoricalBlocksFromHeight = currHeight
+	modifiedRelayerConfig.ProcessMissedBlocks = true
+	relayerConfigPath := WriteRelayerConfig(log, modifiedRelayerConfig, DefaultRelayerCfgFname)
+
+	log.Info("Starting the relayer")
+	relayerCleanup, readyChan := RunRelayerExecutable(
+		ctx,
+		log,
+		relayerConfigPath,
+		currentRelayerConfig,
+	)
+	defer relayerCleanup()
+
+	// Wait for relayer to start up
+	startupCtx, startupCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer startupCancel()
+	WaitForChannelClose(startupCtx, readyChan)
+
+	// Send a native transfer to trigger block production
+	SendNativeTransfer(ctx, sourceL1Info, fundedKey, fundedAddress, big.NewInt(1))
+	log.Info("Waiting for a new block confirmation on the destination")
+	<-newHeads
+
+	log.Info("Waiting for Teleporter message delivery")
+	err = WaitTeleporterMessageDeliveredV2(ctx, teleporter.TeleporterMessengerV2(&destinationSubnetInfo), id3)
+	Expect(err).Should(BeNil())
+
+	destinationTeleporterMessenger := teleporter.TeleporterMessengerV2(&destinationSubnetInfo)
+	delivered1, err := destinationTeleporterMessenger.MessageReceived(
+		&bind.CallOpts{}, id1,
+	)
+	Expect(err).Should(BeNil())
+	delivered2, err := destinationTeleporterMessenger.MessageReceived(
+		&bind.CallOpts{}, id2,
+	)
+	Expect(err).Should(BeNil())
+	delivered3, err := destinationTeleporterMessenger.MessageReceived(
 		&bind.CallOpts{}, id3,
 	)
 	Expect(err).Should(BeNil())

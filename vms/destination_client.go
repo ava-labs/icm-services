@@ -169,7 +169,6 @@ func CreateDestinationClients(
 			txTimeout,
 			destID,
 			sourceID,
-			extDest.ContractType,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create external EVM destination client: %w", err)

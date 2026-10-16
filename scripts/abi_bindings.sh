@@ -26,7 +26,7 @@ ECDSAVerifier ZKStateManager ZKAdapter"
 
 DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2 Adapter"
 
-DEFAULT_ETHEREUM_CONTRACT_LIST="SubsetUpdater DiffUpdater MerkleValidatorSetRegistry ZKValidatorSetRegistry"
+DEFAULT_ETHEREUM_CONTRACT_LIST="MerkleValidatorSetRegistry ZKValidatorSetRegistry"
 
 VENDORED_CONTRACT_LIST="RiscZeroGroth16Verifier SP1VerifierGroth16"
 
@@ -59,10 +59,6 @@ if [ "$HELP" = true ]; then
     echo "  -ec, --ethereum-contracts contract1 contract      Generate Go bindings for the contract. If empty, generate Go bindings for a default list of Ethereum contracts"
     echo "  -h, --help                              Print this help message"
     exit 0
-fi
-
-if ! command -v forge &> /dev/null; then
-    echo "forge not found. You can install by calling $REPO_PATH/scripts/install_foundry.sh" && exit 1
 fi
 
 if ! command -v solc &> /dev/null; then

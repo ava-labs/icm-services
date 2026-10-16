@@ -16,10 +16,12 @@ import {
 } from "./interfaces/IACP99Manager.sol";
 import {ACP99Manager} from "./ACP99Manager.sol";
 import {IWarpMessenger, WarpMessage} from "@subnet-evm/IWarpMessenger.sol";
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 import {ICMInitializable} from "@utilities/ICMInitializable.sol";
 
 /**
@@ -132,10 +134,16 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
 
     /**
      * @notice Migrates a validator from the V1 contract to the V2 contract.
+     * @dev Only callable by the owner. The migration is one-shot per validation ID and the supplied
+     * `receivedNonce` feeds the P-Chain acknowledgement checks for later weight updates, so an
+     * arbitrary caller must not be able to perform (or front-run) it.
      * @param validationID The ID of the validation period to migrate.
      * @param receivedNonce The latest nonce received from the P-Chain.
      */
-    function migrateFromV1(bytes32 validationID, uint32 receivedNonce) external {
+    function migrateFromV1(
+        bytes32 validationID,
+        uint32 receivedNonce
+    ) external onlyOwner {
         ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
         ValidatorLegacy storage legacy = $._validationPeriodsLegacy[validationID];
         if (legacy.status == ValidatorStatus.Unknown) {
@@ -215,7 +223,8 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
         }
 
         // Check that the blockchainID and validator manager address in the ConversionData correspond to this contract.
-        // Other validation checks are done by the P-Chain when converting the L1, so are not required here.
+        // Other validation checks are done by the P-Chain when converting the L1, so are not required here, except
+        // for the field lengths checked below, which the hash comparison alone cannot guarantee.
         if (conversionData.validatorManagerBlockchainID != WARP_MESSENGER.getBlockchainID()) {
             revert InvalidValidatorManagerBlockchainID(conversionData.validatorManagerBlockchainID);
         }
@@ -243,6 +252,13 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
             }
             if (initialValidator.nodeID.length != NODE_ID_LENGTH) {
                 revert InvalidNodeID(initialValidator.nodeID);
+            }
+            // The conversionID only authenticates the packed bytes, and the BLS public key is packed without a
+            // length prefix. Its length must therefore be pinned to the P-Chain's fixed size, otherwise a
+            // different split of the same bytes into keys and weights would pass the hash check and register
+            // validators with weights the P-Chain never agreed to.
+            if (initialValidator.blsPublicKey.length != BLS_PUBLIC_KEY_LENGTH) {
+                revert InvalidBLSKeyLength(initialValidator.blsPublicKey.length);
             }
 
             // Validation ID of the initial validators is the sha256 hash of the
@@ -356,8 +372,7 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
 
         uint64 registrationExpiry = uint64(block.timestamp) + REGISTRATION_EXPIRY_LENGTH;
 
-        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (bytes32 validationID, bytes memory registerL1ValidatorMessage) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 subnetID: $._subnetID,
                 nodeID: nodeID,
@@ -423,8 +438,9 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
         uint32 messageIndex
     ) public virtual override onlyOwner returns (bytes32) {
         ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
-        (bytes32 validationID, bool validRegistration) = ValidatorMessages
-            .unpackL1ValidatorRegistrationMessage(_getPChainWarpMessage(messageIndex).payload);
+        (bytes32 validationID, bool validRegistration) = ValidatorMessages.unpackL1ValidatorRegistrationMessage(
+            _getPChainWarpMessage(messageIndex).payload
+        );
 
         if (!validRegistration) {
             revert UnexpectedRegistrationStatus(validRegistration);
@@ -573,8 +589,9 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
         ValidatorManagerStorage storage $ = _getValidatorManagerStorage();
 
         // Get the Warp message.
-        (bytes32 validationID, bool registered) = ValidatorMessages
-            .unpackL1ValidatorRegistrationMessage(_getPChainWarpMessage(messageIndex).payload);
+        (bytes32 validationID, bool registered) = ValidatorMessages.unpackL1ValidatorRegistrationMessage(
+            _getPChainWarpMessage(messageIndex).payload
+        );
         if (registered) {
             revert UnexpectedRegistrationStatus(registered);
         }

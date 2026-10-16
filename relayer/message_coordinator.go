@@ -98,7 +98,7 @@ func (mc *MessageCoordinator) getAppRelayerMessageHandler(
 	}
 
 	messageHandler, err := messageHandlerFactory.NewMessageHandler(
-		appRelayer.logger,
+		appRelayer.logger.With(zap.Stringer("originTxID", message.SourceTxID)),
 		message,
 		appRelayer.destinationClient,
 		appRelayer.signatureAggregator,
@@ -238,6 +238,10 @@ func (mc *MessageCoordinator) ProcessMessageID(
 // Meant to be ran asynchronously. Errors should be sent to errChan.
 // The logs of [icmBlockInfo] are expected to match the event filter of the message protocol at
 // [protocolAddress], since that is what the subscriber that produced them filtered on.
+// The block range is only dispatched to the application relayers of that protocol. Each
+// protocol has its own listener, and a relayer's checkpoint must only advance once its own
+// listener has delivered the relayer's messages in the range; dispatching the range to another
+// protocol's relayers would commit it for them before their listener has even seen it.
 func (mc *MessageCoordinator) ProcessBlock(
 	icmBlockInfo *evm.ICMBlockInfo,
 	blockchainID ids.ID,
@@ -245,8 +249,9 @@ func (mc *MessageCoordinator) ProcessBlock(
 	errChan chan error,
 ) {
 	mc.logger.Debug(
-		"Processing block",
-		zap.Uint64("blockNumber", icmBlockInfo.BlockNumber),
+		"Processing blocks",
+		zap.Uint64("fromBlock", icmBlockInfo.FromBlock),
+		zap.Uint64("toBlock", icmBlockInfo.ToBlock),
 		zap.Stringer("blockchainID", blockchainID),
 		zap.Stringer("protocolAddress", protocolAddress),
 	)
@@ -286,18 +291,20 @@ func (mc *MessageCoordinator) ProcessBlock(
 	}
 	// Initiate message relay of all registered messages
 	for _, appRelayer := range mc.applicationRelayers {
-		if appRelayer.relayerID.SourceBlockchainID != blockchainID {
+		if appRelayer.relayerID.SourceBlockchainID != blockchainID ||
+			appRelayer.relayerID.ProtocolAddress != protocolAddress {
 			continue
 		}
-		// Dispatch all messages in the block to the appropriate application relayer.
-		// An empty slice is still a valid argument to ProcessHeight; in this case the height is immediately committed.
+		// Dispatch all messages in the blocks to the appropriate application relayer.
+		// An empty slice is still a valid argument to ProcessBlocks; in this case the range is
+		// immediately committed.
 		handlers := messageHandlers[appRelayer.relayerID.ID]
 		mc.logger.Verbo(
 			"Dispatching to app relayer",
 			zap.Stringer("relayerID", appRelayer.relayerID.ID),
 			zap.Int("numMessages", len(handlers)),
 		)
-		go appRelayer.ProcessHeight(icmBlockInfo.BlockNumber, handlers, errChan)
+		go appRelayer.ProcessBlocks(icmBlockInfo.FromBlock, icmBlockInfo.ToBlock, handlers, errChan)
 	}
 }
 

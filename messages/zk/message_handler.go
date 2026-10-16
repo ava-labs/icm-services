@@ -6,6 +6,8 @@
 // ZKAdapter (an IAdapter implementation), using Boundless zero-knowledge proofs
 // of Ethereum consensus.
 
+// THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
+
 package zk
 
 import (

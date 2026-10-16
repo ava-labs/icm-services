@@ -36,11 +36,14 @@ interface IValidatorManager is IACP99Manager {
     error ZeroAddress();
 
     /**
-     * @notice Migrates a validator from the V1 contract to the V2 contract.
+     * @notice Migrates a validator from the V1 contract to the V2 contract. Only callable by the owner.
      * @param validationID The ID of the validation period to migrate.
      * @param receivedNonce The latest nonce received from the P-Chain.
      */
-    function migrateFromV1(bytes32 validationID, uint32 receivedNonce) external;
+    function migrateFromV1(
+        bytes32 validationID,
+        uint32 receivedNonce
+    ) external;
 
     function initiateValidatorRegistration(
         bytes memory nodeID,

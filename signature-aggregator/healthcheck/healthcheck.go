@@ -7,7 +7,9 @@ import (
 	"github.com/alexliesenfeld/health"
 )
 
-func HandleHealthCheckRequest(checkFunc func(context.Context) error) {
+const HealthAPIPath = "/health"
+
+func HandleHealthCheckRequest(mux *http.ServeMux, checkFunc func(context.Context) error) {
 	healthChecker := health.NewChecker(
 		health.WithCheck(health.Check{
 			Name:  "signature-aggregator-health",
@@ -15,5 +17,5 @@ func HandleHealthCheckRequest(checkFunc func(context.Context) error) {
 		}),
 	)
 
-	http.Handle("/health", health.NewHandler(healthChecker))
+	mux.Handle(HealthAPIPath, health.NewHandler(healthChecker))
 }

@@ -57,10 +57,26 @@ const (
 	l1ValidatorBalanceTTL = 2 * time.Second
 )
 
+// MaxRequestSize is the largest serialized ACP-118 signature request that can be sent to a
+// validator. avalanchego refuses to build an outbound p2p message larger than
+// constants.DefaultMaxMessageSize, so a larger request could never reach any validator.
+// CreateSignedMessage rejects such a request up front, before the signing subnet is resolved or
+// any validator is contacted, so an attacker-sized payload costs no network work.
+const MaxRequestSize = constants.DefaultMaxMessageSize
+
+// ErrRequestTooLarge is returned by CreateSignedMessage when the unsigned message and
+// justification serialize to a signature request larger than MaxRequestSize.
+var ErrRequestTooLarge = errors.New("signature request exceeds the maximum p2p message size")
+
 var (
 	// Errors
-	errNotEnoughSignatures     = errors.New("failed to collect a threshold of signatures")
-	errNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
+	// ErrNotEnoughSignatures is returned when the validators that responded do not hold enough
+	// stake to meet the requested quorum.
+	ErrNotEnoughSignatures = errors.New("failed to collect a threshold of signatures")
+	// ErrNotEnoughConnectedStake is returned when the aggregator could not connect to validators
+	// holding enough stake to possibly meet the requested quorum.
+	ErrNotEnoughConnectedStake = errors.New("failed to connect to a threshold of stake")
+	errInvalidSignatureLength  = errors.New("signature response has incorrect length")
 )
 
 type SignatureAggregator struct {
@@ -72,6 +88,9 @@ type SignatureAggregator struct {
 	validatorClient         clients.CanonicalValidatorState
 	underfundedL1NodeCache  *cache.TTLCache[ids.ID, set.Set[ids.NodeID]]
 	signatureRequestTimeout time.Duration
+	// Maximum time to spend retrying to connect to a quorum of validators.
+	// Defaults to utils.ConnectToValidatorsTimeout; overridden in tests.
+	connectToValidatorsTimeout time.Duration
 
 	subnetMapsLock sync.Mutex
 
@@ -93,16 +112,17 @@ func NewSignatureAggregator(
 		return nil, fmt.Errorf("failed to create signature cache: %w", err)
 	}
 	sa := SignatureAggregator{
-		network:                 network,
-		subnetIDsByBlockchainID: map[ids.ID]ids.ID{},
-		subnetIDIsL1:            map[ids.ID]bool{},
-		metrics:                 metrics,
-		currentRequestID:        atomic.Uint32{},
-		signatureCache:          signatureCache,
-		messageCreator:          messageCreator,
-		validatorClient:         validatorClient,
-		underfundedL1NodeCache:  cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
-		signatureRequestTimeout: signatureRequestTimeout,
+		network:                    network,
+		subnetIDsByBlockchainID:    map[ids.ID]ids.ID{},
+		subnetIDIsL1:               map[ids.ID]bool{},
+		metrics:                    metrics,
+		currentRequestID:           atomic.Uint32{},
+		signatureCache:             signatureCache,
+		messageCreator:             messageCreator,
+		validatorClient:            validatorClient,
+		underfundedL1NodeCache:     cache.NewTTLCache[ids.ID, set.Set[ids.NodeID]](l1ValidatorBalanceTTL),
+		signatureRequestTimeout:    signatureRequestTimeout,
+		connectToValidatorsTimeout: utils.ConnectToValidatorsTimeout,
 	}
 	// invariant: requestIDs for AppRequests must be odd numbered
 	sa.currentRequestID.Store(rand.Uint32() | 1)
@@ -160,7 +180,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 				zap.Int("numConnectedPeers", vdrs.ConnectedNodes.Len()),
 			)
 			s.metrics.FailuresToConnectToSufficientStake.Inc()
-			return errNotEnoughConnectedStake
+			return ErrNotEnoughConnectedStake
 		}
 		return nil
 	}
@@ -171,7 +191,7 @@ func (s *SignatureAggregator) connectToQuorumValidators(
 			zap.Error(err),
 		)
 	}
-	err = utils.WithRetriesTimeout(connectOp, notify, utils.ConnectToValidatorsTimeout)
+	err = utils.WithRetriesTimeout(connectOp, notify, s.connectToValidatorsTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +206,12 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 	signingSubnet ids.ID,
 ) (set.Set[ids.NodeID], error) {
 	fetchUnderfundedL1Nodes := func(subnetID ids.ID) (set.Set[ids.NodeID], error) {
-		validators, err := s.validatorClient.GetCurrentValidators(ctx, subnetID)
+		// This fetch is single-flighted by the cache and its result (or error) is shared with
+		// every concurrent caller for [subnetID], so it must not run under any one caller's
+		// request-scoped context.
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), utils.DefaultRPCTimeout)
+		defer cancel()
+		validators, err := s.validatorClient.GetCurrentValidators(fetchCtx, subnetID)
 		if err != nil {
 			log.Error("Failed to fetch current L1 validators", zap.Error(err))
 			return nil, err
@@ -398,9 +423,10 @@ func weightAtLeastPercent(weight, totalWeight, percent uint64) bool {
 	return lhs.Cmp(rhs) >= 0
 }
 
-// sendRequest issues a single AppRequest to [queryNodes], registering response/timeout
-// tracking only for the nodes actually reached. It returns the response channel and the
-// number of responses to expect, or a nil channel and 0 if no node was reached.
+// sendRequest issues a single AppRequest to [queryNodes]. Response and timeout tracking is
+// registered for every queried node before the request is sent, and nodes the send fails to
+// reach are unregistered afterwards. It returns the response channel and the number of
+// responses to expect, or a nil channel and 0 if no node was reached.
 func (s *SignatureAggregator) sendRequest(
 	log logging.Logger,
 	unsignedMessage *avalancheWarp.UnsignedMessage,
@@ -408,6 +434,9 @@ func (s *SignatureAggregator) sendRequest(
 	sourceSubnet ids.ID,
 	queryNodes set.Set[ids.NodeID],
 ) (chan message.InboundMessage, int, error) {
+	if queryNodes.Len() == 0 {
+		return nil, 0, nil
+	}
 	requestID := s.currentRequestID.Add(2)
 	outMsg, err := s.messageCreator.AppRequest(
 		unsignedMessage.SourceChainID,
@@ -419,8 +448,25 @@ func (s *SignatureAggregator) sendRequest(
 		return nil, 0, fmt.Errorf("failed to create app request message: %w", err)
 	}
 
-	// Send first, then register only for the nodes reached, so the handler's expected
-	// response count matches the count returned to the caller.
+	// Register response and timeout tracking for every node we are about to query BEFORE
+	// sending. Send enqueues the message for immediate asynchronous transmission, so a fast
+	// validator's response could otherwise reach the handler before it knows about the
+	// request: the response would be dropped, and if that node's timeout had already been
+	// registered the response would cancel it, orphaning the node's expected-response slot so
+	// the response channel is never closed.
+	responseChan := s.network.RegisterRequestID(requestID, queryNodes)
+	if responseChan == nil {
+		return nil, 0, fmt.Errorf("failed to register request ID %d", requestID)
+	}
+	for nodeID := range queryNodes {
+		s.network.RegisterAppRequest(ids.RequestID{
+			NodeID:    nodeID,
+			ChainID:   unsignedMessage.SourceChainID,
+			RequestID: requestID,
+			Op:        byte(message.AppResponseOp),
+		})
+	}
+
 	sentTo := s.network.Send(outMsg, queryNodes, sourceSubnet, subnets.NoOpAllower)
 	s.metrics.AppRequestCount.Inc()
 
@@ -439,24 +485,15 @@ func (s *SignatureAggregator) sendRequest(
 			zap.Int("numFailures", len(failedSendNodes)),
 			zap.Stringers("failedNodes", failedSendNodes),
 		)
+		// Nodes the request never reached can never respond: drop them (and their timeouts)
+		// so the handler's expected response count matches the count returned to the caller.
+		s.network.UnregisterRequestedNodes(requestID, unsignedMessage.SourceChainID, failedSendNodes)
 	}
 
 	if sentTo.Len() == 0 {
+		// Every node was unregistered above, so the handler has already closed [responseChan]
+		// and released the request's tracking state.
 		return nil, 0, nil
-	}
-
-	for nodeID := range sentTo {
-		s.network.RegisterAppRequest(ids.RequestID{
-			NodeID:    nodeID,
-			ChainID:   unsignedMessage.SourceChainID,
-			RequestID: requestID,
-			Op:        byte(message.AppResponseOp),
-		})
-	}
-
-	responseChan := s.network.RegisterRequestID(requestID, sentTo)
-	if responseChan == nil {
-		return nil, 0, fmt.Errorf("failed to register request ID %d", requestID)
 	}
 
 	log.Debug(
@@ -533,7 +570,7 @@ func (s *SignatureAggregator) collectSignatures(
 
 // requestSignatures sends a single request to [queryNodes] and processes responses as they
 // arrive, returning a signed message once [quorumPercentage] of stake is accumulated, or
-// [errNotEnoughSignatures] if the threshold isn't reached before all responses are in.
+// [ErrNotEnoughSignatures] if the threshold isn't reached before all responses are in.
 func (s *SignatureAggregator) requestSignatures(
 	ctx context.Context,
 	log logging.Logger,
@@ -558,7 +595,7 @@ func (s *SignatureAggregator) requestSignatures(
 		return nil, err
 	}
 	if responseChan == nil {
-		return nil, errNotEnoughSignatures
+		return nil, ErrNotEnoughSignatures
 	}
 	// Drain unprocessed responses in the background so returning early (on quorum or
 	// timeout) doesn't block, while still finishing every response's handler.
@@ -570,7 +607,7 @@ func (s *SignatureAggregator) requestSignatures(
 			return nil, ctx.Err()
 		case response, ok := <-responseChan:
 			if !ok {
-				return nil, errNotEnoughSignatures
+				return nil, ErrNotEnoughSignatures
 			}
 			signedMsg, err := s.handleResponse(
 				log,
@@ -595,7 +632,7 @@ func (s *SignatureAggregator) requestSignatures(
 			}
 		}
 	}
-	return nil, errNotEnoughSignatures
+	return nil, ErrNotEnoughSignatures
 }
 
 func (s *SignatureAggregator) CreateSignedMessage(
@@ -615,6 +652,23 @@ func (s *SignatureAggregator) CreateSignedMessage(
 
 	if requiredQuorumPercentage == 0 || requiredQuorumPercentage > 100 {
 		return nil, fmt.Errorf("invalid quorum percentage: %d", requiredQuorumPercentage)
+	}
+
+	// Serialize the request first, so one that cannot fit in a p2p message is rejected before
+	// the signing subnet is resolved or any validator is contacted.
+	reqBytes, err := s.marshalRequest(unsignedMessage, justification)
+	if err != nil {
+		msg := "Failed to marshal request bytes"
+		log.Error(msg, zap.Error(err))
+		return nil, fmt.Errorf("%s: %w", msg, err)
+	}
+	if len(reqBytes) > MaxRequestSize {
+		log.Warn(
+			"Rejecting oversized signature request",
+			zap.Int("requestBytes", len(reqBytes)),
+			zap.Int("maxRequestBytes", MaxRequestSize),
+		)
+		return nil, fmt.Errorf("%w: %d > %d bytes", ErrRequestTooLarge, len(reqBytes), MaxRequestSize)
 	}
 
 	log.Debug("Creating signed message")
@@ -691,13 +745,6 @@ func (s *SignatureAggregator) CreateSignedMessage(
 		s.metrics.SignatureCacheMisses.Add(float64(
 			len(vdrs.ValidatorSet.Validators) - len(signatureMap),
 		))
-	}
-
-	reqBytes, err := s.marshalRequest(unsignedMessage, justification)
-	if err != nil {
-		msg := "Failed to marshal request bytes"
-		log.Error(msg, zap.Error(err))
-		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
 	// Collect signatures from validators in weight-prioritized batches.
@@ -955,22 +1002,14 @@ func (s *SignatureAggregator) isValidSignatureResponse(
 
 	signature, err := s.unmarshalResponse(appResponse.GetAppBytes())
 	if err != nil {
-		log.Error("Error unmarshaling signature response", zap.Error(err))
+		log.Debug("Error unmarshaling signature response", zap.Error(err))
+		return blsSignatureBuf{}, false
 	}
 
 	// If the node returned an empty signature, then it has not yet seen the warp message. Retry later.
 	emptySignature := blsSignatureBuf{}
 	if bytes.Equal(signature[:], emptySignature[:]) {
 		log.Debug("Response contained an empty signature")
-		return blsSignatureBuf{}, false
-	}
-
-	if len(signature) != bls.SignatureLen {
-		log.Debug(
-			"Response signature has incorrect length",
-			zap.Int("actual", len(signature)),
-			zap.Int("expected", bls.SignatureLen),
-		)
 		return blsSignatureBuf{}, false
 	}
 
@@ -1050,6 +1089,22 @@ func (s *SignatureAggregator) unmarshalResponse(responseBytes []byte) (blsSignat
 	err := proto.Unmarshal(responseBytes, &sigResponse)
 	if err != nil {
 		return blsSignatureBuf{}, err
+	}
+	// An absent signature field is equivalent to an empty response: the node has not
+	// seen the message yet.
+	if len(sigResponse.Signature) == 0 {
+		return blsSignatureBuf{}, nil
+	}
+	// The signature length is chosen by the responding peer, so it must be validated before
+	// the conversion below: converting a slice shorter than the array panics at runtime, and
+	// converting a longer one would silently truncate.
+	if len(sigResponse.Signature) != bls.SignatureLen {
+		return blsSignatureBuf{}, fmt.Errorf(
+			"%w: got %d, expected %d",
+			errInvalidSignatureLength,
+			len(sigResponse.Signature),
+			bls.SignatureLen,
+		)
 	}
 	return blsSignatureBuf(sigResponse.Signature), nil
 }
