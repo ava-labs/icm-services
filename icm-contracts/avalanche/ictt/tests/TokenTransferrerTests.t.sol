@@ -233,11 +233,20 @@ abstract contract TokenTransferrerTest is Test {
         );
     }
 
-    function _send(SendTokensInput memory input, uint256 amount) internal virtual;
+    function _send(
+        SendTokensInput memory input,
+        uint256 amount
+    ) internal virtual;
 
-    function _sendAndCall(SendAndCallInput memory input, uint256 amount) internal virtual;
+    function _sendAndCall(
+        SendAndCallInput memory input,
+        uint256 amount
+    ) internal virtual;
 
-    function _sendSingleHopSendSuccess(uint256 amount, uint256 feeAmount) internal {
+    function _sendSingleHopSendSuccess(
+        uint256 amount,
+        uint256 feeAmount
+    ) internal {
         SendTokensInput memory input = _createDefaultSendTokensInput();
         input.primaryFee = feeAmount;
 
@@ -251,7 +260,10 @@ abstract contract TokenTransferrerTest is Test {
         _send(input, amount);
     }
 
-    function _sendSingleHopCallSuccess(uint256 amount, uint256 feeAmount) internal {
+    function _sendSingleHopCallSuccess(
+        uint256 amount,
+        uint256 feeAmount
+    ) internal {
         SendAndCallInput memory input = _createDefaultSendAndCallInput();
         input.primaryFee = feeAmount;
 
@@ -278,11 +290,17 @@ abstract contract TokenTransferrerTest is Test {
         uint256 initialReserveImbalance
     ) internal virtual;
 
-    function _setUpExpectedDeposit(uint256 amount, uint256 feeAmount) internal virtual;
+    function _setUpExpectedDeposit(
+        uint256 amount,
+        uint256 feeAmount
+    ) internal virtual;
 
     function _setUpExpectedZeroAmountRevert() internal virtual;
 
-    function _checkExpectedWithdrawal(address recipient, uint256 amount) internal virtual;
+    function _checkExpectedWithdrawal(
+        address recipient,
+        uint256 amount
+    ) internal virtual;
 
     function _checkExpectedTeleporterCallsForSend(
         TeleporterMessageInput memory expectedMessageInput
@@ -308,15 +326,14 @@ abstract contract TokenTransferrerTest is Test {
     }
 
     // This function is overridden by TeleporterTokenDestinationTests
-    function _scaleTokens(uint256 amount, bool) internal virtual returns (uint256) {
+    function _scaleTokens(
+        uint256 amount,
+        bool
+    ) internal virtual returns (uint256) {
         return amount;
     }
 
-    function _createDefaultSendTokensInput()
-        internal
-        view
-        virtual
-        returns (SendTokensInput memory);
+    function _createDefaultSendTokensInput() internal view virtual returns (SendTokensInput memory);
 
     function _createDefaultSendAndCallInput()
         internal
@@ -332,8 +349,7 @@ abstract contract TokenTransferrerTest is Test {
             destinationBlockchainID: input.destinationBlockchainID,
             destinationAddress: input.destinationTokenTransferrerAddress,
             feeInfo: TeleporterFeeInfo({
-                feeTokenAddress: address(input.primaryFeeTokenAddress),
-                amount: input.primaryFee
+                feeTokenAddress: address(input.primaryFeeTokenAddress), amount: input.primaryFee
             }),
             requiredGasLimit: input.requiredGasLimit,
             allowedRelayerAddresses: new address[](0),
@@ -351,8 +367,7 @@ abstract contract TokenTransferrerTest is Test {
             destinationBlockchainID: input.destinationBlockchainID,
             destinationAddress: input.destinationTokenTransferrerAddress,
             feeInfo: TeleporterFeeInfo({
-                feeTokenAddress: address(input.primaryFeeTokenAddress),
-                amount: input.primaryFee
+                feeTokenAddress: address(input.primaryFeeTokenAddress), amount: input.primaryFee
             }),
             requiredGasLimit: input.requiredGasLimit,
             allowedRelayerAddresses: new address[](0),

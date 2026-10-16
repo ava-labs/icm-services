@@ -73,7 +73,10 @@ contract MockERC20SendAndCallReceiver is Context, IERC20SendAndCallReceiver {
      * @param blockchainID The blockchain ID of the sender.
      * @param senderAddress The address of the sender.
      */
-    function blockSender(bytes32 blockchainID, address senderAddress) external {
+    function blockSender(
+        bytes32 blockchainID,
+        address senderAddress
+    ) external {
         blockedSenders[blockchainID][senderAddress] = true;
     }
 }

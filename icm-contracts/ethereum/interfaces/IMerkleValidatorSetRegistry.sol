@@ -35,7 +35,10 @@ interface IMerkleValidatorSetRegistry {
      * @param signingChainID The Avalanche blockchain ID of the validator set that signed the message. This can either
      * be the same as the payload's blockchain ID for updates, or the P-chain ID for first registrations or further updates.
      */
-    function registerValidatorSet(ICMMessage calldata message, bytes32 signingChainID) external;
+    function registerValidatorSet(
+        ICMMessage calldata message,
+        bytes32 signingChainID
+    ) external;
 
     /**
      * @notice Retrieves the current validator set commitment registered for a given

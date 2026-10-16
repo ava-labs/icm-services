@@ -29,8 +29,7 @@ contract ICMTest is Test {
         TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
         for (uint256 i = 0; i < numReceipts; i++) {
             receipts[i] = TeleporterMessageReceipt({
-                receivedMessageNonce: messageNonce,
-                relayerRewardAddress: relayerAddress
+                receivedMessageNonce: messageNonce, relayerRewardAddress: relayerAddress
             });
         }
 
@@ -99,8 +98,7 @@ contract ICMTest is Test {
         TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](numReceipts);
         for (uint256 i = 0; i < numReceipts; i++) {
             receipts[i] = TeleporterMessageReceipt({
-                receivedMessageNonce: messageNonce,
-                relayerRewardAddress: relayerAddress
+                receivedMessageNonce: messageNonce, relayerRewardAddress: relayerAddress
             });
         }
 
