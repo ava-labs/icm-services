@@ -967,7 +967,8 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
             validatorStartTime: DEFAULT_REGISTRATION_TIMESTAMP,
             stakingStartTime: DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP,
             stakingEndTime: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
-            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP
+                - DEFAULT_REGISTRATION_TIMESTAMP
         });
 
         uint256 expectedValidatorFees =
@@ -1071,7 +1072,8 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
             validatorStartTime: DEFAULT_REGISTRATION_TIMESTAMP,
             stakingStartTime: DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP,
             stakingEndTime: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
-            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP
+                - DEFAULT_REGISTRATION_TIMESTAMP
         });
 
         uint256 expectedValidatorFees =
@@ -1119,7 +1121,8 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
             validatorStartTime: DEFAULT_REGISTRATION_TIMESTAMP,
             stakingStartTime: DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP,
             stakingEndTime: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
-            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP
+                - DEFAULT_REGISTRATION_TIMESTAMP
         });
 
         uint256 expectedValidatorFees =
@@ -1850,9 +1853,9 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
 
         // Submit an uptime proof via submitUptime
         uint64 uptimePercentage1 = 80;
-        uint64 uptime1 = (
-            (DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP) * uptimePercentage1
-        ) / 100;
+        uint64 uptime1 =
+            ((DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP) * uptimePercentage1)
+                / 100;
         bytes memory uptimeMsg1 =
             ValidatorMessages.packValidationUptimeMessage(validationID, uptime1);
         _mockGetUptimeWarpMessage(uptimeMsg1, true);
@@ -1864,9 +1867,9 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         // Submit a second uptime proof via initiateValidatorRemoval. This one is not sufficient for rewards
         // Submit an uptime proof via submitUptime
         uint64 uptimePercentage2 = 79;
-        uint64 uptime2 = (
-            (DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP) * uptimePercentage2
-        ) / 100;
+        uint64 uptime2 =
+            ((DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP) * uptimePercentage2)
+                / 100;
         bytes memory uptimeMsg2 =
             ValidatorMessages.packValidationUptimeMessage(validationID, uptime2);
         _mockGetUptimeWarpMessage(uptimeMsg2, true);
@@ -1889,9 +1892,9 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
 
         // Submit an uptime proof via submitUptime
         uint64 uptimePercentage1 = 80;
-        uint64 uptime1 = (
-            (DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP) * uptimePercentage1
-        ) / 100;
+        uint64 uptime1 =
+            ((DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP) * uptimePercentage1)
+                / 100;
         bytes memory uptimeMsg1 =
             ValidatorMessages.packValidationUptimeMessage(validationID, uptime1);
         _mockGetUptimeWarpMessage(uptimeMsg1, true);
@@ -2148,8 +2151,9 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         stakingManager.initiateDelegatorRemoval(delegationID, true, 0);
     }
 
-    function testCompleteDelegatorRegistrationForCompletedDelegatorRegistrationWhileValidatorPendingRemoved(
-    ) public {
+    function testCompleteDelegatorRegistrationForCompletedDelegatorRegistrationWhileValidatorPendingRemoved()
+        public
+    {
         bytes32 validationID = _registerDefaultValidator();
         bytes32 delegationID = _initiateDefaultDelegatorRegistration(validationID);
 
@@ -2522,7 +2526,10 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         });
     }
 
-    function _completeDefaultDelegator(bytes32 validationID, bytes32 delegationID) internal {
+    function _completeDefaultDelegator(
+        bytes32 validationID,
+        bytes32 delegationID
+    ) internal {
         _initiateDelegatorRemovalValidatorActiveWithChecks({
             validationID: validationID,
             sender: DEFAULT_DELEGATOR_ADDRESS,
@@ -2660,7 +2667,10 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         }
     }
 
-    function _endDefaultValidatorWithChecks(bytes32 validationID, uint64 expectedNonce) internal {
+    function _endDefaultValidatorWithChecks(
+        bytes32 validationID,
+        uint64 expectedNonce
+    ) internal {
         _endValidationWithChecks({
             validationID: validationID,
             validatorOwner: address(this),
@@ -2672,7 +2682,10 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         });
     }
 
-    function _endDefaultValidator(bytes32 validationID, uint64 expectedNonce) internal {
+    function _endDefaultValidator(
+        bytes32 validationID,
+        uint64 expectedNonce
+    ) internal {
         address validatorOwner = address(this);
         _endValidationWithChecks({
             validationID: validationID,
@@ -2878,10 +2891,19 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
     function _getStakeAssetBalance(
         address account
     ) internal virtual returns (uint256);
-    function _expectStakeUnlock(address account, uint256 amount) internal virtual;
-    function _expectRewardIssuance(address account, uint256 amount) internal virtual;
+    function _expectStakeUnlock(
+        address account,
+        uint256 amount
+    ) internal virtual;
+    function _expectRewardIssuance(
+        address account,
+        uint256 amount
+    ) internal virtual;
 
-    function _submitUptimeProofWithChecks(bytes32 validationID, uint64 uptime) internal {
+    function _submitUptimeProofWithChecks(
+        bytes32 validationID,
+        uint64 uptime
+    ) internal {
         _mockGetUptimeWarpMessage(
             ValidatorMessages.packValidationUptimeMessage(validationID, uptime), true
         );
@@ -2896,7 +2918,8 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
             validatorStartTime: DEFAULT_REGISTRATION_TIMESTAMP,
             stakingStartTime: DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP,
             stakingEndTime: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
-            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
+            uptimeSeconds: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP
+                - DEFAULT_REGISTRATION_TIMESTAMP
         });
     }
 

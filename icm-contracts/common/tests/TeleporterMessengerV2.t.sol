@@ -4,8 +4,9 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "@forge-std/Test.sol";
-import {Initializable} from
-    "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable@5.1.0/proxy/utils/Initializable.sol";
 import {
     IAdapter,
     TeleporterICMMessage,

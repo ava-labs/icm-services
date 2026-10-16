@@ -15,12 +15,15 @@ export XDG_CONFIG_HOME="$HOME"
 #        gh api repos/foundry-rs/foundry/git/ref/tags/<tag> --jq .object.sha
 #   3. Set FOUNDRYUP_SHA256 to the checksum of the foundryup launcher at that commit:
 #        curl -sSfL https://raw.githubusercontent.com/foundry-rs/foundry/<commit>/foundryup/foundryup | shasum -a 256
-FOUNDRY_VERSION=v1.0.0
-FOUNDRY_COMMIT=8692e926198056d0228c1e166b1b6c34a5bed66c
-FOUNDRYUP_SHA256=980a7a4a7f6a453346191bbe5c03bb378a91c92b10573a86fd29ee6f4b7f5d35
+FOUNDRY_VERSION=v1.6.0-rc1
+FOUNDRY_COMMIT=b272ce3366987406406e9eb1b82596653a3ad628
+FOUNDRYUP_SHA256=9f21de4687101a3e12adbad69bcb002ca2d454e9fff2352e33ab53f57074ec61
 
 FOUNDRY_DIR="${FOUNDRY_DIR:-$HOME/.foundry}"
 FOUNDRY_BIN_DIR="$FOUNDRY_DIR/bin"
+
+FOUNDRYUP_ATTEMPTS="${FOUNDRYUP_ATTEMPTS:-4}"
+FOUNDRYUP_RETRY_DELAY="${FOUNDRYUP_RETRY_DELAY:-15}"
 
 # Fetch the foundryup launcher directly from the pinned commit instead of running
 # the upstream install script. The upstream install script hardcodes a download
@@ -67,7 +70,20 @@ if [[ ":$PATH:" == *":${FOUNDRY_BIN_DIR}:"* ]]; then
 fi
 export PATH="$PATH:$FOUNDRY_BIN_DIR"
 
-foundryup --install "${FOUNDRY_VERSION}"
+# foundryup verifies release attestations, and GitHub's download endpoints
+# intermittently return 504 to CI runners, which aborts the install. Retry
+# instead of passing --force, which would skip that verification.
+for attempt in $(seq 1 "$FOUNDRYUP_ATTEMPTS"); do
+  if foundryup --install "${FOUNDRY_VERSION}"; then
+    break
+  fi
+  if [[ "$attempt" -eq "$FOUNDRYUP_ATTEMPTS" ]]; then
+    echo "error: foundryup could not install ${FOUNDRY_VERSION} after ${FOUNDRYUP_ATTEMPTS} attempts" >&2
+    exit 1
+  fi
+  echo "foundryup failed (attempt ${attempt}/${FOUNDRYUP_ATTEMPTS}), retrying in ${FOUNDRYUP_RETRY_DELAY}s"
+  sleep "$FOUNDRYUP_RETRY_DELAY"
+done
 
 # Verify that foundryup actually installed the pinned version rather than
 # silently falling back to a different release. forge reports the version
