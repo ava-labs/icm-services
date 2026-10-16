@@ -52,10 +52,10 @@ jobs:
           chmod +x ./scripts/nightly_test.sh
           ./scripts/nightly_test.sh
         env:
-          ETH_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
-          BEACON_API_URL: ${{ secrets.SEPOLIA_BEACON_URL }}
-          SENDER_PRIVATE_KEY: ${{ secrets.SEPOLIA_SENDER_PRIVATE_KEY }}
-          SENDER_CONTRACT: ${{ secrets.SEPOLIA_SENDER_CONTRACT }}
+          ETH_RPC_URL: ${{ secrets.ETHEREUM_RPC_URL }}
+          BEACON_API_URL: ${{ secrets.ETHEREUM_BEACON_URL }}
+          SENDER_PRIVATE_KEY: ${{ secrets.ETHEREUM_SENDER_PRIVATE_KEY }}
+          SENDER_CONTRACT: ${{ secrets.ETHEREUM_SENDER_CONTRACT }}
           SUBGRAPH_URL: ${{ secrets.BOUNDLESS_SUBGRAPH_URL }}
 
   
