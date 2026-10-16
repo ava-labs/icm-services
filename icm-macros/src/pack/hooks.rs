@@ -18,6 +18,7 @@ pub struct PackArgs {
 pub struct FieldArgs {
     pub method: Option<String>,
     pub ignore: bool,
+    pub length: Option<String>,
 }
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
@@ -133,12 +134,14 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
         return FieldArgs {
             method: None,
             ignore: false,
+            length: None,
         };
     };
     let Some(pack_start) = comment.find("#[pack(") else {
         return FieldArgs {
             method: None,
             ignore: false,
+            length: None,
         };
     };
     let args_start = pack_start + "#[pack(".len();
@@ -146,6 +149,7 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
         return FieldArgs {
             method: None,
             ignore: false,
+            length: None,
         };
     };
     let args_str = comment[args_start..args_start + args_end_rel].trim();
@@ -154,15 +158,19 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
         return FieldArgs {
             method: None,
             ignore: true,
+            length: None,
         };
     }
 
     let mut method = None;
     let mut ignore = false;
+    let mut length = None;
     for arg in args_str.split(',') {
         if let Some((key, val)) = arg.trim().split_once('=') {
-            if key.trim() == "method" {
-                method = Some(val.trim().trim_matches('"').to_string());
+            match key.trim() {
+                "method" => method = Some(val.trim().trim_matches('"').to_string()),
+                "length" => length = Some(val.trim().to_string()),
+                _ => {}
             }
         } else if arg.trim() == "ignore" {
             ignore = true;
@@ -172,11 +180,13 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
         FieldArgs {
             method: None,
             ignore: true,
+            length: None,
         }
     } else {
         FieldArgs {
             method,
             ignore: false,
+            length,
         }
     }
 }
@@ -219,6 +229,8 @@ mod tests {
                 Some("#[pack(method=\"Foo.bar\")]".to_string()),
                 Some("#[pack(ignore)]".to_string()),
                 Some("#[pack(ignore, method=\"Foo.bar\")]".to_string()),
+                Some("#[pack(length = uint32)]".to_string()),
+                Some("#[pack(method=\"Foo.bar\", length = uint64)]".to_string()),
             ],
         )
         .unwrap();
@@ -228,21 +240,40 @@ mod tests {
             raw.fields[0],
             FieldArgs {
                 method: Some("Foo.bar".to_string()),
-                ignore: false
+                ignore: false,
+                length: None,
             }
         );
         assert_eq!(
             raw.fields[1],
             FieldArgs {
                 method: None,
-                ignore: true
+                ignore: true,
+                length: None,
             }
         );
         assert_eq!(
             raw.fields[2],
             FieldArgs {
                 method: None,
-                ignore: true
+                ignore: true,
+                length: None,
+            }
+        );
+        assert_eq!(
+            raw.fields[3],
+            FieldArgs {
+                method: None,
+                ignore: false,
+                length: Some("uint32".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[4],
+            FieldArgs {
+                method: Some("Foo.bar".to_string()),
+                ignore: false,
+                length: Some("uint64".to_string()),
             }
         );
     }
