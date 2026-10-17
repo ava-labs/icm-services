@@ -72,7 +72,8 @@ contract TestRoundTrip is Test {
         bytes memory b,
         string memory s,
         address addr,
-        uint8 numAddresses
+        uint8 numAddresses,
+        bytes32 hash
     ) public pure {
         vm.assume(b.length <= 255);
         vm.assume(bytes(s).length <= 65535);
@@ -83,7 +84,7 @@ contract TestRoundTrip is Test {
             addrs[i] = addr;
         }
 
-        Sizes memory original = Sizes({Bytes: b, String: s, Addresses: addrs});
+        Sizes memory original = Sizes({Bytes: b, String: s, Addresses: addrs, ReverseHash: abi.encodePacked(hash)});
 
         bytes memory data = packSizes(original);
         (, Sizes memory deserialized) = unpackSizes(data);
@@ -94,13 +95,46 @@ contract TestRoundTrip is Test {
         for (uint256 i = 0; i < original.Addresses.length; i++) {
             assertEq(deserialized.Addresses[i], original.Addresses[i]);
         }
+        assertEq(deserialized.ReverseHash, original.ReverseHash);
+    }
+
+    // Helper so vm.expectRevert() can intercept the calldata unpack.
+    function callUnpackSizes(bytes calldata data) external pure returns (uint256, RoundTrip.Sizes memory) {
+        return RoundTrip.unpackSizes(data);
+    }
+
+    function testRoundTripSizesCalldataShortHash(
+        bytes memory b,
+        string memory s,
+        address addr,
+        uint8 numAddresses
+    ) public {
+        vm.assume(b.length <= 255);
+        vm.assume(bytes(s).length <= 65535);
+        vm.assume(numAddresses <= 10);
+
+        address[] memory addrs = new address[](numAddresses);
+        for (uint256 i = 0; i < numAddresses; i++) {
+            addrs[i] = addr;
+        }
+
+        RoundTrip.Sizes memory original = RoundTrip.Sizes({
+            Bytes: b,
+            String: s,
+            Addresses: addrs,
+            ReverseHash: new bytes(20)
+        });
+        bytes memory data = RoundTrip.packSizes(original);
+        vm.expectRevert();
+        this.callUnpackSizes(data);
     }
 
     function testRoundTripSizesCalldata(
         bytes memory b,
         string memory s,
         address addr,
-        uint8 numAddresses
+        uint8 numAddresses,
+        bytes32 hash
     ) public pure {
         vm.assume(b.length <= 255);
         vm.assume(bytes(s).length <= 65535);
@@ -111,7 +145,7 @@ contract TestRoundTrip is Test {
             addrs[i] = addr;
         }
 
-        RoundTrip.Sizes memory original = RoundTrip.Sizes({Bytes: b, String: s, Addresses: addrs});
+        RoundTrip.Sizes memory original = RoundTrip.Sizes({Bytes: b, String: s, Addresses: addrs, ReverseHash: abi.encodePacked(hash)});
 
         bytes memory data = RoundTrip.packSizes(original);
         (, RoundTrip.Sizes memory deserialized) = RoundTrip.unpackSizes(data);
@@ -122,5 +156,6 @@ contract TestRoundTrip is Test {
         for (uint256 i = 0; i < original.Addresses.length; i++) {
             assertEq(deserialized.Addresses[i], original.Addresses[i]);
         }
+        assertEq(deserialized.ReverseHash, original.ReverseHash);
     }
 }

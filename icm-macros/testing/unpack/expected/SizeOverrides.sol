@@ -9,6 +9,8 @@ library PackMethods {
         string String;
         // #[unpack(length=uint32)]
         address[] Addresses;
+        // #[unpack(length=32)]
+        bytes Hash;
     }
 
     // #[unpack(calldata)]
@@ -19,6 +21,16 @@ library PackMethods {
         string String;
         // #[unpack(length=uint32)]
         address[] Addresses;
+        // #[unpack(length=32, method="parseHash")]
+        bytes Hash;
+    }
+
+    function parseHash(bytes calldata hashBytes) internal pure returns (bytes memory) {
+        if (hashBytes.length == 32) {
+            return hashBytes;
+        } else {
+            return new bytes(32);
+        }
     }
 
     function unpackDynamicStruct(bytes memory data) public pure returns (uint256, DynamicStruct memory) {
@@ -79,6 +91,17 @@ library PackMethods {
             }
         }
         result.Addresses = Addresses;
+        bytes memory Hash;
+        {
+            Hash = new bytes(32);
+            assembly {
+                mcopy(add(Hash, 32), add(data, 32), 32)
+                let _data_orig_len := mload(data)
+                data := add(data, 32)
+                mstore(data, sub(_data_orig_len, 32))
+            }
+        }
+        result.Hash = Hash;
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
@@ -121,6 +144,12 @@ library PackMethods {
             }
         }
         result.Addresses = Addresses;
+        bytes memory Hash;
+        {
+            Hash = parseHash(data[0:32]);
+            data = data[32:];
+        }
+        result.Hash = Hash;
 
         return (_initial_length - data.length, result);
     }

@@ -28,16 +28,19 @@
 //!
 //! _Fields_
 //! As mentioned above, each non-primitive field is assumed to also possess a pack method. This is
-//! assumed to be in the scope in which the macro-expanded code will be placed. If not, or it is
-//! desired to use a different serialization method, the field can be annotated with a comment of
-//! the form `#[pack(method = "...")]`. Note that this is only relevant for structs, not enums.
+//! assumed to be in the scope in which the macro-expanded code will be placed.  To override this
+//! or handle special cases, annotate the field:
 //!
-//! It is also possible to annotate a field with `#[pack(ignore)]` and its serialization will be
-//! skipped by the macro-generated code.
+//!  `#[pack(method = "expr")]`: Use `expr(data)` to serialize the field instead of the default
+//!  inline encoder. The method must accept `data` and return `bytes`.
 //!
-//! If a field is a dynamically sized type, by default its length will be encoded using a uint256.
-//! This can be changed by annotating the field with `#[pack(length = ...)]`, which should provide
-//! an unsigned integer solidity type.
+//!  `#[pack(default)]`: Skip this field; the struct is returned with a zero value for it.
+//!  Intended for use alongside `#[unpack(ignore)]`.
+//!
+//! `#[pack(length = drop|constant)]`: If a field is a dynamically sized type, by default its length
+//! will be encoded using a uint256. This can be changed to use a different solidity unsigned integer
+//! type. If the size is a constant, the drop keyword can be used to avoid encoding the length.
+//!
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the pack

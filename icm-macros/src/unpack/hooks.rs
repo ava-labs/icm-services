@@ -16,12 +16,20 @@ pub struct UnpackArgs {
     pub solhint_disable: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum LengthSpec {
+    /// Read a length/count prefix using this Solidity unsigned integer type (e.g. `"uint32"`).
+    Type(String),
+    /// The length/count is a compile-time Solidity expression; no prefix is read from the buffer.
+    Constant(String),
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FieldArgs {
     pub method: Option<String>,
     pub default: bool,
     pub memory: bool,
-    pub length: Option<String>,
+    pub length: Option<LengthSpec>,
 }
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
@@ -201,7 +209,18 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
         if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
-                "length" => length = Some(val.trim().to_string()),
+                "length" => {
+                    let v = val.trim();
+                    let is_uint = v
+                        .strip_prefix("uint")
+                        .and_then(|s| s.parse::<u16>().ok())
+                        .is_some_and(|n| (8..=256).contains(&n) && n % 8 == 0);
+                    length = Some(if is_uint {
+                        LengthSpec::Type(v.to_string())
+                    } else {
+                        LengthSpec::Constant(v.to_string())
+                    });
+                }
                 _ => {}
             }
         } else if arg.trim() == "default" {
@@ -292,6 +311,10 @@ mod tests {
                     Some("#[unpack(method=\"Foo.bar\", length = uint64)]".to_string()),
                     true,
                 ),
+                (
+                    Some("#[unpack(length = BLST.BLS_SIGNATURE_LENGTH)]".to_string()),
+                    true,
+                ),
             ],
         )
         .unwrap();
@@ -330,7 +353,7 @@ mod tests {
                 method: None,
                 default: false,
                 memory: true,
-                length: Some("uint32".to_string()),
+                length: Some(LengthSpec::Type("uint32".to_string())),
             }
         );
         assert_eq!(
@@ -339,7 +362,18 @@ mod tests {
                 method: Some("Foo.bar".to_string()),
                 default: false,
                 memory: true,
-                length: Some("uint64".to_string()),
+                length: Some(LengthSpec::Type("uint64".to_string())),
+            }
+        );
+        assert_eq!(
+            raw.fields[5],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some(LengthSpec::Constant(
+                    "BLST.BLS_SIGNATURE_LENGTH".to_string()
+                )),
             }
         );
     }
