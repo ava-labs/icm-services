@@ -216,7 +216,7 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs<Unvalidated> {
         if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
-                "length" => length = Some(val.trim().to_string()),
+                "length" => length = Some(val.trim().trim_matches('"').to_string()),
                 _ => {}
             }
         } else if arg.trim() == "ignore" {
@@ -266,6 +266,35 @@ mod tests {
         assert_eq!(raw.visibility, "private".to_string());
         let expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         assert_eq!(raw.fields, expected);
+    }
+
+    #[test]
+    fn test_length_quoted() {
+        // length = "uint32" (with quotes) must behave identically to length = uint32
+        let raw = parse_comment(
+            "#[pack()]",
+            &vec![
+                Some("#[pack(length = \"uint32\")]".to_string()),
+                Some("#[pack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0],
+            FieldArgs {
+                method: None,
+                ignore: false,
+                length: Some("uint32".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[1],
+            FieldArgs {
+                method: Some("Foo.bar".to_string()),
+                ignore: false,
+                length: Some("uint64".to_string()),
+            }
+        );
     }
 
     #[test]

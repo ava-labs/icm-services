@@ -259,7 +259,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs<Unvalidate
         if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
-                "length" => length = Some(val.trim().to_string()),
+                "length" => length = Some(val.trim().trim_matches('"').to_string()),
                 _ => {}
             }
         } else if arg.trim() == "default" {
@@ -331,6 +331,40 @@ mod tests {
         .unwrap();
         assert!(raw.calldata);
         assert!(raw.solhint_disable);
+    }
+
+    #[test]
+    fn test_length_quoted() {
+        // length = "uint32" (with quotes) must behave identically to length = uint32
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![
+                (Some("#[unpack(length = \"uint32\")]".to_string()), false),
+                (
+                    Some("#[unpack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
+                    false,
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: false,
+                length: Some("uint32".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[1],
+            FieldArgs {
+                method: Some("Foo.bar".to_string()),
+                default: false,
+                memory: false,
+                length: Some("uint64".to_string()),
+            }
+        );
     }
 
     #[test]
