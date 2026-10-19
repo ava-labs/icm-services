@@ -71,19 +71,23 @@ contract MerkleValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
         require(
             msg.sender == message.originTeleporterAddress
                 || msg.sender
-                    == address(ITeleporterMessengerV2(message.originTeleporterAddress).messageSender()),
+                    == address(
+                        ITeleporterMessengerV2(message.originTeleporterAddress).messageSender()
+                    ),
             "unauthorized sender"
         );
-        IWarpMessenger(_WARP_PRECOMPILE_ADDRESS).sendWarpMessage(
-            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message)
-        );
+        IWarpMessenger(_WARP_PRECOMPILE_ADDRESS)
+            .sendWarpMessage(TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message));
     }
 
     /**
      * @notice Registers or updates the Merkle commitment for a validator set keyed by Avalanche
      * blockchain ID.
      */
-    function registerValidatorSet(ICMMessage calldata message, bytes32 signingChainID) external {
+    function registerValidatorSet(
+        ICMMessage calldata message,
+        bytes32 signingChainID
+    ) external {
         require(pChainInitialized(), "No P-chain validator set registered.");
         require(message.sourceNetworkID == avalancheNetworkID, "Network ID mismatch");
 

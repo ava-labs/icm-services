@@ -17,10 +17,12 @@ import {
 import {Validator, ValidatorStatus, PChainOwner} from "./interfaces/IACP99Manager.sol";
 import {IRewardCalculator} from "./interfaces/IRewardCalculator.sol";
 import {IWarpMessenger, WarpMessage} from "@subnet-evm/IWarpMessenger.sol";
-import {ReentrancyGuardUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.1.0/utils/ReentrancyGuardUpgradeable.sol";
-import {ContextUpgradeable} from
-    "@openzeppelin/contracts-upgradeable@5.1.0/utils/ContextUpgradeable.sol";
+import {
+    ReentrancyGuardUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.1.0/utils/ReentrancyGuardUpgradeable.sol";
+import {
+    ContextUpgradeable
+} from "@openzeppelin/contracts-upgradeable@5.1.0/utils/ContextUpgradeable.sol";
 
 /**
  * @dev Implementation of the {IStakingManager} interface.
@@ -68,6 +70,13 @@ abstract contract StakingManager is
         mapping(bytes32 validationID => uint256) _redeemableValidatorRewards;
         /// @notice Maps the validation ID to its reward recipient.
         mapping(bytes32 validationID => address) _rewardRecipients;
+        /**
+         * @notice Maps the delegation ID to the timestamp at which the validator owner, rather than the
+         * delegator, initiated its removal. The reward of such a delegation is computed when the removal
+         * completes, using this timestamp as the delegation end time, so that uptime proofs submitted in
+         * the meantime are honored. Zero for delegations whose removal was initiated by the delegator.
+         */
+        mapping(bytes32 delegationID => uint64) _validatorInitiatedDelegationEndTimes;
     }
     // solhint-enable private-vars-leading-underscore
 
@@ -195,13 +204,23 @@ abstract contract StakingManager is
     /**
      * @notice See {IStakingManager-submitUptimeProof}.
      */
-    function submitUptimeProof(bytes32 validationID, uint32 messageIndex) external {
+    function submitUptimeProof(
+        bytes32 validationID,
+        uint32 messageIndex
+    ) external {
         if (!_isPoSValidator(validationID)) {
             revert ValidatorNotPoS(validationID);
         }
+        // Proofs are accepted for as long as the stored uptime may still determine a delegation's
+        // reward: while the validator is active, and after it has initiated or completed its exit,
+        // since delegations ended after that are rewarded from the stored uptime. The stored uptime
+        // only ever increases, so a late proof can only restore rewards a stale value would deny.
         ValidatorStatus status =
-            _getStakingManagerStorage()._manager.getValidator(validationID).status;
-        if (status != ValidatorStatus.Active) {
+        _getStakingManagerStorage()._manager.getValidator(validationID).status;
+        if (
+            status != ValidatorStatus.Active && status != ValidatorStatus.PendingRemoved
+                && status != ValidatorStatus.Completed
+        ) {
             revert InvalidValidatorStatus(status);
         }
 
@@ -358,13 +377,14 @@ abstract contract StakingManager is
             uptimeSeconds = $._posValidatorInfo[validationID].uptimeSeconds;
         }
 
-        uint256 reward = $._rewardCalculator.calculateReward({
-            stakeAmount: weightToValue(validator.startingWeight),
-            validatorStartTime: validator.startTime,
-            stakingStartTime: validator.startTime,
-            stakingEndTime: validator.endTime,
-            uptimeSeconds: uptimeSeconds
-        });
+        uint256 reward = $._rewardCalculator
+            .calculateReward({
+                stakeAmount: weightToValue(validator.startingWeight),
+                validatorStartTime: validator.startTime,
+                stakingStartTime: validator.startTime,
+                stakingEndTime: validator.endTime,
+                uptimeSeconds: uptimeSeconds
+            });
 
         $._redeemableValidatorRewards[validationID] += reward;
 
@@ -413,7 +433,10 @@ abstract contract StakingManager is
      * @dev Helper function that extracts the uptime from a ValidationUptimeMessage Warp message
      * If the uptime is greater than the stored uptime, update the stored uptime.
      */
-    function _updateUptime(bytes32 validationID, uint32 messageIndex) internal returns (uint64) {
+    function _updateUptime(
+        bytes32 validationID,
+        uint32 messageIndex
+    ) internal returns (uint64) {
         (WarpMessage memory warpMessage, bool valid) =
             WARP_MESSENGER.getVerifiedWarpMessage(messageIndex);
         if (!valid) {
@@ -491,13 +514,14 @@ abstract contract StakingManager is
         uint256 lockedValue = _lock(stakeAmount);
 
         uint64 weight = valueToWeight(lockedValue);
-        bytes32 validationID = $._manager.initiateValidatorRegistration({
-            nodeID: nodeID,
-            blsPublicKey: blsPublicKey,
-            remainingBalanceOwner: remainingBalanceOwner,
-            disableOwner: disableOwner,
-            weight: weight
-        });
+        bytes32 validationID = $._manager
+            .initiateValidatorRegistration({
+                nodeID: nodeID,
+                blsPublicKey: blsPublicKey,
+                remainingBalanceOwner: remainingBalanceOwner,
+                disableOwner: disableOwner,
+                weight: weight
+            });
 
         address owner = _msgSender();
 
@@ -598,6 +622,8 @@ abstract contract StakingManager is
 
     /**
      * @notice Returns the reward recipient and claimable reward amount for the given delegationID
+     * @dev If the removal of the delegation was initiated by the validator owner, its reward is only
+     * computed in {completeDelegatorRemoval}, so the amount is 0 until then.
      * @return The current delegation reward recipient
      * @return The current claimable delegation reward amount
      */
@@ -605,9 +631,11 @@ abstract contract StakingManager is
         bytes32 delegationID
     ) public view returns (address, uint256) {
         StakingManagerStorage storage $ = _getStakingManagerStorage();
-        return (
-            $._delegatorRewardRecipients[delegationID], $._redeemableDelegatorRewards[delegationID]
-        );
+        return
+            (
+                $._delegatorRewardRecipients[delegationID],
+                $._redeemableDelegatorRewards[delegationID]
+            );
     }
 
     /**
@@ -623,7 +651,10 @@ abstract contract StakingManager is
      * @param to Address to send token to.
      * @param value Number of tokens to lock.
      */
-    function _unlock(address to, uint256 value) internal virtual;
+    function _unlock(
+        address to,
+        uint256 value
+    ) internal virtual;
 
     /**
      * @notice Initiates delegator registration by updating the validator's weight and storing the delegation information.
@@ -694,7 +725,10 @@ abstract contract StakingManager is
      * @notice See {IStakingManager-completeDelegatorRegistration}.
      * Extends the functionality of {ACP99Manager-completeValidatorWeightUpdate} by updating the delegation status.
      */
-    function completeDelegatorRegistration(bytes32 delegationID, uint32 messageIndex) external {
+    function completeDelegatorRegistration(
+        bytes32 delegationID,
+        uint32 messageIndex
+    ) external {
         StakingManagerStorage storage $ = _getStakingManagerStorage();
 
         Delegator memory delegator = $._delegatorStakes[delegationID];
@@ -775,7 +809,8 @@ abstract contract StakingManager is
     /**
      * @dev Helper function that initiates the end of a PoS delegation period.
      * Returns false if it is possible for the delegator to claim rewards, but it is not eligible.
-     * Returns true otherwise.
+     * Returns true otherwise, including when the validator owner ends an active delegation, since
+     * that delegation's reward is only computed once the removal completes.
      */
     function _initiateDelegatorRemoval(
         bytes32 delegationID,
@@ -794,7 +829,8 @@ abstract contract StakingManager is
         }
 
         // Only the delegation owner or parent validator can end the delegation.
-        if (delegator.owner != _msgSender()) {
+        bool initiatedByValidator = delegator.owner != _msgSender();
+        if (initiatedByValidator) {
             // Validators can only remove delegations after the minimum stake duration has passed.
             if ($._posValidatorInfo[validationID].owner != _msgSender()) {
                 revert UnauthorizedOwner(_msgSender());
@@ -825,20 +861,35 @@ abstract contract StakingManager is
             // initiate the removal.
             $._delegatorStakes[delegationID].status = DelegatorStatus.PendingRemoved;
 
-            ($._delegatorStakes[delegationID].endingNonce,) = $
-                ._manager
-                .initiateValidatorWeightUpdate(validationID, validator.weight - delegator.weight);
-
-            uint256 reward =
-                _calculateAndSetDelegationReward(delegator, rewardRecipient, delegationID);
+            ($._delegatorStakes[delegationID].endingNonce,) =
+                $._manager
+                    .initiateValidatorWeightUpdate(
+                        validationID, validator.weight - delegator.weight
+                    );
 
             emit InitiatedDelegatorRemoval({delegationID: delegationID, validationID: validationID});
+
+            if (initiatedByValidator) {
+                // The validator owner, not the delegator, chose when this delegation ends and
+                // whether an uptime proof accompanies it, so the delegator's reward must not be
+                // fixed here from uptime the delegator had no say in. Record the end time and
+                // compute the reward when the removal completes: the validator stays active until
+                // then, so anyone may still submit a fresh uptime proof and it will be honored.
+                $._validatorInitiatedDelegationEndTimes[delegationID] = uint64(block.timestamp);
+                return true;
+            }
+
+            uint256 reward = _calculateAndSetDelegationReward(
+                delegator, rewardRecipient, delegationID, uint64(block.timestamp)
+            );
             return (reward > 0);
         } else if (validator.status == ValidatorStatus.Completed) {
-            _calculateAndSetDelegationReward(delegator, rewardRecipient, delegationID);
+            _calculateAndSetDelegationReward(
+                delegator, rewardRecipient, delegationID, validator.endTime
+            );
             _completeDelegatorRemoval(delegationID);
-            // If the validator has completed, then no further uptimes may be submitted, so we always
-            // end the delegation.
+            // If the validator has completed, the delegation ended when the validator did, so it
+            // is always ended here regardless of reward eligibility.
             return true;
         } else {
             revert InvalidValidatorStatus(validator.status);
@@ -846,43 +897,43 @@ abstract contract StakingManager is
     }
 
     /**
-     * @dev Calculates the reward owed to the delegator based on the state of the delegator and its corresponding validator.
-     * then set the reward and reward recipient in the storage.
+     * @dev Calculates the reward owed to the delegator for the delegation period ending at
+     * [delegationEndTime], based on the validator's currently stored uptime, then sets the reward
+     * and reward recipient in storage.
      */
     function _calculateAndSetDelegationReward(
         Delegator memory delegator,
         address rewardRecipient,
-        bytes32 delegationID
+        bytes32 delegationID,
+        uint64 delegationEndTime
     ) private returns (uint256) {
         StakingManagerStorage storage $ = _getStakingManagerStorage();
 
         Validator memory validator = $._manager.getValidator(delegator.validationID);
-
-        uint64 delegationEndTime;
-        if (
-            validator.status == ValidatorStatus.PendingRemoved
-                || validator.status == ValidatorStatus.Completed
-        ) {
-            delegationEndTime = validator.endTime;
-        } else if (validator.status == ValidatorStatus.Active) {
-            delegationEndTime = uint64(block.timestamp);
-        } else {
-            // Should be unreachable.
-            revert InvalidValidatorStatus(validator.status);
-        }
 
         // Only give rewards in the case that the delegation started before the validator exited.
         if (delegationEndTime <= delegator.startTime) {
             return 0;
         }
 
-        uint256 reward = $._rewardCalculator.calculateReward({
-            stakeAmount: weightToValue(delegator.weight),
-            validatorStartTime: validator.startTime,
-            stakingStartTime: delegator.startTime,
-            stakingEndTime: delegationEndTime,
-            uptimeSeconds: $._posValidatorInfo[delegator.validationID].uptimeSeconds
-        });
+        // The stored uptime may have been updated after [delegationEndTime], e.g. by a proof
+        // submitted while a validator-initiated removal was pending, so it can exceed the
+        // validation window being rewarded. Cap it at that window so uptime accrued after the
+        // delegation ended can neither count toward it nor scale a calculator's payout.
+        uint64 uptimeSeconds = $._posValidatorInfo[delegator.validationID].uptimeSeconds;
+        uint64 maxUptimeSeconds = delegationEndTime - validator.startTime;
+        if (uptimeSeconds > maxUptimeSeconds) {
+            uptimeSeconds = maxUptimeSeconds;
+        }
+
+        uint256 reward = $._rewardCalculator
+            .calculateReward({
+                stakeAmount: weightToValue(delegator.weight),
+                validatorStartTime: validator.startTime,
+                stakingStartTime: delegator.startTime,
+                stakingEndTime: delegationEndTime,
+                uptimeSeconds: uptimeSeconds
+            });
 
         if (rewardRecipient == address(0)) {
             rewardRecipient = delegator.owner;
@@ -981,6 +1032,20 @@ abstract contract StakingManager is
             revert MinStakeDurationNotPassed(uint64(block.timestamp));
         }
 
+        // If the validator owner initiated this removal, the reward computation was deferred to this
+        // point so that uptime proofs submitted since then are reflected in the stored uptime. The
+        // delegation period still ends at the time the removal was initiated.
+        uint64 validatorInitiatedEndTime = $._validatorInitiatedDelegationEndTimes[delegationID];
+        if (validatorInitiatedEndTime != 0) {
+            delete $._validatorInitiatedDelegationEndTimes[delegationID];
+            _calculateAndSetDelegationReward(
+                delegator,
+                $._delegatorRewardRecipients[delegationID],
+                delegationID,
+                validatorInitiatedEndTime
+            );
+        }
+
         // Once this function completes, the delegation is completed so we can clear it from state now.
         delete $._delegatorStakes[delegationID];
 
@@ -1003,7 +1068,10 @@ abstract contract StakingManager is
     /**
      * @dev This function must be implemented to mint rewards to validators and delegators.
      */
-    function _reward(address account, uint256 amount) internal virtual;
+    function _reward(
+        address account,
+        uint256 amount
+    ) internal virtual;
 
     /**
      * @dev Return true if this is a PoS validator with locked stake. Returns false if this was originally a PoA
@@ -1016,7 +1084,10 @@ abstract contract StakingManager is
         return $._posValidatorInfo[validationID].owner != address(0);
     }
 
-    function _withdrawValidationRewards(address rewardRecipient, bytes32 validationID) internal {
+    function _withdrawValidationRewards(
+        address rewardRecipient,
+        bytes32 validationID
+    ) internal {
         StakingManagerStorage storage $ = _getStakingManagerStorage();
 
         uint256 rewards = $._redeemableValidatorRewards[validationID];

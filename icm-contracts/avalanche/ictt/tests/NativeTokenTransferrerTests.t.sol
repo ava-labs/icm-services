@@ -24,7 +24,10 @@ abstract contract NativeTokenTransferrerTest is TokenTransferrerTest {
         _send(input, 0);
     }
 
-    function _send(SendTokensInput memory input, uint256 amount) internal virtual override {
+    function _send(
+        SendTokensInput memory input,
+        uint256 amount
+    ) internal virtual override {
         // solhint-disable-next-line check-send-result
         nativeTokenTransferrer.send{value: amount}(input);
     }

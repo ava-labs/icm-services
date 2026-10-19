@@ -26,7 +26,10 @@ import {TeleporterICMMessage} from "./TeleporterMessageV2.sol";
 // wrong as it means you accept if all IMessageVerifiers fail.
 library ConfigurableAttestation {
     // Returns the CONFIG value for an "at least m of n adapters must succeed" policy.
-    function mOfNConfig(uint8 m, uint8 n) internal pure returns (uint256 configuration) {
+    function mOfNConfig(
+        uint8 m,
+        uint8 n
+    ) internal pure returns (uint256 configuration) {
         require(n <= 8, "n must be <= 8");
         require(m <= n, "m must be <= n");
         require(m > 0, "m must be > 0");
@@ -71,7 +74,10 @@ contract ConfigurableAttestationVerifier is IMessageVerifier {
     uint256 public immutable config;
     IMessageVerifier[] private _verifiers;
 
-    constructor(uint256 config_, address[] memory verifiers_) {
+    constructor(
+        uint256 config_,
+        address[] memory verifiers_
+    ) {
         config = config_;
         require(verifiers_.length <= 8, "Cannot configure more than eight adapters");
         // the configuration should not include subsets for sets with cardinality greater

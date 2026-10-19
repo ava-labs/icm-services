@@ -248,8 +248,7 @@ contract ValidatorMessagesTest is Test {
     }
 
     function testRegisterL1ValidatorMessage() public view {
-        (bytes32 validationID, bytes memory packed) = ValidatorMessages
-            .packRegisterL1ValidatorMessage(
+        (bytes32 validationID, bytes memory packed) = ValidatorMessages.packRegisterL1ValidatorMessage(
             ValidatorMessages.ValidationPeriod({
                 subnetID: DEFAULT_SUBNET_ID,
                 nodeID: DEFAULT_NODE_ID,
@@ -277,6 +276,34 @@ contract ValidatorMessagesTest is Test {
         assertEq(recoveredID, validationID);
     }
 
+    function testRegisterL1ValidatorMessageGoldenBytes() public view {
+        (bytes32 validationID, bytes memory packed) = ValidatorMessages.packRegisterL1ValidatorMessage(
+            ValidatorMessages.ValidationPeriod({
+                subnetID: DEFAULT_SUBNET_ID,
+                nodeID: DEFAULT_NODE_ID,
+                registrationExpiry: 1704067200,
+                blsPublicKey: DEFAULT_BLS_PUBLIC_KEY,
+                remainingBalanceOwner: DEFAULT_P_CHAIN_OWNER,
+                disableOwner: DEFAULT_P_CHAIN_OWNER,
+                weight: DEFAULT_WEIGHT
+            })
+        );
+
+        assertEq(
+            packed,
+            hex"0000" hex"00000001"
+            hex"1234567812345678123456781234567812345678123456781234567812345678" hex"00000020"
+            hex"1234567812345678123456781234567812345678123456781234567812345678"
+            hex"123456781234567812345678123456781234567812345678123456781234567812345678123456781234567812345678"
+            hex"0000000065920080" hex"00000001" hex"00000001"
+            hex"1234567812345678123456781234567812345678" hex"00000001" hex"00000001"
+            hex"1234567812345678123456781234567812345678" hex"00000000000f4240"
+        );
+        assertEq(
+            validationID, hex"b704025de2f3f69ffc047c085b4a8cd81bd58ed8f0502fdabcd6c63fc72d0540"
+        );
+    }
+
     function testSubnetToL1ConversionMessage() public pure {
         bytes memory packed =
             ValidatorMessages.packSubnetToL1ConversionMessage(DEFAULT_SUBNET_CONVERSION_ID);
@@ -287,9 +314,7 @@ contract ValidatorMessagesTest is Test {
     function testPackL1ConversionData() public pure {
         InitialValidator[] memory initialValidators = new InitialValidator[](1);
         initialValidators[0] = InitialValidator({
-            nodeID: DEFAULT_NODE_ID,
-            weight: DEFAULT_WEIGHT,
-            blsPublicKey: DEFAULT_BLS_PUBLIC_KEY
+            nodeID: DEFAULT_NODE_ID, weight: DEFAULT_WEIGHT, blsPublicKey: DEFAULT_BLS_PUBLIC_KEY
         });
         bytes memory packed = ValidatorMessages.packConversionData(
             ConversionData({
@@ -301,6 +326,34 @@ contract ValidatorMessagesTest is Test {
         );
 
         assertEq(packed.length, 186);
+    }
+
+    // The P-Chain parses these messages byte for byte, and packConversionData has no unpack
+    // counterpart to round-trip against, so pin the exact encoding. Any change here is a
+    // consensus-breaking change and must be deliberate.
+    function testPackL1ConversionDataGoldenBytes() public pure {
+        InitialValidator[] memory initialValidators = new InitialValidator[](1);
+        initialValidators[0] = InitialValidator({
+            nodeID: DEFAULT_NODE_ID, weight: DEFAULT_WEIGHT, blsPublicKey: DEFAULT_BLS_PUBLIC_KEY
+        });
+        bytes memory packed = ValidatorMessages.packConversionData(
+            ConversionData({
+                subnetID: DEFAULT_SUBNET_ID,
+                validatorManagerBlockchainID: DEFAULT_SUBNET_CONVERSION_ID,
+                validatorManagerAddress: DEFAULT_OWNER,
+                initialValidators: initialValidators
+            })
+        );
+
+        assertEq(
+            packed,
+            hex"0000" hex"1234567812345678123456781234567812345678123456781234567812345678"
+            hex"1234567812345678123456781234567812345678123456781234567812345678" hex"00000014"
+            hex"1234567812345678123456781234567812345678" hex"00000001" hex"00000020"
+            hex"1234567812345678123456781234567812345678123456781234567812345678"
+            hex"123456781234567812345678123456781234567812345678123456781234567812345678123456781234567812345678"
+            hex"00000000000f4240"
+        );
     }
 
     function testL1ValidatorRegistrationMessage() public pure {

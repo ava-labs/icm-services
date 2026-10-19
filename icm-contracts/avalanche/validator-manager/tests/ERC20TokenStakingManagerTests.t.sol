@@ -297,7 +297,10 @@ contract ERC20TokenStakingManagerTest is StakingManagerTest {
         return delegationID;
     }
 
-    function _beforeSend(uint256 amount, address spender) internal override {
+    function _beforeSend(
+        uint256 amount,
+        address spender
+    ) internal override {
         token.safeIncreaseAllowance(spender, amount);
         token.safeTransfer(spender, amount);
 
@@ -307,11 +310,17 @@ contract ERC20TokenStakingManagerTest is StakingManagerTest {
         vm.stopPrank();
     }
 
-    function _expectStakeUnlock(address account, uint256 amount) internal override {
+    function _expectStakeUnlock(
+        address account,
+        uint256 amount
+    ) internal override {
         vm.expectCall(address(token), abi.encodeCall(IERC20.transfer, (account, amount)));
     }
 
-    function _expectRewardIssuance(address account, uint256 amount) internal override {
+    function _expectRewardIssuance(
+        address account,
+        uint256 amount
+    ) internal override {
         vm.expectCall(address(token), abi.encodeCall(IERC20Mintable.mint, (account, amount)));
     }
 
