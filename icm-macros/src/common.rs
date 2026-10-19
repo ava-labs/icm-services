@@ -64,7 +64,7 @@ impl LengthType {
             } else {
                 rest.parse()
                     .ok()
-                    .filter(|&n: &u16| (8..=256).contains(&n) && n % 8 == 0)?
+                    .filter(|&n: &u16| (8..=256).contains(&n) && n % 8 == 0 && n.to_string() == rest)?
             };
             Some(Ok(ctor(bits as usize / 8)))
         };
@@ -72,5 +72,36 @@ impl LengthType {
         parse_bits("uint", Self::Uint)
             .or_else(|| parse_bits("int", Self::Int))
             .unwrap_or_else(|| Err(eyre::eyre!("`{ty}` is not a valid Solidity integer type")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_canonical() {
+        assert_eq!(LengthType::validate("uint32").unwrap(), LengthType::Uint(4));
+        assert_eq!(LengthType::validate("uint256").unwrap(), LengthType::Uint(32));
+        assert_eq!(LengthType::validate("uint").unwrap(), LengthType::Uint(32));
+        assert_eq!(LengthType::validate("int64").unwrap(), LengthType::Int(8));
+        assert_eq!(LengthType::validate("int").unwrap(), LengthType::Int(32));
+    }
+
+    #[test]
+    fn test_validate_rejects_non_canonical() {
+        assert!(LengthType::validate("uint032").is_err(), "leading zero");
+        assert!(LengthType::validate("uint+32").is_err(), "leading plus");
+        assert!(LengthType::validate("int032").is_err(), "leading zero (int)");
+        assert!(LengthType::validate("int+32").is_err(), "leading plus (int)");
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid() {
+        assert!(LengthType::validate("bool").is_err());
+        assert!(LengthType::validate("uint0").is_err(), "zero bits");
+        assert!(LengthType::validate("uint7").is_err(), "not multiple of 8");
+        assert!(LengthType::validate("uint264").is_err(), "too large");
+        assert!(LengthType::validate("uint257").is_err(), "not multiple of 8 and too large");
     }
 }
