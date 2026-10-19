@@ -16,6 +16,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
@@ -130,7 +131,18 @@ func (f *factory) NewMessageHandler(
 
 // ProcessMessage delivers the message to the destination via the TeleporterV2 messenger,
 // attaching a zk attestation.
-// TODO: Stubbed out. Implement this in follow up work
 func (m *messageHandler) ProcessMessage() (common.Hash, error) {
+	adapter, err := zkadapter.NewZKAdapter(
+		m.messageConfig.adapterAddress(), m.destinationClient.Client(),
+	)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to bind ZKAdapter: %w", err)
+	}
+	anchor, err := findAnchor(context.Background(), m.destinationClient.Client(), adapter, m.slot)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	m.logger.Info("Selected anchor", zap.Uint64("anchorSlot", anchor.slot))
+	// TODO: build proofs against the anchor and deliver. Follow-up PR.
 	return common.Hash{}, fmt.Errorf("zk message delivery not yet implemented")
 }
