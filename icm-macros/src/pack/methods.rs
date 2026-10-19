@@ -5,9 +5,10 @@ use solar::ast::ElementaryType;
 use solar::sema::Gcx;
 use solar::sema::hir::{Enum, ItemId, Struct, TypeKind};
 
+use crate::common::LengthType;
 use crate::pack::hooks::PackArgs;
 
-pub fn pack_elementary(var: &str, ty: ElementaryType, length_type: Option<&str>) -> String {
+pub fn pack_elementary(var: &str, ty: ElementaryType, length_type: LengthType) -> String {
     match ty {
         ElementaryType::Bytes => {
             let len = length_cast(&format!("{var}.length"), length_type);
@@ -21,12 +22,12 @@ pub fn pack_elementary(var: &str, ty: ElementaryType, length_type: Option<&str>)
     }
 }
 
-/// Wraps a length expression in a cast to the specified type, or returns it unchanged
-/// when no override is specified (leaving the implicit uint256 encoding in place).
-fn length_cast(len_expr: &str, length_type: Option<&str>) -> String {
+/// Wraps a length expression in a cast to the specified type.
+/// The default `uint256` type is a no-op cast so it is omitted.
+fn length_cast(len_expr: &str, length_type: LengthType) -> String {
     match length_type {
-        None => len_expr.to_string(),
-        Some(ty) => format!("{ty}({len_expr})"),
+        LengthType::Uint(32) => len_expr.to_string(),
+        lt => format!("{}({len_expr})", lt.name()),
     }
 }
 
@@ -60,9 +61,6 @@ pub fn pack_struct(
             continue;
         }
         let field = ctx.hir.variable(field_id);
-        if let Some(ty) = &field_args.length {
-            validate_length_type(ty, field.name.unwrap().as_str(), struct_def.name.as_str())?;
-        }
         let arg = if let Some(method) = &field_args.method {
             format!("{method}(obj.{})", field.name.unwrap())
         } else {
@@ -70,7 +68,7 @@ pub fn pack_struct(
                 TypeKind::Elementary(ty) => pack_elementary(
                     &format!("obj.{}", field.name.unwrap()),
                     ty,
-                    field_args.length.as_deref(),
+                    field_args.length.unwrap_or_default(),
                 ),
                 TypeKind::Array(_) => {
                     let name = field.name.unwrap().to_string();
@@ -82,7 +80,7 @@ pub fn pack_struct(
                         accessor: format!("obj.{name}"),
                         output: output.clone(),
                         ty: &field.ty.kind,
-                        length: field_args.length.clone(),
+                        length: field_args.length.unwrap_or_default(),
                     });
                     // instantiate the variable that will hold the bytes
                     body.push_str(&format!("bytes memory {output};"));
@@ -143,9 +141,9 @@ struct PackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
-    /// The Solidity uint type to use for this node's length/count prefix,
-    /// e.g. `"uint32"`. `None` keeps the default `uint256` encoding.
-    length: Option<String>,
+    /// The Solidity type to use for this node's length/count prefix.
+    /// Defaults to `uint256`.
+    length: LengthType,
 }
 
 fn custom_type_name(ctx: &Gcx, item_id: ItemId) -> String {
@@ -163,7 +161,7 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
             format!(
                 "{} = {};",
                 node.output,
-                pack_elementary(&node.accessor, *elem, node.length.as_deref())
+                pack_elementary(&node.accessor, *elem, node.length)
             )
         }
         TypeKind::Array(arr) => {
@@ -175,10 +173,10 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
                 accessor: format!("{}[{loop_var}]", node.accessor),
                 output: next_output.clone(),
                 ty: &arr.element.kind,
-                length: None,
+                length: LengthType::default(),
             };
             let inner = expand_packings_recursively(ctx, next_node)?;
-            let count = length_cast(&format!("{}.length", node.accessor), node.length.as_deref());
+            let count = length_cast(&format!("{}.length", node.accessor), node.length);
 
             format!(
                 "\n{} = abi.encodePacked({count});\
@@ -209,19 +207,6 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
         }
         TypeKind::Err(_) => unreachable!(),
     })
-}
-
-/// Validates that `ty` is a Solidity unsigned integer type (uint8 through uint256, in steps of 8).
-fn validate_length_type(ty: &str, field_name: &str, struct_name: &str) -> eyre::Result<()> {
-    let bits: Option<u16> = ty.strip_prefix("uint").and_then(|s| s.parse().ok());
-    let valid = bits.is_some_and(|n| (8..=256).contains(&n) && (n % 8) == 0);
-    if !valid {
-        return Err(eyre!(
-            "length type `{ty}` for field `{field_name}` of `{struct_name}` \
-             must be an unsigned integer type (uint8 to uint256)"
-        ));
-    }
-    Ok(())
 }
 
 /// Returns the visibility keyword with a trailing space, or an empty string when

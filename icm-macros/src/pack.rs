@@ -272,7 +272,7 @@ mod tests {
             ),
             (
                 "testing/pack/errors/BadLengthType.sol",
-                "length type `int32` for field `data` of `HasBadLength` must be an unsigned integer type (uint8 to uint256)",
+                "length type `bool` for field `data` of `HasBadLength` must be a Solidity integer type",
             ),
         ];
         for (path, expected) in cases {

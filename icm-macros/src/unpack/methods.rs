@@ -4,6 +4,7 @@
 //! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
 //! name unconditionally — callers must not rename it.
 
+use crate::common::LengthType;
 use crate::unpack::hooks::UnpackArgs;
 use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
@@ -20,13 +21,13 @@ pub fn unpack_elementary(
     output: &str,
     ty: ElementaryType,
     calldata: bool,
-    length_type: Option<&str>,
+    length_type: LengthType,
 ) -> String {
     let output = sanitize_local(output);
     match ty {
         ElementaryType::Bytes | ElementaryType::String => {
             let type_name = elementary_type_name(ty);
-            let prefix_size = length_prefix_size(length_type);
+            let prefix_size = length_type.byte_width();
             if calldata {
                 let read_len = read_length_calldata(prefix_size);
                 format!(
@@ -196,14 +197,11 @@ pub fn unpack_struct(
                 )
             }
         } else {
-            if let Some(ty) = &field_args.length {
-                validate_length_type(ty, field_name.as_str(), struct_def.name.as_str())?;
-            }
             let node = UnpackingTreeNode {
                 depth: 0,
                 output: local_name.clone(),
                 ty: &field.ty.kind,
-                length: field_args.length.clone(),
+                length: field_args.length.unwrap_or_default(),
             };
             inline_unpack(ctx, args.calldata, target_contract, node)?
         };
@@ -239,9 +237,9 @@ struct UnpackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
-    /// The Solidity uint type to use for this node's length/count prefix,
-    /// e.g. `"uint32"`. `None` keeps the default `uint256` encoding.
-    length: Option<String>,
+    /// The Solidity type to use for this node's length/count prefix.
+    /// Defaults to `uint256`.
+    length: LengthType,
 }
 
 fn inline_unpack(
@@ -251,9 +249,7 @@ fn inline_unpack(
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
-        TypeKind::Elementary(ty) => {
-            unpack_elementary(&node.output, *ty, calldata, node.length.as_deref())
-        }
+        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata, node.length),
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
             // and allocates `new T[](length)`, which cannot be assigned to a `T[N]` field.
@@ -270,11 +266,11 @@ fn inline_unpack(
                 depth: node.depth + 1,
                 output: next_output.clone(),
                 ty: &arr.element.kind,
-                length: None,
+                length: LengthType::default(),
             };
             let output = sanitize_local(&node.output);
             let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
-            let prefix_size = length_prefix_size(node.length.as_deref());
+            let prefix_size = node.length.byte_width();
             let (read_length, advance_past_count) = if calldata {
                 (
                     format!("uint256 length = {};", read_length_calldata(prefix_size)),
@@ -559,15 +555,6 @@ fn sanitize_local(name: &str) -> String {
     out
 }
 
-/// Returns the byte width of the length/count prefix for the given type string.
-/// Defaults to 32 (uint256) when no override is specified.
-fn length_prefix_size(length_type: Option<&str>) -> usize {
-    match length_type {
-        None => 32,
-        Some(ty) => ty.strip_prefix("uint").unwrap().parse::<usize>().unwrap() / 8,
-    }
-}
-
 /// Generates a calldata expression that reads a length/count prefix of `size` bytes.
 fn read_length_calldata(size: usize) -> String {
     if size == 32 {
@@ -587,19 +574,6 @@ fn read_length_memory(size: usize) -> String {
         let shift = (32 - size) * 8;
         format!("shr({shift}, mload(add(data, 32)))")
     }
-}
-
-/// Validates that `ty` is a Solidity unsigned integer type (uint8 through uint256, in steps of 8).
-fn validate_length_type(ty: &str, field_name: &str, struct_name: &str) -> eyre::Result<()> {
-    let bits: Option<u16> = ty.strip_prefix("uint").and_then(|s| s.parse().ok());
-    let valid = bits.is_some_and(|n| (8..=256).contains(&n) && n % 8 == 0);
-    if !valid {
-        return Err(eyre::eyre!(
-            "length type `{ty}` for field `{field_name}` of `{struct_name}` \
-             must be an unsigned integer type (uint8 to uint256)"
-        ));
-    }
-    Ok(())
 }
 
 /// Returns the visibility keyword with a trailing space, or an empty string when
