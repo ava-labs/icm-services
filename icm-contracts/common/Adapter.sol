@@ -23,7 +23,12 @@ contract Adapter is IAdapter {
     IAdapter public immutable adapter1;
     IAdapter public immutable adapter2;
 
-    constructor(bytes32 chain1_, bytes32 chain2_, address adapter1_, address adapter2_) {
+    constructor(
+        bytes32 chain1_,
+        bytes32 chain2_,
+        address adapter1_,
+        address adapter2_
+    ) {
         chain1 = chain1_;
         chain2 = chain2_;
         adapter1 = IAdapter(adapter1_);
@@ -42,12 +47,13 @@ contract Adapter is IAdapter {
         }
     }
 
-    /// @notice Routes an outbound message to the inner adapter to its destination chain.
-    /// @dev Enforces msg.sender == originTeleporterAddress at the wrapper level, which is the
-    /// entry-point for messaging protocols like Teleporter. This check cannot be performed at
-    /// the inner adapter level (e.g., by the MerkleValidatorSetRegistry contract) because it is
-    /// not called directly by Teleporter. The correct flow is: Teleporter -> Adapter (this contract)
-    /// -> Registry contract.
+    /// @notice Routes an outbound message through the inner adapter to its destination chain.
+    /// @dev Enforces that msg.sender is the message's originTeleporterAddress. This contract is the
+    /// entry-point for messaging protocols like Teleporter. Inner adapters also perform their own check
+    /// (see {ITeleporterMessengerV2-messageSender}): they accept this contract as a caller because the
+    /// messenger named in the message is configured to send through it, and reject anyone else, so
+    /// bypassing this wrapper does not bypass the check.
+    /// Flow: Teleporter -> Adapter (this contract) -> inner adapter (e.g., a registry contract).
     function sendMessage(
         TeleporterMessageV2 calldata message
     ) external {

@@ -13,6 +13,7 @@ import {
     ValidatorSetMerkleCommitment
 } from "../utils/ValidatorSets.sol";
 import {ICMMessage} from "../../common/ICM.sol";
+import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {
     TeleporterMessageV2,
     TeleporterMessageV2Parsing,
@@ -49,8 +50,7 @@ contract MerkleValidatorSetRegistryCommon is Test {
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
         for (uint256 i = 0; i < 4; i++) {
             validators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(secretKeys[i]),
-                weight: uint64(i + 1)
+                blsPublicKey: BLST.getPublicKeyFromSecret(secretKeys[i]), weight: uint64(i + 1)
             });
             assertEq(
                 BLST.comparePublicKeys(
@@ -273,10 +273,7 @@ contract MerkleValidatorSetRegistryVerifyMessageTest is MerkleValidatorSetRegist
         proofFlags[2] = true;
 
         ValidatorSetMerkleAttestation memory att = ValidatorSetMerkleAttestation({
-            signers: signers,
-            proof: proof,
-            proofFlags: proofFlags,
-            aggregateBlsSig: aggregateSig
+            signers: signers, proof: proof, proofFlags: proofFlags, aggregateBlsSig: aggregateSig
         });
 
         TeleporterICMMessage memory message = TeleporterICMMessage({
@@ -468,8 +465,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         Validator[] memory wrongValidators = new Validator[](4);
         for (uint256 i = 0; i < 4; i++) {
             wrongValidators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(wrongSecretKeys[i]),
-                weight: uint64(i + 1)
+                blsPublicKey: BLST.getPublicKeyFromSecret(wrongSecretKeys[i]), weight: uint64(i + 1)
             });
         }
 
@@ -565,10 +561,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         proofFlags[1] = false;
 
         ValidatorSetMerkleAttestation memory att = ValidatorSetMerkleAttestation({
-            signers: signers,
-            proof: proof,
-            proofFlags: proofFlags,
-            aggregateBlsSig: aggregateBlsSig
+            signers: signers, proof: proof, proofFlags: proofFlags, aggregateBlsSig: aggregateBlsSig
         });
 
         ICMMessage memory message = ICMMessage({
@@ -645,8 +638,7 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
         for (uint256 i = 0; i < l1SecretKeys.length; i++) {
             l1Validators[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(l1SecretKeys[i]),
-                weight: uint64(i + 1)
+                blsPublicKey: BLST.getPublicKeyFromSecret(l1SecretKeys[i]), weight: uint64(i + 1)
             });
             assertEq(
                 BLST.comparePublicKeys(
@@ -691,8 +683,9 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
             pChainTimestamp: 5
         });
         bytes memory rawUpdate = ValidatorSets.serializeMerkleCommitment(updatedCommitment);
-        bytes memory signedData =
-            ValidatorSets.buildUnsignedWarpMessage(NETWORK_ID, _NEW_CHAIN_ID, address(0), rawUpdate);
+        bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
+            NETWORK_ID, _NEW_CHAIN_ID, address(0), rawUpdate
+        );
         bytes memory aggregateSig = BLST.createAggregateSignature(l1SecretKeys, signedData);
         bool[] memory proofFlags = new bool[](3);
         proofFlags[0] = true;
@@ -754,5 +747,98 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
             sourceBlockchainID: sourceBlockchainID,
             attestation: ValidatorSets.serializeMerkleAttestation(att)
         });
+    }
+}
+
+/// @dev Minimal stand-in for a TeleporterMessengerV2: exposes the adapter it sends through.
+contract MerkleTestTeleporter {
+    address public immutable messageSender;
+
+    constructor(
+        address messageSender_
+    ) {
+        messageSender = messageSender_;
+    }
+}
+
+/**
+ * @dev sendMessage turns a caller-supplied message into a Warp message that the destination chain
+ * will accept as authentic, so only the messenger named in the message, or the adapter that
+ * messenger sends through, may call it. Anyone else calling it directly would otherwise be able to
+ * forge messages from any application.
+ */
+contract MerkleValidatorSetRegistrySendMessageTest is MerkleValidatorSetRegistryCommon {
+    address private constant _WARP_PRECOMPILE_ADDRESS = 0x0200000000000000000000000000000000000005;
+    address private constant _WRAPPER_ADAPTER = address(0xA11CE);
+    address private constant _ATTACKER = address(0xBAD);
+
+    MerkleValidatorSetRegistry private _registry;
+    MerkleTestTeleporter private _teleporter;
+    Validator[] private _validators;
+
+    function setUp() public {
+        _registry = _setUpRegistryWithPChainValidators(_validators);
+        _teleporter = new MerkleTestTeleporter(_WRAPPER_ADAPTER);
+        // The Warp precompile does not exist in the test VM. Give it code so its calls can be mocked.
+        vm.etch(_WARP_PRECOMPILE_ADDRESS, hex"00");
+        vm.mockCall(
+            _WARP_PRECOMPILE_ADDRESS,
+            abi.encodeWithSelector(IWarpMessenger.sendWarpMessage.selector),
+            abi.encode(bytes32(0))
+        );
+    }
+
+    function testSendMessageFromOriginTeleporter() public {
+        TeleporterMessageV2 memory message = _message();
+        vm.expectCall(
+            _WARP_PRECOMPILE_ADDRESS,
+            abi.encodeWithSelector(IWarpMessenger.sendWarpMessage.selector)
+        );
+        vm.prank(address(_teleporter));
+        _registry.sendMessage(message);
+    }
+
+    function testSendMessageFromOriginTeleporterAdapter() public {
+        TeleporterMessageV2 memory message = _message();
+        vm.expectCall(
+            _WARP_PRECOMPILE_ADDRESS,
+            abi.encodeWithSelector(IWarpMessenger.sendWarpMessage.selector)
+        );
+        vm.prank(_WRAPPER_ADAPTER);
+        _registry.sendMessage(message);
+    }
+
+    function testSendMessageRevertsForUnauthorizedSender() public {
+        TeleporterMessageV2 memory message = _message();
+        vm.prank(_ATTACKER);
+        vm.expectRevert("unauthorized sender");
+        _registry.sendMessage(message);
+    }
+
+    function testSendMessageRevertsWhenOriginTeleporterIsNotAContract() public {
+        // Looking up the messenger's adapter fails on an address without code, which rejects the send.
+        TeleporterMessageV2 memory message = _message();
+        message.originTeleporterAddress = address(0xBEEF);
+        vm.prank(_ATTACKER);
+        vm.expectRevert();
+        _registry.sendMessage(message);
+    }
+
+    function testSendMessageRevertsForAdapterOfAnotherTeleporter() public {
+        // The attacker's own messenger may name any adapter, but a message it originates carries the
+        // attacker's messenger address, which the destination messenger rejects. Naming the real
+        // messenger while calling from another adapter must fail here.
+        MerkleTestTeleporter attackerTeleporter = new MerkleTestTeleporter(_ATTACKER);
+        TeleporterMessageV2 memory message = _message();
+        message.originTeleporterAddress = address(attackerTeleporter);
+        vm.prank(_WRAPPER_ADAPTER);
+        vm.expectRevert("unauthorized sender");
+        _registry.sendMessage(message);
+    }
+
+    function _message() internal view returns (TeleporterMessageV2 memory message) {
+        message.originTeleporterAddress = address(_teleporter);
+        message.destinationBlockchainID = bytes32(uint256(2));
+        message.message = hex"deadbeef";
     }
 }

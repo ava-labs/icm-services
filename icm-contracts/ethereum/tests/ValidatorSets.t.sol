@@ -46,8 +46,7 @@ contract ValidatorSetsTest is Test {
         Validator[] memory signers = new Validator[](numSigners);
         for (uint256 i; i < numSigners; i++) {
             signers[i] = Validator({
-                blsPublicKey: BLST.getPublicKeyFromSecret(i + 1),
-                weight: uint64((i + 1) % 2)
+                blsPublicKey: BLST.getPublicKeyFromSecret(i + 1), weight: uint64((i + 1) % 2)
             });
         }
         // Build dummy proof hashes
@@ -67,10 +66,7 @@ contract ValidatorSetsTest is Test {
             aggregateBlsSig[i] = bytes1(uint8(i & 0xff));
         }
         ValidatorSetMerkleAttestation memory attestation = ValidatorSetMerkleAttestation({
-            signers: signers,
-            proof: proof,
-            proofFlags: proofFlags,
-            aggregateBlsSig: aggregateBlsSig
+            signers: signers, proof: proof, proofFlags: proofFlags, aggregateBlsSig: aggregateBlsSig
         });
         // Serialize
         bytes memory serialized = ValidatorSets.serializeMerkleAttestation(attestation);

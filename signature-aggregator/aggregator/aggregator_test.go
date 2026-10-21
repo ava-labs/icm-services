@@ -29,6 +29,7 @@ import (
 	avago_mocks "github.com/ava-labs/icm-services/peers/avago_mocks"
 	client_mocks "github.com/ava-labs/icm-services/peers/clients/mocks"
 	"github.com/ava-labs/icm-services/signature-aggregator/metrics"
+	icmutils "github.com/ava-labs/icm-services/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -159,6 +160,21 @@ func TestCreateSignedMessageFailsWithNoValidators(t *testing.T) {
 	require.ErrorContains(t, err, "no signatures")
 }
 
+// A request that cannot fit in a p2p message must be rejected before the signing subnet is
+// resolved or any validator is contacted. The mocks carry no expectations, so any lookup or
+// send would fail the test.
+func TestCreateSignedMessageRejectsOversizedRequest(t *testing.T) {
+	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
+	msg, err := warp.NewUnsignedMessage(constants.UnitTestID, ids.GenerateTestID(), utils.RandomBytes(1234))
+	require.NoError(t, err)
+
+	// The justification alone fills the limit, so with the message and framing the request exceeds it.
+	justification := utils.RandomBytes(MaxRequestSize)
+	_, err = aggregator.CreateSignedMessage(
+		t.Context(), logging.NoLog{}, msg, justification, ids.Empty, 67, pchainapi.ProposedHeight)
+	require.ErrorIs(t, err, ErrRequestTooLarge)
+}
+
 func TestCreateSignedMessageFailsWithoutSufficientConnectedStake(t *testing.T) {
 	aggregator, _, _, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
 	msg, err := warp.NewUnsignedMessage(0, ids.Empty, []byte{})
@@ -279,7 +295,7 @@ func TestCreateSignedMessageRetriesAndFailsWithoutP2PResponses(t *testing.T) {
 	require.ErrorIs(
 		t,
 		err,
-		errNotEnoughSignatures,
+		ErrNotEnoughSignatures,
 	)
 }
 
@@ -769,15 +785,98 @@ func TestCreateSignedMessageReachesQuorumWhenAQueriedValidatorIsSilent(t *testin
 	))
 }
 
+// TestCreateSignedMessageCountsResponsesDeliveredDuringSend verifies that response tracking is
+// registered before the AppRequest is sent: responses that arrive while Send is still executing
+// (the fastest a real validator could possibly reply) must be attributed and counted, and nodes
+// the send did not reach must be dropped from the expected-response set so the request still
+// completes.
+func TestCreateSignedMessageCountsResponsesDeliveredDuringSend(t *testing.T) {
+	connectedValidators, validatorSigners := makeConnectedValidators(5)
+	unreachedNodeID := connectedValidators.ValidatorSet.Validators[0].NodeIDs[0]
+
+	chainID := ids.GenerateTestID()
+	networkID := constants.UnitTestID
+	msg, err := warp.NewUnsignedMessage(networkID, chainID, utils.RandomBytes(64))
+	require.NoError(t, err)
+
+	aggregator, _, handler, mockNetwork, mockValidatorClient := instantiateDefaultAggregator(t)
+
+	subnetID := ids.GenerateTestID()
+	mockValidatorClient.EXPECT().GetSubnetID(gomock.Any(), chainID).Return(subnetID, nil).AnyTimes()
+	mockValidatorClient.EXPECT().GetProposedValidators(gomock.Any(), subnetID).Return(
+		connectedValidators.ValidatorSet, nil,
+	).AnyTimes()
+	mockValidatorClient.EXPECT().GetAllValidatorSets(gomock.Any(), gomock.Any()).Return(
+		map[ids.ID]validators.WarpSet{subnetID: connectedValidators.ValidatorSet}, nil,
+	).AnyTimes()
+
+	var peerInfos []peer.Info
+	for nodeID := range connectedValidators.ConnectedNodes {
+		peerInfos = append(peerInfos, peer.Info{ID: nodeID})
+	}
+	mockNetwork.EXPECT().PeerInfo(gomock.Any()).Return(peerInfos).AnyTimes()
+	mockValidatorClient.EXPECT().GetSubnet(gomock.Any(), subnetID).Return(
+		platformvm.GetSubnetClientResponse{}, nil,
+	).Times(1)
+
+	mockNetwork.EXPECT().Send(
+		gomock.Any(), gomock.Any(), subnetID, subnets.NoOpAllower,
+	).Times(1).DoAndReturn(
+		func(
+			outboundMsg *message.OutboundMessage,
+			config interface{},
+			subnetID ids.ID,
+			allower interface{},
+		) set.Set[ids.NodeID] {
+			sendConfig, ok := config.(avagocommon.SendConfig)
+			require.True(t, ok)
+			require.True(t, sendConfig.NodeIDs.Contains(unreachedNodeID))
+			currentRequestID := aggregator.currentRequestID.Load()
+
+			// Deliver every reached validator's response synchronously, i.e. before Send has
+			// even returned to the aggregator. One node is reported as not reached.
+			sentTo := set.NewSet[ids.NodeID](sendConfig.NodeIDs.Len())
+			for nodeID := range sendConfig.NodeIDs {
+				if nodeID == unreachedNodeID {
+					continue
+				}
+				sentTo.Add(nodeID)
+				idx := connectedValidators.NodeValidatorIndexMap[nodeID]
+				signature, err := validatorSigners[idx].Sign(msg.Bytes())
+				require.NoError(t, err)
+				responseBytes, err := proto.Marshal(&sdk.SignatureResponse{
+					Signature: bls.SignatureToBytes(signature),
+				})
+				require.NoError(t, err)
+				handler.HandleInbound(
+					context.Background(),
+					message.InboundAppResponse(chainID, currentRequestID, responseBytes, nodeID),
+				)
+			}
+			return sentTo
+		},
+	)
+
+	signedMessage, err := aggregator.CreateSignedMessage(
+		t.Context(), logging.NoLog{}, msg, nil, subnetID, 67, pchainapi.ProposedHeight,
+	)
+	require.NoError(t, err)
+	require.NoError(t, signedMessage.Signature.Verify(
+		msg, networkID, connectedValidators.ValidatorSet, 67, 100,
+	))
+}
+
 func TestUnmarshalResponse(t *testing.T) {
 	aggregator, _, _, _, _ := instantiateDefaultAggregator(t)
 
 	emptySignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: []byte{}})
 	require.NoError(t, err)
 
-	randSignature := make([]byte, 96)
+	randSignature := make([]byte, bls.SignatureLen)
 	_, err = rand.Read(randSignature)
 	require.NoError(t, err)
+	var expectedRandSignature blsSignatureBuf
+	copy(expectedRandSignature[:], randSignature)
 
 	randSignatureResponse, err := proto.Marshal(&sdk.SignatureResponse{Signature: randSignature})
 	require.NoError(t, err)
@@ -814,7 +913,7 @@ func TestUnmarshalResponse(t *testing.T) {
 		{
 			name:              "random signature",
 			appResponseBytes:  randSignatureResponse,
-			expectedSignature: blsSignatureBuf(randSignature),
+			expectedSignature: expectedRandSignature,
 		},
 		{
 			// A non-empty protobuf carrying only an unknown field leaves the signature
@@ -1089,6 +1188,94 @@ func TestGetExcludedValidators(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGetUnderfundedL1NodesDetachedFromCallerContext verifies that the single-flighted
+// underfunded-validator fetch does not run under the initiating caller's request context:
+// cancelling that context mid-fetch must neither fail the initiating call nor any concurrent
+// call for the same subnet that joined the shared fetch.
+func TestGetUnderfundedL1NodesDetachedFromCallerContext(t *testing.T) {
+	aggregator, _, _, _, mockValidatorClient := instantiateDefaultAggregator(t)
+	log := logging.NoLog{}
+	signingSubnet := ids.GenerateTestID()
+
+	underFunded := minimumL1ValidatorBalance - 1
+	nodeID := ids.GenerateTestNodeID()
+	validationID := ids.GenerateTestID()
+	l1Validators := []platformvm.ClientPermissionlessValidator{
+		{
+			ClientStaker: platformvm.ClientStaker{NodeID: nodeID},
+			ClientL1Validator: platformvm.ClientL1Validator{
+				ValidationID: &validationID,
+				Balance:      &underFunded,
+			},
+		},
+	}
+
+	initiatorCtx, cancelInitiator := context.WithCancel(t.Context())
+	defer cancelInitiator()
+
+	fetchEntered := make(chan struct{})
+	releaseFetch := make(chan struct{})
+	var (
+		fetchEnteredAt   time.Time
+		fetchDeadline    time.Time
+		fetchHasDeadline bool
+		fetchCtxErr      error
+	)
+	// Exactly one RPC must be issued: the initiator starts it and the concurrent caller joins it.
+	mockValidatorClient.EXPECT().
+		GetCurrentValidators(gomock.Any(), signingSubnet).
+		DoAndReturn(func(ctx context.Context, _ ids.ID) ([]platformvm.ClientPermissionlessValidator, error) {
+			// Record the deadline on entry, before blocking, so the hold below doesn't skew it.
+			fetchEnteredAt = time.Now()
+			fetchDeadline, fetchHasDeadline = ctx.Deadline()
+			close(fetchEntered)
+			<-releaseFetch
+			// Simulate the initiating client dropping its connection while the RPC is in flight.
+			cancelInitiator()
+			fetchCtxErr = ctx.Err()
+			if fetchCtxErr != nil {
+				return nil, fetchCtxErr
+			}
+			return l1Validators, nil
+		}).
+		Times(1)
+
+	type result struct {
+		nodes set.Set[ids.NodeID]
+		err   error
+	}
+	initiatorResult := make(chan result, 1)
+	go func() {
+		nodes, err := aggregator.getUnderfundedL1Nodes(initiatorCtx, log, signingSubnet)
+		initiatorResult <- result{nodes: nodes, err: err}
+	}()
+
+	// Wait until the initiator's fetch is in flight, then have a second, independent caller join it.
+	<-fetchEntered
+	concurrentResult := make(chan result, 1)
+	go func() {
+		nodes, err := aggregator.getUnderfundedL1Nodes(t.Context(), log, signingSubnet)
+		concurrentResult <- result{nodes: nodes, err: err}
+	}()
+	// Give the concurrent caller a moment to block on the shared single-flight before the fetch
+	// proceeds. If it arrives later it is served from the cache instead, which is also correct.
+	time.Sleep(50 * time.Millisecond)
+	close(releaseFetch)
+
+	for _, ch := range []chan result{initiatorResult, concurrentResult} {
+		select {
+		case res := <-ch:
+			require.NoError(t, res.err)
+			require.Equal(t, set.Of(nodeID), res.nodes)
+		case <-time.After(5 * time.Second):
+			require.Fail(t, "timed out waiting for getUnderfundedL1Nodes")
+		}
+	}
+	require.NoError(t, fetchCtxErr, "fetch context must not be cancelled by the initiating caller")
+	require.True(t, fetchHasDeadline, "fetch context must carry a service-owned deadline")
+	require.WithinDuration(t, fetchEnteredAt.Add(icmutils.DefaultRPCTimeout), fetchDeadline, time.Second)
 }
 
 func TestSelectSigningSubnet(t *testing.T) {

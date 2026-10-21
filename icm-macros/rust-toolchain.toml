@@ -1,0 +1,5 @@
+# Pin the toolchain so every consumer of build_reforge.sh gets the same binary,
+# rather than only the workflows that happen to set up Rust explicitly.
+[toolchain]
+channel = "1.91.0"
+components = ["rustfmt", "clippy"]

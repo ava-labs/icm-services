@@ -1,5 +1,6 @@
 package validatorupdater
 
+// THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
 import (
 	"bytes"
 	"encoding/binary"

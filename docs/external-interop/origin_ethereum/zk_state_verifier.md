@@ -38,8 +38,9 @@ The `ZKStateManager` maintains a trusted view of the source chain's beacon chain
 * `sourceChainId` — the chain whose state it tracks,
 * `startingState` — the initial `Consensus.State` used as the root of trust,
 * `beaconConfig` — the `Execution.BeaconConfig` used to verify execution-layer data,
+* `genesisTime` — the Unix timestamp of the beacon chain's genesis, used to convert epochs to wall-clock time,
 * `verifier` / `imageID` — the RISC Zero verifier contract and the program image ID of the consensus-transition circuit (the "Signal Ethereum" program),
-* `permissibleTimespan` — a bound used to reject stale transitions,
+* `permissibleTimespan` — the maximum age, in seconds, of a transition: the post-state's finalized epoch must have begun no more than this long before the current block time, and a single transition may not span more chain time than this,
 * `admin` / `superAdmin` — role holders for the privileged functions below.
 
 The root of trust is a `Consensus.State`: a pair of checkpoints (the latest justified and the latest finalized), each identified by an epoch and a beacon block root.
@@ -85,7 +86,7 @@ struct Journal {
 `transition` advances the tracked beacon state from the contract's current state to a new finalized checkpoint. It:
 
 1. Decodes the `Journal` (pre-state, post-state, finalized slot) from `consensus.journalData`.
-2. Verifies the supplied RISC Zero proof (`consensus.seal`) against `imageID` and the journal hash, after first checking that `journal.preState` matches the contract's stored `_currentState` and that the transition is within `permissibleTimespan`. A successful proof attests that `journal.postState` follows from `journal.preState` under Ethereum's Casper FFG consensus rules.
+2. Verifies the supplied RISC Zero proof (`consensus.seal`) against `imageID` and the journal hash, after first checking that `journal.preState` matches the contract's stored `_currentState`, that the post-state advances finality, and that the transition is within `permissibleTimespan` (its post-state is recent and it does not span too much chain time). The recency check means a stale but otherwise valid proof cannot be replayed, for example after an admin has reset the state with `manualTransition`. A successful proof attests that `journal.postState` follows from `journal.preState` under Ethereum's Casper FFG consensus rules.
 3. Updates the contract's `_currentState` to the post-state and records the finalized beacon block root for the finalized slot in `_allowedBeaconBlocks`.
 
 Each successful `transition` therefore extends the set of finalized beacon block roots the contract considers trustworthy. These roots are the anchors that later log proofs are checked against.

@@ -277,6 +277,101 @@ func TestSendTx(t *testing.T) {
 	}
 }
 
+// TestSendTxTimeoutDoesNotDeadlockSigner is a regression test for a deadlock where
+// SendTx returned on its own timeout and abandoned an unbuffered result channel, leaving
+// the signer worker goroutine blocked forever on its write to that channel. The worker
+// must remain able to serve subsequent transactions after a caller times out.
+//
+// This test takes a little over utils.DefaultRPCTimeout to run, because SendTx's wait
+// for a result is bounded by txInclusionTimeout + utils.DefaultRPCTimeout.
+func TestSendTxTimeoutDoesNotDeadlockSigner(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockClient := mock_ethclient.NewMockDestinationRPCClient(ctrl)
+	txSigners, err := signer.NewTxSigners(destinationSubnet.AccountPrivateKeys)
+	require.NoError(t, err)
+
+	const txInclusionTimeout = 10 * time.Millisecond
+
+	signer := &concurrentSigner{
+		logger:             logging.NoLog{},
+		signer:             txSigners[0],
+		currentNonce:       0,
+		messageChan:        make(chan txData),
+		queuedTxSemaphore:  make(chan struct{}, poolTxsPerAccount),
+		txInclusionTimeout: txInclusionTimeout,
+		destinationClient:  mockClient,
+	}
+	go signer.processIncomingTransactions()
+
+	gasFeeConfig := GasFeeConfig{
+		maxBaseFee:                 big.NewInt(100),
+		suggestedPriorityFeeBuffer: big.NewInt(0),
+		maxPriorityFeePerGas:       big.NewInt(0),
+	}
+	destClient := destinationClient{
+		readonlyConcurrentSigners: []*readonlyConcurrentSigner{
+			(*readonlyConcurrentSigner)(signer),
+		},
+		logger:             logging.NoLog{},
+		avaRPCClient:       mockClient,
+		evmChainID:         big.NewInt(5),
+		gasFeeConfig:       &gasFeeConfig,
+		blockGasLimit:      0,
+		txInclusionTimeout: txInclusionTimeout,
+	}
+	toAddress := common.HexToAddress("0x27aE10273D17Cd7e80de8580A51f476960626e5f")
+	accessList := utils.SignedWarpMessageToAccessList(&avalancheWarp.Message{})
+
+	// Both SendTx calls fetch the gas tip cap.
+	mockClient.EXPECT().SuggestGasTipCap(gomock.Any()).Return(big.NewInt(0), nil).Times(2)
+
+	// The first SendTransaction call blocks (ignoring its context) until the test
+	// releases it, which is after the caller has already timed out and returned.
+	// It then fails, forcing the worker to write the error to the result channel.
+	release := make(chan struct{})
+	mockClient.EXPECT().SendTransaction(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(context.Context, *types.Transaction) error {
+			<-release
+			return fmt.Errorf("send failed after caller gave up")
+		},
+	).Times(1)
+	// The second SendTransaction call succeeds and is followed by a receipt.
+	mockClient.EXPECT().SendTransaction(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	mockClient.EXPECT().TransactionReceipt(gomock.Any(), gomock.Any()).Return(
+		&types.Receipt{Status: types.ReceiptStatusSuccessful},
+		nil,
+	).Times(1)
+
+	// First call: the caller times out while the worker is still stuck in SendTransaction.
+	_, err = destClient.SendTx(logging.NoLog{}, accessList, nil, toAddress, 0, []byte{})
+	require.ErrorContains(t, err, "timed out waiting for transaction result")
+
+	// Let the worker's SendTransaction fail. Nobody is reading the abandoned result
+	// channel anymore, so the worker's write must not block.
+	close(release)
+
+	// Second call: must be picked up and completed by the same worker. If the worker
+	// were deadlocked on the abandoned channel, this would never return.
+	type sendResult struct {
+		receipt *types.Receipt
+		err     error
+	}
+	done := make(chan sendResult, 1)
+	go func() {
+		receipt, err := destClient.SendTx(logging.NoLog{}, accessList, nil, toAddress, 0, []byte{})
+		done <- sendResult{receipt: receipt, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		require.NoError(t, res.err)
+		require.NotNil(t, res.receipt)
+		require.Equal(t, types.ReceiptStatusSuccessful, res.receipt.Status)
+	case <-time.After(utils.DefaultRPCTimeout):
+		require.FailNow(t, "signer worker deadlocked: second SendTx never completed after first timed out")
+	}
+}
+
 // TestDestinationClient_QueryParamsForwarding verifies that query parameters are forwarded correctly
 func TestDestinationClient_QueryParamsForwarding(t *testing.T) {
 	tests := []struct {

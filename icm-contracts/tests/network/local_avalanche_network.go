@@ -389,6 +389,10 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 	Expect(err).Should(BeNil())
 
 	l1 = n.AddSubnetValidators(tmpnetNodes, l1, true)
+	// The nodes only get a URI once they have been started above.
+	for i, node := range tmpnetNodes {
+		nodes[i].URI = node.URI
+	}
 
 	// Wait for P-Chain to finalize and propagate transactions
 	utils.AdvanceProposerVM(ctx, l1, senderKey, 5)
@@ -424,7 +428,7 @@ func (n *LocalAvalancheNetwork) ConvertSubnet(
 			}
 		}
 	}
-	utils.PChainProposerVMWorkaround(pChainWallet)
+	utils.WaitForL1ToSeePChainHeight(ctx, utils.GetPChainInfo(cChainInfo), l1)
 	err = utils.IssueTxsToAdvanceChain(ctx, l1.EVMChainID, senderKey, l1.EthClient, 5)
 	Expect(err).Should(BeNil())
 

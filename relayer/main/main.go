@@ -322,8 +322,7 @@ func main() {
 	// Create listeners for each of the subnets configured as a source
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
 		for _, protocol := range sourceBlockchain.Protocols() {
-			// We don't need to spawn a listener for the off-chain registry.
-			if protocol.Type == config.OFF_CHAIN_REGISTRY {
+			if !protocol.HasListener() {
 				continue
 			}
 			// errgroup will cancel the context when the first goroutine returns an error
@@ -555,6 +554,10 @@ func createApplicationRelayersForSourceChain(
 	// Each ApplicationRelayer determines its starting height based on the configuration and database state.
 	// The Listener begins processing messages starting from the minimum height across all the ApplicationRelayers
 	// If catch up is disabled, the first block the ApplicationRelayer processes is the next block after the current height
+	//
+	// Only the relayers of protocols with a listener count towards the minimum. A relayer's
+	// checkpoint is only advanced by its own protocol's listener, so the checkpoint of a
+	// listener-less relayer never moves and would otherwise pin the starting height forever.
 	var height, minHeight uint64
 	if !cfg.ProcessMissedBlocks {
 		logger.Info("processed-missed-blocks set to false, starting processing from chain head")
@@ -562,66 +565,68 @@ func createApplicationRelayersForSourceChain(
 		minHeight = height
 	}
 
-	for _, relayerID := range database.GetSourceBlockchainRelayerIDs(sourceBlockchain) {
-		log := logger.With(
-			zap.Stringer("relayerID", relayerID.ID),
-			zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
-			zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
-			zap.Stringer("destinationAddress", relayerID.DestinationAddress),
-		)
-		// Calculate the catch-up starting block height, and update the min height if necessary
-		if cfg.ProcessMissedBlocks {
-			var err error
-			height, err = database.CalculateStartingBlockHeight(
+	for _, protocol := range sourceBlockchain.Protocols() {
+		for _, relayerID := range database.GetProtocolRelayerIDs(sourceBlockchain, protocol) {
+			log := logger.With(
+				zap.Stringer("relayerID", relayerID.ID),
+				zap.Stringer("destinationBlockchainID", relayerID.DestinationBlockchainID),
+				zap.Stringer("originSenderAddress", relayerID.OriginSenderAddress),
+				zap.Stringer("destinationAddress", relayerID.DestinationAddress),
+			)
+			// Calculate the catch-up starting block height, and update the min height if necessary
+			if cfg.ProcessMissedBlocks {
+				var err error
+				height, err = database.CalculateStartingBlockHeight(
+					log,
+					db,
+					relayerID,
+					sourceBlockchain.ProcessHistoricalBlocksFromHeight,
+					currentHeight,
+				)
+				if err != nil {
+					log.Error("Failed to calculate starting block height", zap.Error(err))
+					return nil, 0, err
+				}
+
+				// Update the min height. This is the height that the listener will start processing from
+				if protocol.HasListener() && (minHeight == 0 || height < minHeight) {
+					minHeight = height
+				}
+			}
+
+			checkpointManager, err := checkpoint.NewCheckpointManager(
 				log,
+				checkpointMetrics,
 				db,
+				ticker.Subscribe(),
 				relayerID,
-				sourceBlockchain.ProcessHistoricalBlocksFromHeight,
-				currentHeight,
+				height,
 			)
 			if err != nil {
-				log.Error("Failed to calculate starting block height", zap.Error(err))
+				log.Error("Failed to create checkpoint manager", zap.Error(err))
 				return nil, 0, err
 			}
 
-			// Update the min height. This is the height that the listener will start processing from
-			if minHeight == 0 || height < minHeight {
-				minHeight = height
+			applicationRelayer, err := relayer.NewApplicationRelayer(
+				log,
+				metrics,
+				network,
+				relayerID,
+				destinationClients[relayerID.DestinationBlockchainID],
+				sourceBlockchain,
+				checkpointManager,
+				cfg,
+				signatureAggregator,
+				processMessageSemaphore,
+			)
+			if err != nil {
+				log.Error("Failed to create application relayer", zap.Error(err))
+				return nil, 0, err
 			}
-		}
+			applicationRelayers[relayerID.ID] = applicationRelayer
 
-		checkpointManager, err := checkpoint.NewCheckpointManager(
-			log,
-			checkpointMetrics,
-			db,
-			ticker.Subscribe(),
-			relayerID,
-			height,
-		)
-		if err != nil {
-			log.Error("Failed to create checkpoint manager", zap.Error(err))
-			return nil, 0, err
+			log.Info("Created application relayer")
 		}
-
-		applicationRelayer, err := relayer.NewApplicationRelayer(
-			log,
-			metrics,
-			network,
-			relayerID,
-			destinationClients[relayerID.DestinationBlockchainID],
-			sourceBlockchain,
-			checkpointManager,
-			cfg,
-			signatureAggregator,
-			processMessageSemaphore,
-		)
-		if err != nil {
-			log.Error("Failed to create application relayer", zap.Error(err))
-			return nil, 0, err
-		}
-		applicationRelayers[relayerID.ID] = applicationRelayer
-
-		log.Info("Created application relayer")
 	}
 	return applicationRelayers, minHeight, nil
 }

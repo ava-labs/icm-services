@@ -39,15 +39,17 @@ func newTestHandler(
 	require.NoError(t, err)
 
 	return &messageHandler{
-		logger: logging.NoLog{},
-		teleporterMessage: &teleportermessengerv2.TeleporterMessageV2{
-			MessageNonce:     big.NewInt(1),
-			RequiredGasLimit: requiredGasLimit,
-			Message:          []byte{1, 2, 3, 4},
+		handlerBase: handlerBase{
+			logger: logging.NoLog{},
+			teleporterMessage: &teleportermessengerv2.TeleporterMessageV2{
+				MessageNonce:     big.NewInt(1),
+				RequiredGasLimit: requiredGasLimit,
+				Message:          []byte{1, 2, 3, 4},
+			},
+			unsignedMessage:   unsignedMessage,
+			destinationClient: destinationClient,
+			teleporterAddress: testTeleporterAddress,
 		},
-		unsignedMessage:   unsignedMessage,
-		destinationClient: destinationClient,
-		teleporterAddress: testTeleporterAddress,
 	}
 }
 
