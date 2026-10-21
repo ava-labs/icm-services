@@ -13,6 +13,7 @@ package zk
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -25,6 +26,10 @@ import (
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
+
+// anchorScanTimeout bounds the ConfirmedBeaconBlock event scan, which in the worst case
+// (a message older than every anchor) walks the destination chain back to genesis.
+const anchorScanTimeout = 2 * time.Minute
 
 type factory struct {
 	messageConfig   *Config
@@ -130,15 +135,19 @@ func (f *factory) NewMessageHandler(
 }
 
 // ProcessMessage delivers the message to the destination via the TeleporterV2 messenger,
-// attaching a zk attestation.
+// attaching a zk attestation. Currently it selects the anchor to prove against; proof
+// building and delivery follow in a subsequent PR.
 func (m *messageHandler) ProcessMessage() (common.Hash, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), anchorScanTimeout)
+	defer cancel()
+
 	adapter, err := zkadapter.NewZKAdapter(
 		m.messageConfig.adapterAddress(), m.destinationClient.Client(),
 	)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to bind ZKAdapter: %w", err)
 	}
-	anchor, err := findAnchor(context.Background(), m.destinationClient.Client(), adapter, m.slot)
+	anchor, err := findAnchor(ctx, m.destinationClient.Client(), adapter, m.slot)
 	if err != nil {
 		return common.Hash{}, err
 	}
