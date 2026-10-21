@@ -38,11 +38,6 @@ const (
 	gasLimitBufferDenominator = 4
 )
 
-// errUndeliverable marks a message that cannot be delivered within the destination block gas
-// limit. Such a message is skipped rather than retried, since every attempt would revert on-chain
-// after the relayer has already paid for verification and bookkeeping.
-var errUndeliverable = errors.New("message cannot be delivered within the destination block gas limit")
-
 type factory struct {
 	messageConfig   *Config
 	protocolAddress common.Address
@@ -211,11 +206,6 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 
 		txHash, err := m.SendMessage(ctx, signedMessage, validators)
 		if err != nil {
-			// An undeliverable message is passed through unwrapped so relay can skip it instead
-			// of counting it as a send failure.
-			if errors.Is(err, errUndeliverable) {
-				return common.Hash{}, err
-			}
 			m.metrics.IncFailedRelayMessageCount("failed to send warp message")
 			return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)
 		}
@@ -256,7 +246,9 @@ func (m *messageHandler) SendMessage(
 
 	gasLimit, err := m.estimateGasLimit(ctx, callData)
 	if err != nil {
-		if !errors.Is(err, errUndeliverable) {
+		// A non-retryable failure is already described by its error and is logged again when the
+		// relayer abandons the message, so it is not reported as an error here.
+		if !errors.Is(err, messages.ErrNonRetryable) {
 			m.logger.Error("Failed to estimate gas limit", zap.Error(err))
 		}
 		return common.Hash{}, err
@@ -308,14 +300,14 @@ func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) 
 	})
 	if err != nil {
 		if isUndeliverableEstimateError(err) {
-			return 0, fmt.Errorf("%w: %w", errUndeliverable, err)
+			return 0, fmt.Errorf("%w: %w", messages.ErrDeliveryExceedsBlockGasLimit, err)
 		}
 		return 0, fmt.Errorf("failed to estimate gas: %w", err)
 	}
 	if blockGasLimit != 0 && estimated > blockGasLimit {
 		return 0, fmt.Errorf(
 			"%w: estimated gas %d exceeds block gas limit %d",
-			errUndeliverable, estimated, blockGasLimit,
+			messages.ErrDeliveryExceedsBlockGasLimit, estimated, blockGasLimit,
 		)
 	}
 	buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator

@@ -13,6 +13,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
+	"github.com/ava-labs/icm-services/messages"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	ethereum "github.com/ava-labs/libevm"
@@ -124,12 +125,12 @@ func TestShouldSendMessageGasLimitHeadroom(t *testing.T) {
 // sufficient, since it is the only simulation before the delivery is signed and broadcast.
 func TestEstimateGasLimit(t *testing.T) {
 	testCases := []struct {
-		name                  string
-		estimated             uint64
-		estimateErr           error
-		expectedGasLimit      uint64
-		expectedError         bool
-		expectedUndeliverable bool
+		name                 string
+		estimated            uint64
+		estimateErr          error
+		expectedGasLimit     uint64
+		expectedError        bool
+		expectedNonRetryable bool
 	}{
 		{
 			name:             "buffer applied below the block gas limit",
@@ -142,25 +143,25 @@ func TestEstimateGasLimit(t *testing.T) {
 			expectedGasLimit: testBlockGasLimit,
 		},
 		{
-			name:                  "estimate exceeds the block gas limit",
-			estimated:             testBlockGasLimit + 1,
-			expectedError:         true,
-			expectedUndeliverable: true,
+			name:                 "estimate exceeds the block gas limit",
+			estimated:            testBlockGasLimit + 1,
+			expectedError:        true,
+			expectedNonRetryable: true,
 		},
 		{
-			name:                  "estimation exhausts the search range",
-			estimateErr:           errors.New("gas required exceeds allowance (12000000)"),
-			expectedError:         true,
-			expectedUndeliverable: true,
+			name:                 "estimation exhausts the search range",
+			estimateErr:          errors.New("gas required exceeds allowance (12000000)"),
+			expectedError:        true,
+			expectedNonRetryable: true,
 		},
 		{
-			name:                  "delivery reverts for insufficient gas",
-			estimateErr:           errors.New("execution reverted: TeleporterMessenger: insufficient gas"),
-			expectedError:         true,
-			expectedUndeliverable: true,
+			name:                 "delivery reverts for insufficient gas",
+			estimateErr:          errors.New("execution reverted: TeleporterMessenger: insufficient gas"),
+			expectedError:        true,
+			expectedNonRetryable: true,
 		},
 		{
-			// Retried rather than skipped: verification can fail transiently if the registry's
+			// Retried rather than abandoned: verification can fail transiently if the registry's
 			// committed validator set changes mid-delivery.
 			name:          "delivery reverts for failed verification",
 			estimateErr:   errors.New("execution reverted: TeleporterMessenger: message verification failed"),
@@ -202,7 +203,14 @@ func TestEstimateGasLimit(t *testing.T) {
 			}
 			require.Error(t, err)
 			require.Zero(t, gasLimit, "a failed estimation must not resolve to a gas limit")
-			require.Equal(t, test.expectedUndeliverable, errors.Is(err, errUndeliverable))
+			// The relayer keys its retry and checkpoint decisions off ErrNonRetryable, while the
+			// specific cause selects the label the abandoned message is counted under.
+			require.Equal(t, test.expectedNonRetryable, errors.Is(err, messages.ErrNonRetryable))
+			require.Equal(
+				t,
+				test.expectedNonRetryable,
+				errors.Is(err, messages.ErrDeliveryExceedsBlockGasLimit),
+			)
 		})
 	}
 }

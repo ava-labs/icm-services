@@ -5,7 +5,6 @@ package teleporterv2
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -117,13 +116,6 @@ func (m *handlerBase) relay(deliver func(ctx context.Context) (common.Hash, erro
 
 	txHash, err := deliver(ctx)
 	if err != nil {
-		// Skip rather than error out, so a message that can never be delivered does not stall the
-		// source chain's checkpoint.
-		if errors.Is(err, errUndeliverable) {
-			m.metrics.IncFailedRelayMessageCount("message undeliverable")
-			m.logger.Warn("Message cannot be delivered, skipping", zap.Error(err))
-			return common.Hash{}, nil
-		}
 		return common.Hash{}, err
 	}
 	m.logger.Info(
