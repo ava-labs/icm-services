@@ -755,9 +755,17 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
 
         // Increment the fee/reward amount owed to the relayer for having delivered
         // the message identified in this receipt.
-        _relayerRewardAmounts[
-            receipt.relayerRewardAddress
-        ][messageInfo.feeInfo.feeTokenAddress] += messageInfo.feeInfo.amount;
+        mapping(address => uint256) storage rewardAmounts =
+            _relayerRewardAmounts[receipt.relayerRewardAddress];
+        uint256 currentRewardAmount = rewardAmounts[messageInfo.feeInfo.feeTokenAddress];
+        uint256 updatedRewardAmount;
+        unchecked {
+            updatedRewardAmount = currentRewardAmount + messageInfo.feeInfo.amount;
+        }
+        if (updatedRewardAmount < currentRewardAmount) {
+            updatedRewardAmount = type(uint256).max;
+        }
+        rewardAmounts[messageInfo.feeInfo.feeTokenAddress] = updatedRewardAmount;
 
         emit ReceiptReceived(
             messageID, destinationBlockchainID_, receipt.relayerRewardAddress, messageInfo.feeInfo
