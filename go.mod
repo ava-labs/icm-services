@@ -1,6 +1,6 @@
 module github.com/ava-labs/icm-services
 
-go 1.26.7
+go 1.26.10
 
 tool github.com/golangci/golangci-lint/cmd/golangci-lint
 

@@ -31,3 +31,15 @@ updates:
       weekly-github-actions:
         patterns:
           - "*"
+  - package-ecosystem: "cargo"
+    directories:
+      - "/icm-macros"
+      - "/scripts/tools/zk-proofs-gen"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      weekly-cargo-updates:
+        patterns:
+          - "*"
