@@ -7,7 +7,7 @@ edition = "2024"
 test-utils = []
 
 [dependencies]
-alloy-sol-types = "0.8"
+alloy-sol-types = "1.6"
 bitvec = { version = "1", default-features = false, features = ["alloc"] }
 bls12_381 = { version = "0.8", default-features = false, features = [
   "groups",
@@ -19,7 +19,7 @@ serde = { version = "1", default-features = false, features = [
   "derive",
   "alloc",
 ] }
-sha2 = { version = "0.10", default-features = false }
+sha2 = { version = "0.11", default-features = false }
 
 [dev-dependencies]
 hex = "0.4"
