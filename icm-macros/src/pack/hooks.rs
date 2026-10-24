@@ -5,19 +5,52 @@
 use reforge::PreprocessingData;
 use solar::ast::Span;
 use solar::sema::Gcx;
-use solar::sema::hir::{ContractId, SourceId};
+use solar::sema::hir::{ContractId, SourceId, Struct};
+
+use crate::common::{LengthType, Unvalidated, Validated, ValidationState};
 
 pub struct PackArgs {
     pub contract: Option<ContractId>,
     pub name: Option<String>,
-    pub fields: Vec<FieldArgs>,
+    pub fields: Vec<FieldArgs<Validated>>,
     pub visibility: String,
 }
 
+/// Per-field pack annotations, generic over their validation state.
+///
+/// - `FieldArgs<Unvalidated>`: raw parse output; `length` is `Option<String>`.
+/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthType>`.
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct FieldArgs {
+pub struct FieldArgs<S: ValidationState = Unvalidated> {
     pub method: Option<String>,
     pub ignore: bool,
+    pub length: Option<S::Length>,
+}
+
+impl FieldArgs<Unvalidated> {
+    /// Validates the `length` string (if present), converting this
+    /// `FieldArgs<Unvalidated>` into a `FieldArgs<Validated>`.
+    pub fn validate(
+        self,
+        field_name: &str,
+        struct_name: &str,
+    ) -> eyre::Result<FieldArgs<Validated>> {
+        use eyre::WrapErr;
+        let length = self
+            .length
+            .map(|ty| {
+                LengthType::validate(&ty).wrap_err(format!(
+                    "length type `{ty}` for field `{field_name}` of `{struct_name}` \
+                     must be a Solidity integer type"
+                ))
+            })
+            .transpose()?;
+        Ok(FieldArgs {
+            method: self.method,
+            ignore: self.ignore,
+            length,
+        })
+    }
 }
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
@@ -25,8 +58,35 @@ pub struct FieldArgs {
 pub(crate) struct RawPackArgs {
     pub contract: Option<String>,
     pub name: Option<String>,
-    pub fields: Vec<FieldArgs>,
+    pub fields: Vec<FieldArgs<Unvalidated>>,
     pub visibility: String,
+}
+
+impl RawPackArgs {
+    /// Validates the raw field args against the HIR struct definition (if any), consuming
+    /// `self.fields` and returning the validated equivalents.
+    pub fn validate_fields(
+        &mut self,
+        ctx: &Gcx,
+        struct_def: Option<&Struct<'_>>,
+    ) -> eyre::Result<Vec<FieldArgs<Validated>>> {
+        let struct_name = struct_def.map(|s| s.name.as_str()).unwrap_or("");
+        let hir_fields: Vec<_> = struct_def
+            .map(|s| s.fields.iter().map(|&id| ctx.hir.variable(id)).collect())
+            .unwrap_or_default();
+        let fields = std::mem::take(&mut self.fields);
+        fields
+            .into_iter()
+            .zip(hir_fields.iter())
+            .map(|(raw_field, hir_field)| {
+                let field_name = hir_field
+                    .name
+                    .map(|n| n.as_str().to_string())
+                    .unwrap_or_default();
+                raw_field.validate(&field_name, struct_name)
+            })
+            .collect()
+    }
 }
 
 /// Fetches the comment preceding the given HIR item and parses any `#[pack(...)]`
@@ -41,47 +101,47 @@ pub fn parse_args(
     data: &mut PreprocessingData<'_>,
 ) -> Option<eyre::Result<PackArgs>> {
     let doc_comment = reforge::get_comment(ctx, source_id, span, data)?;
+    let struct_def = ctx.hir.structs().find(|s| s.span == span);
 
-    let field_comments: Vec<Option<String>> = ctx
-        .hir
-        .structs()
-        .find(|s| s.span == span)
+    let field_comments: Vec<Option<String>> = struct_def
         .map(|s| {
             s.fields
                 .iter()
                 .map(|&field_id| {
-                    let field = ctx.hir.variable(field_id);
-                    reforge::get_comment(ctx, source_id, field.span, data)
+                    reforge::get_comment(ctx, source_id, ctx.hir.variable(field_id).span, data)
                 })
                 .collect()
         })
         .unwrap_or_default();
 
-    let raw = parse_comment(&doc_comment, &field_comments)?;
+    let mut raw = parse_comment(&doc_comment, &field_comments)?;
 
     let contract = match raw.contract.as_deref() {
         None => None,
-        Some(name) => {
-            match ctx
-                .hir
-                .contracts_enumerated()
-                .find(|(_, c)| c.name.as_str() == name)
-                .map(|(id, _)| id)
-            {
-                Some(id) => Some(id),
-                None => {
-                    return Some(Err(eyre::eyre!(
-                        "contract `{name}` specified in #[pack(contract=...)] was not found"
-                    )));
-                }
+        Some(name) => match ctx
+            .hir
+            .contracts_enumerated()
+            .find(|(_, c)| c.name.as_str() == name)
+            .map(|(id, _)| id)
+        {
+            Some(id) => Some(id),
+            None => {
+                return Some(Err(eyre::eyre!(
+                    "contract `{name}` specified in #[pack(contract=...)] was not found"
+                )));
             }
-        }
+        },
+    };
+
+    let fields = match raw.validate_fields(ctx, struct_def) {
+        Ok(f) => f,
+        Err(e) => return Some(Err(e)),
     };
 
     Some(Ok(PackArgs {
         contract,
         name: raw.name,
-        fields: raw.fields,
+        fields,
         visibility: raw.visibility,
     }))
 }
@@ -128,25 +188,16 @@ pub(crate) fn parse_comment(
     })
 }
 
-fn parse_field_args(comment: Option<&str>) -> FieldArgs {
+fn parse_field_args(comment: Option<&str>) -> FieldArgs<Unvalidated> {
     let Some(comment) = comment else {
-        return FieldArgs {
-            method: None,
-            ignore: false,
-        };
+        return FieldArgs::default();
     };
     let Some(pack_start) = comment.find("#[pack(") else {
-        return FieldArgs {
-            method: None,
-            ignore: false,
-        };
+        return FieldArgs::default();
     };
     let args_start = pack_start + "#[pack(".len();
     let Some(args_end_rel) = comment[args_start..].find(')') else {
-        return FieldArgs {
-            method: None,
-            ignore: false,
-        };
+        return FieldArgs::default();
     };
     let args_str = comment[args_start..args_start + args_end_rel].trim();
 
@@ -154,15 +205,19 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
         return FieldArgs {
             method: None,
             ignore: true,
+            length: None,
         };
     }
 
     let mut method = None;
     let mut ignore = false;
+    let mut length = None;
     for arg in args_str.split(',') {
         if let Some((key, val)) = arg.trim().split_once('=') {
-            if key.trim() == "method" {
-                method = Some(val.trim().trim_matches('"').to_string());
+            match key.trim() {
+                "method" => method = Some(val.trim().trim_matches('"').to_string()),
+                "length" => length = Some(val.trim().trim_matches('"').to_string()),
+                _ => {}
             }
         } else if arg.trim() == "ignore" {
             ignore = true;
@@ -172,11 +227,13 @@ fn parse_field_args(comment: Option<&str>) -> FieldArgs {
         FieldArgs {
             method: None,
             ignore: true,
+            length: None,
         }
     } else {
         FieldArgs {
             method,
             ignore: false,
+            length,
         }
     }
 }
@@ -193,7 +250,7 @@ mod tests {
         assert_eq!(raw.contract, None);
         assert_eq!(raw.name, None);
         assert_eq!(raw.visibility, "public".to_string());
-        let expected = vec![FieldArgs::default(); 4];
+        let expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         assert_eq!(raw.fields, expected);
     }
 
@@ -207,8 +264,37 @@ mod tests {
         assert_eq!(raw.contract, Some("Foo".to_string()));
         assert_eq!(raw.name, Some("Bar".to_string()));
         assert_eq!(raw.visibility, "private".to_string());
-        let expected = vec![FieldArgs::default(); 4];
+        let expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         assert_eq!(raw.fields, expected);
+    }
+
+    #[test]
+    fn test_length_quoted() {
+        // length = "uint32" (with quotes) must behave identically to length = uint32
+        let raw = parse_comment(
+            "#[pack()]",
+            &vec![
+                Some("#[pack(length = \"uint32\")]".to_string()),
+                Some("#[pack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0],
+            FieldArgs {
+                method: None,
+                ignore: false,
+                length: Some("uint32".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[1],
+            FieldArgs {
+                method: Some("Foo.bar".to_string()),
+                ignore: false,
+                length: Some("uint64".to_string()),
+            }
+        );
     }
 
     #[test]
@@ -219,6 +305,8 @@ mod tests {
                 Some("#[pack(method=\"Foo.bar\")]".to_string()),
                 Some("#[pack(ignore)]".to_string()),
                 Some("#[pack(ignore, method=\"Foo.bar\")]".to_string()),
+                Some("#[pack(length = uint32)]".to_string()),
+                Some("#[pack(method=\"Foo.bar\", length = uint64)]".to_string()),
             ],
         )
         .unwrap();
@@ -228,21 +316,40 @@ mod tests {
             raw.fields[0],
             FieldArgs {
                 method: Some("Foo.bar".to_string()),
-                ignore: false
+                ignore: false,
+                length: None,
             }
         );
         assert_eq!(
             raw.fields[1],
             FieldArgs {
                 method: None,
-                ignore: true
+                ignore: true,
+                length: None
             }
         );
         assert_eq!(
             raw.fields[2],
             FieldArgs {
                 method: None,
-                ignore: true
+                ignore: true,
+                length: None
+            }
+        );
+        assert_eq!(
+            raw.fields[3],
+            FieldArgs {
+                method: None,
+                ignore: false,
+                length: Some("uint32".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[4],
+            FieldArgs {
+                method: Some("Foo.bar".to_string()),
+                ignore: false,
+                length: Some("uint64".to_string()),
             }
         );
     }
