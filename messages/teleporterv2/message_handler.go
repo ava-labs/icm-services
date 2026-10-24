@@ -5,7 +5,9 @@ package teleporterv2
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -244,7 +246,11 @@ func (m *messageHandler) SendMessage(
 
 	gasLimit, err := m.estimateGasLimit(ctx, callData)
 	if err != nil {
-		m.logger.Error("Failed to estimate gas limit", zap.Error(err))
+		// A non-retryable failure is already described by its error and is logged again when the
+		// relayer abandons the message, so it is not reported as an error here.
+		if !errors.Is(err, messages.ErrNonRetryable) {
+			m.logger.Error("Failed to estimate gas limit", zap.Error(err))
+		}
 		return common.Hash{}, err
 	}
 
@@ -278,31 +284,62 @@ func (m *messageHandler) fetchCommitment(
 }
 
 // estimateGasLimit estimates the gas for the receiveCrossChainMessage call and applies a safety
-// buffer. Falls back to the configured block gas limit if estimation fails.
+// buffer, bounded by the configured block gas limit. Estimation is the only simulation performed
+// before the delivery is signed and broadcast, so it never resolves to a gas limit the estimate has
+// not shown to be sufficient.
 func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) (uint64, error) {
 	from := m.selectSenderAddress()
+	blockGasLimit := m.destinationClient.BlockGasLimit()
+	// Bound the node's search at the gas the delivery transaction can actually carry, so a
+	// successful estimate is one we can honor.
 	estimated, err := m.destinationClient.Client().EstimateGas(ctx, ethereum.CallMsg{
 		From: from,
 		To:   &m.teleporterAddress,
+		Gas:  blockGasLimit,
 		Data: callData,
 	})
 	if err != nil {
-		blockGasLimit := m.destinationClient.BlockGasLimit()
-		m.logger.Warn(
-			"Gas estimation failed, falling back to block gas limit",
-			zap.Error(err),
-			zap.Uint64("blockGasLimit", blockGasLimit),
-		)
-		if blockGasLimit == 0 {
-			return 0, fmt.Errorf("failed to estimate gas and no block gas limit configured: %w", err)
+		if isUndeliverableEstimateError(err) {
+			return 0, fmt.Errorf("%w: %w", messages.ErrDeliveryExceedsBlockGasLimit, err)
 		}
-		return blockGasLimit, nil
+		return 0, fmt.Errorf("failed to estimate gas: %w", err)
+	}
+	if blockGasLimit != 0 && estimated > blockGasLimit {
+		return 0, fmt.Errorf(
+			"%w: estimated gas %d exceeds block gas limit %d",
+			messages.ErrDeliveryExceedsBlockGasLimit, estimated, blockGasLimit,
+		)
 	}
 	buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
-	if blockGasLimit := m.destinationClient.BlockGasLimit(); blockGasLimit != 0 && buffered > blockGasLimit {
+	// Capping is safe only because the unbuffered estimate already fits under the limit, so the
+	// capped transaction still carries enough gas to execute.
+	if blockGasLimit != 0 && buffered > blockGasLimit {
 		buffered = blockGasLimit
 	}
 	return buffered, nil
+}
+
+// undeliverableEstimateErrors are the eth_estimateGas failures that mean the delivery cannot
+// succeed at any gas value within the block gas limit.
+var undeliverableEstimateErrors = []string{
+	// The node exhausted its search range without the call succeeding.
+	"gas required exceeds allowance",
+	"always failing transaction",
+	// TeleporterMessengerV2's revert reason when gasleft() is below requiredGasLimit.
+	"insufficient gas",
+}
+
+// isUndeliverableEstimateError distinguishes conclusive gas-envelope failures from errors that may
+// clear on a retry. Reverts that are not gas related, such as a verification failure caused by the
+// destination registry's committed validator set changing mid-delivery, are treated as retryable.
+func isUndeliverableEstimateError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, undeliverable := range undeliverableEstimateErrors {
+		if strings.Contains(msg, undeliverable) {
+			return true
+		}
+	}
+	return false
 }
 
 // selectSenderAddress picks a relayer EOA eligible to deliver the message for gas estimation.

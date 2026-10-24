@@ -24,6 +24,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// minDeliveryOverheadGas is a conservative lower bound on the gas receiveCrossChainMessage
+// consumes (intrinsic gas, attestation verification, receive bookkeeping) before it reaches
+// the `gasleft() >= requiredGasLimit` check in _handleInitialMessageExecution.
+const minDeliveryOverheadGas = 200_000
+
 // handlerBase holds the state and behavior shared by the TeleporterV2 handlers. Both verification
 // paths relay the same TeleporterMessageV2 to the same destination TeleporterMessengerV2 and make
 // the same send/skip decisions; they differ only in which validator set the signature is
@@ -47,13 +52,20 @@ type handlerBase struct {
 func (m *handlerBase) ShouldSendMessage() (bool, error) {
 	// RequiredGasLimit is a Solidity uint256 (*big.Int). Calling Uint64() on a value that does not
 	// fit in 64 bits is undefined, so treat any non-uint64 value as exceeding the block gas limit.
+	// The bound is the block gas limit less the delivery overhead: the on-chain check runs after
+	// verification and bookkeeping, so anything above that can never be satisfied.
 	destBlockGasLimit := m.destinationClient.BlockGasLimit()
+	maxRequiredGasLimit := uint64(0)
+	if destBlockGasLimit > minDeliveryOverheadGas {
+		maxRequiredGasLimit = destBlockGasLimit - minDeliveryOverheadGas
+	}
 	if !m.teleporterMessage.RequiredGasLimit.IsUint64() ||
-		m.teleporterMessage.RequiredGasLimit.Uint64() > destBlockGasLimit {
+		m.teleporterMessage.RequiredGasLimit.Uint64() > maxRequiredGasLimit {
 		m.logger.Info(
 			"Gas limit exceeds maximum threshold",
 			zap.Stringer("requiredGasLimit", m.teleporterMessage.RequiredGasLimit),
 			zap.Uint64("blockGasLimit", destBlockGasLimit),
+			zap.Uint64("maxRequiredGasLimit", maxRequiredGasLimit),
 		)
 		return false, nil
 	}
