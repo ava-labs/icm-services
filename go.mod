@@ -13,7 +13,7 @@ require (
 	github.com/ava-labs/libevm v1.13.15-0.20260903154605-2eaf73af626c
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/config v1.33.9
-	github.com/aws/aws-sdk-go-v2/service/kms v1.61.4
+	github.com/aws/aws-sdk-go-v2/service/kms v1.61.5
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/ferranbt/fastssz v1.0.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
