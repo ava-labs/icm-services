@@ -12,8 +12,11 @@ import {
     TeleporterFeeInfo,
     WarpMessage
 } from "./TeleporterMessengerTest.t.sol";
+import {stdStorage, StdStorage} from "@forge-std/Test.sol";
 
 contract MarkReceiptTest is TeleporterMessengerTest {
+    using stdStorage for StdStorage;
+
     struct FeeRewardInfo {
         uint256 feeAmount;
         address relayerRewardAddress;
@@ -195,5 +198,79 @@ contract MarkReceiptTest is TeleporterMessengerTest {
 
         // Check that the message hashes for the message receipts we received have been cleared.
         assertEq(teleporterMessenger.getMessageHash(receivedMessageID), bytes32(0));
+    }
+
+    // Receipts whose fees would overflow the accumulated reward of the relayer reward address must
+    // still be processed, so that a fee token with broken accounting can not block delivery of the
+    // message carrying the receipts. The accumulated reward saturates at the maximum uint256 value.
+    function testReceiptRewardSaturatesInsteadOfOverflowing() public {
+        address relayerRewardAddress = 0x52A258ED593C793251a89bfd36caE158EE9fC4F8;
+
+        // Submit a mock message with the maximum possible fee amount.
+        uint256 firstMessageNonce = _getNextMessageNonce();
+        bytes32 firstMessageID =
+            _sendTestMessageWithFee(DEFAULT_SOURCE_BLOCKCHAIN_ID, type(uint256).max);
+
+        // The mock fee asset now reports the maximum uint256 balance for the Teleporter contract,
+        // so reset it to be able to collect the fee of a second message using the same asset.
+        stdstore.target(address(_mockFeeAsset)).sig(_mockFeeAsset.mockBalances.selector)
+            .with_key(address(teleporterMessenger)).checked_write(uint256(0));
+
+        // Submit a second mock message with the same fee asset.
+        uint256 secondMessageNonce = _getNextMessageNonce();
+        bytes32 secondMessageID = _sendTestMessageWithFee(DEFAULT_SOURCE_BLOCKCHAIN_ID, 1);
+
+        // Mock receiving a message with the receipts for both messages sent above, both of which
+        // attribute the reward to the same relayer reward address.
+        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](2);
+        receipts[0] = TeleporterMessageReceipt({
+            receivedMessageNonce: firstMessageNonce, relayerRewardAddress: relayerRewardAddress
+        });
+        receipts[1] = TeleporterMessageReceipt({
+            receivedMessageNonce: secondMessageNonce, relayerRewardAddress: relayerRewardAddress
+        });
+        uint256 receivedMessageNonce = 7;
+        bytes32 receivedMessageID = teleporterMessenger.calculateMessageID(
+            DEFAULT_SOURCE_BLOCKCHAIN_ID, DEFAULT_DESTINATION_BLOCKCHAIN_ID, receivedMessageNonce
+        );
+        TeleporterMessage memory messageToReceive =
+            _createMockTeleporterMessage(receivedMessageNonce, new bytes(0));
+        messageToReceive.receipts = receipts;
+        WarpMessage memory warpMessage =
+            _createDefaultWarpMessage(DEFAULT_SOURCE_BLOCKCHAIN_ID, abi.encode(messageToReceive));
+        _setUpSuccessGetVerifiedWarpMessageMock(0, warpMessage);
+
+        // Receive the mock message. Both receipts are processed, and the second one saturates the
+        // reward rather than reverting the delivery.
+        vm.expectEmit(true, true, true, true, address(teleporterMessenger));
+        emit ReceiptReceived(
+            firstMessageID,
+            DEFAULT_SOURCE_BLOCKCHAIN_ID,
+            relayerRewardAddress,
+            TeleporterFeeInfo({feeTokenAddress: address(_mockFeeAsset), amount: type(uint256).max})
+        );
+        vm.expectEmit(true, true, true, true, address(teleporterMessenger));
+        emit ReceiptReceived(
+            secondMessageID,
+            DEFAULT_SOURCE_BLOCKCHAIN_ID,
+            relayerRewardAddress,
+            TeleporterFeeInfo({feeTokenAddress: address(_mockFeeAsset), amount: 1})
+        );
+        teleporterMessenger.receiveCrossChainMessage(0, DEFAULT_RELAYER_REWARD_ADDRESS);
+
+        // Check that the reward saturated at the maximum uint256 value.
+        assertEq(
+            teleporterMessenger.checkRelayerRewardAmount(
+                relayerRewardAddress, address(_mockFeeAsset)
+            ),
+            type(uint256).max
+        );
+
+        // Check that the message received is considered delivered.
+        assertTrue(teleporterMessenger.messageReceived(receivedMessageID));
+
+        // Check that the message hashes for the message receipts we received have been cleared.
+        assertEq(teleporterMessenger.getMessageHash(firstMessageID), bytes32(0));
+        assertEq(teleporterMessenger.getMessageHash(secondMessageID), bytes32(0));
     }
 }
