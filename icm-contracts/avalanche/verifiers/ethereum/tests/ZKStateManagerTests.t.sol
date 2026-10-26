@@ -14,7 +14,11 @@ import {Consensus, Execution} from "../StateManagerLibrary.sol";
 /// validity.
 // solhint-disable no-empty-blocks
 contract AcceptAllVerifier is IRiscZeroVerifier {
-    function verify(bytes calldata, bytes32, bytes32) external pure {}
+    function verify(
+        bytes calldata,
+        bytes32,
+        bytes32
+    ) external pure {}
 
     function verifyIntegrity(
         RiscZeroReceipt calldata
@@ -198,7 +202,10 @@ contract ZKStateManagerTest is Test {
     // Helpers
     // ---------------------------------------------------------------------------------------
 
-    function _deploy(uint64 startEpoch, uint256 genesisTime) private returns (ZKStateManager) {
+    function _deploy(
+        uint64 startEpoch,
+        uint256 genesisTime
+    ) private returns (ZKStateManager) {
         // Execution-layer verification is not exercised here, so the beacon config can be empty.
         Execution.BeaconConfig memory config;
         return new ZKStateManager({
@@ -214,7 +221,10 @@ contract ZKStateManagerTest is Test {
         });
     }
 
-    function _manualTransition(uint64 preEpoch, uint64 postEpoch) private {
+    function _manualTransition(
+        uint64 preEpoch,
+        uint64 postEpoch
+    ) private {
         Journal memory journal = Journal({
             preState: _state(preEpoch),
             postState: _state(postEpoch),
@@ -230,9 +240,7 @@ contract ZKStateManagerTest is Test {
         uint64 finalizedSlot
     ) private pure returns (ConsensusData memory) {
         Journal memory journal = Journal({
-            preState: _state(preEpoch),
-            postState: _state(postEpoch),
-            finalizedSlot: finalizedSlot
+            preState: _state(preEpoch), postState: _state(postEpoch), finalizedSlot: finalizedSlot
         });
         return ConsensusData({journalData: abi.encode(journal), seal: ""});
     }
