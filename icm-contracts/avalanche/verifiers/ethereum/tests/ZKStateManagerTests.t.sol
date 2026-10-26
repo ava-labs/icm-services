@@ -144,6 +144,23 @@ contract ZKStateManagerTest is Test {
         _manager.transition(_consensusData(_START_EPOCH + 1, postEpoch));
     }
 
+    /// @dev The confirmed slot is read from the journal and must strictly increase across
+    /// proof-driven transitions, so event consumers can rely on anchors being in slot order.
+    function testRevertsWhenJournalSlotDoesNotIncrease() public {
+        uint64 firstEpoch = _START_EPOCH + 1;
+        vm.warp(_manager.epochTimestamp(firstEpoch + 3));
+        _manager.transition(_consensusData(_START_EPOCH, firstEpoch));
+
+        // Finality advances, but the journal repeats the previous slot.
+        uint64 repeatedSlot = firstEpoch * _SLOT_PER_EPOCH;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ZKStateManager.NonIncreasingSlot.selector, repeatedSlot, repeatedSlot
+            )
+        );
+        _manager.transition(_consensusDataWithSlot(firstEpoch, firstEpoch + 1, repeatedSlot));
+    }
+
     /// @dev The scenario from the staleness finding. A proof that was valid when first applied
     /// becomes applicable again after an admin resets the contract to that proof's pre-state.
     /// While the proof's post-state is still recent, re-applying it is harmless and allowed. Once
@@ -214,7 +231,18 @@ contract ZKStateManagerTest is Test {
             finalizedSlot: postEpoch * _SLOT_PER_EPOCH
         });
         vm.prank(_admin);
-        _manager.manualTransition(abi.encode(journal), postEpoch * _SLOT_PER_EPOCH);
+        _manager.manualTransition(abi.encode(journal));
+    }
+
+    function _consensusDataWithSlot(
+        uint64 preEpoch,
+        uint64 postEpoch,
+        uint64 finalizedSlot
+    ) private pure returns (ConsensusData memory) {
+        Journal memory journal = Journal({
+            preState: _state(preEpoch), postState: _state(postEpoch), finalizedSlot: finalizedSlot
+        });
+        return ConsensusData({journalData: abi.encode(journal), seal: ""});
     }
 
     /// @dev Mirrors {ZKStateManager.epochTimestamp} for use before the manager is deployed.
@@ -233,9 +261,7 @@ contract ZKStateManagerTest is Test {
             postState: _state(postEpoch),
             finalizedSlot: postEpoch * _SLOT_PER_EPOCH
         });
-        return ConsensusData({
-            journalData: abi.encode(journal), seal: "", finalizedSlot: postEpoch * _SLOT_PER_EPOCH
-        });
+        return ConsensusData({journalData: abi.encode(journal), seal: ""});
     }
 
     /// @dev A consensus state finalized at `finalizedEpoch`, with justification one epoch later.
