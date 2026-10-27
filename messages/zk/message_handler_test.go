@@ -9,8 +9,11 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
+	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/messages"
+	"github.com/ava-labs/icm-services/messages/zk/proofs"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
@@ -152,4 +155,68 @@ func TestFindMessageLog(t *testing.T) {
 
 	_, err = findMessageLog(receipt, messageProtocolAddress, []byte{1, 2, 3})
 	require.Error(t, err)
+}
+
+func testExecProof() *zkadapter.ExecutionProof {
+	return &zkadapter.ExecutionProof{
+		AnchorSlot:                 200,
+		TargetSlot:                 100,
+		AnchorBeaconStateRoot:      [32]byte{0x01},
+		AnchorBeaconStateProof:     [][32]byte{{0x02}, {0x03}, {0x04}},
+		TargetBeaconStateRoot:      [32]byte{0x05},
+		TargetBeaconStateProof:     [][32]byte{{0x06}},
+		TargetExecutionHeaderRoot:  [32]byte{0x07},
+		TargetExecutionHeaderProof: [][32]byte{{0x08}, {0x09}},
+		TargetReceiptsRoot:         [32]byte{0x0a},
+		TargetReceiptsProof:        [][32]byte{{0x0b}},
+	}
+}
+
+func testReceiptProof() *proofs.ReceiptProof {
+	return &proofs.ReceiptProof{
+		Proof:           [][]byte{{0xaa, 0xbb}, {0xcc}},
+		Key:             []byte{0x0f},
+		Value:           []byte{0x01, 0x02, 0x03},
+		LogIndex:        2,
+		ExpectedEmitter: common.HexToAddress("0xa0000000000000000000000000000000000001"),
+		ExpectedTopic0:  common.HexToHash("0xdd"),
+	}
+}
+
+// Checks that the attestation is the one-element-tuple encoding verifyMessage's abi.decode
+// expects, and that the proofs decode back to the same values.
+func TestEncodeAttestation(t *testing.T) {
+	execProof := testExecProof()
+	receiptProof := testReceiptProof()
+
+	attestation, err := encodeAttestation(execProof, receiptProof)
+	require.NoError(t, err)
+
+	// Leading word is the offset to the struct body.
+	require.Equal(t, common.LeftPadBytes([]byte{0x20}, 32), attestation[:32])
+
+	// The body decodes back to the same two proofs through the same ABI.
+	decoded, err := attestationArguments.Unpack(attestation[32:])
+	require.NoError(t, err)
+	require.Len(t, decoded, 2)
+
+	gotExec := abi.ConvertType(decoded[0], new(zkadapter.ExecutionProof)).(*zkadapter.ExecutionProof)
+	require.Equal(t, execProof, gotExec)
+
+	gotReceipt := abi.ConvertType(decoded[1], new(zkadapter.ReceiptProof)).(*zkadapter.ReceiptProof)
+	require.Equal(t, toBindingReceiptProof(receiptProof), *gotReceipt)
+}
+
+// Checks the conversion to the adapter's Receipt.Proof binding struct, including the
+// uint to *big.Int log index.
+func TestToBindingReceiptProof(t *testing.T) {
+	p := testReceiptProof()
+	got := toBindingReceiptProof(p)
+
+	require.Equal(t, p.Proof, got.Proof)
+	require.Equal(t, p.Key, got.Key)
+	require.Equal(t, p.Value, got.Value)
+	require.Equal(t, big.NewInt(2), got.LogIndex)
+	require.Equal(t, p.ExpectedEmitter, got.ExpectedEmitter)
+	require.Equal(t, [32]byte(p.ExpectedTopic0), got.ExpectedTopic0)
 }
