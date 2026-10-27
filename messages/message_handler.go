@@ -31,6 +31,12 @@ var (
 	ErrDeliveryExceedsBlockGasLimit = fmt.Errorf(
 		"%w: delivery gas limit exceeds block gas limit", ErrNonRetryable,
 	)
+	// ErrDeliveryReverts marks a delivery that reverts when simulated against the destination
+	// chain for a reason the message itself causes, so broadcasting it would only mine the same
+	// reverted transaction.
+	ErrDeliveryReverts = fmt.Errorf(
+		"%w: delivery reverts", ErrNonRetryable,
+	)
 )
 
 // NonRetryableReason returns a short, bounded description of why a message was abandoned,
@@ -42,6 +48,8 @@ func NonRetryableReason(err error) string {
 		return "delivery out of gas"
 	case errors.Is(err, ErrDeliveryExceedsBlockGasLimit):
 		return "delivery exceeds block gas limit"
+	case errors.Is(err, ErrDeliveryReverts):
+		return "delivery reverts"
 	default:
 		return "non-retryable failure"
 	}
