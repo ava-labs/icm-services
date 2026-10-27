@@ -3735,7 +3735,7 @@ dependencies = [
  "bls12_381",
  "hex",
  "serde",
- "sha2 0.11.0",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -8264,7 +8264,7 @@ dependencies = [
  "indicatif 0.18.6",
  "merkle-sig-verification",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.10.9",
  "sp1-build",
  "sp1-sdk",
  "tokio",
