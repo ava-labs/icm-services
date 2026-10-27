@@ -50,3 +50,8 @@ updates:
       weekly-cargo-updates:
         patterns:
           - "*"
+    ignore:
+      # The SP1-patched bls12_381 used by zk-proofs-gen is built on digest 0.10,
+      # so sha2 0.11 (digest 0.11) cannot satisfy its hash-to-curve bounds.
+      - dependency-name: "sha2"
+        versions: [">=0.11"]
