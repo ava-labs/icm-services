@@ -5,6 +5,7 @@ package teleporterv2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -202,7 +203,7 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 			return common.Hash{}, err
 		}
 
-		txHash, err := m.SendMessage(ctx, signedMessage, validators)
+		txHash, err := m.SendMessage(ctx, signedMessage, validators, commitment)
 		if err != nil {
 			m.metrics.IncFailedRelayMessageCount("failed to send warp message")
 			return common.Hash{}, fmt.Errorf("failed to send warp message: %w", err)
@@ -213,11 +214,13 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 
 // SendMessage builds a Merkle attestation for the signed message and delivers it to the
 // destination TeleporterMessengerV2, whose verifier is a MerkleValidatorSetRegistry. The
-// [validators] must be the committed set the signature was aggregated over.
+// [validators] must be the set committed under [commitment], which the signature was aggregated
+// over.
 func (m *messageHandler) SendMessage(
 	ctx context.Context,
 	signedMessage *warp.Message,
 	validators []*validatorupdater.Validator,
+	commitment merkleregistry.ValidatorSetMerkleCommitment,
 ) (common.Hash, error) {
 	bitSetSig, ok := signedMessage.Signature.(*avalancheWarp.BitSetSignature)
 	if !ok {
@@ -244,12 +247,44 @@ func (m *messageHandler) SendMessage(
 
 	gasLimit, err := m.estimateGasLimit(ctx, callData)
 	if err != nil {
-		m.logger.Error("Failed to estimate gas limit", zap.Error(err))
-		return common.Hash{}, err
+		var revert *evm.RevertError
+		if !errors.As(err, &revert) {
+			m.logger.Error("Failed to estimate gas limit", zap.Error(err))
+			return common.Hash{}, err
+		}
+		return m.resolveEstimationRevert(ctx, revert, commitment)
 	}
 
 	// No access list: verification reads the attestation from calldata, not a predicate.
 	return m.sendTxAndConfirm(nil, gasLimit, callData)
+}
+
+// resolveEstimationRevert decides what a delivery that reverted during gas estimation means. The
+// estimate executes the whole delivery, verification included, against the registry's current
+// commitment, while the attestation was built for [commitment]. If the registry has since moved
+// to a newer commitment the attestation is merely stale, and the error is retryable so that the
+// next attempt rebuilds it; nothing is broadcast either way. Otherwise the revert is reproducible
+// and the message is abandoned.
+func (m *messageHandler) resolveEstimationRevert(
+	ctx context.Context,
+	revert *evm.RevertError,
+	commitment merkleregistry.ValidatorSetMerkleCommitment,
+) (common.Hash, error) {
+	current, err := m.fetchCommitment(ctx, m.unsignedMessage.SourceChainID)
+	if err != nil {
+		m.logger.Error("Failed to re-read committed validator set after revert", zap.Error(err))
+		return common.Hash{}, err
+	}
+	if current != commitment {
+		m.logger.Warn(
+			"Validator set commitment changed while delivering message, retrying",
+			zap.Uint64("attestedPChainHeight", commitment.PChainHeight),
+			zap.Uint64("currentPChainHeight", current.PChainHeight),
+			zap.String("revertReason", revert.Reason),
+		)
+		return common.Hash{}, fmt.Errorf("validator set commitment changed during delivery: %w", revert)
+	}
+	return m.abandonSimulatedRevert(revert)
 }
 
 // fetchCommitment reads the registry's stored validator set commitment for the source chain,
@@ -278,45 +313,27 @@ func (m *messageHandler) fetchCommitment(
 }
 
 // estimateGasLimit estimates the gas for the receiveCrossChainMessage call and applies a safety
-// buffer. Falls back to the configured block gas limit if estimation fails.
+// buffer, capped at the configured block gas limit. Estimation executes the delivery against the
+// destination's latest state, so a delivery that would revert fails here with an
+// [*evm.RevertError] rather than being broadcast at the block gas limit only to mine that revert.
+// Any other estimation failure is returned as is; the delivery is never broadcast unsimulated.
 func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) (uint64, error) {
-	from := m.selectSenderAddress()
 	estimated, err := m.destinationClient.Client().EstimateGas(ctx, ethereum.CallMsg{
-		From: from,
+		From: m.selectSenderAddress(),
 		To:   &m.teleporterAddress,
 		Data: callData,
 	})
 	if err != nil {
-		blockGasLimit := m.destinationClient.BlockGasLimit()
-		m.logger.Warn(
-			"Gas estimation failed, falling back to block gas limit",
-			zap.Error(err),
-			zap.Uint64("blockGasLimit", blockGasLimit),
-		)
-		if blockGasLimit == 0 {
-			return 0, fmt.Errorf("failed to estimate gas and no block gas limit configured: %w", err)
+		if revert := evm.AsRevertError(err); revert != nil {
+			return 0, revert
 		}
-		return blockGasLimit, nil
+		return 0, fmt.Errorf("failed to estimate gas: %w", err)
 	}
 	buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
 	if blockGasLimit := m.destinationClient.BlockGasLimit(); blockGasLimit != 0 && buffered > blockGasLimit {
 		buffered = blockGasLimit
 	}
 	return buffered, nil
-}
-
-// selectSenderAddress picks a relayer EOA eligible to deliver the message for gas estimation.
-func (m *messageHandler) selectSenderAddress() common.Address {
-	senders := m.destinationClient.SenderAddresses()
-	for _, sender := range senders {
-		if isAllowedRelayer(m.teleporterMessage.AllowedRelayerAddresses, sender) {
-			return sender
-		}
-	}
-	if len(senders) > 0 {
-		return senders[0]
-	}
-	return common.Address{}
 }
 
 // parseMessage decodes the TeleporterV2 message that [message] was sent as. Both adapters send
