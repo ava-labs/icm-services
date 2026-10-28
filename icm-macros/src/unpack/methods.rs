@@ -4,6 +4,7 @@
 //! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
 //! name unconditionally — callers must not rename it.
 
+use crate::common::LengthType;
 use crate::unpack::hooks::UnpackArgs;
 use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
@@ -16,18 +17,25 @@ use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
 ///
 /// Only the bytes consumed by this type are removed from `data`; the rest remains available
 /// for subsequent unpacking calls.
-pub fn unpack_elementary(output: &str, ty: ElementaryType, calldata: bool) -> String {
+pub fn unpack_elementary(
+    output: &str,
+    ty: ElementaryType,
+    calldata: bool,
+    length_type: LengthType,
+) -> String {
     let output = sanitize_local(output);
     match ty {
         ElementaryType::Bytes | ElementaryType::String => {
             let type_name = elementary_type_name(ty);
+            let prefix_size = length_type.byte_width();
             if calldata {
+                let read_len = read_length_calldata(prefix_size);
                 format!(
                     "\n{type_name} memory {output};\
                 \n{{\
-                \n    uint256 length = uint256(bytes32(data[0:32]));\
-                \n    {output} = {type_name}(data[32:length + 32]);\
-                \n    data = data[32 + length:];\
+                \n    uint256 length = {read_len};\
+                \n    {output} = {type_name}(data[{prefix_size}:length + {prefix_size}]);\
+                \n    data = data[{prefix_size} + length:];\
                 \n}}"
                 )
             } else {
@@ -35,17 +43,19 @@ pub fn unpack_elementary(output: &str, ty: ElementaryType, calldata: bool) -> St
                     ElementaryType::Bytes => "new bytes(data_length)".to_string(),
                     _ => "string(new bytes(data_length))".to_string(),
                 };
+                let read_len = read_length_memory(prefix_size);
+                let payload_offset = 32 + prefix_size;
                 format!(
                     "\n{type_name} memory {output};\
                 \n{{\
                 \n    uint256 data_length;\
-                \n    assembly {{ data_length := mload(add(data, 32)) }}\
+                \n    assembly {{ data_length := {read_len} }}\
                 \n    {output} = {alloc};\
                 \n    assembly {{\
-                \n        mcopy(add({output}, 32), add(data, 64), data_length)\
+                \n        mcopy(add({output}, 32), add(data, {payload_offset}), data_length)\
                 \n        let _data_orig_len := mload(data)\
-                \n        data := add(data, add(32, data_length))\
-                \n        mstore(data, sub(_data_orig_len, add(32, data_length)))\
+                \n        data := add(data, add({prefix_size}, data_length))\
+                \n        mstore(data, sub(_data_orig_len, add({prefix_size}, data_length)))\
                 \n    }}\
                 \n}}"
                 )
@@ -191,6 +201,7 @@ pub fn unpack_struct(
                 depth: 0,
                 output: local_name.clone(),
                 ty: &field.ty.kind,
+                length: field_args.length.unwrap_or_default(),
             };
             inline_unpack(ctx, args.calldata, target_contract, node)?
         };
@@ -226,6 +237,9 @@ struct UnpackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
+    /// The Solidity type to use for this node's length/count prefix.
+    /// Defaults to `uint256`.
+    length: LengthType,
 }
 
 fn inline_unpack(
@@ -235,7 +249,7 @@ fn inline_unpack(
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
-        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata),
+        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata, node.length),
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
             // and allocates `new T[](length)`, which cannot be assigned to a `T[N]` field.
@@ -252,18 +266,27 @@ fn inline_unpack(
                 depth: node.depth + 1,
                 output: next_output.clone(),
                 ty: &arr.element.kind,
+                length: LengthType::default(),
             };
             let output = sanitize_local(&node.output);
             let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
+            let prefix_size = node.length.byte_width();
             let (read_length, advance_past_count) = if calldata {
                 (
-                    "uint256 length = uint256(bytes32(data[0:32]));".to_string(),
-                    "data = data[32:];".to_string(),
+                    format!("uint256 length = {};", read_length_calldata(prefix_size)),
+                    format!("data = data[{prefix_size}:];"),
                 )
             } else {
                 (
-                    "uint256 length; assembly { length := mload(add(data, 32)) }".to_string(),
-                    slice_memory("data", "32", "sub(mload(data), 32)"),
+                    format!(
+                        "uint256 length; assembly {{ length := {} }}",
+                        read_length_memory(prefix_size)
+                    ),
+                    slice_memory(
+                        "data",
+                        &prefix_size.to_string(),
+                        &format!("sub(mload(data), {prefix_size})"),
+                    ),
                 )
             };
             format!(
@@ -530,6 +553,27 @@ fn sanitize_local(name: &str) -> String {
         out.push('_');
     }
     out
+}
+
+/// Generates a calldata expression that reads a length/count prefix of `size` bytes.
+fn read_length_calldata(size: usize) -> String {
+    if size == 32 {
+        "uint256(bytes32(data[0:32]))".to_string()
+    } else {
+        let bits = size * 8;
+        format!("uint256(uint{bits}(bytes{size}(data[0:{size}])))")
+    }
+}
+
+/// Generates an assembly expression that reads a length/count prefix of `size` bytes
+/// from the front of a memory `bytes` buffer (after the EVM length word).
+fn read_length_memory(size: usize) -> String {
+    if size == 32 {
+        "mload(add(data, 32))".to_string()
+    } else {
+        let shift = (32 - size) * 8;
+        format!("shr({shift}, mload(add(data, 32)))")
+    }
 }
 
 /// Returns the visibility keyword with a trailing space, or an empty string when
