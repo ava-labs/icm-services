@@ -14,6 +14,13 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    ignore:
+      # avalanchego's tmpnet test fixture (through at least v1.15.2) is written
+      # against prometheus/client_golang v1.23 and no longer compiles against
+      # v1.25.0, which changed the api/prometheus/v1 QueryRange signature.
+      # Remove once avalanchego requires client_golang >= v1.25.0.
+      - dependency-name: "github.com/prometheus/client_golang"
+        versions: [">=1.25.0"]
     groups:
       weekly-ava-updates:
         patterns:
@@ -31,3 +38,20 @@ updates:
       weekly-github-actions:
         patterns:
           - "*"
+  - package-ecosystem: "cargo"
+    directories:
+      - "/icm-macros"
+      - "/scripts/tools/zk-proofs-gen"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      weekly-cargo-updates:
+        patterns:
+          - "*"
+    ignore:
+      # The SP1-patched bls12_381 used by zk-proofs-gen is built on digest 0.10,
+      # so sha2 0.11 (digest 0.11) cannot satisfy its hash-to-curve bounds.
+      - dependency-name: "sha2"
+        versions: [">=0.11"]

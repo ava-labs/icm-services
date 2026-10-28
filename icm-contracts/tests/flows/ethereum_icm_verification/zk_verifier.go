@@ -226,9 +226,8 @@ func ZKAdapterVerifier(
 
 	// Submit the Boundless ZK proof to transition consensus state
 	tx, err = avalancheZkadapter.Transition(opts, zkadapter.ConsensusData{
-		JournalData:   common.FromHex(boundlessFixture.JournalData),
-		Seal:          common.FromHex(boundlessFixture.Seal),
-		FinalizedSlot: boundlessFixture.FinalizedSlot,
+		JournalData: common.FromHex(boundlessFixture.JournalData),
+		Seal:        common.FromHex(boundlessFixture.Seal),
 	})
 	Expect(err).Should(BeNil())
 	utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())

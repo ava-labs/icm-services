@@ -96,3 +96,7 @@ func ConfigFromMap(m map[string]any) (*Config, error) {
 		BeaconAPIURL:      beaconAPIURL,
 	}, nil
 }
+
+func (c *Config) adapterAddress() common.Address {
+	return common.HexToAddress(c.AdapterAddress)
+}
