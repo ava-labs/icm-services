@@ -5,17 +5,29 @@ use solar::ast::ElementaryType;
 use solar::sema::Gcx;
 use solar::sema::hir::{Enum, ItemId, Struct, TypeKind};
 
+use crate::common::LengthType;
 use crate::pack::hooks::PackArgs;
 
-pub fn pack_elementary(var: &str, ty: ElementaryType) -> String {
+pub fn pack_elementary(var: &str, ty: ElementaryType, length_type: LengthType) -> String {
     match ty {
         ElementaryType::Bytes => {
-            format!("abi.encodePacked({var}.length, {var})")
+            let len = length_cast(&format!("{var}.length"), length_type);
+            format!("abi.encodePacked({len}, {var})")
         }
         ElementaryType::String => {
-            format!("abi.encodePacked(bytes({var}).length, {var})")
+            let len = length_cast(&format!("bytes({var}).length"), length_type);
+            format!("abi.encodePacked({len}, {var})")
         }
         _ => format!("abi.encodePacked({var})"),
+    }
+}
+
+/// Wraps a length expression in a cast to the specified type.
+/// The default `uint256` type is a no-op cast so it is omitted.
+fn length_cast(len_expr: &str, length_type: LengthType) -> String {
+    match length_type {
+        LengthType::Uint(32) => len_expr.to_string(),
+        lt => format!("{}({len_expr})", lt.name()),
     }
 }
 
@@ -53,9 +65,11 @@ pub fn pack_struct(
             format!("{method}(obj.{})", field.name.unwrap())
         } else {
             match field.ty.kind {
-                TypeKind::Elementary(ty) => {
-                    pack_elementary(&format!("obj.{}", field.name.unwrap()), ty)
-                }
+                TypeKind::Elementary(ty) => pack_elementary(
+                    &format!("obj.{}", field.name.unwrap()),
+                    ty,
+                    field_args.length.unwrap_or_default(),
+                ),
                 TypeKind::Array(_) => {
                     let name = field.name.unwrap().to_string();
                     let output = format!("{name}_bytes");
@@ -66,6 +80,7 @@ pub fn pack_struct(
                         accessor: format!("obj.{name}"),
                         output: output.clone(),
                         ty: &field.ty.kind,
+                        length: field_args.length.unwrap_or_default(),
                     });
                     // instantiate the variable that will hold the bytes
                     body.push_str(&format!("bytes memory {output};"));
@@ -126,6 +141,9 @@ struct PackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
+    /// The Solidity type to use for this node's length/count prefix.
+    /// Defaults to `uint256`.
+    length: LengthType,
 }
 
 fn custom_type_name(ctx: &Gcx, item_id: ItemId) -> String {
@@ -143,7 +161,7 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
             format!(
                 "{} = {};",
                 node.output,
-                pack_elementary(&node.accessor, *elem)
+                pack_elementary(&node.accessor, *elem, node.length)
             )
         }
         TypeKind::Array(arr) => {
@@ -155,18 +173,20 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
                 accessor: format!("{}[{loop_var}]", node.accessor),
                 output: next_output.clone(),
                 ty: &arr.element.kind,
+                length: LengthType::default(),
             };
             let inner = expand_packings_recursively(ctx, next_node)?;
+            let count = length_cast(&format!("{}.length", node.accessor), node.length);
 
             format!(
-                "\n{} = abi.encodePacked({}.length);\
+                "\n{} = abi.encodePacked({count});\
                 \nfor (uint256 {loop_var} = 0; {loop_var} < {}.length;){{\
                 \n    bytes memory {next_output};\
                 \n    {inner}\
                 \n    {} = abi.encodePacked({}, {next_output});\
                 \n    unchecked {{ ++{loop_var};}}\
                 \n}}",
-                node.output, node.accessor, node.accessor, node.output, node.output
+                node.output, node.accessor, node.output, node.output
             )
         }
         TypeKind::Custom(item_id) => {
