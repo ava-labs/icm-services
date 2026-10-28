@@ -38,15 +38,31 @@ type Sender struct {
 	Delivered func() (bool, error)
 }
 
-// Send simulates the delivery and, unless the simulation shows it would revert, broadcasts it
-// and resolves the receipt. Returns the transaction hash of a successful delivery, or the zero
-// hash if nothing was sent because the message turned out to be delivered already.
+// Send checks that the delivery fits in a block, simulates it and, unless the simulation shows
+// it would revert, broadcasts it and resolves the receipt. Returns the transaction hash of a
+// successful delivery, or the zero hash if nothing was sent because the message turned out to be
+// delivered already.
 func (s *Sender) Send(
 	ctx context.Context,
 	accessList types.AccessList,
 	gasLimit uint64,
 	callData []byte,
 ) (common.Hash, error) {
+	// A delivery that cannot fit in a block is refused by the node at submission, which would
+	// look like a transient failure and be retried. The simulation cannot catch it, because a
+	// call is bounded by the node's RPC gas cap rather than by the block gas limit. A zero limit
+	// means the destination's is not configured, and the node decides.
+	if blockGasLimit := s.DestinationClient.BlockGasLimit(); blockGasLimit != 0 && gasLimit > blockGasLimit {
+		s.Logger.Warn(
+			"Delivery gas limit exceeds destination block gas limit, not sending",
+			zap.Uint64("gasLimit", gasLimit),
+			zap.Uint64("blockGasLimit", blockGasLimit),
+		)
+		return common.Hash{}, fmt.Errorf(
+			"%w: %d exceeds %d", ErrDeliveryExceedsBlockGasLimit, gasLimit, blockGasLimit,
+		)
+	}
+
 	err := s.Simulate(ctx, accessList, gasLimit, callData)
 	var revert *evm.RevertError
 	switch {

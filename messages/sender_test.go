@@ -24,7 +24,10 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-const testGasLimit = uint64(300_000)
+const (
+	testGasLimit      = uint64(300_000)
+	testBlockGasLimit = uint64(12_000_000)
+)
 
 var (
 	testTo           = common.HexToAddress("0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf")
@@ -83,6 +86,7 @@ func newSenderTest(t *testing.T, ctrl *gomock.Controller) *senderTest {
 	destinationClient := mock_vms.NewMockDestinationClient(ctrl)
 	ethClient := mock_evm.NewMockClient(ctrl)
 	destinationClient.EXPECT().Client().Return(ethClient).AnyTimes()
+	destinationClient.EXPECT().BlockGasLimit().Return(testBlockGasLimit).AnyTimes()
 	destinationClient.EXPECT().
 		SenderAddresses().
 		Return([]common.Address{testOtherRelayer, testRelayer}).
@@ -182,6 +186,18 @@ func TestSenderSendAbandonsSimulatedRevert(t *testing.T) {
 	require.ErrorIs(t, err, ErrDeliveryReverts)
 	require.ErrorIs(t, err, ErrNonRetryable)
 	require.ErrorContains(t, err, "arithmetic underflow or overflow")
+}
+
+// A delivery that cannot fit in a block is abandoned before anything is simulated or sent: the
+// node would refuse the transaction at submission, and a call does not see the block gas limit.
+// No CallContract or SendTx expectation is registered, so the mock fails the test on either.
+func TestSenderSendExceedingBlockGasLimitIsNonRetryable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	st := newSenderTest(t, ctrl)
+
+	_, err := st.sender.Send(context.Background(), testAccessList, testBlockGasLimit+1, testCallData)
+	require.ErrorIs(t, err, ErrDeliveryExceedsBlockGasLimit)
+	require.ErrorIs(t, err, ErrNonRetryable)
 }
 
 // A simulated revert because another relayer delivered the message first is not a failure: there

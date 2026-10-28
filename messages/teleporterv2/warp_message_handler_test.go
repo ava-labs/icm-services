@@ -5,6 +5,7 @@ package teleporterv2
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -114,6 +115,21 @@ func TestWarpSendMessageSimulatesThenSends(t *testing.T) {
 	require.Equal(t, expectedGasLimit, simulated.Gas)
 	require.Equal(t, expectedCallData, simulated.Data)
 	require.Equal(t, expectedAccessList, simulated.AccessList)
+}
+
+// A delivery whose computed gas exceeds the destination block gas limit is abandoned as
+// non-retryable before anything is simulated or sent. The message's own required gas fits the
+// block here; the verification overhead added on top of it is what does not. No CallContract or
+// SendTx expectation is registered, so the mock fails the test on either.
+func TestWarpSendMessageExceedingBlockGasLimitIsNonRetryable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	handler, _ := newTestWarpHandler(t, ctrl)
+	handler.teleporterMessage.RequiredGasLimit = new(big.Int).SetUint64(testBlockGasLimit)
+	signedMessage := testSignedWarpMessage(t, handler)
+
+	_, err := handler.SendMessage(context.Background(), signedMessage)
+	require.ErrorIs(t, err, messages.ErrDeliveryExceedsBlockGasLimit)
+	require.ErrorIs(t, err, messages.ErrNonRetryable)
 }
 
 // A delivery that reverts in simulation, such as one carrying a receipt the messenger cannot

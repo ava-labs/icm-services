@@ -146,7 +146,8 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	// zero - so the receipts, not RequiredGasLimit, are what can push a delivery past the block
 	// limit. Signers and predicate chunks are not known until the signature is aggregated;
 	// omitting them makes this a lower bound on the limit SendMessage will compute, so this
-	// never declines a message that would have fit.
+	// never declines a message that would have fit. The sender compares the full limit against
+	// the block once the signature is known.
 	//
 	// RequiredGasLimit is a Solidity uint256 (*big.Int). CalculateReceiveMessageGasLimit returns
 	// an error for any value that does not fit in a uint64, which is treated as exceeding the
@@ -217,22 +218,6 @@ func (m *messageHandler) SendMessage(ctx context.Context, signedMessage *warp.Me
 	if err != nil {
 		m.logger.Error("Failed to calculate gas limit for receiveCrossChainMessage call")
 		return common.Hash{}, err
-	}
-
-	// Re-check against the block gas limit now that the signature fixes the signer and predicate
-	// chunk counts. ShouldSendMessage only had a lower bound, and broadcasting a transaction that
-	// cannot fit in a block would burn the relayer's funds for a guaranteed failure.
-	if blockGasLimit := m.destinationClient.BlockGasLimit(); gasLimit > blockGasLimit {
-		m.logger.Warn(
-			"Delivery gas limit exceeds destination block gas limit, not sending",
-			zap.Uint64("gasLimit", gasLimit),
-			zap.Uint64("blockGasLimit", blockGasLimit),
-			zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
-		)
-		return common.Hash{}, fmt.Errorf(
-			"%w: %d exceeds %d",
-			messages.ErrDeliveryExceedsBlockGasLimit, gasLimit, blockGasLimit,
-		)
 	}
 
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
