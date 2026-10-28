@@ -16,6 +16,7 @@ import (
 	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	"github.com/ava-labs/icm-services/config"
+	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
@@ -44,6 +45,9 @@ import (
 //  4. Wait for the relayer to register the L1 validator set on Ethereum.
 //  5. Send a TeleporterV2 message from the L1 to Ethereum and assert the relayer delivers it
 //     (MessageReceived becomes true on the Ethereum TeleporterMessengerV2).
+//  6. Emit a message through the L1 registry adapter that the Ethereum messenger always rejects,
+//     and assert the relayer abandons it: no transaction, height checkpointed, process still up.
+//  7. Send another TeleporterV2 message and assert the relayer still delivers it.
 func MerkleMessageRelay(
 	ctx context.Context,
 	log logging.Logger,
@@ -189,82 +193,82 @@ func MerkleMessageRelay(
 	)
 
 	// =========================================================================
-	// Send a TeleporterV2 message from the L1 to Ethereum
+	// Send a TeleporterV2 message from the L1 to Ethereum and assert the relayer delivers it
 	// =========================================================================
 	l1Teleporter, err := teleportermessengerv2.NewTeleporterMessengerV2(l1TeleporterAddr, l1Info.EthClient)
+	Expect(err).Should(BeNil())
+	ethTeleporter, err := teleportermessengerv2.NewTeleporterMessengerV2(ethTeleporterAddr, ethereumNetwork.EthClient)
 	Expect(err).Should(BeNil())
 	l1Opts, err := bind.NewKeyedTransactorWithChainID(fundedKey, l1Info.EVMChainID)
 	Expect(err).Should(BeNil())
 
-	input := teleportermessengerv2.TeleporterMessageInput{
+	route := merkleMessageRoute{
+		log:              log,
+		l1Info:           l1Info,
+		l1Opts:           l1Opts,
+		fundedKey:        fundedKey,
+		l1Teleporter:     l1Teleporter,
+		l1TeleporterAddr: l1TeleporterAddr,
+		ethTeleporter:    ethTeleporter,
+		ethBlockchainID:  ethBlockchainID,
+		ethFundedAddress: ethFundedAddress,
+	}
+	route.relayMessage(ctx, []byte("Hello Ethereum from the relayer!"))
+
+	// =========================================================================
+	// A message the Ethereum messenger always rejects is abandoned, not retried
+	// =========================================================================
+	// The registry adapter lets any account emit a message that names the account itself as the
+	// origin messenger. The Ethereum messenger rejects it only after the signature verifies, so
+	// the message passes every relayer-side check and the relayer's gas estimation is what reveals
+	// the revert. The relayer must mine nothing, checkpoint past the block and keep running.
+	abandonedBefore, err := utils.RevertingDeliveryCount(ctx, relayerConfig.MetricsPort)
+	Expect(err).Should(BeNil())
+	nonceBefore, err := ethereumNetwork.EthClient.NonceAt(ctx, deliveryAddress, nil)
+	Expect(err).Should(BeNil())
+
+	log.Info("Sending a message from the L1 to Ethereum that the destination messenger always rejects")
+	l1Registry, err := merkleregistry.NewMerkleValidatorSetRegistry(registryAddr, l1Info.EthClient)
+	Expect(err).Should(BeNil())
+	forgedTx, err := l1Registry.SendMessage(l1Opts, merkleregistry.TeleporterMessageV2{
+		// A nonce the messenger never reaches, so the relayer does not take the forged message
+		// for one the messenger has already received.
+		MessageNonce:            new(big.Int).Lsh(big.NewInt(1), 128),
+		OriginSenderAddress:     fundedAddress,
+		OriginTeleporterAddress: fundedAddress,
 		DestinationBlockchainID: ethBlockchainID,
 		DestinationAddress:      ethFundedAddress,
-		FeeInfo: teleportermessengerv2.TeleporterFeeInfo{
-			FeeTokenAddress: common.Address{},
-			Amount:          big.NewInt(0),
-		},
 		RequiredGasLimit:        big.NewInt(100_000),
 		AllowedRelayerAddresses: []common.Address{},
-		Message:                 []byte("Hello Ethereum from the relayer!"),
-	}
-	tx, err := l1Teleporter.SendCrossChainMessage(l1Opts, input)
+		Receipts:                []merkleregistry.TeleporterMessageReceipt{},
+		Message:                 []byte("Not from the messenger"),
+	})
 	Expect(err).Should(BeNil())
-	receipt := utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, tx.Hash())
-
-	sendEvent, err := utils.GetEventFromLogs(receipt.Logs, l1Teleporter.ParseSendCrossChainMessage)
-	Expect(err).Should(BeNil())
-	Expect(sendEvent.DestinationBlockchainID[:]).Should(Equal(ethBlockchainID[:]))
-
-	messageID, err := teleporterUtils.CalculateMessageID(
-		l1TeleporterAddr, l1BlockchainID, ethBlockchainID, sendEvent.Message.MessageNonce,
-	)
-	Expect(err).Should(BeNil())
-	log.Info("Sent TeleporterV2 message from L1 to Ethereum", zap.Stringer("messageID", messageID))
-
-	// Advance the source chain a few blocks so the relayer's WS subscription reliably surfaces the
-	// block containing the message. subnet-evm only produces blocks when there are transactions, so
-	// without follow-on activity the message block's new-head notification can be delayed.
+	forgedReceipt := utils.WaitForTransactionSuccess(ctx, l1Info.EthClient, forgedTx.Hash())
 	Expect(utils.IssueTxsToAdvanceChain(ctx, l1Info.EVMChainID, fundedKey, l1Info.EthClient, 5)).Should(BeNil())
 
+	utils.WaitForAbandonedDelivery(ctx, log, utils.AbandonedDelivery{
+		RelayerConfig: relayerConfig,
+		RelayerID: database.CalculateRelayerID(
+			registryAddr,
+			l1BlockchainID,
+			ethBlockchainID,
+			database.AllAllowedAddress,
+			database.AllAllowedAddress,
+		),
+		SourceHeight:    forgedReceipt.BlockNumber.Uint64(),
+		Destination:     ethereumNetwork.EthClient,
+		RelayerAddress:  deliveryAddress,
+		NonceBefore:     nonceBefore,
+		AbandonedBefore: abandonedBefore,
+	})
+
 	// =========================================================================
-	// Assert the relayer delivers the message to the Ethereum TeleporterMessengerV2
+	// The route still delivers after the abandoned message
 	// =========================================================================
-	ethTeleporter, err := teleportermessengerv2.NewTeleporterMessengerV2(ethTeleporterAddr, ethereumNetwork.EthClient)
-	Expect(err).Should(BeNil())
+	route.relayMessage(ctx, []byte("Hello again from the relayer!"))
 
-	deliveryCtx, deliveryCancel := context.WithTimeout(ctx, 120*time.Second)
-	defer deliveryCancel()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	delivered := false
-	for !delivered {
-		select {
-		case <-deliveryCtx.Done():
-			Expect(false).Should(BeTrue(), "Timed out waiting for relayer to deliver message to Ethereum")
-		case <-ticker.C:
-			received, recvErr := ethTeleporter.MessageReceived(&bind.CallOpts{Context: ctx}, messageID)
-			if recvErr != nil {
-				log.Warn("Failed to query MessageReceived", zap.Error(recvErr))
-				continue
-			}
-			if received {
-				delivered = true
-			}
-		}
-	}
-
-	// Explicitly filter for the ReceiveCrossChainMessage log emitted by the relayer's delivery and
-	// assert the delivered message matches what was sent from the L1.
-	receiveIter, err := ethTeleporter.FilterReceiveCrossChainMessage(
-		&bind.FilterOpts{Context: ctx}, [][32]byte{messageID}, nil, nil,
-	)
-	Expect(err).Should(BeNil())
-	defer receiveIter.Close()
-	Expect(receiveIter.Next()).Should(BeTrue(),
-		"expected a ReceiveCrossChainMessage log for the delivered message")
-	Expect(receiveIter.Event.Message.Message).Should(Equal(input.Message))
-
-	log.Info("MerkleMessageRelay e2e test PASSED: relayer delivered L1 -> Ethereum message")
+	log.Info("MerkleMessageRelay e2e test PASSED: relayer delivered L1 -> Ethereum messages")
 }
 
 // createMerkleMessageRelayConfig builds a relayer config whose source L1 routes its TeleporterV2
@@ -329,4 +333,83 @@ func createMerkleMessageRelayConfig(
 	}
 
 	return baseConfig
+}
+
+// merkleMessageRoute is the L1 to Ethereum TeleporterV2 route the relayer under test serves.
+type merkleMessageRoute struct {
+	log              logging.Logger
+	l1Info           testinfo.L1TestInfo
+	l1Opts           *bind.TransactOpts
+	fundedKey        *ecdsa.PrivateKey
+	l1Teleporter     *teleportermessengerv2.TeleporterMessengerV2
+	l1TeleporterAddr common.Address
+	ethTeleporter    *teleportermessengerv2.TeleporterMessengerV2
+	ethBlockchainID  ids.ID
+	ethFundedAddress common.Address
+}
+
+// relayMessage sends [message] from the L1 and asserts that the relayer delivers it unchanged to
+// the Ethereum TeleporterMessengerV2.
+func (r *merkleMessageRoute) relayMessage(ctx context.Context, message []byte) {
+	input := teleportermessengerv2.TeleporterMessageInput{
+		DestinationBlockchainID: r.ethBlockchainID,
+		DestinationAddress:      r.ethFundedAddress,
+		FeeInfo: teleportermessengerv2.TeleporterFeeInfo{
+			FeeTokenAddress: common.Address{},
+			Amount:          big.NewInt(0),
+		},
+		RequiredGasLimit:        big.NewInt(100_000),
+		AllowedRelayerAddresses: []common.Address{},
+		Message:                 message,
+	}
+	tx, err := r.l1Teleporter.SendCrossChainMessage(r.l1Opts, input)
+	Expect(err).Should(BeNil())
+	receipt := utils.WaitForTransactionSuccess(ctx, r.l1Info.EthClient, tx.Hash())
+
+	sendEvent, err := utils.GetEventFromLogs(receipt.Logs, r.l1Teleporter.ParseSendCrossChainMessage)
+	Expect(err).Should(BeNil())
+	Expect(sendEvent.DestinationBlockchainID[:]).Should(Equal(r.ethBlockchainID[:]))
+
+	messageID, err := teleporterUtils.CalculateMessageID(
+		r.l1TeleporterAddr, r.l1Info.BlockchainID, r.ethBlockchainID, sendEvent.Message.MessageNonce,
+	)
+	Expect(err).Should(BeNil())
+	r.log.Info("Sent TeleporterV2 message from L1 to Ethereum", zap.Stringer("messageID", messageID))
+
+	// Advance the source chain a few blocks so the relayer's WS subscription reliably surfaces the
+	// block containing the message. subnet-evm only produces blocks when there are transactions, so
+	// without follow-on activity the message block's new-head notification can be delayed.
+	Expect(utils.IssueTxsToAdvanceChain(ctx, r.l1Info.EVMChainID, r.fundedKey, r.l1Info.EthClient, 5)).Should(BeNil())
+
+	deliveryCtx, deliveryCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer deliveryCancel()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	delivered := false
+	for !delivered {
+		select {
+		case <-deliveryCtx.Done():
+			Expect(false).Should(BeTrue(), "Timed out waiting for relayer to deliver message to Ethereum")
+		case <-ticker.C:
+			received, recvErr := r.ethTeleporter.MessageReceived(&bind.CallOpts{Context: ctx}, messageID)
+			if recvErr != nil {
+				r.log.Warn("Failed to query MessageReceived", zap.Error(recvErr))
+				continue
+			}
+			if received {
+				delivered = true
+			}
+		}
+	}
+
+	// Explicitly filter for the ReceiveCrossChainMessage log emitted by the relayer's delivery and
+	// assert the delivered message matches what was sent from the L1.
+	receiveIter, err := r.ethTeleporter.FilterReceiveCrossChainMessage(
+		&bind.FilterOpts{Context: ctx}, [][32]byte{messageID}, nil, nil,
+	)
+	Expect(err).Should(BeNil())
+	defer receiveIter.Close()
+	Expect(receiveIter.Next()).Should(BeTrue(),
+		"expected a ReceiveCrossChainMessage log for the delivered message")
+	Expect(receiveIter.Event.Message.Message).Should(Equal(message))
 }
