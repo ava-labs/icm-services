@@ -78,6 +78,7 @@ type Config struct {
 	MaxConcurrentMessages           uint64                    `mapstructure:"max-concurrent-messages" json:"max-concurrent-messages,omitempty"`                       //nolint:lll
 	ValidatorRefreshPeriodSeconds   uint64                    `mapstructure:"validator-refresh-period-seconds" json:"validator-refresh-period-seconds,omitempty"`     //nolint:lll
 	ExternalEVMDestinations         []*ExternalEVMDestination `mapstructure:"external-evm-destinations" json:"external-evm-destinations,omitempty"`                   //nolint:lll
+	ZKConsensusUpdaters             []*ZKConsensusUpdater     `mapstructure:"zk-consensus-updaters" json:"zk-consensus-updaters,omitempty"`                           //nolint:lll
 
 	// convenience field to fetch a blockchain's subnet ID
 	tlsCert                *tls.Certificate
@@ -148,6 +149,13 @@ func (c *Config) Validate() error {
 		}
 		if e.DeliversMessages() {
 			destinationChains.Add(e.DestinationBlockchainID)
+		}
+	}
+
+	// Validate the consensus updaters for ZKAdapters on destination chains.
+	for _, z := range c.ZKConsensusUpdaters {
+		if err := z.Validate(); err != nil {
+			return fmt.Errorf("failed to validate zk consensus updater: %w", err)
 		}
 	}
 
