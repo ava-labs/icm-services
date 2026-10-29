@@ -84,7 +84,17 @@ contract TestRoundTrip is Test {
             addrs[i] = addr;
         }
 
-        Sizes memory original = Sizes({Bytes: b, String: s, Addresses: addrs, ReverseHash: abi.encodePacked(hash)});
+        address[] memory pair = new address[](2);
+        pair[0] = addr;
+        pair[1] = address(uint160(uint256(hash)));
+
+        Sizes memory original = Sizes({
+            Bytes: b,
+            String: s,
+            Addresses: addrs,
+            Pair: pair,
+            ReverseHash: abi.encodePacked(hash)
+        });
 
         bytes memory data = packSizes(original);
         (, Sizes memory deserialized) = unpackSizes(data);
@@ -95,6 +105,9 @@ contract TestRoundTrip is Test {
         for (uint256 i = 0; i < original.Addresses.length; i++) {
             assertEq(deserialized.Addresses[i], original.Addresses[i]);
         }
+        assertEq(deserialized.Pair.length, 2);
+        assertEq(deserialized.Pair[0], original.Pair[0]);
+        assertEq(deserialized.Pair[1], original.Pair[1]);
         assertEq(deserialized.ReverseHash, original.ReverseHash);
     }
 
@@ -122,6 +135,7 @@ contract TestRoundTrip is Test {
             Bytes: b,
             String: s,
             Addresses: addrs,
+            Pair: new address[](2),
             ReverseHash: new bytes(20)
         });
         bytes memory data = RoundTrip.packSizes(original);
@@ -145,7 +159,17 @@ contract TestRoundTrip is Test {
             addrs[i] = addr;
         }
 
-        RoundTrip.Sizes memory original = RoundTrip.Sizes({Bytes: b, String: s, Addresses: addrs, ReverseHash: abi.encodePacked(hash)});
+        address[] memory pair = new address[](2);
+        pair[0] = addr;
+        pair[1] = address(uint160(uint256(hash)));
+
+        RoundTrip.Sizes memory original = RoundTrip.Sizes({
+            Bytes: b,
+            String: s,
+            Addresses: addrs,
+            Pair: pair,
+            ReverseHash: abi.encodePacked(hash)
+        });
 
         bytes memory data = RoundTrip.packSizes(original);
         (, RoundTrip.Sizes memory deserialized) = RoundTrip.unpackSizes(data);
@@ -156,6 +180,9 @@ contract TestRoundTrip is Test {
         for (uint256 i = 0; i < original.Addresses.length; i++) {
             assertEq(deserialized.Addresses[i], original.Addresses[i]);
         }
+        assertEq(deserialized.Pair.length, 2);
+        assertEq(deserialized.Pair[0], original.Pair[0]);
+        assertEq(deserialized.Pair[1], original.Pair[1]);
         assertEq(deserialized.ReverseHash, original.ReverseHash);
     }
 }

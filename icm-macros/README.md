@@ -50,7 +50,7 @@ Place a `#[pack(...)]` annotation in the NatSpec comment above a struct field to
 | Annotation | Description |
 |---|---|
 | `#[pack(ignore)]` | Skip this field entirely. |
-| `#[pack(method = "expr")]` | Use `expr(obj.field)` instead of the default pack call. Must return `bytes`. |
+| `#[pack(method = "expr")]` | Use `expr(obj.field)` instead of the default pack call. Must return `bytes`, which is inserted verbatim: no length prefix is added, so `length` is ignored on such fields. |
 | `#[pack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must be a valid Solidity unsigned integer type (`uint8`–`uint256`). Defaults to `uint256`. |
 | `#[pack(length = drop)]` | Omit the length/count prefix entirely. Use when the length is a compile-time constant known to the receiver (pairs with `#[unpack(length = constant)]`). |
 
@@ -67,7 +67,7 @@ struct Example {
     /// #[pack(length = uint32)]
     address[] allowList;
     /// #[pack(length = drop)]
-    bytes32 fixedHash;
+    bytes signature; // always SIG_LENGTH bytes; decoded with #[unpack(length = SIG_LENGTH)]
 }
 ```
 
@@ -127,6 +127,23 @@ struct MyStruct {
 | `#[unpack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must match the type used by the corresponding `#[pack(length = uintN)]`. Defaults to `uint256`. |
 | `#[unpack(length = constant)]` | No prefix is read; instead `constant` is used as the field length/element count. Pairs with `#[pack(length = drop)]`. `constant` can be any Solidity expression (e.g. `32`, `BLST.SIG_LENGTH`). |
 | `#[unpack(method = "expr", length = constant)]` | Pass a pre-sliced buffer of exactly `constant` bytes to `expr`. The method returns just the field value (no bytes-consumed count); the macro advances `data` by `constant` bytes. Use for fixed-size fields decoded by a helper that does not follow the `(uint256, T)` unpack convention. |
+
+```solidity
+/// #[unpack()]
+struct Example {
+    uint256 a;
+    /// #[unpack(default)]
+    uint256 ignored;
+    /// #[unpack(method = "MyLib.decodeB")]
+    MyType b;
+    /// #[unpack(length = uint32)]
+    bytes payload;
+    /// #[unpack(length = uint32)]
+    address[] allowList;
+    /// #[unpack(length = SIG_LENGTH)]
+    bytes signature;
+}
+```
 
 #### Primitive field decoding
 

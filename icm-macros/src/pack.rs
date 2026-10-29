@@ -28,19 +28,21 @@
 //!
 //! _Fields_
 //! As mentioned above, each non-primitive field is assumed to also possess a pack method. This is
-//! assumed to be in the scope in which the macro-expanded code will be placed.  To override this
+//! assumed to be in the scope in which the macro-expanded code will be placed. To override this
 //! or handle special cases, annotate the field:
 //!
-//!  `#[pack(method = "expr")]`: Use `expr(data)` to serialize the field instead of the default
-//!  inline encoder. The method must accept `data` and return `bytes`.
+//! `#[pack(method = "expr")]`: Use `expr(obj.field)` to serialize the field instead of the default
+//! encoder. The method must return `bytes`, which is inserted verbatim: no length prefix is added,
+//! so any `length` annotation on the field is ignored.
 //!
-//!  `#[pack(default)]`: Skip this field; the struct is returned with a zero value for it.
-//!  Intended for use alongside `#[unpack(ignore)]`.
+//! `#[pack(ignore)]`: Skip this field entirely. Intended for use alongside `#[unpack(default)]`.
 //!
-//! `#[pack(length = drop|constant)]`: If a field is a dynamically sized type, by default its length
-//! will be encoded using a uint256. This can be changed to use a different solidity unsigned integer
-//! type. If the size is a constant, the drop keyword can be used to avoid encoding the length.
+//! `#[pack(length = uintN)]`: If a field is a dynamically sized type, by default its length (or
+//! element count) is encoded as a `uint256` prefix. This selects a different Solidity integer type
+//! for the prefix.
 //!
+//! `#[pack(length = drop)]`: Omit the length prefix entirely. Use when the length is a constant
+//! known to the receiver, which annotates the field with `#[unpack(length = constant)]`.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the pack

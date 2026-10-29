@@ -29,28 +29,32 @@ pub fn unpack_elementary(
             match length {
                 LengthSpec::Constant(expr) => {
                     // No length prefix in the stream; the length is a known constant expression.
+                    // It is evaluated into a local first: inline assembly can only reference
+                    // literal constants directly, not expressions such as `Lib.CONST`.
                     if calldata {
                         format!(
                             "\n{type_name} memory {output};\
                             \n{{\
-                            \n    {output} = {type_name}(data[0:{expr}]);\
-                            \n    data = data[{expr}:];\
+                            \n    uint256 length = {expr};\
+                            \n    {output} = {type_name}(data[0:length]);\
+                            \n    data = data[length:];\
                             \n}}"
                         )
                     } else {
                         let alloc = match ty {
-                            ElementaryType::Bytes => format!("new bytes({expr})"),
-                            _ => format!("string(new bytes({expr}))"),
+                            ElementaryType::Bytes => "new bytes(length)",
+                            _ => "string(new bytes(length))",
                         };
                         format!(
                             "\n{type_name} memory {output};\
                             \n{{\
+                            \n    uint256 length = {expr};\
                             \n    {output} = {alloc};\
                             \n    assembly {{\
-                            \n        mcopy(add({output}, 32), add(data, 32), {expr})\
+                            \n        mcopy(add({output}, 32), add(data, 32), length)\
                             \n        let _data_orig_len := mload(data)\
-                            \n        data := add(data, {expr})\
-                            \n        mstore(data, sub(_data_orig_len, {expr}))\
+                            \n        data := add(data, length)\
+                            \n        mstore(data, sub(_data_orig_len, length))\
                             \n    }}\
                             \n}}"
                         )
@@ -207,25 +211,29 @@ pub fn unpack_struct(
             if let Some(LengthSpec::Constant(expr)) = &field_args.length {
                 // method + constant: pass a pre-sliced buffer of exactly `expr` bytes.
                 // The method returns just the value — no bytes-consumed count needed.
+                // As in `unpack_elementary`, the constant is evaluated into a local so that
+                // non-literal expressions can be used from inline assembly.
                 if args.calldata {
                     format!(
                         "\n{declaration}\
                         \n{{\
-                        \n    {local_name} = {method}(data[0:{expr}]);\
-                        \n    data = data[{expr}:];\
+                        \n    uint256 length = {expr};\
+                        \n    {local_name} = {method}(data[0:length]);\
+                        \n    data = data[length:];\
                         \n}}"
                     )
                 } else {
                     format!(
                         "\n{declaration}\
                         \n{{\
-                        \n    bytes memory _slice_{local_name} = new bytes({expr});\
-                        \n    assembly {{ mcopy(add(_slice_{local_name}, 32), add(data, 32), {expr}) }}\
-                        \n    {local_name} = {method}(_slice_{local_name});\
+                        \n    uint256 length = {expr};\
+                        \n    bytes memory _slice = new bytes(length);\
+                        \n    assembly {{ mcopy(add(_slice, 32), add(data, 32), length) }}\
+                        \n    {local_name} = {method}(_slice);\
                         \n    assembly {{\
-                        \n        let _old_len := mload(data)\
-                        \n        data := add(data, {expr})\
-                        \n        mstore(data, sub(_old_len, {expr}))\
+                        \n        let _data_orig_len := mload(data)\
+                        \n        data := add(data, length)\
+                        \n        mstore(data, sub(_data_orig_len, length))\
                         \n    }}\
                         \n}}"
                     )
@@ -596,7 +604,7 @@ fn slice_memory(array: &str, bytes_read: &str, new_length: &str) -> String {
 /// by the generated unpacking function body. Appends trailing underscores until the name is free.
 ///
 /// Reserved names: `data`, `result`, `read`, `length`, `i`, `_initial_length`, `_final_length`,
-/// `data_length`, `data_orig_length`, `_len_before`.
+/// `data_length`, `data_orig_length`, `_len_before`, `_slice`.
 fn sanitize_local(name: &str) -> String {
     const RESERVED: &[&str] = &[
         "data",
@@ -609,6 +617,7 @@ fn sanitize_local(name: &str) -> String {
         "data_length",
         "data_orig_length",
         "_len_before",
+        "_slice",
     ];
     let mut out = name.to_string();
     while RESERVED.contains(&out.as_str()) {

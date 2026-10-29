@@ -1,5 +1,10 @@
 pragma solidity ^0.8.30;
 
+library Lengths {
+    uint256 internal constant HASH_LENGTH = 32;
+    uint256 internal constant PAIR_LENGTH = 2;
+}
+
 library PackMethods {
     // #[unpack()]
     struct DynamicStruct {
@@ -9,8 +14,12 @@ library PackMethods {
         string String;
         // #[unpack(length=uint32)]
         address[] Addresses;
-        // #[unpack(length=32)]
+        // #[unpack(length=Lengths.HASH_LENGTH)]
         bytes Hash;
+        // #[unpack(length=Lengths.PAIR_LENGTH)]
+        address[] Pair;
+        // #[unpack(length=Lengths.HASH_LENGTH, method="parseHashMemory")]
+        bytes ParsedHash;
     }
 
     // #[unpack(calldata)]
@@ -21,11 +30,23 @@ library PackMethods {
         string String;
         // #[unpack(length=uint32)]
         address[] Addresses;
-        // #[unpack(length=32, method="parseHash")]
+        // #[unpack(length=32)]
         bytes Hash;
+        // #[unpack(length=2)]
+        address[] Pair;
+        // #[unpack(length=32, method="parseHash")]
+        bytes ParsedHash;
     }
 
     function parseHash(bytes calldata hashBytes) internal pure returns (bytes memory) {
+        if (hashBytes.length == 32) {
+            return hashBytes;
+        } else {
+            return new bytes(32);
+        }
+    }
+
+    function parseHashMemory(bytes memory hashBytes) internal pure returns (bytes memory) {
         if (hashBytes.length == 32) {
             return hashBytes;
         } else {
@@ -93,15 +114,51 @@ library PackMethods {
         result.Addresses = Addresses;
         bytes memory Hash;
         {
-            Hash = new bytes(32);
+            uint256 length = Lengths.HASH_LENGTH;
+            Hash = new bytes(length);
             assembly {
-                mcopy(add(Hash, 32), add(data, 32), 32)
+                mcopy(add(Hash, 32), add(data, 32), length)
                 let _data_orig_len := mload(data)
-                data := add(data, 32)
-                mstore(data, sub(_data_orig_len, 32))
+                data := add(data, length)
+                mstore(data, sub(_data_orig_len, length))
             }
         }
         result.Hash = Hash;
+        address[] memory Pair;
+        {
+            uint256 length = Lengths.PAIR_LENGTH;
+
+            Pair = new address[](length);
+            for (uint256 i = 0; i < length;) {
+                address Pair_1;
+                assembly {
+                    Pair_1 := shr(96, mload(add(data, 32)))
+                }
+                assembly {
+                    let _data_new_len := sub(mload(data), 20)
+                    data := add(data, 20)
+                    mstore(data, _data_new_len)
+                }
+                Pair[i] = Pair_1;
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+        result.Pair = Pair;
+        bytes memory ParsedHash;
+        {
+            uint256 length = Lengths.HASH_LENGTH;
+            bytes memory _slice = new bytes(length);
+            assembly { mcopy(add(_slice, 32), add(data, 32), length) }
+            ParsedHash = parseHashMemory(_slice);
+            assembly {
+                let _data_orig_len := mload(data)
+                data := add(data, length)
+                mstore(data, sub(_data_orig_len, length))
+            }
+        }
+        result.ParsedHash = ParsedHash;
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         return (_initial_length - _final_length, result);
@@ -146,10 +203,33 @@ library PackMethods {
         result.Addresses = Addresses;
         bytes memory Hash;
         {
-            Hash = parseHash(data[0:32]);
-            data = data[32:];
+            uint256 length = 32;
+            Hash = bytes(data[0:length]);
+            data = data[length:];
         }
         result.Hash = Hash;
+        address[] memory Pair;
+        {
+            uint256 length = 2;
+
+            Pair = new address[](length);
+            for (uint256 i = 0; i < length;) {
+                address Pair_1 = address(bytes20(data[0:20]));
+                data = data[20:];
+                Pair[i] = Pair_1;
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+        result.Pair = Pair;
+        bytes memory ParsedHash;
+        {
+            uint256 length = 32;
+            ParsedHash = parseHash(data[0:length]);
+            data = data[length:];
+        }
+        result.ParsedHash = ParsedHash;
 
         return (_initial_length - data.length, result);
     }

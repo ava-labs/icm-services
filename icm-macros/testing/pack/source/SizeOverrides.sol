@@ -11,5 +11,7 @@ library PackMethods {
         address[] Addresses;
         // #[pack(length=drop)]
         bytes Hash;
+        // #[pack(length=drop)]
+        address[] Pair;
     }
 }
