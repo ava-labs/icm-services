@@ -415,6 +415,47 @@ abstract contract ValidatorManagerTest is Test {
         }
     }
 
+    // The P-Chain attests the conversion of any Subnet that names this chain and contract as its validator
+    // manager, so conversion data for a Subnet other than the one this contract was initialized for passes the
+    // blockchainID, address, and conversionID checks. It must be rejected, otherwise anyone could convert a
+    // Subnet of their own that points at this contract and hijack the validator set.
+    function testInitializeValidatorSetInvalidSubnetID() public {
+        vm.prank(address(0x123));
+        IACP99Manager manager = _setUp();
+
+        _mockGetBlockchainID();
+
+        bytes32 otherSubnetID =
+            bytes32(hex"8765432187654321876543218765432187654321876543218765432187654321");
+        ConversionData memory conversionData = _defaultConversionData();
+        conversionData.subnetID = otherSubnetID;
+        bytes32 id = sha256(ValidatorMessages.packConversionData(conversionData));
+        // The attacker can obtain a genuine P-Chain attestation of their own Subnet's conversion, so provide
+        // one rather than relying on the conversionID check to fail.
+        vm.mockCall(
+            WARP_PRECOMPILE_ADDRESS,
+            abi.encodeWithSelector(IWarpMessenger.getVerifiedWarpMessage.selector, uint32(0)),
+            abi.encode(
+                WarpMessage({
+                    sourceChainID: validatorManager.P_CHAIN_BLOCKCHAIN_ID(),
+                    originSenderAddress: address(0),
+                    payload: ValidatorMessages.packSubnetToL1ConversionMessage(id)
+                }),
+                true
+            )
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IValidatorManager.InvalidSubnetID.selector, otherSubnetID)
+        );
+        manager.initializeValidatorSet(conversionData, 0);
+
+        // The conversion of the Subnet this contract was initialized for is still accepted afterwards.
+        conversionData = _defaultConversionData();
+        _mockInitializeValidatorSet(sha256(ValidatorMessages.packConversionData(conversionData)));
+        manager.initializeValidatorSet(conversionData, 0);
+    }
+
     function testRemoveValidatorTotalWeight5() public {
         // Use prank here, because otherwise each test will end up with a different contract address, leading to a different subnet conversion hash.
         vm.prank(address(0x123));
