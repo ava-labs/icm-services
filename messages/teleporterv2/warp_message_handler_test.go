@@ -5,15 +5,12 @@ package teleporterv2
 
 import (
 	"context"
-	"math/big"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/WarpAdapter"
-	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms/evm"
@@ -41,24 +38,10 @@ func testSignedWarpMessage(t *testing.T, handler *warpMessageHandler) *warp.Mess
 	return signedMessage
 }
 
-// expectedWarpDelivery is the gas limit and calldata SendMessage computes for delivering
+// expectedWarpCallData is the receiveCrossChainMessage calldata SendMessage packs for delivering
 // [signedMessage].
-func expectedWarpDelivery(
-	t *testing.T,
-	handler *warpMessageHandler,
-	signedMessage *warp.Message,
-) (uint64, []byte) {
+func expectedWarpCallData(t *testing.T, handler *warpMessageHandler, signedMessage *warp.Message) []byte {
 	t.Helper()
-	numSigners, err := signedMessage.Signature.NumSigners()
-	require.NoError(t, err)
-	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
-		numSigners,
-		handler.teleporterMessage.RequiredGasLimit,
-		len(predicate.New(signedMessage.Bytes())),
-		len(signedMessage.Payload),
-		len(handler.teleporterMessage.Receipts),
-	)
-	require.NoError(t, err)
 	callData, err := warpadapter.PackReceiveCrossChainMessage(
 		*handler.teleporterMessage,
 		signedMessage.SourceChainID,
@@ -66,24 +49,25 @@ func expectedWarpDelivery(
 		testRewardAddress,
 	)
 	require.NoError(t, err)
-	return gasLimit, callData
+	return callData
 }
 
-// The handler must simulate, and then broadcast, the delivery of the signed message to the
-// TeleporterMessengerV2: the relayer as sender, the computed gas limit, the WarpAdapter's
-// receiveCrossChainMessage calldata and the signed message as the predicate access list.
-func TestWarpSendMessageSimulatesThenSends(t *testing.T) {
+// The handler must have the node estimate, and then broadcast, the delivery of the signed message
+// to the TeleporterMessengerV2: the relayer as sender, the WarpAdapter's receiveCrossChainMessage
+// calldata and the signed message as the predicate access list, bounded by the block gas limit.
+// The transaction carries the estimate with the sender's margin.
+func TestWarpSendMessageEstimatesThenSends(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	handler, handlerMocks := newTestWarpHandler(t, ctrl)
 	signedMessage := testSignedWarpMessage(t, handler)
-	expectedGasLimit, expectedCallData := expectedWarpDelivery(t, handler, signedMessage)
+	expectedCallData := expectedWarpCallData(t, handler, signedMessage)
 	expectedAccessList := utils.SignedWarpMessageToAccessList(signedMessage)
 
-	var simulated ethereum.CallMsg
+	var estimated ethereum.CallMsg
 	handlerMocks.routeCalls(t, callRoutes{
-		simulate: func(call ethereum.CallMsg) ([]byte, error) {
-			simulated = call
-			return []byte{}, nil
+		estimate: func(call ethereum.CallMsg) (uint64, error) {
+			estimated = call
+			return 1_000_000, nil
 		},
 	})
 	expectedTxHash := common.HexToHash("0x01")
@@ -100,7 +84,7 @@ func TestWarpSendMessageSimulatesThenSends(t *testing.T) {
 			require.Equal(t, expectedAccessList, accessList)
 			require.Equal(t, set.Of(testRelayerAddress), deliverers)
 			require.Equal(t, testTeleporterAddress, toAddress)
-			require.Equal(t, expectedGasLimit, gasLimit)
+			require.Equal(t, uint64(1_250_000), gasLimit)
 			require.Equal(t, expectedCallData, callData)
 			return &types.Receipt{Status: types.ReceiptStatusSuccessful, TxHash: expectedTxHash}, nil
 		}).
@@ -110,40 +94,26 @@ func TestWarpSendMessageSimulatesThenSends(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedTxHash, txHash)
 
-	require.Equal(t, testRelayerAddress, simulated.From)
-	require.Equal(t, testTeleporterAddress, *simulated.To)
-	require.Equal(t, expectedGasLimit, simulated.Gas)
-	require.Equal(t, expectedCallData, simulated.Data)
-	require.Equal(t, expectedAccessList, simulated.AccessList)
+	require.Equal(t, testRelayerAddress, estimated.From)
+	require.Equal(t, testTeleporterAddress, *estimated.To)
+	require.Equal(t, testBlockGasLimit, estimated.Gas)
+	require.Equal(t, expectedCallData, estimated.Data)
+	require.Equal(t, expectedAccessList, estimated.AccessList)
 }
 
-// A delivery whose computed gas exceeds the destination block gas limit is abandoned as
-// non-retryable before anything is simulated or sent. The message's own required gas fits the
-// block here; the verification overhead added on top of it is what does not. No CallContract or
-// SendTx expectation is registered, so the mock fails the test on either.
-func TestWarpSendMessageExceedingBlockGasLimitIsNonRetryable(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	handler, _ := newTestWarpHandler(t, ctrl)
-	handler.teleporterMessage.RequiredGasLimit = new(big.Int).SetUint64(testBlockGasLimit)
-	signedMessage := testSignedWarpMessage(t, handler)
-
-	_, err := handler.SendMessage(context.Background(), signedMessage)
-	require.ErrorIs(t, err, messages.ErrDeliveryExceedsBlockGasLimit)
-	require.ErrorIs(t, err, messages.ErrNonRetryable)
-}
-
-// A delivery that reverts in simulation, such as one carrying a receipt the messenger cannot
-// account for, is abandoned as non-retryable without being broadcast: no SendTx expectation is
-// registered, so the mock fails the test if the handler sends it anyway.
-func TestWarpSendMessageSimulatedRevertIsNonRetryable(t *testing.T) {
+// A delivery that reverts when the node executes it for the estimate, such as one carrying a
+// receipt the messenger cannot account for, is abandoned as non-retryable without being
+// broadcast: no SendTx expectation is registered, so the mock fails the test if the handler
+// sends it anyway.
+func TestWarpSendMessageEstimationRevertIsNonRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	handler, handlerMocks := newTestWarpHandler(t, ctrl)
 	signedMessage := testSignedWarpMessage(t, handler)
 
 	handlerMocks.routeCalls(t, callRoutes{
 		delivered: false,
-		simulate: func(ethereum.CallMsg) ([]byte, error) {
-			return nil, &evm.RevertError{Reason: "arithmetic underflow or overflow"}
+		estimate: func(ethereum.CallMsg) (uint64, error) {
+			return 0, &evm.RevertError{Reason: "arithmetic underflow or overflow"}
 		},
 	})
 

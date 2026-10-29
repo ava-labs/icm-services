@@ -146,3 +146,12 @@ func TestAsRevertError(t *testing.T) {
 		})
 	}
 }
+
+func TestExceedsGasAllowance(t *testing.T) {
+	require.True(t, ExceedsGasAllowance(errors.New("gas required exceeds allowance (12000000)")))
+	require.True(t, ExceedsGasAllowance(
+		fmt.Errorf("failed to estimate: %w", errors.New("gas required exceeds allowance (50000000)")),
+	))
+	require.False(t, ExceedsGasAllowance(errors.New("execution reverted")))
+	require.False(t, ExceedsGasAllowance(nil))
+}

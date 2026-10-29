@@ -4,7 +4,6 @@
 package teleporter
 
 import (
-	"bytes"
 	"context"
 	"math/big"
 	"testing"
@@ -12,7 +11,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
@@ -398,12 +396,20 @@ func receiptHeavyUnsignedMessage(t *testing.T, numReceipts int) (*warp.UnsignedM
 // the mocks SendMessage talks to and what tests need to recognize its calls. The delivery
 // decisions themselves are covered by the messages.Sender tests; these tests check that the
 // handler hands the delivery the right transaction.
+const (
+	testBlockGasLimit = uint64(15_000_000)
+	// testEstimatedGas is what the destination node estimates for the delivery;
+	// testBufferedGasLimit is that estimate with the sender's safety margin.
+	testEstimatedGas     = uint64(1_000_000)
+	testBufferedGasLimit = uint64(1_250_000)
+)
+
 type sendMessageTest struct {
 	handler           *messageHandler
 	signedMessage     *warp.Message
 	destinationClient *mock_vms.MockDestinationClient
 	ethClient         *mock_evm.MockClient
-	// gasLimit is the gas limit SendMessage computes for signedMessage.
+	// gasLimit is the gas limit the sender broadcasts with: the node's estimate plus its margin.
 	gasLimit uint64
 	// callData is the receiveCrossChainMessage calldata SendMessage packs.
 	callData []byte
@@ -447,7 +453,7 @@ func newSendMessageTest(t *testing.T, ctrl *gomock.Controller) *sendMessageTest 
 	destinationClient := mock_vms.NewMockDestinationClient(ctrl)
 	ethClient := mock_evm.NewMockClient(ctrl)
 	destinationClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-	destinationClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
+	destinationClient.EXPECT().BlockGasLimit().Return(testBlockGasLimit).AnyTimes()
 	destinationClient.EXPECT().SenderAddresses().Return([]common.Address{validRelayerAddress}).AnyTimes()
 	destinationClient.EXPECT().Client().Return(ethClient).AnyTimes()
 
@@ -466,66 +472,58 @@ func newSendMessageTest(t *testing.T, ctrl *gomock.Controller) *sendMessageTest 
 	messageHandler, ok := handler.(*messageHandler)
 	require.True(t, ok)
 
-	numSigners, err := signedMessage.Signature.NumSigners()
-	require.NoError(t, err)
-	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
-		numSigners,
-		validTeleporterMessage.RequiredGasLimit,
-		len(predicate.New(signedMessage.Bytes())),
-		len(signedMessage.Payload),
-		len(validTeleporterMessage.Receipts),
-	)
-	require.NoError(t, err)
-
 	return &sendMessageTest{
 		handler:              messageHandler,
 		signedMessage:        signedMessage,
 		destinationClient:    destinationClient,
 		ethClient:            ethClient,
-		gasLimit:             gasLimit,
+		gasLimit:             testBufferedGasLimit,
 		callData:             callData,
 		messageReceivedInput: messageReceivedInput,
 	}
 }
 
-// routeCalls answers the eth_call traffic SendMessage generates: the messageReceived query with
-// [delivered], and the delivery simulation with [simulate], which also receives the simulated
-// call for inspection.
-func (s *sendMessageTest) routeCalls(
-	t *testing.T,
-	delivered bool,
-	simulate func(call ethereum.CallMsg) ([]byte, error),
-) {
+// routeCalls answers the eth_call traffic SendMessage generates, which is the messageReceived
+// query, with [delivered].
+func (s *sendMessageTest) routeCalls(t *testing.T, delivered bool) {
 	t.Helper()
 	deliveredOutput, err := teleportermessenger.PackMessageReceivedOutput(delivered)
 	require.NoError(t, err)
 	s.ethClient.EXPECT().
 		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, call ethereum.CallMsg, _ *big.Int) ([]byte, error) {
-			switch {
-			case bytes.Equal(call.Data, s.messageReceivedInput):
-				return deliveredOutput, nil
-			case bytes.Equal(call.Data, s.callData):
-				return simulate(call)
-			default:
-				t.Fatalf("unexpected eth_call to %v with data %x", call.To, call.Data)
-				return nil, nil
-			}
+			require.Equal(t, s.messageReceivedInput, call.Data, "unexpected eth_call")
+			return deliveredOutput, nil
 		}).
 		AnyTimes()
 }
 
-// The handler must simulate, and then broadcast, the delivery of the signed message to the
-// Teleporter contract: the relayer as sender, the computed gas limit, the packed
-// receiveCrossChainMessage calldata and the signed message as the predicate access list.
-func TestSendMessageSimulatesThenSends(t *testing.T) {
+// expectEstimation answers the delivery's gas estimation with [estimate], which also receives
+// the estimated call for inspection.
+func (s *sendMessageTest) expectEstimation(t *testing.T, estimate func(call ethereum.CallMsg) (uint64, error)) {
+	t.Helper()
+	s.ethClient.EXPECT().
+		EstimateGas(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, call ethereum.CallMsg) (uint64, error) {
+			require.Equal(t, s.callData, call.Data, "estimation must execute the delivery")
+			return estimate(call)
+		}).
+		Times(1)
+}
+
+// The handler must have the node estimate, and then broadcast, the delivery of the signed message
+// to the Teleporter contract: the relayer as sender, the packed receiveCrossChainMessage calldata
+// and the signed message as the predicate access list, bounded by the block gas limit. The
+// transaction carries the estimate with the sender's margin.
+func TestSendMessageEstimatesThenSends(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := newSendMessageTest(t, ctrl)
 
-	var simulated ethereum.CallMsg
-	s.routeCalls(t, false, func(call ethereum.CallMsg) ([]byte, error) {
-		simulated = call
-		return []byte{}, nil
+	var estimated ethereum.CallMsg
+	s.routeCalls(t, false)
+	s.expectEstimation(t, func(call ethereum.CallMsg) (uint64, error) {
+		estimated = call
+		return testEstimatedGas, nil
 	})
 	expectedTxHash := common.HexToHash("0x01")
 	s.destinationClient.EXPECT().
@@ -551,21 +549,23 @@ func TestSendMessageSimulatesThenSends(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedTxHash, txHash)
 
-	require.Equal(t, validRelayerAddress, simulated.From)
-	require.Equal(t, messageProtocolAddress, *simulated.To)
-	require.Equal(t, s.gasLimit, simulated.Gas)
-	require.Equal(t, utils.SignedWarpMessageToAccessList(s.signedMessage), simulated.AccessList)
+	require.Equal(t, validRelayerAddress, estimated.From)
+	require.Equal(t, messageProtocolAddress, *estimated.To)
+	require.Equal(t, testBlockGasLimit, estimated.Gas)
+	require.Equal(t, utils.SignedWarpMessageToAccessList(s.signedMessage), estimated.AccessList)
 }
 
-// A delivery that reverts in simulation, such as one carrying a receipt the messenger cannot
-// account for, is abandoned as non-retryable without being broadcast: no SendTx expectation is
-// registered, so the mock fails the test if the handler sends it anyway.
-func TestSendMessageSimulatedRevertIsNonRetryable(t *testing.T) {
+// A delivery that reverts when the node executes it for the estimate, such as one carrying a
+// receipt the messenger cannot account for, is abandoned as non-retryable without being
+// broadcast: no SendTx expectation is registered, so the mock fails the test if the handler
+// sends it anyway.
+func TestSendMessageEstimationRevertIsNonRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := newSendMessageTest(t, ctrl)
 
-	s.routeCalls(t, false, func(ethereum.CallMsg) ([]byte, error) {
-		return nil, &evm.RevertError{Reason: "arithmetic underflow or overflow"}
+	s.routeCalls(t, false)
+	s.expectEstimation(t, func(ethereum.CallMsg) (uint64, error) {
+		return 0, &evm.RevertError{Reason: "arithmetic underflow or overflow"}
 	})
 
 	_, err := s.handler.SendMessage(context.Background(), s.signedMessage)

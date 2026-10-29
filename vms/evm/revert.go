@@ -94,3 +94,10 @@ func revertReason(data []byte) string {
 	}
 	return hexutil.Encode(data)
 }
+
+// ExceedsGasAllowance reports whether [err] is a node's answer that gas estimation found no gas
+// limit at which the call succeeds, up to the most the node would try: the lower of the caller's
+// bound and the node's RPC gas cap. The call fails even at that bound.
+func ExceedsGasAllowance(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "gas required exceeds allowance")
+}

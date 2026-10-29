@@ -25,6 +25,9 @@ import (
 )
 
 const (
+	// testEstimatedGas is what the node estimates for the delivery; testGasLimit is that estimate
+	// with the sender's safety margin, which is what the transaction carries.
+	testEstimatedGas  = uint64(240_000)
 	testGasLimit      = uint64(300_000)
 	testBlockGasLimit = uint64(12_000_000)
 )
@@ -105,20 +108,19 @@ func newSenderTest(t *testing.T, ctrl *gomock.Controller) *senderTest {
 	return st
 }
 
-// expectSimulation answers the one simulation eth_call with [err] and returns where the simulated
-// call is recorded.
-func (st *senderTest) expectSimulation(t *testing.T, err error) *ethereum.CallMsg {
+// expectEstimation answers the one gas estimation with [estimated] and [err], and returns where
+// the estimated call is recorded.
+func (st *senderTest) expectEstimation(t *testing.T, estimated uint64, err error) *ethereum.CallMsg {
 	t.Helper()
-	simulated := &ethereum.CallMsg{}
+	estimatedCall := &ethereum.CallMsg{}
 	st.ethClient.EXPECT().
-		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-			require.Nil(t, blockNumber, "simulation must run against the latest state")
-			*simulated = call
-			return []byte{}, err
+		EstimateGas(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, call ethereum.CallMsg) (uint64, error) {
+			*estimatedCall = call
+			return estimated, err
 		}).
 		Times(1)
-	return simulated
+	return estimatedCall
 }
 
 // expectSendTx answers the one broadcast with the receipt [receipt] builds from the gas limit the
@@ -154,33 +156,46 @@ func revertedReceipt(uint64) *types.Receipt {
 }
 
 func send(st *senderTest) (common.Hash, error) {
-	return st.sender.Send(context.Background(), testAccessList, testGasLimit, testCallData)
+	return st.sender.Send(context.Background(), testAccessList, testCallData)
 }
 
-// The simulation must be the transaction that would be sent: same sender (an allowed one, not
-// just the first), target, gas limit, calldata and access list, so that whatever it reports
-// holds for the real delivery.
-func TestSenderSimulateMirrorsTransaction(t *testing.T) {
+// The estimation must execute the transaction that would be sent: same sender (an allowed one,
+// not just the first), target, calldata and access list, bounded by the block gas limit, so that
+// whatever it reports holds for the real delivery. The estimate comes back with the safety margin.
+func TestSenderEstimateGasMirrorsTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
-	simulated := st.expectSimulation(t, nil)
+	estimated := st.expectEstimation(t, testEstimatedGas, nil)
 
-	require.NoError(t, st.sender.Simulate(context.Background(), testAccessList, testGasLimit, testCallData))
-	require.Equal(t, testRelayer, simulated.From)
-	require.Equal(t, testTo, *simulated.To)
-	require.Equal(t, testGasLimit, simulated.Gas)
-	require.Equal(t, testCallData, simulated.Data)
-	require.Equal(t, testAccessList, simulated.AccessList)
+	gasLimit, err := st.sender.EstimateGas(context.Background(), testAccessList, testCallData)
+	require.NoError(t, err)
+	require.Equal(t, testGasLimit, gasLimit)
+	require.Equal(t, testRelayer, estimated.From)
+	require.Equal(t, testTo, *estimated.To)
+	require.Equal(t, testBlockGasLimit, estimated.Gas)
+	require.Equal(t, testCallData, estimated.Data)
+	require.Equal(t, testAccessList, estimated.AccessList)
 }
 
-// A delivery that reverts in simulation is reproducible from the message itself. It must be
-// abandoned as non-retryable without broadcasting anything: no SendTx expectation is registered,
-// so the mock fails the test if the delivery is sent anyway. The node's raw revert error is
-// decoded on the way.
-func TestSenderSendAbandonsSimulatedRevert(t *testing.T) {
+// The margin never pushes the gas limit past the block gas limit.
+func TestSenderEstimateGasIsCappedAtBlockGasLimit(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
-	st.expectSimulation(t, panicRevert(t))
+	st.expectEstimation(t, testBlockGasLimit-1, nil)
+
+	gasLimit, err := st.sender.EstimateGas(context.Background(), testAccessList, testCallData)
+	require.NoError(t, err)
+	require.Equal(t, testBlockGasLimit, gasLimit)
+}
+
+// A delivery that reverts when the node executes it for the estimate, such as one carrying a
+// receipt the messenger cannot account for, is abandoned as non-retryable without being
+// broadcast: no SendTx expectation is registered, so the mock fails the test if it is sent
+// anyway. The node reports the revert as an RPC error carrying the revert data, which is decoded.
+func TestSenderSendAbandonsEstimationRevert(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	st := newSenderTest(t, ctrl)
+	st.expectEstimation(t, 0, panicRevert(t))
 
 	_, err := send(st)
 	require.ErrorIs(t, err, ErrDeliveryReverts)
@@ -188,77 +203,62 @@ func TestSenderSendAbandonsSimulatedRevert(t *testing.T) {
 	require.ErrorContains(t, err, "arithmetic underflow or overflow")
 }
 
-// A delivery that cannot fit in a block is abandoned before anything is simulated or sent: the
-// node would refuse the transaction at submission, and a call does not see the block gas limit.
-// No CallContract or SendTx expectation is registered, so the mock fails the test on either.
-func TestSenderSendExceedingBlockGasLimitIsNonRetryable(t *testing.T) {
+// A delivery that succeeds with no gas the node may try, bounded by the block gas limit, cannot
+// be mined. The node reports that instead of an estimate, and the message is abandoned without
+// anything being broadcast.
+func TestSenderSendExceedingGasAllowanceIsNonRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
+	st.expectEstimation(t, 0, errors.New("gas required exceeds allowance (12000000)"))
 
-	_, err := st.sender.Send(context.Background(), testAccessList, testBlockGasLimit+1, testCallData)
+	_, err := send(st)
 	require.ErrorIs(t, err, ErrDeliveryExceedsBlockGasLimit)
 	require.ErrorIs(t, err, ErrNonRetryable)
 }
 
-// A simulated revert because another relayer delivered the message first is not a failure: there
-// is nothing left to send.
-func TestSenderSendSimulatedRevertAlreadyDelivered(t *testing.T) {
+// A revert because another relayer delivered the message first is not a failure: there is
+// nothing left to send.
+func TestSenderSendEstimationRevertAlreadyDelivered(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
 	st.delivered = true
-	st.expectSimulation(t, &evm.RevertError{Reason: "TeleporterMessenger: message already received"})
+	st.expectEstimation(t, 0, &evm.RevertError{Reason: "TeleporterMessenger: message already received"})
 
 	txHash, err := send(st)
 	require.NoError(t, err)
 	require.Equal(t, common.Hash{}, txHash)
 }
 
-// A simulated revert is only abandoned once it is known that nobody else delivered the message.
-func TestSenderSendSimulatedRevertUnknownDeliveryIsRetryable(t *testing.T) {
+// A revert is only abandoned once it is known that nobody else delivered the message.
+func TestSenderSendEstimationRevertUnknownDeliveryIsRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
 	st.deliveredErr = errors.New("connection refused")
-	st.expectSimulation(t, &evm.RevertError{Reason: "arithmetic underflow or overflow"})
+	st.expectEstimation(t, 0, &evm.RevertError{Reason: "arithmetic underflow or overflow"})
 
 	_, err := send(st)
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrNonRetryable)
 }
 
-// If the simulation cannot be run at all, nothing is known about the delivery: it is neither
+// If the gas cannot be estimated at all, nothing is known about the delivery: it is neither
 // abandoned nor broadcast blind, and the failure stays retryable.
-func TestSenderSendSimulationFailureIsRetryable(t *testing.T) {
+func TestSenderSendEstimationFailureIsRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
-	st.expectSimulation(t, errors.New("connection refused"))
+	st.expectEstimation(t, 0, errors.New("connection refused"))
 
 	_, err := send(st)
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrNonRetryable)
 }
 
-// Running out of gas in simulation cannot be told apart from the node capping the call's gas, so
-// the delivery is sent and the receipt decides.
-func TestSenderSendSimulatedOutOfGasIsSent(t *testing.T) {
+// A delivery that estimates successfully is broadcast with the buffered estimate.
+func TestSenderSendBroadcastsBufferedEstimate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
-	st.expectSimulation(t, &evm.RevertError{Reason: "out of gas", OutOfGas: true})
+	st.expectEstimation(t, testEstimatedGas, nil)
 	st.expectSendTx(t, successfulReceipt)
-
-	txHash, err := send(st)
-	require.NoError(t, err)
-	require.Equal(t, testTxHash, txHash)
-}
-
-// A delivery that simulates successfully is broadcast exactly as simulated.
-func TestSenderSendBroadcastsAsSimulated(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	st := newSenderTest(t, ctrl)
-	simulated := st.expectSimulation(t, nil)
-	st.expectSendTx(t, func(gasLimit uint64) *types.Receipt {
-		require.Equal(t, simulated.Gas, gasLimit)
-		return successfulReceipt(gasLimit)
-	})
 
 	txHash, err := send(st)
 	require.NoError(t, err)
@@ -269,7 +269,7 @@ func TestSenderSendBroadcastsAsSimulated(t *testing.T) {
 func TestSenderSendBroadcastFailureIsRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
-	st.expectSimulation(t, nil)
+	st.expectEstimation(t, testEstimatedGas, nil)
 	st.destinationClient.EXPECT().
 		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, errors.New("timed out waiting for transaction result")).
@@ -286,7 +286,7 @@ func TestSenderSendBroadcastFailureIsRetryable(t *testing.T) {
 func TestSenderSendOutOfGasReceiptIsNonRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
-	st.expectSimulation(t, nil)
+	st.expectEstimation(t, testEstimatedGas, nil)
 	// Echo the gas limit back as gas used: that is what an out-of-gas revert looks like on chain.
 	st.expectSendTx(t, func(gasLimit uint64) *types.Receipt {
 		return &types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: gasLimit}
@@ -297,12 +297,12 @@ func TestSenderSendOutOfGasReceiptIsNonRetryable(t *testing.T) {
 	require.ErrorIs(t, err, ErrNonRetryable)
 }
 
-// A mined revert that left gas unspent after a successful simulation is a verification failure,
+// A mined revert that left gas unspent after a successful estimate is a verification failure,
 // which a fresh signature may resolve, so it stays retryable.
 func TestSenderSendRevertWithGasLeftIsRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
-	st.expectSimulation(t, nil)
+	st.expectEstimation(t, testEstimatedGas, nil)
 	st.expectSendTx(t, revertedReceipt)
 
 	_, err := send(st)
@@ -315,7 +315,7 @@ func TestSenderSendRevertedReceiptAlreadyDelivered(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	st := newSenderTest(t, ctrl)
 	st.delivered = true
-	st.expectSimulation(t, nil)
+	st.expectEstimation(t, testEstimatedGas, nil)
 	st.expectSendTx(t, revertedReceipt)
 
 	txHash, err := send(st)

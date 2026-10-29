@@ -8,10 +8,8 @@ import (
 	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpadapter "github.com/ava-labs/icm-services/abi-bindings/go/teleporterV2/WarpAdapter"
-	gasUtils "github.com/ava-labs/icm-services/icm-contracts/utils/gas-utils"
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/common"
 )
@@ -56,24 +54,6 @@ func (m *warpMessageHandler) ProcessMessage() (common.Hash, error) {
 // the zero hash if nothing was sent because the message turned out to be delivered already.
 func (m *warpMessageHandler) SendMessage(ctx context.Context, signedMessage *warp.Message) (common.Hash, error) {
 	m.logger.Info("Sending message to destination chain")
-	numSigners, err := signedMessage.Signature.NumSigners()
-	if err != nil {
-		m.logger.Error("Failed to get number of signers")
-		return common.Hash{}, err
-	}
-
-	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
-		numSigners,
-		m.teleporterMessage.RequiredGasLimit,
-		len(predicate.New(signedMessage.Bytes())),
-		len(signedMessage.Payload),
-		len(m.teleporterMessage.Receipts),
-	)
-	if err != nil {
-		m.logger.Error("Failed to calculate gas limit for receiveCrossChainMessage call")
-		return common.Hash{}, err
-	}
-
 	// The signed warp message is the only message attached to the transaction predicate, so the
 	// attestation the WarpAdapter verifies against is index 0.
 	callData, err := warpadapter.PackReceiveCrossChainMessage(
@@ -86,5 +66,5 @@ func (m *warpMessageHandler) SendMessage(ctx context.Context, signedMessage *war
 		m.logger.Error("Failed packing receiveCrossChainMessage call data")
 		return common.Hash{}, err
 	}
-	return m.sender().Send(ctx, utils.SignedWarpMessageToAccessList(signedMessage), gasLimit, callData)
+	return m.sender().Send(ctx, utils.SignedWarpMessageToAccessList(signedMessage), callData)
 }

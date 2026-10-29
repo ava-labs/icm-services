@@ -10,7 +10,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/avalanchego/vms/evm/predicate"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	teleportermessenger "github.com/ava-labs/icm-services/abi-bindings/go/teleporter/TeleporterMessenger"
@@ -145,9 +144,9 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	// sendSpecifiedReceipts is permissionless, caps nothing, and hardcodes requiredGasLimit to
 	// zero - so the receipts, not RequiredGasLimit, are what can push a delivery past the block
 	// limit. Signers and predicate chunks are not known until the signature is aggregated;
-	// omitting them makes this a lower bound on the limit SendMessage will compute, so this
-	// never declines a message that would have fit. The sender compares the full limit against
-	// the block once the signature is known.
+	// omitting them makes this a lower bound on the gas the delivery needs, so this never declines
+	// a message that would have fit. Once the signature is known, the sender has the destination
+	// node estimate the full delivery, bounded by the block gas limit.
 	//
 	// RequiredGasLimit is a Solidity uint256 (*big.Int). CalculateReceiveMessageGasLimit returns
 	// an error for any value that does not fit in a uint64, which is treated as exceeding the
@@ -197,29 +196,12 @@ func (m *messageHandler) ShouldSendMessage() (bool, error) {
 	return true, nil
 }
 
-// SendMessage extracts the gasLimit and packs the call data to call the receiveCrossChainMessage
-// method of the Teleporter contract, then simulates, broadcasts and confirms the delivery. Returns
-// the zero hash if nothing was sent because the message turned out to be delivered already.
+// SendMessage packs the call data to call the receiveCrossChainMessage method of the Teleporter
+// contract, then has the destination node size and vet the delivery before it is broadcast and
+// confirmed. Returns the zero hash if nothing was sent because the message turned out to be
+// delivered already.
 func (m *messageHandler) SendMessage(ctx context.Context, signedMessage *warp.Message) (common.Hash, error) {
 	m.logger.Info("Sending message to destination chain")
-	numSigners, err := signedMessage.Signature.NumSigners()
-	if err != nil {
-		m.logger.Error("Failed to get number of signers")
-		return common.Hash{}, err
-	}
-
-	gasLimit, err := gasUtils.CalculateReceiveMessageGasLimit(
-		numSigners,
-		m.teleporterMessage.RequiredGasLimit,
-		len(predicate.New(signedMessage.Bytes())),
-		len(signedMessage.Payload),
-		len(m.teleporterMessage.Receipts),
-	)
-	if err != nil {
-		m.logger.Error("Failed to calculate gas limit for receiveCrossChainMessage call")
-		return common.Hash{}, err
-	}
-
 	// Construct the transaction call data to call the receive cross chain message method of the receiver precompile.
 	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
 		0,
@@ -230,7 +212,7 @@ func (m *messageHandler) SendMessage(ctx context.Context, signedMessage *warp.Me
 		return common.Hash{}, err
 	}
 
-	return m.sender().Send(ctx, utils.SignedWarpMessageToAccessList(signedMessage), gasLimit, callData)
+	return m.sender().Send(ctx, utils.SignedWarpMessageToAccessList(signedMessage), callData)
 }
 
 // sender delivers the message to the destination Teleporter.

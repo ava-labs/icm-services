@@ -74,7 +74,7 @@ type handlerMocks struct {
 	// messageReceivedInput is the calldata of the messageReceived query for the handler's message.
 	messageReceivedInput []byte
 	// receiveSelector is the receiveCrossChainMessage function selector, which every delivery
-	// (simulated or sent) starts with.
+	// (estimated or sent) starts with.
 	receiveSelector []byte
 }
 
@@ -166,8 +166,8 @@ func newTestHandler(
 type callRoutes struct {
 	// delivered is what the messenger's messageReceived query reports.
 	delivered bool
-	// simulate answers the warp path's delivery simulation and receives the simulated call.
-	simulate func(call ethereum.CallMsg) ([]byte, error)
+	// estimate answers the warp path's delivery gas estimation and receives the estimated call.
+	estimate func(call ethereum.CallMsg) (uint64, error)
 	// commitment is what the merkle registry reports as the current validator set commitment.
 	commitment *merkleregistry.ValidatorSetMerkleCommitment
 }
@@ -192,12 +192,20 @@ func (h *handlerMocks) routeCalls(t *testing.T, routes callRoutes) {
 				return commitmentOutput, nil
 			case bytes.Equal(call.Data, h.messageReceivedInput):
 				return deliveredOutput, nil
-			case routes.simulate != nil && bytes.HasPrefix(call.Data, h.receiveSelector):
-				return routes.simulate(call)
 			default:
 				t.Fatalf("unexpected eth_call to %v with data %x", call.To, call.Data)
 				return nil, nil
 			}
 		}).
 		AnyTimes()
+
+	if routes.estimate != nil {
+		h.ethClient.EXPECT().
+			EstimateGas(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, call ethereum.CallMsg) (uint64, error) {
+				require.True(t, bytes.HasPrefix(call.Data, h.receiveSelector), "estimation must execute the delivery")
+				return routes.estimate(call)
+			}).
+			Times(1)
+	}
 }
