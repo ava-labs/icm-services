@@ -7,7 +7,7 @@ use solar::ast::{ElementaryType, Span};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, ItemId, SourceId, Struct, Type, TypeKind};
 
-use crate::common::{LengthType, Unvalidated, ValidationState};
+use crate::common::{LengthSpec, Unvalidated, Validated, ValidationState, annotation_args};
 
 pub struct UnpackArgs {
     pub contract: Option<ContractId>,
@@ -16,31 +16,6 @@ pub struct UnpackArgs {
     pub visibility: String,
     pub calldata: bool,
     pub solhint_disable: bool,
-}
-
-/// How the length/count of a dynamically sized field is encoded.
-#[derive(Debug, Clone, PartialEq)]
-pub enum LengthSpec {
-    /// Read a length/count prefix encoded as this Solidity integer type.
-    Type(LengthType),
-    /// No prefix is read; the length/count is this compile-time Solidity expression
-    /// (e.g. `32` or `BLST.SIG_LENGTH`). Pairs with `#[pack(length = drop)]`.
-    Constant(String),
-}
-
-impl Default for LengthSpec {
-    /// The default is a `uint256` prefix.
-    fn default() -> Self {
-        Self::Type(LengthType::default())
-    }
-}
-
-/// State marker: field args have been validated; `length` holds a `LengthSpec`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Validated;
-
-impl ValidationState for Validated {
-    type Length = LengthSpec;
 }
 
 /// Per-field unpack annotations, generic over their validation state.
@@ -56,10 +31,8 @@ pub struct FieldArgs<S: ValidationState = Unvalidated> {
 }
 
 impl FieldArgs<Unvalidated> {
-    /// Resolves the `length` string (if present), converting this
-    /// `FieldArgs<Unvalidated>` into a `FieldArgs<Validated>`. A value naming a Solidity
-    /// integer type selects a length prefix of that type; any other value is taken as a
-    /// constant length expression.
+    /// Resolves the `length` string (if present) into a [`LengthSpec`], converting this
+    /// `FieldArgs<Unvalidated>` into a `FieldArgs<Validated>`.
     pub fn validate(
         self,
         field_name: &str,
@@ -67,16 +40,7 @@ impl FieldArgs<Unvalidated> {
     ) -> eyre::Result<FieldArgs<Validated>> {
         let length = self
             .length
-            .map(|value| match LengthType::validate(&value) {
-                Ok(ty) => Ok(LengthSpec::Type(ty)),
-                // `drop` is the pack-side keyword: the unpack side must spell out the fixed
-                // length because the generated code has to know how many bytes to read.
-                Err(_) if value.is_empty() || value == "drop" => Err(eyre::eyre!(
-                    "length `{value}` for field `{field_name}` of `{struct_name}` must be a \
-                     Solidity integer type or a constant length expression"
-                )),
-                Err(_) => Ok(LengthSpec::Constant(value)),
-            })
+            .map(|value| LengthSpec::validate(value, field_name, struct_name))
             .transpose()?;
         Ok(FieldArgs {
             method: self.method,
@@ -198,10 +162,7 @@ pub(crate) fn parse_comment(
     comment: &str,
     field_meta: &[(Option<String>, bool)],
 ) -> Option<RawUnpackArgs> {
-    let pack_start = comment.find("#[unpack(")?;
-    let args_start = pack_start + "#[unpack(".len();
-    let args_end = args_start + comment[args_start..].find(')')?;
-    let args_str = &comment[args_start..args_end];
+    let args = annotation_args(comment, "#[unpack(")?;
 
     let mut contract = None;
     let mut name = None;
@@ -209,9 +170,8 @@ pub(crate) fn parse_comment(
     let mut calldata = false;
     let mut solhint_disable = false;
 
-    for pair in args_str.split(',') {
-        let pair = pair.trim();
-        if let Some((key, val)) = pair.split_once('=') {
+    for arg in args {
+        if let Some((key, val)) = arg.split_once('=') {
             let val = val.trim().trim_matches('"');
             match key.trim() {
                 "contract" => contract = Some(val.to_string()),
@@ -220,7 +180,7 @@ pub(crate) fn parse_comment(
                 _ => {}
             }
         } else {
-            match pair {
+            match arg {
                 "calldata" => calldata = true,
                 "solhint-disable" => solhint_disable = true,
                 _ => {}
@@ -253,46 +213,24 @@ fn type_requires_memory(ty: &Type) -> bool {
 }
 
 fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs<Unvalidated> {
-    let Some(comment) = comment else {
+    let Some(args) = comment.and_then(|c| annotation_args(c, "#[unpack(")) else {
         return FieldArgs {
             memory,
             ..Default::default()
         };
     };
-    let Some(pack_start) = comment.find("#[unpack(") else {
-        return FieldArgs {
-            memory,
-            ..Default::default()
-        };
-    };
-    let args_start = pack_start + "#[unpack(".len();
-    let Some(args_end_rel) = comment[args_start..].find(')') else {
-        return FieldArgs {
-            memory,
-            ..Default::default()
-        };
-    };
-    let args_str = comment[args_start..args_start + args_end_rel].trim();
-
-    if args_str == "default" {
-        return FieldArgs {
-            default: true,
-            memory,
-            ..Default::default()
-        };
-    }
 
     let mut method = None;
     let mut default = false;
     let mut length = None;
-    for arg in args_str.split(',') {
-        if let Some((key, val)) = arg.trim().split_once('=') {
+    for arg in args {
+        if let Some((key, val)) = arg.split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
                 "length" => length = Some(val.trim().trim_matches('"').to_string()),
                 _ => {}
             }
-        } else if arg.trim() == "default" {
+        } else if arg == "default" {
             default = true;
         }
     }
@@ -315,6 +253,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs<Unvalidate
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::LengthType;
 
     #[test]
     fn test_basic() {
@@ -479,6 +418,44 @@ mod tests {
     }
 
     #[test]
+    fn test_length_expressions() {
+        // A constant length may contain parentheses and commas without ending the annotation
+        // or swallowing the arguments after it.
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![
+                (
+                    Some("#[unpack(length = uint256(Lengths.HASH_LENGTH))]".to_string()),
+                    true,
+                ),
+                (
+                    Some("#[unpack(length = (2 * 16), method=\"parseHash\")]".to_string()),
+                    true,
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some("uint256(Lengths.HASH_LENGTH)".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[1],
+            FieldArgs {
+                method: Some("parseHash".to_string()),
+                default: false,
+                memory: true,
+                length: Some("(2 * 16)".to_string()),
+            }
+        );
+    }
+
+    #[test]
     fn test_validate_length() {
         let validate = |length: &str| {
             FieldArgs::<Unvalidated> {
@@ -502,11 +479,10 @@ mod tests {
             validate("BLST.SIG_LENGTH").unwrap(),
             Some(LengthSpec::Constant("BLST.SIG_LENGTH".to_string()))
         );
-        let err = validate("drop").unwrap_err().to_string();
+        let err = validate("").unwrap_err().to_string();
         assert!(
-            err.contains("length `drop` for field `data` of `Foo`"),
+            err.contains("empty `length` for field `data` of `Foo`"),
             "{err}"
         );
-        assert!(validate("").is_err(), "empty length");
     }
 }

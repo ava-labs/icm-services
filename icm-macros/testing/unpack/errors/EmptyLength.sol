@@ -1,7 +1,7 @@
 pragma solidity ^0.8.30;
 
 // #[unpack()]
-struct HasBadLength {
-    // #[unpack(length = drop)]
+struct HasEmptyLength {
+    // #[unpack(length = )]
     bytes data;
 }

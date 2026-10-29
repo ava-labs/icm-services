@@ -33,7 +33,7 @@
 //!
 //! `#[pack(method = "expr")]`: Use `expr(obj.field)` to serialize the field instead of the default
 //! encoder. The method must return `bytes`, which is inserted verbatim: no length prefix is added,
-//! so any `length` annotation on the field is ignored.
+//! so a `length = uintN` annotation on the field is ignored.
 //!
 //! `#[pack(ignore)]`: Skip this field entirely. Intended for use alongside `#[unpack(default)]`.
 //!
@@ -41,8 +41,15 @@
 //! element count) is encoded as a `uint256` prefix. This selects a different Solidity integer type
 //! for the prefix.
 //!
-//! `#[pack(length = drop)]`: Omit the length prefix entirely. Use when the length is a constant
-//! known to the receiver, which annotates the field with `#[unpack(length = constant)]`.
+//! `#[pack(length = constant)]`: Omit the length prefix entirely. `constant` (any Solidity
+//! expression, e.g. `32`, `BLST.SIG_LENGTH` or `type(uint16).max`) is the fixed byte length of a
+//! `bytes`/`string` field or the element count of an array, and the generated function reverts if
+//! the value's length differs: without a prefix the receiver could not detect the mismatch. The
+//! receiver annotates the field with `#[unpack(length = constant)]`.
+//!
+//! `#[pack(method = "expr", length = constant)]`: As `method`, but the bytes returned by `expr`
+//! must be exactly `constant` long, which the generated function checks. The receiver annotates
+//! the field with `#[unpack(method = "expr", length = constant)]`.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the pack
@@ -276,8 +283,8 @@ mod tests {
                 "contract `NonExistent` specified in #[pack(contract=...)] was not found",
             ),
             (
-                "testing/pack/errors/BadLengthType.sol",
-                "length type `bool` for field `data` of `HasBadLength` must be a Solidity integer type or `drop`",
+                "testing/pack/errors/EmptyLength.sol",
+                "empty `length` for field `data` of `HasEmptyLength`",
             ),
         ];
         for (path, expected) in cases {

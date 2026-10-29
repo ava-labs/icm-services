@@ -24,8 +24,9 @@ library FirstContract {
 
     function packStruct(Struct memory obj) public pure returns (bytes memory) {
         bytes memory names_bytes;
-        names_bytes = abi.encodePacked(obj.names.length);
-        for (uint256 i_0 = 0; i_0 < obj.names.length;) {
+        uint256 names_0_count = obj.names.length;
+        names_bytes = abi.encodePacked(names_0_count);
+        for (uint256 i_0 = 0; i_0 < names_0_count;) {
             bytes memory names_1_bytes;
             names_1_bytes = abi.encodePacked(bytes(obj.names[i_0]).length, obj.names[i_0]);
             names_bytes = abi.encodePacked(names_bytes, names_1_bytes);
@@ -51,8 +52,9 @@ library SecondContract {
 
     function packStruct(Struct memory obj) public pure returns (bytes memory) {
         bytes memory names_bytes;
-        names_bytes = abi.encodePacked(obj.names.length);
-        for (uint256 i_0 = 0; i_0 < obj.names.length;) {
+        uint256 names_0_count = obj.names.length;
+        names_bytes = abi.encodePacked(names_0_count);
+        for (uint256 i_0 = 0; i_0 < names_0_count;) {
             bytes memory names_1_bytes;
             names_1_bytes = abi.encodePacked(bytes(obj.names[i_0]).length, obj.names[i_0]);
             names_bytes = abi.encodePacked(names_bytes, names_1_bytes);

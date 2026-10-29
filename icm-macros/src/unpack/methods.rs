@@ -4,7 +4,8 @@
 //! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
 //! name unconditionally — callers must not rename it.
 
-use crate::unpack::hooks::{LengthSpec, UnpackArgs};
+use crate::common::LengthSpec;
+use crate::unpack::hooks::UnpackArgs;
 use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
@@ -16,7 +17,10 @@ use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
 ///
 /// Only the bytes consumed by this type are removed from `data`; the rest remains available
 /// for subsequent unpacking calls.
+///
+/// `fn_name` is the generated function's name, used only to label its revert messages.
 pub fn unpack_elementary(
+    fn_name: &str,
     output: &str,
     ty: ElementaryType,
     calldata: bool,
@@ -30,7 +34,9 @@ pub fn unpack_elementary(
                 LengthSpec::Constant(expr) => {
                     // No length prefix in the stream; the length is a known constant expression.
                     // It is evaluated into a local first: inline assembly can only reference
-                    // literal constants directly, not expressions such as `Lib.CONST`.
+                    // literal constants directly, not expressions such as `Lib.CONST`. The
+                    // memory path checks that enough input remains before copying, so a short
+                    // buffer reverts here just as the calldata slice does.
                     if calldata {
                         format!(
                             "\n{type_name} memory {output};\
@@ -45,10 +51,12 @@ pub fn unpack_elementary(
                             ElementaryType::Bytes => "new bytes(length)",
                             _ => "string(new bytes(length))",
                         };
+                        let guard = remaining_guard(fn_name, &output);
                         format!(
                             "\n{type_name} memory {output};\
                             \n{{\
                             \n    uint256 length = {expr};\
+                            \n    {guard}\
                             \n    {output} = {alloc};\
                             \n    assembly {{\
                             \n        mcopy(add({output}, 32), add(data, 32), length)\
@@ -212,7 +220,9 @@ pub fn unpack_struct(
                 // method + constant: pass a pre-sliced buffer of exactly `expr` bytes.
                 // The method returns just the value — no bytes-consumed count needed.
                 // As in `unpack_elementary`, the constant is evaluated into a local so that
-                // non-literal expressions can be used from inline assembly.
+                // non-literal expressions can be used from inline assembly, and the memory
+                // path checks that enough input remains before copying so that `method` is
+                // never handed bytes from past the end of `data`.
                 if args.calldata {
                     format!(
                         "\n{declaration}\
@@ -223,10 +233,12 @@ pub fn unpack_struct(
                         \n}}"
                     )
                 } else {
+                    let guard = remaining_guard(&fn_name, &local_name);
                     format!(
                         "\n{declaration}\
                         \n{{\
                         \n    uint256 length = {expr};\
+                        \n    {guard}\
                         \n    bytes memory _slice = new bytes(length);\
                         \n    assembly {{ mcopy(add(_slice, 32), add(data, 32), length) }}\
                         \n    {local_name} = {method}(_slice);\
@@ -269,7 +281,7 @@ pub fn unpack_struct(
                 ty: &field.ty.kind,
                 length: field_args.length.clone().unwrap_or_default(),
             };
-            inline_unpack(ctx, args.calldata, target_contract, node)?
+            inline_unpack(ctx, &fn_name, args.calldata, target_contract, node)?
         };
         body.push_str(&deserialize_field_code);
         body.push_str(&format!("\nresult.{field_name} = {local_name};"));
@@ -309,12 +321,15 @@ struct UnpackingTreeNode<'a> {
 
 fn inline_unpack(
     ctx: &Gcx,
+    fn_name: &str,
     calldata: bool,
     target_contract: Option<ContractId>,
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
-        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata, &node.length),
+        TypeKind::Elementary(ty) => {
+            unpack_elementary(fn_name, &node.output, *ty, calldata, &node.length)
+        }
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
             // and allocates `new T[](length)`, which cannot be assigned to a `T[N]` field.
@@ -334,7 +349,7 @@ fn inline_unpack(
                 length: LengthSpec::default(),
             };
             let output = sanitize_local(&node.output);
-            let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
+            let inner = inline_unpack(ctx, fn_name, calldata, target_contract, next_node)?;
             let (read_length, advance_past_count) = match &node.length {
                 LengthSpec::Constant(expr) => (format!("uint256 length = {expr};"), String::new()),
                 LengthSpec::Type(length_type) => {
@@ -598,6 +613,13 @@ fn slice_memory(array: &str, bytes_read: &str, new_length: &str) -> String {
     \n    mstore({array}, _{array}_new_len)\
     \n}}"
     )
+}
+
+/// Emits a `require` that at least `length` bytes remain in the memory buffer `data`, so that a
+/// short input reverts before anything is read past its end. The calldata paths get the same
+/// check from slicing.
+fn remaining_guard(fn_name: &str, label: &str) -> String {
+    format!("require(length <= data.length, \"{fn_name}: data too short for {label}\");")
 }
 
 /// Returns a local variable name that does not clash with any names introduced
