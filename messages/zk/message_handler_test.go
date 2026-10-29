@@ -1,6 +1,8 @@
 // Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+// THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
+
 package zk
 
 import (
@@ -10,13 +12,17 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
+	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/zk/proofs"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/icm-services/vms/mocks"
 	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 var (
@@ -83,6 +89,19 @@ func sourceMessage(payload []byte) *messages.SourceMessage {
 		ProtocolAddress:    messageProtocolAddress,
 		Payload:            payload,
 		SourceTxID:         common.HexToHash("0x01"),
+	}
+}
+
+// newTestHandler builds a handler for the valid message with the given destination client.
+func newTestHandler(t *testing.T, destinationClient vms.DestinationClient) *messageHandler {
+	t.Helper()
+	messageConfig, err := ConfigFromMap(messageProtocolConfig.Settings)
+	require.NoError(t, err)
+	return &messageHandler{
+		messageConfig:     messageConfig,
+		destinationClient: destinationClient,
+		sourceMessage:     *sourceMessage(validEventPayload),
+		teleporterMessage: validTeleporterMessage,
 	}
 }
 
@@ -155,6 +174,57 @@ func TestFindMessageLog(t *testing.T) {
 
 	_, err = findMessageLog(receipt, messageProtocolAddress, []byte{1, 2, 3})
 	require.Error(t, err)
+}
+
+// Checks that the handler computes the same message ID the destination messenger tracks
+// delivery by.
+func TestMessageID(t *testing.T) {
+	handler := newTestHandler(t, nil)
+
+	expected, err := teleporterUtils.CalculateMessageID(
+		destinationTeleporterAddress, sourceBlockchainID, destinationBlockchainID, big.NewInt(1),
+	)
+	require.NoError(t, err)
+
+	got, err := handler.messageID()
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
+}
+
+// Checks that gas estimation uses an allowed relayer address when the message restricts
+// relayers, and the first sender otherwise.
+func TestSelectSenderAddress(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	senders := []common.Address{common.HexToAddress("0x11"), common.HexToAddress("0x22")}
+	destinationClient := mocks.NewMockDestinationClient(ctrl)
+	destinationClient.EXPECT().SenderAddresses().Return(senders).AnyTimes()
+
+	handler := newTestHandler(t, destinationClient)
+	require.Equal(t, senders[0], handler.selectSenderAddress())
+
+	restricted := *validTeleporterMessage
+	restricted.AllowedRelayerAddresses = []common.Address{senders[1]}
+	handler.teleporterMessage = &restricted
+	require.Equal(t, senders[1], handler.selectSenderAddress())
+}
+
+// Checks that a delivery that ran out of gas is classified as non-retryable, while other
+// reverts stay retryable.
+func TestCheckReceiptStatus(t *testing.T) {
+	const gasLimit = uint64(1_000_000)
+	txHash := common.HexToHash("0xabc")
+
+	require.NoError(t, checkReceiptStatus(
+		&types.Receipt{Status: types.ReceiptStatusSuccessful, TxHash: txHash}, gasLimit))
+
+	err := checkReceiptStatus(
+		&types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: gasLimit, TxHash: txHash}, gasLimit)
+	require.ErrorIs(t, err, messages.ErrDeliveryOutOfGas)
+
+	err = checkReceiptStatus(
+		&types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: gasLimit / 2, TxHash: txHash}, gasLimit)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, messages.ErrNonRetryable)
 }
 
 func testExecProof() *zkadapter.ExecutionProof {
