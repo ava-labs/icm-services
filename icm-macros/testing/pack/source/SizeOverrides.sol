@@ -1,5 +1,10 @@
 pragma solidity ^0.8.30;
 
+library Lengths {
+    uint256 internal constant HASH_LENGTH = 32;
+    uint256 internal constant PAIR_LENGTH = 2;
+}
+
 library PackMethods {
     // #[pack()]
     struct DynamicStruct {
@@ -9,9 +14,13 @@ library PackMethods {
         string String;
         // #[pack(length=uint32)]
         address[] Addresses;
-        // #[pack(length=drop)]
+        // #[pack(length=Lengths.HASH_LENGTH)]
         bytes Hash;
-        // #[pack(length=drop)]
+        // #[pack(length=3)]
+        string Tag;
+        // #[pack(length=Lengths.PAIR_LENGTH)]
         address[] Pair;
+        // #[pack(length=32, method="abi.encodePacked")]
+        bytes ParsedHash;
     }
 }

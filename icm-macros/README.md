@@ -50,9 +50,10 @@ Place a `#[pack(...)]` annotation in the NatSpec comment above a struct field to
 | Annotation | Description |
 |---|---|
 | `#[pack(ignore)]` | Skip this field entirely. |
-| `#[pack(method = "expr")]` | Use `expr(obj.field)` instead of the default pack call. Must return `bytes`, which is inserted verbatim: no length prefix is added, so `length` is ignored on such fields. |
+| `#[pack(method = "expr")]` | Use `expr(obj.field)` instead of the default pack call. Must return `bytes`, which is inserted verbatim: no length prefix is added, so `length = uintN` is ignored on such fields. |
 | `#[pack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must be a valid Solidity unsigned integer type (`uint8`–`uint256`). Defaults to `uint256`. |
-| `#[pack(length = drop)]` | Omit the length/count prefix entirely. Use when the length is a compile-time constant known to the receiver (pairs with `#[unpack(length = constant)]`). |
+| `#[pack(length = constant)]` | Omit the length/count prefix entirely. `constant` can be any Solidity expression (e.g. `32`, `BLST.SIG_LENGTH`, `type(uint16).max`) and gives the fixed byte length of a `bytes`/`string` field or the element count of an array; the generated function reverts if the value's length differs. Pairs with `#[unpack(length = constant)]`. |
+| `#[pack(method = "expr", length = constant)]` | As `method`, but the `bytes` returned by `expr` must be exactly `constant` long, which the generated function checks. Pairs with `#[unpack(method = "expr", length = constant)]`. |
 
 ```solidity
 /// #[pack()]
@@ -66,8 +67,8 @@ struct Example {
     bytes payload;
     /// #[pack(length = uint32)]
     address[] allowList;
-    /// #[pack(length = drop)]
-    bytes signature; // always SIG_LENGTH bytes; decoded with #[unpack(length = SIG_LENGTH)]
+    /// #[pack(length = SIG_LENGTH)]
+    bytes signature; // must be SIG_LENGTH bytes; decoded with #[unpack(length = SIG_LENGTH)]
 }
 ```
 
@@ -76,9 +77,9 @@ struct Example {
 | Type | Encoding |
 |---|---|
 | Fixed-size elementary (`uint*`, `int*`, `address`, `bool`, `bytes1`–`bytes32`, …) | `abi.encodePacked(field)` |
-| `bytes` | `abi.encodePacked(field.length, field)` — prefix type overridable via `length = uintN`; omit prefix via `length = drop` |
-| `string` | `abi.encodePacked(bytes(field).length, field)` — prefix type overridable via `length = uintN`; omit prefix via `length = drop` |
-| Array | Element count prefix (`uint256` by default) followed by recursively packed elements — count type overridable via `length = uintN`; omit count via `length = drop` |
+| `bytes` | `abi.encodePacked(field.length, field)` — prefix type overridable via `length = uintN`; `length = constant` omits the prefix and asserts the length |
+| `string` | `abi.encodePacked(bytes(field).length, field)` — prefix type overridable via `length = uintN`; `length = constant` omits the prefix and asserts the length |
+| Array | Element count prefix (`uint256` by default) followed by recursively packed elements — count type overridable via `length = uintN`; `length = constant` omits the count and asserts it |
 | Custom struct/enum/UDVT | `pack{TypeName}(field)` (must be in scope) |
 | Mapping / function | **Error** — must provide `#[pack(method = "...")]` or `#[pack(ignore)]` |
 
@@ -125,8 +126,8 @@ struct MyStruct {
 | `#[unpack(default)]` | Skip this field; the struct is returned with its default (zero) value for this field. Useful alongside `#[pack(ignore)]`. |
 | `#[unpack(method = "expr")]` | Use `(uint256 read, field) = expr(data)` instead of the inline decoder. The method must accept `data` and return `(uint256, FieldType)`. |
 | `#[unpack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must match the type used by the corresponding `#[pack(length = uintN)]`. Defaults to `uint256`. |
-| `#[unpack(length = constant)]` | No prefix is read; instead `constant` is used as the field length/element count. Pairs with `#[pack(length = drop)]`. `constant` can be any Solidity expression (e.g. `32`, `BLST.SIG_LENGTH`). |
-| `#[unpack(method = "expr", length = constant)]` | Pass a pre-sliced buffer of exactly `constant` bytes to `expr`. The method returns just the field value (no bytes-consumed count); the macro advances `data` by `constant` bytes. Use for fixed-size fields decoded by a helper that does not follow the `(uint256, T)` unpack convention. |
+| `#[unpack(length = constant)]` | No prefix is read; instead `constant` is used as the field length/element count. Pairs with `#[pack(length = constant)]`. `constant` can be any Solidity expression (e.g. `32`, `BLST.SIG_LENGTH`, `type(uint16).max`). For `bytes`/`string` fields the generated function reverts if fewer than `constant` bytes remain. |
+| `#[unpack(method = "expr", length = constant)]` | Pass a pre-sliced buffer of exactly `constant` bytes to `expr`, reverting if fewer remain. The method returns just the field value (no bytes-consumed count); the macro advances `data` by `constant` bytes. Use for fixed-size fields decoded by a helper that does not follow the `(uint256, T)` unpack convention. Pairs with `#[pack(method = "expr", length = constant)]`. |
 
 ```solidity
 /// #[unpack()]
