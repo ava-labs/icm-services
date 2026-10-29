@@ -164,9 +164,8 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 // applyTransition submits one consensus transition and waits for it to mine.
 func (u *ConsensusUpdater) applyTransition(ctx context.Context, proof *ConsensusProof) error {
 	tx, err := u.contract.Transition(u.txOpts, zkadapter.ConsensusData{
-		JournalData:   proof.JournalData,
-		Seal:          proof.Seal,
-		FinalizedSlot: proof.FinalizedSlot,
+		JournalData: proof.JournalData,
+		Seal:        proof.Seal,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to submit transition: %w", err)

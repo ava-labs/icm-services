@@ -20,73 +20,76 @@ pub fn unpack_elementary(
     output: &str,
     ty: ElementaryType,
     calldata: bool,
-    length: Option<&LengthSpec>,
+    length: &LengthSpec,
 ) -> String {
     let output = sanitize_local(output);
     match ty {
         ElementaryType::Bytes | ElementaryType::String => {
             let type_name = elementary_type_name(ty);
-            if let Some(LengthSpec::Constant(expr)) = length {
-                // No length prefix in the stream; the length is a known constant expression.
-                if calldata {
-                    format!(
-                        "\n{type_name} memory {output};\
-                    \n{{\
-                    \n    {output} = {type_name}(data[0:{expr}]);\
-                    \n    data = data[{expr}:];\
-                    \n}}"
-                    )
-                } else {
-                    let alloc = match ty {
-                        ElementaryType::Bytes => format!("new bytes({expr})"),
-                        _ => format!("string(new bytes({expr}))"),
-                    };
-                    format!(
-                        "\n{type_name} memory {output};\
-                    \n{{\
-                    \n    {output} = {alloc};\
-                    \n    assembly {{\
-                    \n        mcopy(add({output}, 32), add(data, 32), {expr})\
-                    \n        let _data_orig_len := mload(data)\
-                    \n        data := add(data, {expr})\
-                    \n        mstore(data, sub(_data_orig_len, {expr}))\
-                    \n    }}\
-                    \n}}"
-                    )
+            match length {
+                LengthSpec::Constant(expr) => {
+                    // No length prefix in the stream; the length is a known constant expression.
+                    if calldata {
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    {output} = {type_name}(data[0:{expr}]);\
+                            \n    data = data[{expr}:];\
+                            \n}}"
+                        )
+                    } else {
+                        let alloc = match ty {
+                            ElementaryType::Bytes => format!("new bytes({expr})"),
+                            _ => format!("string(new bytes({expr}))"),
+                        };
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    {output} = {alloc};\
+                            \n    assembly {{\
+                            \n        mcopy(add({output}, 32), add(data, 32), {expr})\
+                            \n        let _data_orig_len := mload(data)\
+                            \n        data := add(data, {expr})\
+                            \n        mstore(data, sub(_data_orig_len, {expr}))\
+                            \n    }}\
+                            \n}}"
+                        )
+                    }
                 }
-            } else {
-                let prefix_size = length_prefix_size(length);
-                if calldata {
-                    let read_len = read_length_calldata(prefix_size);
-                    format!(
-                        "\n{type_name} memory {output};\
-                    \n{{\
-                    \n    uint256 length = {read_len};\
-                    \n    {output} = {type_name}(data[{prefix_size}:length + {prefix_size}]);\
-                    \n    data = data[{prefix_size} + length:];\
-                    \n}}"
-                    )
-                } else {
-                    let alloc = match ty {
-                        ElementaryType::Bytes => "new bytes(data_length)".to_string(),
-                        _ => "string(new bytes(data_length))".to_string(),
-                    };
-                    let read_len = read_length_memory(prefix_size);
-                    let payload_offset = 32 + prefix_size;
-                    format!(
-                        "\n{type_name} memory {output};\
-                    \n{{\
-                    \n    uint256 data_length;\
-                    \n    assembly {{ data_length := {read_len} }}\
-                    \n    {output} = {alloc};\
-                    \n    assembly {{\
-                    \n        mcopy(add({output}, 32), add(data, {payload_offset}), data_length)\
-                    \n        let _data_orig_len := mload(data)\
-                    \n        data := add(data, add({prefix_size}, data_length))\
-                    \n        mstore(data, sub(_data_orig_len, add({prefix_size}, data_length)))\
-                    \n    }}\
-                    \n}}"
-                    )
+                LengthSpec::Type(length_type) => {
+                    let prefix_size = length_type.byte_width();
+                    if calldata {
+                        let read_len = read_length_calldata(prefix_size);
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    uint256 length = {read_len};\
+                            \n    {output} = {type_name}(data[{prefix_size}:length + {prefix_size}]);\
+                            \n    data = data[{prefix_size} + length:];\
+                            \n}}"
+                        )
+                    } else {
+                        let alloc = match ty {
+                            ElementaryType::Bytes => "new bytes(data_length)".to_string(),
+                            _ => "string(new bytes(data_length))".to_string(),
+                        };
+                        let read_len = read_length_memory(prefix_size);
+                        let payload_offset = 32 + prefix_size;
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    uint256 data_length;\
+                            \n    assembly {{ data_length := {read_len} }}\
+                            \n    {output} = {alloc};\
+                            \n    assembly {{\
+                            \n        mcopy(add({output}, 32), add(data, {payload_offset}), data_length)\
+                            \n        let _data_orig_len := mload(data)\
+                            \n        data := add(data, add({prefix_size}, data_length))\
+                            \n        mstore(data, sub(_data_orig_len, add({prefix_size}, data_length)))\
+                            \n    }}\
+                            \n}}"
+                        )
+                    }
                 }
             }
         }
@@ -252,14 +255,11 @@ pub fn unpack_struct(
                 )
             }
         } else {
-            if let Some(LengthSpec::Type(ty)) = &field_args.length {
-                validate_length_type(ty, field_name.as_str(), struct_def.name.as_str())?;
-            }
             let node = UnpackingTreeNode {
                 depth: 0,
                 output: local_name.clone(),
                 ty: &field.ty.kind,
-                length: field_args.length.clone(),
+                length: field_args.length.clone().unwrap_or_default(),
             };
             inline_unpack(ctx, args.calldata, target_contract, node)?
         };
@@ -295,8 +295,8 @@ struct UnpackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
-    /// Length/count spec for this node. `None` keeps the default `uint256` prefix.
-    length: Option<LengthSpec>,
+    /// How this node's length/count is encoded. Defaults to a `uint256` prefix.
+    length: LengthSpec,
 }
 
 fn inline_unpack(
@@ -306,9 +306,7 @@ fn inline_unpack(
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
-        TypeKind::Elementary(ty) => {
-            unpack_elementary(&node.output, *ty, calldata, node.length.as_ref())
-        }
+        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata, &node.length),
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
             // and allocates `new T[](length)`, which cannot be assigned to a `T[N]` field.
@@ -325,16 +323,14 @@ fn inline_unpack(
                 depth: node.depth + 1,
                 output: next_output.clone(),
                 ty: &arr.element.kind,
-                length: None,
+                length: LengthSpec::default(),
             };
             let output = sanitize_local(&node.output);
             let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
-            let (read_length, advance_past_count) = match node.length.as_ref() {
-                Some(LengthSpec::Constant(expr)) => {
-                    (format!("uint256 length = {expr};"), String::new())
-                }
-                other => {
-                    let prefix_size = length_prefix_size(other);
+            let (read_length, advance_past_count) = match &node.length {
+                LengthSpec::Constant(expr) => (format!("uint256 length = {expr};"), String::new()),
+                LengthSpec::Type(length_type) => {
+                    let prefix_size = length_type.byte_width();
                     if calldata {
                         (
                             format!("uint256 length = {};", read_length_calldata(prefix_size)),
@@ -621,21 +617,6 @@ fn sanitize_local(name: &str) -> String {
     out
 }
 
-/// Returns the byte width of the length/count prefix for the given spec.
-/// Defaults to 32 (uint256) when no override is specified.
-/// Callers must not pass `Constant` — that case has no prefix and must be handled before calling.
-fn length_prefix_size(length: Option<&LengthSpec>) -> usize {
-    match length {
-        None => 32,
-        Some(LengthSpec::Type(ty)) => {
-            ty.strip_prefix("uint").unwrap().parse::<usize>().unwrap() / 8
-        }
-        Some(LengthSpec::Constant(_)) => {
-            unreachable!("Constant length has no prefix size")
-        }
-    }
-}
-
 /// Generates a calldata expression that reads a length/count prefix of `size` bytes.
 fn read_length_calldata(size: usize) -> String {
     if size == 32 {
@@ -655,19 +636,6 @@ fn read_length_memory(size: usize) -> String {
         let shift = (32 - size) * 8;
         format!("shr({shift}, mload(add(data, 32)))")
     }
-}
-
-/// Validates that `ty` is a Solidity unsigned integer type (uint8 through uint256, in steps of 8).
-fn validate_length_type(ty: &str, field_name: &str, struct_name: &str) -> eyre::Result<()> {
-    let bits: Option<u16> = ty.strip_prefix("uint").and_then(|s| s.parse().ok());
-    let valid = bits.is_some_and(|n| (8..=256).contains(&n) && n % 8 == 0);
-    if !valid {
-        return Err(eyre::eyre!(
-            "length type `{ty}` for field `{field_name}` of `{struct_name}` \
-             must be an unsigned integer type (uint8 to uint256)"
-        ));
-    }
-    Ok(())
 }
 
 /// Returns the visibility keyword with a trailing space, or an empty string when

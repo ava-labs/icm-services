@@ -28,8 +28,6 @@ struct ConsensusData {
     bytes journalData;
     /// @dev The RISC Zero ZK proof validating the beacon state transition
     bytes seal;
-    /// @dev The beacon chain slot corresponding to the new finalized checkpoint
-    uint64 finalizedSlot;
 }
 
 /**
@@ -93,6 +91,14 @@ contract ZKStateManager is AccessControl {
     mapping(uint64 slot => bytes32 beaconBlockRoot) internal _allowedBeaconBlocks;
 
     /**
+     * @notice The slot of the most recently confirmed beacon block
+     * @dev Proof-driven transitions must confirm a higher slot than this (see transition()), so
+     * consumers of ConfirmedBeaconBlock events can rely on anchors arriving in slot order. Admin
+     * recovery via manualTransition may rewind it.
+     */
+    uint64 public lastConfirmedSlot;
+
+    /**
      * @notice The RISC Zero program ID used to verify Ethereum consensus transitions
      * @dev This image ID corresponds to the ZK program (Signal Ethereum) that validates state transitions.
      * Normally it stays constant, but it can be updated if the consensus program is upgraded, for example.
@@ -135,6 +141,7 @@ contract ZKStateManager is AccessControl {
     error InvalidArgument();
     error InvalidPreState();
     error PermissibleTimespanLapsed();
+    error NonIncreasingSlot(uint64 slot, uint64 lastConfirmedSlot);
 
     /**
      * @notice Initializes the ZKStateManager contract with all required parameters
@@ -196,8 +203,12 @@ contract ZKStateManager is AccessControl {
         Journal memory journal = abi.decode(consensus.journalData, (Journal));
         // Verify the beacon state transition.
         _verify(journal, consensus);
+        // Proof-driven confirmations must move forward, but admin recovery via manualTransition may rewind.
+        if (journal.finalizedSlot <= lastConfirmedSlot) {
+            revert NonIncreasingSlot(journal.finalizedSlot, lastConfirmedSlot);
+        }
         // Update the contract state to reflect the transition.
-        _transition(journal, consensus.finalizedSlot);
+        _transition(journal, journal.finalizedSlot);
     }
 
     /**
@@ -254,11 +265,10 @@ contract ZKStateManager is AccessControl {
      * @dev Admin-only function for emergency state updates.
      */
     function manualTransition(
-        bytes calldata journalData,
-        uint64 finalizedSlot
+        bytes calldata journalData
     ) external onlyRole(ADMIN_ROLE) {
         Journal memory journal = abi.decode(journalData, (Journal));
-        _transition(journal, finalizedSlot);
+        _transition(journal, journal.finalizedSlot);
     }
 
     /**
@@ -300,14 +310,15 @@ contract ZKStateManager is AccessControl {
 
     /**
      * @notice Confirms and stores a beacon block root for a given slot.
+     * @dev Sets the slot high-water mark. Proof-driven transitions require it to increase (see
+     * {transition}), while admin recovery via {manualTransition} may rewind it.
      */
     function _confirmBeaconBlock(
         uint64 slot,
         bytes32 root
     ) internal {
-        if (_allowedBeaconBlocks[slot] == UNDEFINED_ROOT) {
-            _allowedBeaconBlocks[slot] = root;
-        }
+        lastConfirmedSlot = slot;
+        _allowedBeaconBlocks[slot] = root;
         emit ConfirmedBeaconBlock(slot, root);
     }
 

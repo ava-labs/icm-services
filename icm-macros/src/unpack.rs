@@ -309,6 +309,10 @@ mod tests {
                 "testing/unpack/errors/MappingWithMethod.sol",
                 "Cannot unpack mapping field `data`",
             ),
+            (
+                "testing/unpack/errors/BadLengthType.sol",
+                "length `drop` for field `data` of `HasBadLength` must be a Solidity integer type or a constant length expression",
+            ),
         ];
         for (path, expected) in cases {
             let err = reforge::testing::test_macro_err(path, derive_unpack)

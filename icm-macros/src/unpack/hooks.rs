@@ -5,31 +5,86 @@
 use reforge::PreprocessingData;
 use solar::ast::{ElementaryType, Span};
 use solar::sema::Gcx;
-use solar::sema::hir::{ContractId, ItemId, SourceId, Type, TypeKind};
+use solar::sema::hir::{ContractId, ItemId, SourceId, Struct, Type, TypeKind};
+
+use crate::common::{LengthType, Unvalidated, ValidationState};
 
 pub struct UnpackArgs {
     pub contract: Option<ContractId>,
     pub name: Option<String>,
-    pub fields: Vec<FieldArgs>,
+    pub fields: Vec<FieldArgs<Validated>>,
     pub visibility: String,
     pub calldata: bool,
     pub solhint_disable: bool,
 }
 
+/// How the length/count of a dynamically sized field is encoded.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LengthSpec {
-    /// Read a length/count prefix using this Solidity unsigned integer type (e.g. `"uint32"`).
-    Type(String),
-    /// The length/count is a compile-time Solidity expression; no prefix is read from the buffer.
+    /// Read a length/count prefix encoded as this Solidity integer type.
+    Type(LengthType),
+    /// No prefix is read; the length/count is this compile-time Solidity expression
+    /// (e.g. `32` or `BLST.SIG_LENGTH`). Pairs with `#[pack(length = drop)]`.
     Constant(String),
 }
 
+impl Default for LengthSpec {
+    /// The default is a `uint256` prefix.
+    fn default() -> Self {
+        Self::Type(LengthType::default())
+    }
+}
+
+/// State marker: field args have been validated; `length` holds a `LengthSpec`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Validated;
+
+impl ValidationState for Validated {
+    type Length = LengthSpec;
+}
+
+/// Per-field unpack annotations, generic over their validation state.
+///
+/// - `FieldArgs<Unvalidated>`: raw parse output; `length` is `Option<String>`.
+/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthSpec>`.
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct FieldArgs {
+pub struct FieldArgs<S: ValidationState = Unvalidated> {
     pub method: Option<String>,
     pub default: bool,
     pub memory: bool,
-    pub length: Option<LengthSpec>,
+    pub length: Option<S::Length>,
+}
+
+impl FieldArgs<Unvalidated> {
+    /// Resolves the `length` string (if present), converting this
+    /// `FieldArgs<Unvalidated>` into a `FieldArgs<Validated>`. A value naming a Solidity
+    /// integer type selects a length prefix of that type; any other value is taken as a
+    /// constant length expression.
+    pub fn validate(
+        self,
+        field_name: &str,
+        struct_name: &str,
+    ) -> eyre::Result<FieldArgs<Validated>> {
+        let length = self
+            .length
+            .map(|value| match LengthType::validate(&value) {
+                Ok(ty) => Ok(LengthSpec::Type(ty)),
+                // `drop` is the pack-side keyword: the unpack side must spell out the fixed
+                // length because the generated code has to know how many bytes to read.
+                Err(_) if value.is_empty() || value == "drop" => Err(eyre::eyre!(
+                    "length `{value}` for field `{field_name}` of `{struct_name}` must be a \
+                     Solidity integer type or a constant length expression"
+                )),
+                Err(_) => Ok(LengthSpec::Constant(value)),
+            })
+            .transpose()?;
+        Ok(FieldArgs {
+            method: self.method,
+            default: self.default,
+            memory: self.memory,
+            length,
+        })
+    }
 }
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
@@ -37,10 +92,36 @@ pub struct FieldArgs {
 pub(crate) struct RawUnpackArgs {
     pub contract: Option<String>,
     pub name: Option<String>,
-    pub fields: Vec<FieldArgs>,
+    pub fields: Vec<FieldArgs<Unvalidated>>,
     pub visibility: String,
     pub calldata: bool,
     pub solhint_disable: bool,
+}
+
+impl RawUnpackArgs {
+    /// Validates the raw field args against the HIR struct definition (if any), consuming
+    /// `self.fields` and returning the validated equivalents.
+    pub fn validate_fields(
+        self,
+        ctx: &Gcx,
+        struct_def: Option<&Struct<'_>>,
+    ) -> eyre::Result<Vec<FieldArgs<Validated>>> {
+        let struct_name = struct_def.map(|s| s.name.as_str()).unwrap_or("");
+        let hir_fields: Vec<_> = struct_def
+            .map(|s| s.fields.iter().map(|&id| ctx.hir.variable(id)).collect())
+            .unwrap_or_default();
+        self.fields
+            .into_iter()
+            .zip(hir_fields.iter())
+            .map(|(raw_field, hir_field)| {
+                let field_name = hir_field
+                    .name
+                    .map(|n| n.as_str().to_string())
+                    .unwrap_or_default();
+                raw_field.validate(&field_name, struct_name)
+            })
+            .collect()
+    }
 }
 
 /// Fetches the comment preceding the given HIR item and parses any `#[unpack(...)]`
@@ -55,11 +136,9 @@ pub fn parse_args(
     data: &mut PreprocessingData<'_>,
 ) -> Option<eyre::Result<UnpackArgs>> {
     let doc_comment = reforge::get_comment(ctx, source_id, span, data)?;
+    let struct_def = ctx.hir.structs().find(|s| s.span == span);
 
-    let field_meta: Vec<(Option<String>, bool)> = ctx
-        .hir
-        .structs()
-        .find(|s| s.span == span)
+    let field_meta: Vec<(Option<String>, bool)> = struct_def
         .map(|s| {
             s.fields
                 .iter()
@@ -77,36 +156,44 @@ pub fn parse_args(
 
     let contract = match raw.contract.as_deref() {
         None => None,
-        Some(name) => {
-            match ctx
-                .hir
-                .contracts_enumerated()
-                .find(|(_, c)| c.name.as_str() == name)
-                .map(|(id, _)| id)
-            {
-                Some(id) => Some(id),
-                None => {
-                    return Some(Err(eyre::eyre!(
-                        "contract `{name}` specified in #[unpack(contract=...)] was not found"
-                    )));
-                }
+        Some(name) => match ctx
+            .hir
+            .contracts_enumerated()
+            .find(|(_, c)| c.name.as_str() == name)
+            .map(|(id, _)| id)
+        {
+            Some(id) => Some(id),
+            None => {
+                return Some(Err(eyre::eyre!(
+                    "contract `{name}` specified in #[unpack(contract=...)] was not found"
+                )));
             }
-        }
+        },
+    };
+
+    let calldata = raw.calldata;
+    let solhint_disable = raw.solhint_disable;
+    let name = raw.name.clone();
+    let visibility = raw.visibility.clone();
+
+    let fields = match raw.validate_fields(ctx, struct_def) {
+        Ok(f) => f,
+        Err(e) => return Some(Err(e)),
     };
 
     Some(Ok(UnpackArgs {
         contract,
-        name: raw.name,
-        fields: raw.fields,
-        visibility: raw.visibility,
-        calldata: raw.calldata,
-        solhint_disable: raw.solhint_disable,
+        name,
+        fields,
+        visibility,
+        calldata,
+        solhint_disable,
     }))
 }
 
-/// Pure string-parsing layer. Extracts pack args from a pre-fetched comment string
+/// Pure string-parsing layer. Extracts unpack args from a pre-fetched comment string
 /// and a list of pre-fetched field comment strings (one per field, in order).
-/// Returns None if no #[pack(...)] annotation is present.
+/// Returns None if no #[unpack(...)] annotation is present.
 pub(crate) fn parse_comment(
     comment: &str,
     field_meta: &[(Option<String>, bool)],
@@ -165,40 +252,33 @@ fn type_requires_memory(ty: &Type) -> bool {
     }
 }
 
-fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
+fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs<Unvalidated> {
     let Some(comment) = comment else {
         return FieldArgs {
-            method: None,
-            default: false,
             memory,
-            length: None,
+            ..Default::default()
         };
     };
     let Some(pack_start) = comment.find("#[unpack(") else {
         return FieldArgs {
-            method: None,
-            default: false,
             memory,
-            length: None,
+            ..Default::default()
         };
     };
     let args_start = pack_start + "#[unpack(".len();
     let Some(args_end_rel) = comment[args_start..].find(')') else {
         return FieldArgs {
-            method: None,
-            default: false,
             memory,
-            length: None,
+            ..Default::default()
         };
     };
     let args_str = comment[args_start..args_start + args_end_rel].trim();
 
     if args_str == "default" {
         return FieldArgs {
-            method: None,
             default: true,
             memory,
-            length: None,
+            ..Default::default()
         };
     }
 
@@ -209,18 +289,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
         if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
-                "length" => {
-                    let v = val.trim();
-                    let is_uint = v
-                        .strip_prefix("uint")
-                        .and_then(|s| s.parse::<u16>().ok())
-                        .is_some_and(|n| (8..=256).contains(&n) && n % 8 == 0);
-                    length = Some(if is_uint {
-                        LengthSpec::Type(v.to_string())
-                    } else {
-                        LengthSpec::Constant(v.to_string())
-                    });
-                }
+                "length" => length = Some(val.trim().trim_matches('"').to_string()),
                 _ => {}
             }
         } else if arg.trim() == "default" {
@@ -229,10 +298,9 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs {
     }
     if default {
         FieldArgs {
-            method: None,
             default: true,
             memory,
-            length: None,
+            ..Default::default()
         }
     } else {
         FieldArgs {
@@ -259,7 +327,7 @@ mod tests {
         assert_eq!(raw.visibility, "public".to_string());
         assert!(!raw.calldata);
         assert!(!raw.solhint_disable);
-        let mut expected = vec![FieldArgs::default(); 4];
+        let mut expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         expected[1].memory = true;
         assert_eq!(raw.fields, expected);
     }
@@ -276,7 +344,7 @@ mod tests {
         assert_eq!(raw.visibility, "private".to_string());
         assert!(raw.calldata);
         assert!(!raw.solhint_disable);
-        let expected = vec![FieldArgs::default(); 4];
+        let expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         assert_eq!(raw.fields, expected);
     }
 
@@ -293,6 +361,40 @@ mod tests {
         .unwrap();
         assert!(raw.calldata);
         assert!(raw.solhint_disable);
+    }
+
+    #[test]
+    fn test_length_quoted() {
+        // length = "uint32" (with quotes) must behave identically to length = uint32
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![
+                (Some("#[unpack(length = \"uint32\")]".to_string()), false),
+                (
+                    Some("#[unpack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
+                    false,
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            raw.fields[0],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: false,
+                length: Some("uint32".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[1],
+            FieldArgs {
+                method: Some("Foo.bar".to_string()),
+                default: false,
+                memory: false,
+                length: Some("uint64".to_string()),
+            }
+        );
     }
 
     #[test]
@@ -353,7 +455,7 @@ mod tests {
                 method: None,
                 default: false,
                 memory: true,
-                length: Some(LengthSpec::Type("uint32".to_string())),
+                length: Some("uint32".to_string()),
             }
         );
         assert_eq!(
@@ -362,7 +464,7 @@ mod tests {
                 method: Some("Foo.bar".to_string()),
                 default: false,
                 memory: true,
-                length: Some(LengthSpec::Type("uint64".to_string())),
+                length: Some("uint64".to_string()),
             }
         );
         assert_eq!(
@@ -371,10 +473,40 @@ mod tests {
                 method: None,
                 default: false,
                 memory: true,
-                length: Some(LengthSpec::Constant(
-                    "BLST.BLS_SIGNATURE_LENGTH".to_string()
-                )),
+                length: Some("BLST.BLS_SIGNATURE_LENGTH".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn test_validate_length() {
+        let validate = |length: &str| {
+            FieldArgs::<Unvalidated> {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some(length.to_string()),
+            }
+            .validate("data", "Foo")
+            .map(|f| f.length)
+        };
+        assert_eq!(
+            validate("uint32").unwrap(),
+            Some(LengthSpec::Type(LengthType::Uint(4)))
+        );
+        assert_eq!(
+            validate("32").unwrap(),
+            Some(LengthSpec::Constant("32".to_string()))
+        );
+        assert_eq!(
+            validate("BLST.SIG_LENGTH").unwrap(),
+            Some(LengthSpec::Constant("BLST.SIG_LENGTH".to_string()))
+        );
+        let err = validate("drop").unwrap_err().to_string();
+        assert!(
+            err.contains("length `drop` for field `data` of `Foo`"),
+            "{err}"
+        );
+        assert!(validate("").is_err(), "empty length");
     }
 }

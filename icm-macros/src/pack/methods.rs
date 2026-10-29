@@ -5,35 +5,32 @@ use solar::ast::ElementaryType;
 use solar::sema::Gcx;
 use solar::sema::hir::{Enum, ItemId, Struct, TypeKind};
 
+use crate::common::LengthType;
 use crate::pack::hooks::{LengthSpec, PackArgs};
 
-pub fn pack_elementary(var: &str, ty: ElementaryType, length: Option<&LengthSpec>) -> String {
-    match ty {
-        ElementaryType::Bytes => match length {
-            Some(LengthSpec::Drop) => format!("abi.encodePacked({var})"),
-            other => {
-                let len = length_cast(&format!("{var}.length"), other);
-                format!("abi.encodePacked({len}, {var})")
-            }
-        },
-        ElementaryType::String => match length {
-            Some(LengthSpec::Drop) => format!("abi.encodePacked({var})"),
-            other => {
-                let len = length_cast(&format!("bytes({var}).length"), other);
-                format!("abi.encodePacked({len}, {var})")
-            }
-        },
-        _ => format!("abi.encodePacked({var})"),
+pub fn pack_elementary(var: &str, ty: ElementaryType, length: LengthSpec) -> String {
+    let len_expr = match ty {
+        ElementaryType::Bytes => format!("{var}.length"),
+        ElementaryType::String => format!("bytes({var}).length"),
+        _ => return format!("abi.encodePacked({var})"),
+    };
+    match length {
+        LengthSpec::Drop => format!("abi.encodePacked({var})"),
+        LengthSpec::Type(length_type) => {
+            format!(
+                "abi.encodePacked({}, {var})",
+                length_cast(&len_expr, length_type)
+            )
+        }
     }
 }
 
-/// Wraps a length expression in a cast to the specified type, or returns it unchanged
-/// when no override is specified (leaving the implicit uint256 encoding in place).
-/// `Drop` is treated as no-op here; callers that care about drop must handle it before calling.
-fn length_cast(len_expr: &str, length: Option<&LengthSpec>) -> String {
-    match length {
-        None | Some(LengthSpec::Drop) => len_expr.to_string(),
-        Some(LengthSpec::Type(ty)) => format!("{ty}({len_expr})"),
+/// Wraps a length expression in a cast to the specified type.
+/// The default `uint256` type is a no-op cast so it is omitted.
+fn length_cast(len_expr: &str, length_type: LengthType) -> String {
+    match length_type {
+        LengthType::Uint(32) => len_expr.to_string(),
+        lt => format!("{}({len_expr})", lt.name()),
     }
 }
 
@@ -67,9 +64,6 @@ pub fn pack_struct(
             continue;
         }
         let field = ctx.hir.variable(field_id);
-        if let Some(LengthSpec::Type(ty)) = &field_args.length {
-            validate_length_type(ty, field.name.unwrap().as_str(), struct_def.name.as_str())?;
-        }
         let arg = if let Some(method) = &field_args.method {
             format!("{method}(obj.{})", field.name.unwrap())
         } else {
@@ -77,7 +71,7 @@ pub fn pack_struct(
                 TypeKind::Elementary(ty) => pack_elementary(
                     &format!("obj.{}", field.name.unwrap()),
                     ty,
-                    field_args.length.as_ref(),
+                    field_args.length.unwrap_or_default(),
                 ),
                 TypeKind::Array(_) => {
                     let name = field.name.unwrap().to_string();
@@ -89,7 +83,7 @@ pub fn pack_struct(
                         accessor: format!("obj.{name}"),
                         output: output.clone(),
                         ty: &field.ty.kind,
-                        length: field_args.length.clone(),
+                        length: field_args.length.unwrap_or_default(),
                     });
                     // instantiate the variable that will hold the bytes
                     body.push_str(&format!("bytes memory {output};"));
@@ -150,8 +144,8 @@ struct PackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
-    /// Length/count prefix spec for this node. `None` keeps the default `uint256` encoding.
-    length: Option<LengthSpec>,
+    /// How this node's length/count prefix is encoded. Defaults to a `uint256` prefix.
+    length: LengthSpec,
 }
 
 fn custom_type_name(ctx: &Gcx, item_id: ItemId) -> String {
@@ -169,7 +163,7 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
             format!(
                 "{} = {};",
                 node.output,
-                pack_elementary(&node.accessor, *elem, node.length.as_ref())
+                pack_elementary(&node.accessor, *elem, node.length)
             )
         }
         TypeKind::Array(arr) => {
@@ -181,14 +175,15 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
                 accessor: format!("{}[{loop_var}]", node.accessor),
                 output: next_output.clone(),
                 ty: &arr.element.kind,
-                length: None,
+                length: LengthSpec::default(),
             };
             let inner = expand_packings_recursively(ctx, next_node)?;
-            let init = if matches!(node.length, Some(LengthSpec::Drop)) {
-                format!("{} = abi.encodePacked();", node.output)
-            } else {
-                let count = length_cast(&format!("{}.length", node.accessor), node.length.as_ref());
-                format!("{} = abi.encodePacked({count});", node.output)
+            let init = match node.length {
+                LengthSpec::Drop => format!("{} = abi.encodePacked();", node.output),
+                LengthSpec::Type(length_type) => {
+                    let count = length_cast(&format!("{}.length", node.accessor), length_type);
+                    format!("{} = abi.encodePacked({count});", node.output)
+                }
             };
 
             format!(
@@ -220,19 +215,6 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
         }
         TypeKind::Err(_) => unreachable!(),
     })
-}
-
-/// Validates that `ty` is a Solidity unsigned integer type (uint8 through uint256, in steps of 8).
-fn validate_length_type(ty: &str, field_name: &str, struct_name: &str) -> eyre::Result<()> {
-    let bits: Option<u16> = ty.strip_prefix("uint").and_then(|s| s.parse().ok());
-    let valid = bits.is_some_and(|n| (8..=256).contains(&n) && (n % 8) == 0);
-    if !valid {
-        return Err(eyre!(
-            "length type `{ty}` for field `{field_name}` of `{struct_name}` \
-             must be an unsigned integer type (uint8 to uint256)"
-        ));
-    }
-    Ok(())
 }
 
 /// Returns the visibility keyword with a trailing space, or an empty string when
