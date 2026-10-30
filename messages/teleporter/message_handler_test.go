@@ -4,6 +4,7 @@
 package teleporter
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -18,6 +19,8 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/icm-services/vms/evm"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	ethereum "github.com/ava-labs/libevm"
@@ -389,25 +392,47 @@ func receiptHeavyUnsignedMessage(t *testing.T, numReceipts int) (*warp.UnsignedM
 	return unsignedMessage, minGasLimit
 }
 
-func TestSendMessageAlreadyDelivered(t *testing.T) {
-	// Set up test constants
-	ctrl := gomock.NewController(t)
+// sendMessageTest is a handler for validTeleporterMessage, signed and ready to send, together with
+// the mocks SendMessage talks to and what tests need to recognize its calls. The delivery
+// decisions themselves are covered by the messages.Sender tests; these tests check that the
+// handler hands the delivery the right transaction.
+const (
+	testBlockGasLimit = uint64(15_000_000)
+	// testEstimatedGas is what the destination node estimates for the delivery;
+	// testBufferedGasLimit is that estimate with the sender's safety margin.
+	testEstimatedGas     = uint64(1_000_000)
+	testBufferedGasLimit = uint64(1_250_000)
+)
 
+type sendMessageTest struct {
+	handler           *messageHandler
+	signedMessage     *warp.Message
+	destinationClient *mock_vms.MockDestinationClient
+	ethClient         *mock_evm.MockClient
+	// gasLimit is the gas limit the sender broadcasts with: the node's estimate plus its margin.
+	gasLimit uint64
+	// callData is the receiveCrossChainMessage calldata SendMessage packs.
+	callData []byte
+	// messageReceivedInput is the calldata of the messageReceived query for the message.
+	messageReceivedInput []byte
+}
+
+// newSendMessageTest builds the handler through the factory over a destination client whose only
+// sender is validRelayerAddress, which the message allows.
+func newSendMessageTest(t *testing.T, ctrl *gomock.Controller) *sendMessageTest {
+	t.Helper()
 	validMessageBytes, err := validTeleporterMessage.Pack()
 	require.NoError(t, err)
-
 	validAddressedCall, err := warpPayload.NewAddressedCall(
 		messageProtocolAddress.Bytes(),
 		validMessageBytes,
 	)
 	require.NoError(t, err)
-
 	sourceBlockchainID := ids.Empty
-	warpUnsignedMessage, err := warp.NewUnsignedMessage(
-		0,
-		sourceBlockchainID,
-		validAddressedCall.Bytes(),
-	)
+	warpUnsignedMessage, err := warp.NewUnsignedMessage(0, sourceBlockchainID, validAddressedCall.Bytes())
+	require.NoError(t, err)
+	// The signature is verified on chain, not by the relayer, so an empty one will do.
+	signedMessage, err := warp.NewMessage(warpUnsignedMessage, &warp.BitSetSignature{})
 	require.NoError(t, err)
 
 	messageID, err := teleporterUtils.CalculateMessageID(
@@ -417,197 +442,134 @@ func TestSendMessageAlreadyDelivered(t *testing.T) {
 		validTeleporterMessage.MessageNonce,
 	)
 	require.NoError(t, err)
-
-	messageReceivedCallData, err := teleportermessenger.PackMessageReceived(messageID)
+	messageReceivedInput, err := teleportermessenger.PackMessageReceived(messageID)
 	require.NoError(t, err)
-
-	messageReceivedInput := ethereum.CallMsg{
-		From: bind.CallOpts{}.From,
-		To:   &messageProtocolAddress,
-		Data: messageReceivedCallData,
-	}
-
-	messageDeliveredResult, err := teleportermessenger.PackMessageReceivedOutput(true)
-	require.NoError(t, err)
-
-	signedMessage, err := warp.NewMessage(
-		warpUnsignedMessage,
-		&warp.BitSetSignature{},
+	callData, err := teleportermessenger.PackReceiveCrossChainMessage(
+		0,
+		common.HexToAddress(messageProtocolConfig.Settings["reward-address"].(string)),
 	)
 	require.NoError(t, err)
 
-	// Set up mocks and the object under test
-	mockClient := mock_vms.NewMockDestinationClient(ctrl)
+	destinationClient := mock_vms.NewMockDestinationClient(ctrl)
+	ethClient := mock_evm.NewMockClient(ctrl)
+	destinationClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
+	destinationClient.EXPECT().BlockGasLimit().Return(testBlockGasLimit).AnyTimes()
+	destinationClient.EXPECT().SenderAddresses().Return([]common.Address{validRelayerAddress}).AnyTimes()
+	destinationClient.EXPECT().Client().Return(ethClient).AnyTimes()
 
-	factory, err := NewMessageHandlerFactory(
-		messageProtocolAddress,
-		messageProtocolConfig,
-	)
+	factory, err := NewMessageHandlerFactory(messageProtocolAddress, messageProtocolConfig)
 	require.NoError(t, err)
-	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
 	handler, err := factory.NewMessageHandler(
 		logging.NoLog{},
 		sourceMessage(warpUnsignedMessage),
-		mockClient,
+		destinationClient,
 		nil,
 		mocks.NewMockMetrics(ctrl),
 		ids.Empty,
 		0,
 	)
 	require.NoError(t, err)
+	messageHandler, ok := handler.(*messageHandler)
+	require.True(t, ok)
 
-	mockEthClient := mock_evm.NewMockClient(ctrl)
-	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
-	mockClient.EXPECT().
-		Client().
-		Return(mockEthClient).
-		Times(1)
-
-	mockClient.EXPECT().
-		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(
-			&types.Receipt{
-				Status: types.ReceiptStatusFailed,
-			},
-			nil,
-		).Times(1)
-
-	mockEthClient.EXPECT().
-		CallContract(gomock.Any(), gomock.Eq(messageReceivedInput), gomock.Any()).
-		Return(messageDeliveredResult, nil).
-		Times(1)
-
-	// Call the method under test
-	_, err = handler.(*messageHandler).SendMessage(signedMessage)
-	require.NoError(t, err)
+	return &sendMessageTest{
+		handler:              messageHandler,
+		signedMessage:        signedMessage,
+		destinationClient:    destinationClient,
+		ethClient:            ethClient,
+		gasLimit:             testBufferedGasLimit,
+		callData:             callData,
+		messageReceivedInput: messageReceivedInput,
+	}
 }
 
-// A delivery that reverts having consumed its entire gas limit ran out of gas. That is
-// deterministic, so the relayer must surface it as non-retryable rather than re-broadcasting and
-// paying for the same reverted transaction again.
-func TestSendMessageOutOfGasIsNonRetryable(t *testing.T) {
+// routeCalls answers the eth_call traffic SendMessage generates, which is the messageReceived
+// query, with [delivered].
+func (s *sendMessageTest) routeCalls(t *testing.T, delivered bool) {
+	t.Helper()
+	deliveredOutput, err := teleportermessenger.PackMessageReceivedOutput(delivered)
+	require.NoError(t, err)
+	s.ethClient.EXPECT().
+		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, call ethereum.CallMsg, _ *big.Int) ([]byte, error) {
+			require.Equal(t, s.messageReceivedInput, call.Data, "unexpected eth_call")
+			return deliveredOutput, nil
+		}).
+		AnyTimes()
+}
+
+// expectEstimation answers the delivery's gas estimation with [estimate], which also receives
+// the estimated call for inspection.
+func (s *sendMessageTest) expectEstimation(t *testing.T, estimate func(call ethereum.CallMsg) (uint64, error)) {
+	t.Helper()
+	s.ethClient.EXPECT().
+		EstimateGas(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, call ethereum.CallMsg) (uint64, error) {
+			require.Equal(t, s.callData, call.Data, "estimation must execute the delivery")
+			return estimate(call)
+		}).
+		Times(1)
+}
+
+// The handler must have the node estimate, and then broadcast, the delivery of the signed message
+// to the Teleporter contract: the relayer as sender, the packed receiveCrossChainMessage calldata
+// and the signed message as the predicate access list, bounded by the block gas limit. The
+// transaction carries the estimate with the sender's margin.
+func TestSendMessageEstimatesThenSends(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	s := newSendMessageTest(t, ctrl)
 
-	validMessageBytes, err := validTeleporterMessage.Pack()
-	require.NoError(t, err)
-
-	validAddressedCall, err := warpPayload.NewAddressedCall(
-		messageProtocolAddress.Bytes(),
-		validMessageBytes,
-	)
-	require.NoError(t, err)
-
-	warpUnsignedMessage, err := warp.NewUnsignedMessage(0, ids.Empty, validAddressedCall.Bytes())
-	require.NoError(t, err)
-
-	signedMessage, err := warp.NewMessage(warpUnsignedMessage, &warp.BitSetSignature{})
-	require.NoError(t, err)
-
-	messageNotDelivered, err := teleportermessenger.PackMessageReceivedOutput(false)
-	require.NoError(t, err)
-
-	mockClient := mock_vms.NewMockDestinationClient(ctrl)
-	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
-
-	factory, err := NewMessageHandlerFactory(
-		messageProtocolAddress,
-		messageProtocolConfig,
-	)
-	require.NoError(t, err)
-	handler, err := factory.NewMessageHandler(
-		logging.NoLog{},
-		sourceMessage(warpUnsignedMessage),
-		mockClient,
-		nil,
-		mocks.NewMockMetrics(ctrl),
-		ids.Empty,
-		0,
-	)
-	require.NoError(t, err)
-
-	mockEthClient := mock_evm.NewMockClient(ctrl)
-	mockClient.EXPECT().Client().Return(mockEthClient).Times(1)
-
-	// Echo the gas limit the handler chose back as gas used: that is what an out-of-gas revert
-	// looks like on chain.
-	mockClient.EXPECT().
+	var estimated ethereum.CallMsg
+	s.routeCalls(t, false)
+	s.expectEstimation(t, func(call ethereum.CallMsg) (uint64, error) {
+		estimated = call
+		return testEstimatedGas, nil
+	})
+	expectedTxHash := common.HexToHash("0x01")
+	s.destinationClient.EXPECT().
 		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(
 			_ logging.Logger,
-			_ types.AccessList,
-			_ set.Set[common.Address],
-			_ common.Address,
+			accessList types.AccessList,
+			deliverers set.Set[common.Address],
+			toAddress common.Address,
 			gasLimit uint64,
-			_ []byte,
+			callData []byte,
 		) (*types.Receipt, error) {
-			return &types.Receipt{
-				Status:  types.ReceiptStatusFailed,
-				GasUsed: gasLimit,
-			}, nil
-		}).Times(1)
-
-	mockEthClient.EXPECT().
-		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(messageNotDelivered, nil).
+			require.Equal(t, utils.SignedWarpMessageToAccessList(s.signedMessage), accessList)
+			require.Equal(t, set.Of(validRelayerAddress), deliverers)
+			require.Equal(t, messageProtocolAddress, toAddress)
+			require.Equal(t, s.gasLimit, gasLimit)
+			require.Equal(t, s.callData, callData)
+			return &types.Receipt{Status: types.ReceiptStatusSuccessful, TxHash: expectedTxHash}, nil
+		}).
 		Times(1)
 
-	_, err = handler.(*messageHandler).SendMessage(signedMessage)
-	require.ErrorIs(t, err, messages.ErrNonRetryable)
+	txHash, err := s.handler.SendMessage(context.Background(), s.signedMessage)
+	require.NoError(t, err)
+	require.Equal(t, expectedTxHash, txHash)
+
+	require.Equal(t, validRelayerAddress, estimated.From)
+	require.Equal(t, messageProtocolAddress, *estimated.To)
+	require.Equal(t, testBlockGasLimit, estimated.Gas)
+	require.Equal(t, utils.SignedWarpMessageToAccessList(s.signedMessage), estimated.AccessList)
 }
 
-// A revert that left gas unspent is a logic failure, e.g. Warp verification against a validator
-// set that has churned. A fresh signature may fix it, so it must stay retryable.
-func TestSendMessageRevertWithGasLeftIsRetryable(t *testing.T) {
+// A delivery that reverts when the node executes it for the estimate, such as one carrying a
+// receipt the messenger cannot account for, is abandoned as non-retryable without being
+// broadcast: no SendTx expectation is registered, so the mock fails the test if the handler
+// sends it anyway.
+func TestSendMessageEstimationRevertIsNonRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	s := newSendMessageTest(t, ctrl)
 
-	validMessageBytes, err := validTeleporterMessage.Pack()
-	require.NoError(t, err)
-	validAddressedCall, err := warpPayload.NewAddressedCall(
-		messageProtocolAddress.Bytes(),
-		validMessageBytes,
-	)
-	require.NoError(t, err)
-	warpUnsignedMessage, err := warp.NewUnsignedMessage(0, ids.Empty, validAddressedCall.Bytes())
-	require.NoError(t, err)
-	signedMessage, err := warp.NewMessage(warpUnsignedMessage, &warp.BitSetSignature{})
-	require.NoError(t, err)
+	s.routeCalls(t, false)
+	s.expectEstimation(t, func(ethereum.CallMsg) (uint64, error) {
+		return 0, &evm.RevertError{Reason: "arithmetic underflow or overflow"}
+	})
 
-	messageNotDelivered, err := teleportermessenger.PackMessageReceivedOutput(false)
-	require.NoError(t, err)
-
-	mockClient := mock_vms.NewMockDestinationClient(ctrl)
-	mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
-	mockClient.EXPECT().BlockGasLimit().Return(uint64(15_000_000)).AnyTimes()
-
-	factory, err := NewMessageHandlerFactory(
-		messageProtocolAddress,
-		messageProtocolConfig,
-	)
-	require.NoError(t, err)
-	handler, err := factory.NewMessageHandler(
-		logging.NoLog{},
-		sourceMessage(warpUnsignedMessage),
-		mockClient,
-		nil,
-		mocks.NewMockMetrics(ctrl),
-		ids.Empty,
-		0,
-	)
-	require.NoError(t, err)
-
-	mockEthClient := mock_evm.NewMockClient(ctrl)
-	mockClient.EXPECT().Client().Return(mockEthClient).Times(1)
-	mockClient.EXPECT().
-		SendTx(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(&types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: 21_000}, nil).
-		Times(1)
-	mockEthClient.EXPECT().
-		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(messageNotDelivered, nil).
-		Times(1)
-
-	_, err = handler.(*messageHandler).SendMessage(signedMessage)
-	require.Error(t, err)
-	require.NotErrorIs(t, err, messages.ErrNonRetryable)
+	_, err := s.handler.SendMessage(context.Background(), s.signedMessage)
+	require.ErrorIs(t, err, messages.ErrDeliveryReverts)
+	require.ErrorIs(t, err, messages.ErrNonRetryable)
+	require.ErrorContains(t, err, "arithmetic underflow or overflow")
 }

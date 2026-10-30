@@ -24,17 +24,9 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/icm-services/vms/evm"
-	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"go.uber.org/zap"
-)
-
-const (
-	// gasLimitBufferNumerator/Denominator adds a safety margin on top of the estimated gas, since
-	// Merkle verification gas (software BLS, multi-proof) is sensitive to the signer set.
-	gasLimitBufferNumerator   = 5
-	gasLimitBufferDenominator = 4
 )
 
 type factory struct {
@@ -245,18 +237,16 @@ func (m *messageHandler) SendMessage(
 		return common.Hash{}, err
 	}
 
-	gasLimit, err := m.estimateGasLimit(ctx, callData)
+	// No access list: verification reads the attestation from calldata, not a predicate.
+	gasLimit, err := m.sender().EstimateGas(ctx, nil, callData)
 	if err != nil {
 		var revert *evm.RevertError
-		if !errors.As(err, &revert) {
-			m.logger.Error("Failed to estimate gas limit", zap.Error(err))
-			return common.Hash{}, err
+		if errors.As(err, &revert) {
+			return m.resolveEstimationRevert(ctx, revert, commitment)
 		}
-		return m.resolveEstimationRevert(ctx, revert, commitment)
+		return common.Hash{}, err
 	}
-
-	// No access list: verification reads the attestation from calldata, not a predicate.
-	return m.sendTxAndConfirm(nil, gasLimit, callData)
+	return m.sender().SendTxAndConfirm(nil, gasLimit, callData)
 }
 
 // resolveEstimationRevert decides what a delivery that reverted during gas estimation means. The
@@ -284,7 +274,7 @@ func (m *messageHandler) resolveEstimationRevert(
 		)
 		return common.Hash{}, fmt.Errorf("validator set commitment changed during delivery: %w", revert)
 	}
-	return m.abandonSimulatedRevert(revert)
+	return m.sender().AbandonRevert(revert)
 }
 
 // fetchCommitment reads the registry's stored validator set commitment for the source chain,
@@ -310,30 +300,6 @@ func (m *messageHandler) fetchCommitment(
 			fmt.Errorf("no validator set registered for source chain %s", sourceChainID)
 	}
 	return commitment, nil
-}
-
-// estimateGasLimit estimates the gas for the receiveCrossChainMessage call and applies a safety
-// buffer, capped at the configured block gas limit. Estimation executes the delivery against the
-// destination's latest state, so a delivery that would revert fails here with an
-// [*evm.RevertError] rather than being broadcast at the block gas limit only to mine that revert.
-// Any other estimation failure is returned as is; the delivery is never broadcast unsimulated.
-func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) (uint64, error) {
-	estimated, err := m.destinationClient.Client().EstimateGas(ctx, ethereum.CallMsg{
-		From: m.selectSenderAddress(),
-		To:   &m.teleporterAddress,
-		Data: callData,
-	})
-	if err != nil {
-		if revert := evm.AsRevertError(err); revert != nil {
-			return 0, revert
-		}
-		return 0, fmt.Errorf("failed to estimate gas: %w", err)
-	}
-	buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
-	if blockGasLimit := m.destinationClient.BlockGasLimit(); blockGasLimit != 0 && buffered > blockGasLimit {
-		buffered = blockGasLimit
-	}
-	return buffered, nil
 }
 
 // parseMessage decodes the TeleporterV2 message that [message] was sent as. Both adapters send

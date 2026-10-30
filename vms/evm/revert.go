@@ -41,11 +41,17 @@ func (e *RevertError) Unwrap() error {
 }
 
 // AsRevertError returns the EVM execution failure described by [err], an error returned by an
-// eth_call or eth_estimateGas request, or nil if [err] is not one. Transport failures, timeouts
-// and errors the node raised without executing the call are not execution failures.
+// eth_call or eth_estimateGas request or one wrapping a [*RevertError], or nil if [err] is not
+// one. Transport failures, timeouts and errors the node raised without executing the call are
+// not execution failures.
 func AsRevertError(err error) *RevertError {
 	if err == nil {
 		return nil
+	}
+	// An error that already carries a classified failure keeps it.
+	var revert *RevertError
+	if errors.As(err, &revert) {
+		return revert
 	}
 	// geth-style nodes attach the output of a reverted call to the error as hex data.
 	var dataErr rpc.DataError
@@ -87,4 +93,11 @@ func revertReason(data []byte) string {
 		return reason
 	}
 	return hexutil.Encode(data)
+}
+
+// ExceedsGasAllowance reports whether [err] is a node's answer that gas estimation found no gas
+// limit at which the call succeeds, up to the most the node would try: the lower of the caller's
+// bound and the node's RPC gas cap. The call fails even at that bound.
+func ExceedsGasAllowance(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "gas required exceeds allowance")
 }
