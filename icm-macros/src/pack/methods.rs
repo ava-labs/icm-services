@@ -5,23 +5,33 @@ use solar::ast::ElementaryType;
 use solar::sema::Gcx;
 use solar::sema::hir::{Enum, ItemId, Struct, TypeKind};
 
-use crate::common::LengthType;
-use crate::pack::hooks::{LengthSpec, PackArgs};
+use crate::common::{LengthSpec, LengthType};
+use crate::pack::hooks::PackArgs;
 
-pub fn pack_elementary(var: &str, ty: ElementaryType, length: LengthSpec) -> String {
-    let len_expr = match ty {
-        ElementaryType::Bytes => format!("{var}.length"),
-        ElementaryType::String => format!("bytes({var}).length"),
-        _ => return format!("abi.encodePacked({var})"),
+/// Returns the expression that packs the elementary value `var`. Dynamically sized values are
+/// prefixed with their length unless `length` is a constant, in which case only the payload is
+/// written: the caller has already asserted the length with [`length_guard`].
+pub fn pack_elementary(var: &str, ty: ElementaryType, length: &LengthSpec) -> String {
+    let Some(len_expr) = dynamic_length(var, ty) else {
+        return format!("abi.encodePacked({var})");
     };
     match length {
-        LengthSpec::Drop => format!("abi.encodePacked({var})"),
+        LengthSpec::Constant(_) => format!("abi.encodePacked({var})"),
         LengthSpec::Type(length_type) => {
             format!(
                 "abi.encodePacked({}, {var})",
-                length_cast(&len_expr, length_type)
+                length_cast(&len_expr, *length_type)
             )
         }
+    }
+}
+
+/// Returns the expression giving the byte length of `var`, or `None` if `ty` has a fixed size.
+fn dynamic_length(var: &str, ty: ElementaryType) -> Option<String> {
+    match ty {
+        ElementaryType::Bytes => Some(format!("{var}.length")),
+        ElementaryType::String => Some(format!("bytes({var}).length")),
+        _ => None,
     }
 }
 
@@ -32,6 +42,13 @@ fn length_cast(len_expr: &str, length_type: LengthType) -> String {
         LengthType::Uint(32) => len_expr.to_string(),
         lt => format!("{}({len_expr})", lt.name()),
     }
+}
+
+/// Emits a `require` asserting that `len_expr` equals the constant `expr`. A value that does not
+/// have the agreed fixed length must fail here: without a prefix on the wire, the receiver would
+/// otherwise decode every later field out of alignment.
+fn length_guard(fn_name: &str, field_name: &str, len_expr: &str, expr: &str) -> String {
+    format!("\nrequire({len_expr} == {expr}, \"{fn_name}: invalid {field_name} length\");")
 }
 
 /// Generates a Solidity `pack` function for an enum type.
@@ -52,6 +69,9 @@ pub fn pack_struct(
     args: PackArgs,
     type_name: &str,
 ) -> eyre::Result<String> {
+    let fn_name = args
+        .name
+        .unwrap_or_else(|| format!("pack{}", struct_def.name));
     // the arguments that will be passed to abi.encodePacked
     let mut encode_packed_args = Vec::new();
     // packing functions that need to be expanded recursively
@@ -64,47 +84,74 @@ pub fn pack_struct(
             continue;
         }
         let field = ctx.hir.variable(field_id);
+        let name = field.name.unwrap().to_string();
+        let accessor = format!("obj.{name}");
+        let length = field_args.length.clone().unwrap_or_default();
         let arg = if let Some(method) = &field_args.method {
-            format!("{method}(obj.{})", field.name.unwrap())
+            let packed = format!("{method}({accessor})");
+            match &length {
+                // The method's output goes on the wire verbatim, so a constant length
+                // constrains that output rather than the field itself.
+                LengthSpec::Constant(expr) => {
+                    let output = format!("{name}_bytes");
+                    body.push_str(&format!("\nbytes memory {output} = {packed};"));
+                    body.push_str(&length_guard(
+                        &fn_name,
+                        &name,
+                        &format!("{output}.length"),
+                        expr,
+                    ));
+                    output
+                }
+                LengthSpec::Type(_) => packed,
+            }
         } else {
             match field.ty.kind {
-                TypeKind::Elementary(ty) => pack_elementary(
-                    &format!("obj.{}", field.name.unwrap()),
-                    ty,
-                    field_args.length.unwrap_or_default(),
-                ),
+                TypeKind::Elementary(ty) => {
+                    if let (LengthSpec::Constant(expr), Some(len_expr)) =
+                        (&length, dynamic_length(&accessor, ty))
+                    {
+                        body.push_str(&length_guard(&fn_name, &name, &len_expr, expr));
+                    }
+                    pack_elementary(&accessor, ty, &length)
+                }
                 TypeKind::Array(_) => {
-                    let name = field.name.unwrap().to_string();
+                    if let LengthSpec::Constant(expr) = &length {
+                        body.push_str(&length_guard(
+                            &fn_name,
+                            &name,
+                            &format!("{accessor}.length"),
+                            expr,
+                        ));
+                    }
                     let output = format!("{name}_bytes");
                     // this will need to be handled recursively
                     recursive_packings.push(PackingTreeNode {
-                        root: name.clone(),
+                        root: name,
                         depth: 0,
-                        accessor: format!("obj.{name}"),
+                        accessor,
                         output: output.clone(),
                         ty: &field.ty.kind,
-                        length: field_args.length.unwrap_or_default(),
+                        length,
                     });
                     // instantiate the variable that will hold the bytes
-                    body.push_str(&format!("bytes memory {output};"));
+                    body.push_str(&format!("\nbytes memory {output};"));
                     // add the bytes to the packing
                     output
                 }
                 TypeKind::Custom(item_id) => {
                     let type_name = custom_type_name(ctx, item_id);
-                    format!("pack{type_name}(obj.{})", field.name.unwrap())
+                    format!("pack{type_name}({accessor})")
                 }
                 TypeKind::Mapping(_) => {
                     return Err(eyre!(
-                        "field `{}` of `{}` is a mapping and requires a user-provided packing method",
-                        field.name.unwrap(),
+                        "field `{name}` of `{}` is a mapping and requires a user-provided packing method",
                         struct_def.name
                     ));
                 }
                 TypeKind::Function(_) => {
                     return Err(eyre!(
-                        "field `{}` of `{}` is a function type and requires a user-provided packing method",
-                        field.name.unwrap(),
+                        "field `{name}` of `{}` is a function type and requires a user-provided packing method",
                         struct_def.name
                     ));
                 }
@@ -119,9 +166,6 @@ pub fn pack_struct(
     for node in recursive_packings {
         body.push_str(&expand_packings_recursively(ctx, node)?);
     }
-    let fn_name = args
-        .name
-        .unwrap_or_else(|| format!("pack{}", struct_def.name));
     let vis = vis_prefix(&args.visibility);
     Ok(format!(
         "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
@@ -163,11 +207,13 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
             format!(
                 "{} = {};",
                 node.output,
-                pack_elementary(&node.accessor, *elem, node.length)
+                pack_elementary(&node.accessor, *elem, &node.length)
             )
         }
         TypeKind::Array(arr) => {
             let loop_var = format!("i_{}", node.depth);
+            // The element count is read into a local once rather than on every iteration.
+            let count_var = format!("{}_{}_count", node.root, node.depth);
             let next_output = format!("{}_{}_bytes", node.root, node.depth + 1);
             let next_node = PackingTreeNode {
                 root: node.root.clone(),
@@ -178,17 +224,20 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
                 length: LengthSpec::default(),
             };
             let inner = expand_packings_recursively(ctx, next_node)?;
-            let init = match node.length {
-                LengthSpec::Drop => format!("{} = abi.encodePacked();", node.output),
+            let init = match &node.length {
+                // No count prefix: the caller asserted the count against the constant, and the
+                // output variable starts out empty.
+                LengthSpec::Constant(_) => String::new(),
                 LengthSpec::Type(length_type) => {
-                    let count = length_cast(&format!("{}.length", node.accessor), length_type);
-                    format!("{} = abi.encodePacked({count});", node.output)
+                    let count = length_cast(&count_var, *length_type);
+                    format!("\n{} = abi.encodePacked({count});", node.output)
                 }
             };
 
             format!(
-                "\n{init}\
-                \nfor (uint256 {loop_var} = 0; {loop_var} < {}.length;){{\
+                "\nuint256 {count_var} = {}.length;\
+                {init}\
+                \nfor (uint256 {loop_var} = 0; {loop_var} < {count_var};){{\
                 \n    bytes memory {next_output};\
                 \n    {inner}\
                 \n    {} = abi.encodePacked({}, {next_output});\

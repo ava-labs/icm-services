@@ -12,6 +12,14 @@ impl ValidationState for Unvalidated {
     type Length = String;
 }
 
+/// State marker: field args have been validated; `length` holds a [`LengthSpec`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Validated;
+
+impl ValidationState for Validated {
+    type Length = LengthSpec;
+}
+
 /// Represents a Solidity integer type used as a length/count prefix.
 /// The default is `Uint(32)`, corresponding to the implicit `uint256` encoding.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -67,6 +75,73 @@ impl LengthType {
     }
 }
 
+/// How the length/count of a dynamically sized field is encoded on the wire.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LengthSpec {
+    /// The payload is prefixed with its length/count, encoded as this Solidity integer type.
+    Type(LengthType),
+    /// No prefix: the length/count is this compile-time Solidity expression (e.g. `32` or
+    /// `BLST.SIG_LENGTH`). The pack side asserts that the value has exactly this length and the
+    /// unpack side reads exactly this much, so both sides must agree on the constant.
+    Constant(String),
+}
+
+impl Default for LengthSpec {
+    /// The default is a `uint256` prefix.
+    fn default() -> Self {
+        Self::Type(LengthType::default())
+    }
+}
+
+impl LengthSpec {
+    /// Resolves the raw `length` value of a field annotation. A value naming a Solidity integer
+    /// type selects a prefix of that type; any other non-empty value is taken as a constant
+    /// length expression, which only `solc` can check.
+    pub fn validate(value: String, field_name: &str, struct_name: &str) -> eyre::Result<Self> {
+        if let Ok(ty) = LengthType::validate(&value) {
+            return Ok(Self::Type(ty));
+        }
+        if value.is_empty() {
+            eyre::bail!(
+                "empty `length` for field `{field_name}` of `{struct_name}`: expected a Solidity \
+                 integer type or a constant length expression"
+            );
+        }
+        Ok(Self::Constant(value))
+    }
+}
+
+/// Splits the argument list of the `{open}...)` annotation in `comment` (`open` being e.g.
+/// `#[pack(`) on top-level commas, returning each argument trimmed. Parentheses are balanced and
+/// quoted strings are skipped, so constant expressions such as `type(uint16).max` or
+/// `Lib.f(a, b)` survive intact. Returns `None` if the annotation is absent or its parentheses
+/// never close.
+pub fn annotation_args<'a>(comment: &'a str, open: &str) -> Option<Vec<&'a str>> {
+    let start = comment.find(open)? + open.len();
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut args = Vec::new();
+    let mut arg_start = start;
+    for (i, byte) in comment.bytes().enumerate().skip(start) {
+        match byte {
+            b'"' => quoted = !quoted,
+            _ if quoted => {}
+            b'(' => depth += 1,
+            b')' if depth > 0 => depth -= 1,
+            b')' => {
+                args.push(comment[arg_start..i].trim());
+                return Some(args);
+            }
+            b',' if depth == 0 => {
+                args.push(comment[arg_start..i].trim());
+                arg_start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +181,70 @@ mod tests {
         assert!(
             LengthType::validate("uint257").is_err(),
             "not multiple of 8 and too large"
+        );
+    }
+
+    #[test]
+    fn test_length_spec_validate() {
+        let validate = |value: &str| LengthSpec::validate(value.to_string(), "data", "Foo");
+        assert_eq!(
+            validate("uint32").unwrap(),
+            LengthSpec::Type(LengthType::Uint(4))
+        );
+        assert_eq!(
+            validate("32").unwrap(),
+            LengthSpec::Constant("32".to_string())
+        );
+        assert_eq!(
+            validate("BLST.SIG_LENGTH").unwrap(),
+            LengthSpec::Constant("BLST.SIG_LENGTH".to_string())
+        );
+        assert_eq!(
+            validate("type(uint16).max").unwrap(),
+            LengthSpec::Constant("type(uint16).max".to_string())
+        );
+        let err = validate("").unwrap_err().to_string();
+        assert!(
+            err.contains("empty `length` for field `data` of `Foo`"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn test_annotation_args() {
+        assert_eq!(annotation_args("#[pack()]", "#[pack("), Some(vec![""]));
+        assert_eq!(
+            annotation_args("#[pack(ignore)]", "#[pack("),
+            Some(vec!["ignore"])
+        );
+        assert_eq!(
+            annotation_args("/// #[unpack(contract = \"Foo\", calldata)]", "#[unpack("),
+            Some(vec!["contract = \"Foo\"", "calldata"])
+        );
+        // parentheses in a constant expression do not end the argument list
+        assert_eq!(
+            annotation_args(
+                "#[unpack(length = type(uint16).max, method = \"Lib.f\")]",
+                "#[unpack("
+            ),
+            Some(vec!["length = type(uint16).max", "method = \"Lib.f\""])
+        );
+        // nor do commas nested inside them
+        assert_eq!(
+            annotation_args("#[pack(length = Lib.f(a, b) * (1 + 2))]", "#[pack("),
+            Some(vec!["length = Lib.f(a, b) * (1 + 2)"])
+        );
+        // delimiters inside a quoted value are literal
+        assert_eq!(
+            annotation_args("#[pack(method = \"f(a,b)\", ignore)]", "#[pack("),
+            Some(vec!["method = \"f(a,b)\"", "ignore"])
+        );
+        assert_eq!(annotation_args("#[pack]", "#[pack("), None);
+        assert_eq!(annotation_args("#[unpack()]", "#[pack("), None);
+        assert_eq!(
+            annotation_args("#[pack(length = (1 + 2]", "#[pack("),
+            None,
+            "unbalanced parentheses never close the annotation"
         );
     }
 }

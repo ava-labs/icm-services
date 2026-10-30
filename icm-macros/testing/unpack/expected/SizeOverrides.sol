@@ -115,6 +115,7 @@ library PackMethods {
         bytes memory Hash;
         {
             uint256 length = Lengths.HASH_LENGTH;
+            require(length <= data.length, "unpackDynamicStruct: data too short for Hash");
             Hash = new bytes(length);
             assembly {
                 mcopy(add(Hash, 32), add(data, 32), length)
@@ -149,6 +150,7 @@ library PackMethods {
         bytes memory ParsedHash;
         {
             uint256 length = Lengths.HASH_LENGTH;
+            require(length <= data.length, "unpackDynamicStruct: data too short for ParsedHash");
             bytes memory _slice = new bytes(length);
             assembly { mcopy(add(_slice, 32), add(data, 32), length) }
             ParsedHash = parseHashMemory(_slice);
