@@ -28,16 +28,21 @@
 //!
 //! _Fields_
 //! As mentioned above, each non-primitive field is assumed to also possess a pack method. This is
-//! assumed to be in the scope in which the macro-expanded code will be placed. If not, or it is
-//! desired to use a different serialization method, the field can be annotated with a comment of
-//! the form `#[pack(method = "...")]`. Note that this is only relevant for structs, not enums.
+//! assumed to be in the scope in which the macro-expanded code will be placed. To override this
+//! or handle special cases, annotate the field:
 //!
-//! It is also possible to annotate a field with `#[pack(ignore)]` and its serialization will be
-//! skipped by the macro-generated code.
+//! `#[pack(method = "expr")]`: Use `expr(obj.field)` to serialize the field instead of the default
+//! encoder. The method must return `bytes`, which is inserted verbatim: no length prefix is added,
+//! so any `length` annotation on the field is ignored.
 //!
-//! If a field is a dynamically sized type, by default its length will be encoded using a uint256.
-//! This can be changed by annotating the field with `#[pack(length = ...)]`, which should provide
-//! an unsigned integer solidity type.
+//! `#[pack(ignore)]`: Skip this field entirely. Intended for use alongside `#[unpack(default)]`.
+//!
+//! `#[pack(length = uintN)]`: If a field is a dynamically sized type, by default its length (or
+//! element count) is encoded as a `uint256` prefix. This selects a different Solidity integer type
+//! for the prefix.
+//!
+//! `#[pack(length = drop)]`: Omit the length prefix entirely. Use when the length is a constant
+//! known to the receiver, which annotates the field with `#[unpack(length = constant)]`.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the pack
@@ -272,7 +277,7 @@ mod tests {
             ),
             (
                 "testing/pack/errors/BadLengthType.sol",
-                "length type `bool` for field `data` of `HasBadLength` must be a Solidity integer type",
+                "length type `bool` for field `data` of `HasBadLength` must be a Solidity integer type or `drop`",
             ),
         ];
         for (path, expected) in cases {

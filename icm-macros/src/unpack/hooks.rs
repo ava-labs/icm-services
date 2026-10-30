@@ -7,7 +7,7 @@ use solar::ast::{ElementaryType, Span};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, ItemId, SourceId, Struct, Type, TypeKind};
 
-use crate::common::{LengthType, Unvalidated, Validated, ValidationState};
+use crate::common::{LengthType, Unvalidated, ValidationState};
 
 pub struct UnpackArgs {
     pub contract: Option<ContractId>,
@@ -18,10 +18,35 @@ pub struct UnpackArgs {
     pub solhint_disable: bool,
 }
 
+/// How the length/count of a dynamically sized field is encoded.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LengthSpec {
+    /// Read a length/count prefix encoded as this Solidity integer type.
+    Type(LengthType),
+    /// No prefix is read; the length/count is this compile-time Solidity expression
+    /// (e.g. `32` or `BLST.SIG_LENGTH`). Pairs with `#[pack(length = drop)]`.
+    Constant(String),
+}
+
+impl Default for LengthSpec {
+    /// The default is a `uint256` prefix.
+    fn default() -> Self {
+        Self::Type(LengthType::default())
+    }
+}
+
+/// State marker: field args have been validated; `length` holds a `LengthSpec`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Validated;
+
+impl ValidationState for Validated {
+    type Length = LengthSpec;
+}
+
 /// Per-field unpack annotations, generic over their validation state.
 ///
 /// - `FieldArgs<Unvalidated>`: raw parse output; `length` is `Option<String>`.
-/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthType>`.
+/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthSpec>`.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FieldArgs<S: ValidationState = Unvalidated> {
     pub method: Option<String>,
@@ -31,21 +56,26 @@ pub struct FieldArgs<S: ValidationState = Unvalidated> {
 }
 
 impl FieldArgs<Unvalidated> {
-    /// Validates the `length` string (if present), converting this
-    /// `FieldArgs<Unvalidated>` into a `FieldArgs<Validated>`.
+    /// Resolves the `length` string (if present), converting this
+    /// `FieldArgs<Unvalidated>` into a `FieldArgs<Validated>`. A value naming a Solidity
+    /// integer type selects a length prefix of that type; any other value is taken as a
+    /// constant length expression.
     pub fn validate(
         self,
         field_name: &str,
         struct_name: &str,
     ) -> eyre::Result<FieldArgs<Validated>> {
-        use eyre::WrapErr;
         let length = self
             .length
-            .map(|ty| {
-                LengthType::validate(&ty).wrap_err(format!(
-                    "length type `{ty}` for field `{field_name}` of `{struct_name}` \
-                     must be a Solidity integer type"
-                ))
+            .map(|value| match LengthType::validate(&value) {
+                Ok(ty) => Ok(LengthSpec::Type(ty)),
+                // `drop` is the pack-side keyword: the unpack side must spell out the fixed
+                // length because the generated code has to know how many bytes to read.
+                Err(_) if value.is_empty() || value == "drop" => Err(eyre::eyre!(
+                    "length `{value}` for field `{field_name}` of `{struct_name}` must be a \
+                     Solidity integer type or a constant length expression"
+                )),
+                Err(_) => Ok(LengthSpec::Constant(value)),
             })
             .transpose()?;
         Ok(FieldArgs {
@@ -383,6 +413,10 @@ mod tests {
                     Some("#[unpack(method=\"Foo.bar\", length = uint64)]".to_string()),
                     true,
                 ),
+                (
+                    Some("#[unpack(length = BLST.BLS_SIGNATURE_LENGTH)]".to_string()),
+                    true,
+                ),
             ],
         )
         .unwrap();
@@ -433,5 +467,46 @@ mod tests {
                 length: Some("uint64".to_string()),
             }
         );
+        assert_eq!(
+            raw.fields[5],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some("BLST.BLS_SIGNATURE_LENGTH".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_length() {
+        let validate = |length: &str| {
+            FieldArgs::<Unvalidated> {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some(length.to_string()),
+            }
+            .validate("data", "Foo")
+            .map(|f| f.length)
+        };
+        assert_eq!(
+            validate("uint32").unwrap(),
+            Some(LengthSpec::Type(LengthType::Uint(4)))
+        );
+        assert_eq!(
+            validate("32").unwrap(),
+            Some(LengthSpec::Constant("32".to_string()))
+        );
+        assert_eq!(
+            validate("BLST.SIG_LENGTH").unwrap(),
+            Some(LengthSpec::Constant("BLST.SIG_LENGTH".to_string()))
+        );
+        let err = validate("drop").unwrap_err().to_string();
+        assert!(
+            err.contains("length `drop` for field `data` of `Foo`"),
+            "{err}"
+        );
+        assert!(validate("").is_err(), "empty length");
     }
 }
