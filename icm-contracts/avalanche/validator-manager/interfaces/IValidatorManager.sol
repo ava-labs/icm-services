@@ -16,6 +16,7 @@ interface IValidatorManager is IACP99Manager {
     error InvalidValidatorManagerAddress(address validatorManagerAddress);
     error InvalidWarpOriginSenderAddress(address senderAddress);
     error InvalidValidatorManagerBlockchainID(bytes32 blockchainID);
+    error InvalidSubnetID(bytes32 subnetID);
     error InvalidWarpSourceChainID(bytes32 sourceChainID);
     error InvalidInitializationStatus();
     error InvalidMaximumChurnPercentage(uint8 maximumChurnPercentage);
