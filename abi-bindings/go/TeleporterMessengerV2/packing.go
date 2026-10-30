@@ -72,7 +72,7 @@ func PackSendCrossChainMessage(input TeleporterMessageInput) ([]byte, error) {
 	return abi.Pack("sendCrossChainMessage", input)
 }
 
-func PackRetryMessageExecution(sourceBlockchainID ids.ID, message TeleporterMessageV2) ([]byte, error) {
+func PackRetryMessageExecution(sourceBlockchainID ids.ID, message TeleporterMessage) ([]byte, error) {
 	abi, err := TeleporterMessengerV2MetaData.GetAbi()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get abi")

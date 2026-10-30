@@ -154,10 +154,14 @@ interface ITeleporterMessengerV2 {
      * For example, this may occur if the original required gas limit was not sufficient for the message
      * execution, or if the destination address did not contain a contract, but a compatible contract
      * was later deployed to that address. Messages are ensured to be successfully executed at most once.
+     *
+     * `message` is the {TeleporterMessage} the messenger derived from the delivered message, exactly as
+     * emitted in the {MessageExecutionFailed} event, since that is the representation whose hash was
+     * stored when the execution failed.
      */
     function retryMessageExecution(
         bytes32 sourceBlockchainID,
-        TeleporterMessageV2 calldata message
+        TeleporterMessage calldata message
     ) external;
 
     /**
