@@ -222,14 +222,22 @@ contract ValidatorManager is IValidatorManager, Initializable, OwnableUpgradeabl
             revert InvalidInitializationStatus();
         }
 
-        // Check that the blockchainID and validator manager address in the ConversionData correspond to this contract.
-        // Other validation checks are done by the P-Chain when converting the L1, so are not required here, except
-        // for the field lengths checked below, which the hash comparison alone cannot guarantee.
+        // Check that the blockchainID, validator manager address, and subnetID in the ConversionData correspond
+        // to this contract. Other validation checks are done by the P-Chain when converting the L1, so are not
+        // required here, except for the field lengths checked below, which the hash comparison alone cannot
+        // guarantee.
         if (conversionData.validatorManagerBlockchainID != WARP_MESSENGER.getBlockchainID()) {
             revert InvalidValidatorManagerBlockchainID(conversionData.validatorManagerBlockchainID);
         }
         if (address(conversionData.validatorManagerAddress) != address(this)) {
             revert InvalidValidatorManagerAddress(address(conversionData.validatorManagerAddress));
+        }
+        // The P-Chain attests the conversion of any Subnet that names this chain and contract as its validator
+        // manager, so the conversionID check below does not bind the conversion to the L1 this contract was
+        // initialized for. Without this check, anyone could convert a Subnet of their own that points at this
+        // contract and initialize it with initial validators of their choosing.
+        if (conversionData.subnetID != $._subnetID) {
+            revert InvalidSubnetID(conversionData.subnetID);
         }
 
         // Verify that the sha256 hash of the L1 conversion data matches with the Warp message's conversionID.
