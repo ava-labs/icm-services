@@ -11,9 +11,11 @@ import (
 	offchainregistry "github.com/ava-labs/icm-services/messages/off-chain-registry"
 	"github.com/ava-labs/icm-services/messages/teleporter"
 	teleporterv2 "github.com/ava-labs/icm-services/messages/teleporterv2"
+	"github.com/ava-labs/icm-services/messages/zk"
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/ethclient"
 )
 
 // NewMessageHandlerFactory returns the MessageHandlerFactory for the protocol identified
@@ -23,6 +25,7 @@ func NewMessageHandlerFactory(
 	cfg config.MessageProtocolConfig,
 	pChainClient clients.CanonicalValidatorState,
 	sourceSubnetID ids.ID,
+	sourceClient *ethclient.Client,
 ) (messages.MessageHandlerFactory, error) {
 	switch config.ParseMessageProtocol(cfg.MessageFormat) {
 	case config.TELEPORTER:
@@ -31,6 +34,8 @@ func NewMessageHandlerFactory(
 		return offchainregistry.NewMessageHandlerFactory(cfg)
 	case config.TELEPORTER_V2:
 		return teleporterv2.NewMessageHandlerFactory(address, cfg, pChainClient, sourceSubnetID)
+	case config.ZK:
+		return zk.NewMessageHandlerFactory(address, cfg, sourceClient)
 	default:
 		return nil, fmt.Errorf("invalid message format %s", cfg.MessageFormat)
 	}
