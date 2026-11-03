@@ -99,7 +99,9 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
      * @notice  Tracks the hash of messages that have been received but have never succeeded in execution.
      * @dev Enables retrying of failed messages with higher gas limits. Message execution is guaranteed to
      * succeed at most once. The key is the message ID, and the value is the hash of the uniquely
-     * identified message whose execution failed.
+     * identified message whose execution failed. The hash is taken over the ABI-encoded
+     * {TeleporterMessage} derived from the delivered {TeleporterMessageV2}, which is the struct emitted
+     * in {MessageExecutionFailed} and accepted by {retryMessageExecution}.
      */
     mapping(bytes32 messageID => bytes32 messageHash) public receivedFailedMessageHashes;
 
@@ -386,7 +388,7 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
      */
     function retryMessageExecution(
         bytes32 sourceBlockchainID,
-        TeleporterMessageV2 calldata message
+        TeleporterMessage calldata message
     ) external receiverNonReentrant {
         // Calculate the message ID based on the source blockchainID and message nonce.
         // If the blockchain ID has yet to be initialized, no messages have ever been received by
@@ -396,6 +398,8 @@ contract TeleporterMessengerV2 is ITeleporterMessengerV2, ReentrancyGuards, Init
             calculateMessageID(sourceBlockchainID, blockchainID, message.messageNonce);
 
         // Check that the hash of the payload provided matches the hash of the payload that previously failed to execute.
+        // The stored hash is over the {TeleporterMessage} derived from the delivered {TeleporterMessageV2}
+        // (see {_storeFailedMessageExecution}), which is why this method takes that same representation.
         bytes32 failedMessageHash = receivedFailedMessageHashes[messageID];
         require(failedMessageHash != bytes32(0), "TeleporterMessenger: message not found");
         require(
