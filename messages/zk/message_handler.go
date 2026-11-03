@@ -38,6 +38,10 @@ const (
 	// processTimeout bounds one delivery attempt end to end: the anchor scan, two beacon state
 	// fetches of ~100-200MB each, and the destination transaction.
 	processTimeout = 15 * time.Minute
+
+	// anchorScanTimeout bounds the backward ConfirmedBeaconBlock scan on its own, so a scan
+	// that finds no anchor and walks toward genesis cannot use up the proof and send budget.
+	anchorScanTimeout = 2 * time.Minute
 )
 
 type factory struct {
@@ -222,7 +226,9 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 		return common.Hash{}, nil
 	}
 
-	anchor, err := findAnchor(ctx, m.destinationClient.Client(), adapter, m.slot)
+	scanCtx, scanCancel := context.WithTimeout(ctx, anchorScanTimeout)
+	defer scanCancel()
+	anchor, err := findAnchor(scanCtx, m.destinationClient.Client(), adapter, m.slot)
 	if err != nil {
 		m.metrics.IncFailedRelayMessageCount("failed to select anchor")
 		return common.Hash{}, err
