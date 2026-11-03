@@ -13,6 +13,7 @@ package zk
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -27,6 +28,7 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/icm-services/vms/evm"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -120,28 +122,34 @@ func (f *factory) NewMessageHandler(
 	if message.SourceTxID == (common.Hash{}) {
 		return nil, fmt.Errorf("SourceTxID on zk messages must be non-empty")
 	}
+
 	if len(message.Payload) == 0 {
 		return nil, fmt.Errorf("empty TeleporterV2MessageSent log data")
 	}
+
 	teleporterMessage, err := parseMessage(message)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse teleporter v2 message: %w", err)
 	}
+
 	// From the source message transaction id, derive the transaction receipt and
 	// match the TeleporterV2MessageSent event log by emitter, topic, and payload.
 	receipt, err := f.sourceClient.TransactionReceipt(context.Background(), message.SourceTxID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch source receipt %s: %w", message.SourceTxID.Hex(), err)
 	}
+
 	logIndex, err := findMessageLog(receipt, message.ProtocolAddress, message.Payload)
 	if err != nil {
 		return nil, err
 	}
+
 	blockNumber := receipt.BlockNumber.Uint64()
 	header, err := f.sourceClient.HeaderByNumber(context.Background(), receipt.BlockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch source header %d: %w", blockNumber, err)
 	}
+
 	slot := (header.Time - f.messageConfig.BeaconGenesisTime) / f.messageConfig.SecondsPerSlot // the floor
 
 	return &messageHandler{
@@ -169,7 +177,8 @@ func (f *factory) NewMessageHandler(
 // the transaction hash if the message is successfully relayed.
 //
 // The steps are:
-//  1. Skip the message if the destination messenger has already received it.
+//  1. Skip messages the destination messenger is certain to reject from content alone, and
+//     messages it has already received.
 //  2. Select a confirmed anchor on the ZKAdapter whose history covers the message's slot.
 //  3. Build the SSZ execution proof (anchor block root -> receipts root) and the MPT receipt
 //     proof (receipts root -> the message's log), and check they agree on the receipts root.
@@ -179,7 +188,31 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), processTimeout)
 	defer cancel()
 
-	messageID, err := m.messageID()
+	// Reject undeliverable messages before any network calls, proof building, or gas. Anyone
+	// can call the adapter's sendMessage naming an arbitrary origin, so logs reaching the
+	// handler are untrusted.
+	if ok, reason := m.shouldDeliverMessage(); !ok {
+		m.logger.Warn("Skipping undeliverable message", zap.String("reason", reason))
+		m.metrics.IncFailedRelayMessageCount(reason)
+		return common.Hash{}, nil
+	}
+
+	adapter, err := zkadapter.NewZKAdapter(m.messageConfig.adapterAddress(), m.destinationClient.Client())
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to bind ZKAdapter: %w", err)
+	}
+	// The messenger keys delivery by the adapter-attested source blockchain ID, so the
+	// delivered-checks must use the same ID sendMessage packs, not the relayer config's.
+	sourceNetworkID, err := adapter.SourceNetworkId(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to read adapter source network ID: %w", err)
+	}
+	sourceChainID, err := adapter.SourceChainId(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to read adapter source chain ID: %w", err)
+	}
+
+	messageID, err := m.messageID(ids.ID(common.BigToHash(sourceChainID)))
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -197,10 +230,6 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 		return common.Hash{}, nil
 	}
 
-	adapter, err := zkadapter.NewZKAdapter(m.messageConfig.adapterAddress(), m.destinationClient.Client())
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to bind ZKAdapter: %w", err)
-	}
 	anchor, err := findAnchor(ctx, m.destinationClient.Client(), adapter, m.slot)
 	if err != nil {
 		m.metrics.IncFailedRelayMessageCount("failed to select anchor")
@@ -231,9 +260,10 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 		)
 	}
 
-	txHash, err := m.sendMessage(ctx, adapter, execProof, receiptProof)
+	txHash, err := m.sendMessage(ctx, sourceNetworkID, sourceChainID, execProof, receiptProof)
 	if err != nil {
-		// A revert after the delivery check may mean another relayer delivered first.
+		// A revert (simulated or mined) after the delivery check may mean another relayer
+		// delivered first.
 		if delivered, checkErr := m.messageDelivered(ctx, messageID); checkErr == nil && delivered {
 			logger.Info("Message delivered by another relayer")
 			return common.Hash{}, nil
@@ -246,28 +276,46 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	return txHash, nil
 }
 
+// shouldDeliverMessage rejects messages the destination messenger is certain to refuse from
+// content alone, so spoofed or undeliverable messages cost no proof building or gas. Returning
+// false skips the message without an error, so the framework checkpoints past it instead of
+// retrying a message that can never land.
+func (m *messageHandler) shouldDeliverMessage() (bool, string) {
+	if m.teleporterMessage.OriginTeleporterAddress != m.messageConfig.teleporterAddress() {
+		return false, "origin is not the configured teleporter"
+	}
+
+	if len(m.teleporterMessage.AllowedRelayerAddresses) > 0 && !m.containsAllowedRelayer() {
+		return false, "no relayer key in the message's allowed relayers"
+	}
+	return true, ""
+}
+
+// containsAllowedRelayer reports whether any of the relayer's sender addresses is in the
+// message's AllowedRelayerAddresses.
+func (m *messageHandler) containsAllowedRelayer() bool {
+	for _, sender := range m.destinationClient.SenderAddresses() {
+		for _, allowed := range m.teleporterMessage.AllowedRelayerAddresses {
+			if sender == allowed {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // sendMessage encodes the attestation, packs the receiveCrossChainMessage call, and sends it to
 // the destination TeleporterMessengerV2.
 func (m *messageHandler) sendMessage(
 	ctx context.Context,
-	adapter *zkadapter.ZKAdapter,
+	sourceNetworkID uint32,
+	sourceChainID *big.Int,
 	execProof *zkadapter.ExecutionProof,
 	receiptProof *proofs.ReceiptProof,
 ) (common.Hash, error) {
 	attestation, err := encodeAttestation(execProof, receiptProof)
 	if err != nil {
 		return common.Hash{}, err
-	}
-
-	// The adapter checks the message's source network and chain against its own configuration,
-	// so take both from the adapter rather than duplicating them in the relayer config.
-	sourceNetworkID, err := adapter.SourceNetworkId(&bind.CallOpts{Context: ctx})
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to read adapter source network ID: %w", err)
-	}
-	sourceChainID, err := adapter.SourceChainId(&bind.CallOpts{Context: ctx})
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to read adapter source chain ID: %w", err)
 	}
 
 	callData, err := packReceiveCrossChainMessage(
@@ -289,8 +337,15 @@ func (m *messageHandler) sendMessage(
 		return common.Hash{}, err
 	}
 
+	// Restrict the signing key to the message's allowed relayers.
+	// shouldDeliverMessage guarantees an eligible key exists when the set is non-empty.
 	receipt, err := m.destinationClient.SendTx(
-		m.logger, nil, set.Of(m.destinationClient.SenderAddresses()...), teleporterAddress, gasLimit, callData,
+		m.logger,
+		nil,
+		set.Of(m.teleporterMessage.AllowedRelayerAddresses...),
+		teleporterAddress,
+		gasLimit,
+		callData,
 	)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to send transaction: %w", err)
@@ -302,9 +357,23 @@ func (m *messageHandler) sendMessage(
 	return receipt.TxHash, nil
 }
 
+// checkReceiptStatus maps a failed delivery receipt to the relayer's error taxonomy: running
+// out of gas is non-retryable since a resend would burn the same gas again.
+func checkReceiptStatus(receipt *types.Receipt, gasLimit uint64) error {
+	if receipt.Status == types.ReceiptStatusSuccessful {
+		return nil
+	}
+
+	if receipt.GasUsed >= gasLimit {
+		return fmt.Errorf("%w: used %d of %d", messages.ErrDeliveryOutOfGas, receipt.GasUsed, gasLimit)
+	}
+
+	return fmt.Errorf("transaction %s reverted", receipt.TxHash.Hex())
+}
+
 // estimateGasLimit estimates the gas for the receiveCrossChainMessage call and applies a safety
-// buffer, capped at the destination's block gas limit. Falls back to the block gas limit if
-// estimation fails.
+// buffer, capped at the destination's block gas limit. A simulated revert abandons the delivery
+// without broadcasting; only non-revert estimation failures fall back to the block gas limit.
 func (m *messageHandler) estimateGasLimit(
 	ctx context.Context,
 	teleporterAddress common.Address,
@@ -316,21 +385,30 @@ func (m *messageHandler) estimateGasLimit(
 		To:   &teleporterAddress,
 		Data: callData,
 	})
-	if err != nil {
-		m.logger.Warn("Gas estimation failed, falling back to block gas limit",
-			zap.Error(err),
-			zap.Uint64("blockGasLimit", blockGasLimit),
-		)
-		if blockGasLimit == 0 {
-			return 0, fmt.Errorf("failed to estimate gas and no block gas limit configured: %w", err)
+	if err == nil {
+		buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
+		if blockGasLimit != 0 && buffered > blockGasLimit {
+			buffered = blockGasLimit
 		}
-		return blockGasLimit, nil
+		return buffered, nil
 	}
-	buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
-	if blockGasLimit != 0 && buffered > blockGasLimit {
-		buffered = blockGasLimit
+
+	if revertErr := evm.AsRevertError(err); revertErr != nil {
+		// The node simulated the delivery and it reverts; broadcasting would pay for a mined
+		// revert on every retry.
+		return 0, fmt.Errorf("%w: delivery simulation reverted: %s", messages.ErrDeliveryReverts, revertErr)
 	}
-	return buffered, nil
+
+	// A non-revert estimation failure (e.g. a flaky node) doesn't prove the delivery
+	// fails, so fall back to the block gas limit rather than dropping the message.
+	m.logger.Warn("Gas estimation failed, falling back to block gas limit",
+		zap.Error(err),
+		zap.Uint64("blockGasLimit", blockGasLimit),
+	)
+	if blockGasLimit == 0 {
+		return 0, fmt.Errorf("failed to estimate gas and no block gas limit configured: %w", err)
+	}
+	return blockGasLimit, nil
 }
 
 // selectSenderAddress picks a relayer EOA eligible to deliver the message for gas estimation.
@@ -350,10 +428,10 @@ func (m *messageHandler) selectSenderAddress() common.Address {
 }
 
 // messageID computes the Teleporter message ID the destination messenger tracks delivery by.
-func (m *messageHandler) messageID() (ids.ID, error) {
+func (m *messageHandler) messageID(sourceBlockchainID ids.ID) (ids.ID, error) {
 	id, err := teleporterUtils.CalculateMessageID(
 		m.messageConfig.teleporterAddress(),
-		m.sourceMessage.SourceBlockchainID,
+		sourceBlockchainID,
 		ids.ID(m.teleporterMessage.DestinationBlockchainID),
 		m.teleporterMessage.MessageNonce,
 	)
@@ -388,16 +466,4 @@ func packReceiveCrossChainMessage(
 		return nil, err
 	}
 	return messengerABI.Pack("receiveCrossChainMessage", message, rewardAddress)
-}
-
-// checkReceiptStatus maps a failed delivery receipt to the relayer's error taxonomy: running
-// out of gas is non-retryable since a resend would burn the same gas again.
-func checkReceiptStatus(receipt *types.Receipt, gasLimit uint64) error {
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		return nil
-	}
-	if receipt.GasUsed >= gasLimit {
-		return fmt.Errorf("%w: used %d of %d", messages.ErrDeliveryOutOfGas, receipt.GasUsed, gasLimit)
-	}
-	return fmt.Errorf("transaction %s reverted", receipt.TxHash.Hex())
 }

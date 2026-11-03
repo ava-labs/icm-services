@@ -177,7 +177,7 @@ func TestFindMessageLog(t *testing.T) {
 }
 
 // Checks that the handler computes the same message ID the destination messenger tracks
-// delivery by.
+// delivery by, from an explicitly provided (adapter-derived) source blockchain ID.
 func TestMessageID(t *testing.T) {
 	handler := newTestHandler(t, nil)
 
@@ -186,9 +186,71 @@ func TestMessageID(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	got, err := handler.messageID()
+	got, err := handler.messageID(sourceBlockchainID)
 	require.NoError(t, err)
 	require.Equal(t, expected, got)
+}
+
+// Checks that messages the destination messenger is certain to reject are skipped before
+// any proof building: a spoofed origin, or a relayer restriction excluding every sender key.
+func TestShouldDeliverMessage(t *testing.T) {
+	senders := []common.Address{common.HexToAddress("0x11"), common.HexToAddress("0x22")}
+	otherRelayer := common.HexToAddress("0x33")
+
+	// withMessage returns a copy of the valid message with the given origin teleporter and
+	// allowed relayers.
+	withMessage := func(origin common.Address, allowed []common.Address) *teleportermessengerv2.TeleporterMessageV2 {
+		message := *validTeleporterMessage
+		message.OriginTeleporterAddress = origin
+		message.AllowedRelayerAddresses = allowed
+		return &message
+	}
+
+	testCases := []struct {
+		name          string
+		message       *teleportermessengerv2.TeleporterMessageV2
+		shouldDeliver bool
+	}{
+		{
+			name:          "origin is not the configured teleporter",
+			message:       withMessage(sourceTeleporterAddress, nil),
+			shouldDeliver: false,
+		},
+		{
+			name:          "no sender key in allowed relayers",
+			message:       withMessage(destinationTeleporterAddress, []common.Address{otherRelayer}),
+			shouldDeliver: false,
+		},
+		{
+			name:          "sender key in allowed relayers",
+			message:       withMessage(destinationTeleporterAddress, []common.Address{otherRelayer, senders[1]}),
+			shouldDeliver: true,
+		},
+		{
+			name:          "unrestricted relayers",
+			message:       withMessage(destinationTeleporterAddress, nil),
+			shouldDeliver: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			destinationClient := mocks.NewMockDestinationClient(ctrl)
+			destinationClient.EXPECT().SenderAddresses().Return(senders).AnyTimes()
+
+			handler := newTestHandler(t, destinationClient)
+			handler.teleporterMessage = test.message
+
+			ok, reason := handler.shouldDeliverMessage()
+			require.Equal(t, test.shouldDeliver, ok)
+			if test.shouldDeliver {
+				require.Empty(t, reason)
+			} else {
+				require.NotEmpty(t, reason)
+			}
+		})
+	}
 }
 
 // Checks that gas estimation uses an allowed relayer address when the message restricts
