@@ -66,7 +66,7 @@ func TestSelectAnchorNoneNewerYet(t *testing.T) {
 
 	for _, anchors := range [][]anchor{nil, {getAnchor(target)}, {getAnchor(target - 1), getAnchor(target - 500)}} {
 		_, err := selectAnchor(anchors, target)
-		require.ErrorContains(t, err, "no confirmed anchor newer than the message slot")
+		require.ErrorIs(t, err, errAnchorNotYetConfirmed)
 		require.NotErrorIs(t, err, messages.ErrNonRetryable)
 	}
 }
