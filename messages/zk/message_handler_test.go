@@ -253,42 +253,6 @@ func TestShouldDeliverMessage(t *testing.T) {
 	}
 }
 
-// Checks that gas estimation uses an allowed relayer address when the message restricts
-// relayers, and the first sender otherwise.
-func TestSelectSenderAddress(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	senders := []common.Address{common.HexToAddress("0x11"), common.HexToAddress("0x22")}
-	destinationClient := mocks.NewMockDestinationClient(ctrl)
-	destinationClient.EXPECT().SenderAddresses().Return(senders).AnyTimes()
-
-	handler := newTestHandler(t, destinationClient)
-	require.Equal(t, senders[0], handler.selectSenderAddress())
-
-	restricted := *validTeleporterMessage
-	restricted.AllowedRelayerAddresses = []common.Address{senders[1]}
-	handler.teleporterMessage = &restricted
-	require.Equal(t, senders[1], handler.selectSenderAddress())
-}
-
-// Checks that a delivery that ran out of gas is classified as non-retryable, while other
-// reverts stay retryable.
-func TestCheckReceiptStatus(t *testing.T) {
-	const gasLimit = uint64(1_000_000)
-	txHash := common.HexToHash("0xabc")
-
-	require.NoError(t, checkReceiptStatus(
-		&types.Receipt{Status: types.ReceiptStatusSuccessful, TxHash: txHash}, gasLimit))
-
-	err := checkReceiptStatus(
-		&types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: gasLimit, TxHash: txHash}, gasLimit)
-	require.ErrorIs(t, err, messages.ErrDeliveryOutOfGas)
-
-	err = checkReceiptStatus(
-		&types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: gasLimit / 2, TxHash: txHash}, gasLimit)
-	require.Error(t, err)
-	require.NotErrorIs(t, err, messages.ErrNonRetryable)
-}
-
 func testExecProof() *zkadapter.ExecutionProof {
 	return &zkadapter.ExecutionProof{
 		AnchorSlot:                 200,

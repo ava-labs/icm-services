@@ -28,11 +28,8 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/icm-services/vms"
-	"github.com/ava-labs/icm-services/vms/evm"
-	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
@@ -41,11 +38,6 @@ const (
 	// processTimeout bounds one delivery attempt end to end: the anchor scan, two beacon state
 	// fetches of ~100-200MB each, and the destination transaction.
 	processTimeout = 15 * time.Minute
-
-	// gasLimitBufferNumerator/Denominator adds a safety margin on top of the estimated gas, since
-	// on-chain SSZ and MPT verification cost depends on proof depth.
-	gasLimitBufferNumerator   = 5
-	gasLimitBufferDenominator = 4
 )
 
 type factory struct {
@@ -285,23 +277,12 @@ func (m *messageHandler) shouldDeliverMessage() (bool, string) {
 		return false, "origin is not the configured teleporter"
 	}
 
-	if len(m.teleporterMessage.AllowedRelayerAddresses) > 0 && !m.containsAllowedRelayer() {
+	if !messages.ContainsAllowedRelayer(
+		m.teleporterMessage.AllowedRelayerAddresses, m.destinationClient.SenderAddresses(),
+	) {
 		return false, "no relayer key in the message's allowed relayers"
 	}
 	return true, ""
-}
-
-// containsAllowedRelayer reports whether any of the relayer's sender addresses is in the
-// message's AllowedRelayerAddresses.
-func (m *messageHandler) containsAllowedRelayer() bool {
-	for _, sender := range m.destinationClient.SenderAddresses() {
-		for _, allowed := range m.teleporterMessage.AllowedRelayerAddresses {
-			if sender == allowed {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // sendMessage encodes the attestation, packs the receiveCrossChainMessage call, and sends it to
@@ -332,7 +313,12 @@ func (m *messageHandler) sendMessage(
 	}
 
 	teleporterAddress := m.messageConfig.teleporterAddress()
-	gasLimit, err := m.estimateGasLimit(ctx, teleporterAddress, callData)
+	sender := messages.SelectSenderAddress(
+		m.destinationClient.SenderAddresses(), m.teleporterMessage.AllowedRelayerAddresses,
+	)
+	gasLimit, err := messages.EstimateGasLimit(
+		ctx, m.logger, m.destinationClient, sender, teleporterAddress, callData,
+	)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -351,80 +337,10 @@ func (m *messageHandler) sendMessage(
 		return common.Hash{}, fmt.Errorf("failed to send transaction: %w", err)
 	}
 
-	if err := checkReceiptStatus(receipt, gasLimit); err != nil {
+	if err := messages.CheckReceiptStatus(receipt, gasLimit); err != nil {
 		return common.Hash{}, err
 	}
 	return receipt.TxHash, nil
-}
-
-// checkReceiptStatus maps a failed delivery receipt to the relayer's error taxonomy: running
-// out of gas is non-retryable since a resend would burn the same gas again.
-func checkReceiptStatus(receipt *types.Receipt, gasLimit uint64) error {
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		return nil
-	}
-
-	if receipt.GasUsed >= gasLimit {
-		return fmt.Errorf("%w: used %d of %d", messages.ErrDeliveryOutOfGas, receipt.GasUsed, gasLimit)
-	}
-
-	return fmt.Errorf("transaction %s reverted", receipt.TxHash.Hex())
-}
-
-// estimateGasLimit estimates the gas for the receiveCrossChainMessage call and applies a safety
-// buffer, capped at the destination's block gas limit. A simulated revert abandons the delivery
-// without broadcasting; only non-revert estimation failures fall back to the block gas limit.
-func (m *messageHandler) estimateGasLimit(
-	ctx context.Context,
-	teleporterAddress common.Address,
-	callData []byte,
-) (uint64, error) {
-	blockGasLimit := m.destinationClient.BlockGasLimit()
-	estimated, err := m.destinationClient.Client().EstimateGas(ctx, ethereum.CallMsg{
-		From: m.selectSenderAddress(),
-		To:   &teleporterAddress,
-		Data: callData,
-	})
-	if err == nil {
-		buffered := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
-		if blockGasLimit != 0 && buffered > blockGasLimit {
-			buffered = blockGasLimit
-		}
-		return buffered, nil
-	}
-
-	if revertErr := evm.AsRevertError(err); revertErr != nil {
-		// The node simulated the delivery and it reverts; broadcasting would pay for a mined
-		// revert on every retry.
-		return 0, fmt.Errorf("%w: delivery simulation reverted: %s", messages.ErrDeliveryReverts, revertErr)
-	}
-
-	// A non-revert estimation failure (e.g. a flaky node) doesn't prove the delivery
-	// fails, so fall back to the block gas limit rather than dropping the message.
-	m.logger.Warn("Gas estimation failed, falling back to block gas limit",
-		zap.Error(err),
-		zap.Uint64("blockGasLimit", blockGasLimit),
-	)
-	if blockGasLimit == 0 {
-		return 0, fmt.Errorf("failed to estimate gas and no block gas limit configured: %w", err)
-	}
-	return blockGasLimit, nil
-}
-
-// selectSenderAddress picks a relayer EOA eligible to deliver the message for gas estimation.
-func (m *messageHandler) selectSenderAddress() common.Address {
-	senders := m.destinationClient.SenderAddresses()
-	for _, sender := range senders {
-		for _, allowed := range m.teleporterMessage.AllowedRelayerAddresses {
-			if sender == allowed {
-				return sender
-			}
-		}
-	}
-	if len(senders) > 0 {
-		return senders[0]
-	}
-	return common.Address{}
 }
 
 // messageID computes the Teleporter message ID the destination messenger tracks delivery by.

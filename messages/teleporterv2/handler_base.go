@@ -6,7 +6,6 @@ package teleporterv2
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -60,7 +59,9 @@ func (m *handlerBase) ShouldSendMessage() (bool, error) {
 		return false, nil
 	}
 
-	if !containsAllowedRelayer(m.teleporterMessage.AllowedRelayerAddresses, m.destinationClient.SenderAddresses()) {
+	if !messages.ContainsAllowedRelayer(
+		m.teleporterMessage.AllowedRelayerAddresses, m.destinationClient.SenderAddresses(),
+	) {
 		m.logger.Info("Relayer EOA not allowed to deliver this message.")
 		return false, nil
 	}
@@ -285,30 +286,7 @@ func (m *handlerBase) getTeleporterMessenger() (*teleportermessengerv2.Teleporte
 // simulated deliveries. Any eligible EOA gives the same result, since the only sender-dependent
 // check the messenger makes is the allowed-relayer one.
 func (m *handlerBase) selectSenderAddress() common.Address {
-	senders := m.destinationClient.SenderAddresses()
-	for _, sender := range senders {
-		if isAllowedRelayer(m.teleporterMessage.AllowedRelayerAddresses, sender) {
-			return sender
-		}
-	}
-	if len(senders) > 0 {
-		return senders[0]
-	}
-	return common.Address{}
-}
-
-func isAllowedRelayer(allowedRelayers []common.Address, eoa common.Address) bool {
-	if len(allowedRelayers) == 0 {
-		return true
-	}
-	return slices.Contains(allowedRelayers, eoa)
-}
-
-func containsAllowedRelayer(allowedRelayers []common.Address, eoas []common.Address) bool {
-	if len(allowedRelayers) == 0 {
-		return true
-	}
-	return slices.ContainsFunc(eoas, func(eoa common.Address) bool {
-		return slices.Contains(allowedRelayers, eoa)
-	})
+	return messages.SelectSenderAddress(
+		m.destinationClient.SenderAddresses(), m.teleporterMessage.AllowedRelayerAddresses,
+	)
 }
