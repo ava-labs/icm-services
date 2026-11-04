@@ -12,8 +12,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   solidity-unit-tests:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -21,6 +25,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       # Foundry is pinned in scripts/install_foundry.sh, so the key changes with the pin.
       - name: Cache Foundry
@@ -50,6 +55,8 @@ jobs:
           FOUNDRY_PROFILE=common forge test -vvv
 
   unit_tests:
+    permissions:
+      contents: read
     name: Unit tests
     runs-on: ubuntu-22.04
 
@@ -58,6 +65,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

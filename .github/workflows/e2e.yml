@@ -15,9 +15,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   # Detect which components changed and turn that into the list of suites to run.
   changes:
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.suites.outputs.matrix }}
@@ -27,6 +32,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Detect changed components
         id: filter
@@ -83,6 +89,8 @@ jobs:
           echo "count=$(jq 'length' <<< "$suites")" >> "$GITHUB_OUTPUT"
 
   e2e:
+    permissions:
+      contents: read
     name: ${{ matrix.name }}
     needs: changes
     if: needs.changes.outputs.count != '0'
@@ -96,6 +104,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -162,11 +171,14 @@ jobs:
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
           export PATH="$PATH:$GOPATH/bin"
           export PATH="$PATH:$HOME/.geth"
-          ./scripts/e2e_test.sh --components ${{ matrix.component }}
+          ./scripts/e2e_test.sh --components ${MATRIX_COMPONENT}
+        env:
+          MATRIX_COMPONENT: ${{ matrix.component }}
 
   # Branch protection requires this job instead of the individual suites. It always runs, so a
   # pull request that needs no suite still gets a passing check, and it fails when any suite did.
   e2e-results:
+    permissions: {}
     name: e2e-results
     needs: [changes, e2e]
     if: always()
