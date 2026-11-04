@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/messages"
@@ -16,12 +17,17 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"go.uber.org/zap"
 )
 
 // destinationBlockRange is the number of destination chain blocks covered by each
 // ConfirmedBeaconBlock log query. Confirmed anchor blocks are emitted on the destination
 // chain via events, so this is a destination-side scan (Avalanche), not source-chain (Ethereum).
 const destinationBlockRange = 10_000
+
+// errAnchorNotYetConfirmed means no confirmed anchor is newer than the message's slot. The
+// condition resolves itself when the next consensus proof lands, so callers wait rather than fail.
+var errAnchorNotYetConfirmed = errors.New("no confirmed anchor newer than the message slot yet")
 
 // anchor is a beacon slot the ZKAdapter has confirmed, with the beacon block root it stores for
 // that slot. The adapter emits a ConfirmedBeaconBlock event for each one.
@@ -30,11 +36,34 @@ type anchor struct {
 	root common.Hash
 }
 
-// findAnchor returns the confirmed anchor to prove a message at targetSlot against.
-//
-// Anchors are read from the ZKAdapter's ConfirmedBeaconBlock events, scanning the destination
-// chain backwards from the latest block in ranges of destinationBlockRange blocks. The scan
-// stops as soon as it reaches an anchor at or before targetSlot.
+// awaitAnchor polls findAnchor until a confirmed anchor covers the message's slot or ctx
+// expires. A message often arrives before the anchor that can prove it, since anchors land at
+// the consensus proof cadence, so "no anchor yet" is a condition to wait on rather than a
+// failure. Each scan runs under its own timeout so a scan toward genesis cannot use up the
+// whole attempt. Any other error, including a window miss, is returned as is.
+func (m *messageHandler) awaitAnchor(ctx context.Context, adapter *zkadapter.ZKAdapter) (anchor, error) {
+	for {
+		scanCtx, scanCancel := context.WithTimeout(ctx, anchorScanTimeout)
+		a, err := findAnchor(scanCtx, m.destinationClient.Client(), adapter, m.slot)
+		scanCancel()
+		if err == nil || !errors.Is(err, errAnchorNotYetConfirmed) {
+			return a, err
+		}
+		m.logger.Info("No confirmed anchor covers the message slot yet, waiting",
+			zap.Duration("pollInterval", anchorPollInterval),
+		)
+		select {
+		case <-ctx.Done():
+			return anchor{}, fmt.Errorf("%w: %w", err, ctx.Err())
+		case <-time.After(anchorPollInterval):
+		}
+	}
+}
+
+// findAnchor returns the confirmed anchor to prove a message at targetSlot against, read from
+// the ZKAdapter's ConfirmedBeaconBlock events. It scans the destination chain backwards in
+// destinationBlockRange chunks, stopping at the first anchor at or before targetSlot. Returns
+// errAnchorNotYetConfirmed when no confirmed anchor is newer than targetSlot.
 func findAnchor(
 	ctx context.Context,
 	client evm.Client,
@@ -140,7 +169,7 @@ func selectAnchor(anchors []anchor, targetSlot uint64) (anchor, error) {
 	}
 	// No suitable anchors exist.
 	if !doesSuitableAnchorExist {
-		return anchor{}, errors.New("no confirmed anchor newer than the message slot yet")
+		return anchor{}, errAnchorNotYetConfirmed
 	}
 
 	// Newer anchors exist but all are beyond the 8192-slot window, and anchors only move

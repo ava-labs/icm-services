@@ -100,3 +100,11 @@ func ConfigFromMap(m map[string]any) (*Config, error) {
 func (c *Config) adapterAddress() common.Address {
 	return common.HexToAddress(c.AdapterAddress)
 }
+
+func (c *Config) teleporterAddress() common.Address {
+	return common.HexToAddress(c.TeleporterAddress)
+}
+
+func (c *Config) rewardAddress() common.Address {
+	return common.HexToAddress(c.RewardAddress)
+}
