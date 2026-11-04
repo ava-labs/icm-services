@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
-	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/zk/proofs"
 	"github.com/ava-labs/icm-services/relayer/config"
@@ -174,21 +173,6 @@ func TestFindMessageLog(t *testing.T) {
 
 	_, err = findMessageLog(receipt, messageProtocolAddress, []byte{1, 2, 3})
 	require.Error(t, err)
-}
-
-// Checks that the handler computes the same message ID the destination messenger tracks
-// delivery by, from an explicitly provided (adapter-derived) source blockchain ID.
-func TestMessageID(t *testing.T) {
-	handler := newTestHandler(t, nil)
-
-	expected, err := teleporterUtils.CalculateMessageID(
-		destinationTeleporterAddress, sourceBlockchainID, destinationBlockchainID, big.NewInt(1),
-	)
-	require.NoError(t, err)
-
-	got, err := handler.messageID(sourceBlockchainID)
-	require.NoError(t, err)
-	require.Equal(t, expected, got)
 }
 
 // Checks that messages the destination messenger is certain to reject are skipped before

@@ -23,6 +23,7 @@ import (
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	teleporterUtils "github.com/ava-labs/icm-services/icm-contracts/utils/teleporter-utils"
 	"github.com/ava-labs/icm-services/messages"
+	"github.com/ava-labs/icm-services/messages/teleporterv2"
 	"github.com/ava-labs/icm-services/messages/zk/proofs"
 	"github.com/ava-labs/icm-services/messages/zk/proofs/beacon"
 	"github.com/ava-labs/icm-services/relayer/config"
@@ -213,15 +214,22 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 		return common.Hash{}, fmt.Errorf("failed to read adapter source chain ID: %w", err)
 	}
 
-	messageID, err := m.messageID(ids.ID(common.BigToHash(sourceChainID)))
+	messageID, err := teleporterUtils.CalculateMessageID(
+		m.messageConfig.teleporterAddress(),
+		ids.ID(common.BigToHash(sourceChainID)),
+		ids.ID(m.teleporterMessage.DestinationBlockchainID),
+		m.teleporterMessage.MessageNonce,
+	)
 	if err != nil {
-		return common.Hash{}, err
+		return common.Hash{}, fmt.Errorf("failed to calculate teleporter message ID: %w", err)
 	}
 	logger := m.logger.With(zap.Stringer("teleporterMessageID", messageID))
 
 	// Skip messages the destination already received, so duplicates observed on the source
 	// chain (e.g. after a relayer restart) cost no proof building.
-	delivered, err := m.messageDelivered(ctx, messageID)
+	delivered, err := teleporterv2.MessageDelivered(
+		ctx, m.destinationClient.Client(), m.messageConfig.teleporterAddress(), messageID,
+	)
 	if err != nil {
 		m.metrics.IncFailedRelayMessageCount("failed to check delivery status")
 		return common.Hash{}, err
@@ -265,7 +273,10 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	if err != nil {
 		// A revert (simulated or mined) after the delivery check may mean another relayer
 		// delivered first.
-		if delivered, checkErr := m.messageDelivered(ctx, messageID); checkErr == nil && delivered {
+		delivered, checkErr := teleporterv2.MessageDelivered(
+			ctx, m.destinationClient.Client(), m.messageConfig.teleporterAddress(), messageID,
+		)
+		if checkErr == nil && delivered {
 			logger.Info("Message delivered by another relayer")
 			return common.Hash{}, nil
 		}
@@ -308,13 +319,11 @@ func (m *messageHandler) sendMessage(
 		return common.Hash{}, err
 	}
 
-	callData, err := packReceiveCrossChainMessage(
-		teleportermessengerv2.TeleporterICMMessage{
-			Message:            *m.teleporterMessage,
-			SourceNetworkID:    sourceNetworkID,
-			SourceBlockchainID: common.BigToHash(sourceChainID),
-			Attestation:        attestation,
-		},
+	callData, err := teleportermessengerv2.PackReceiveCrossChainMessageMerkle(
+		*m.teleporterMessage,
+		sourceNetworkID,
+		ids.ID(common.BigToHash(sourceChainID)),
+		attestation,
 		m.messageConfig.rewardAddress(),
 	)
 	if err != nil {
@@ -350,45 +359,4 @@ func (m *messageHandler) sendMessage(
 		return common.Hash{}, err
 	}
 	return receipt.TxHash, nil
-}
-
-// messageID computes the Teleporter message ID the destination messenger tracks delivery by.
-func (m *messageHandler) messageID(sourceBlockchainID ids.ID) (ids.ID, error) {
-	id, err := teleporterUtils.CalculateMessageID(
-		m.messageConfig.teleporterAddress(),
-		sourceBlockchainID,
-		ids.ID(m.teleporterMessage.DestinationBlockchainID),
-		m.teleporterMessage.MessageNonce,
-	)
-	if err != nil {
-		return ids.Empty, fmt.Errorf("failed to calculate teleporter message ID: %w", err)
-	}
-	return id, nil
-}
-
-// messageDelivered reports whether the destination messenger has already received the message.
-func (m *messageHandler) messageDelivered(ctx context.Context, messageID ids.ID) (bool, error) {
-	messenger, err := teleportermessengerv2.NewTeleporterMessengerV2(
-		m.messageConfig.teleporterAddress(), m.destinationClient.Client(),
-	)
-	if err != nil {
-		return false, fmt.Errorf("failed to bind TeleporterMessengerV2: %w", err)
-	}
-	delivered, err := messenger.MessageReceived(&bind.CallOpts{Context: ctx}, messageID)
-	if err != nil {
-		return false, fmt.Errorf("failed to check message delivery status: %w", err)
-	}
-	return delivered, nil
-}
-
-// packReceiveCrossChainMessage packs the calldata for the messenger's receiveCrossChainMessage.
-func packReceiveCrossChainMessage(
-	message teleportermessengerv2.TeleporterICMMessage,
-	rewardAddress common.Address,
-) ([]byte, error) {
-	messengerABI, err := teleportermessengerv2.TeleporterMessengerV2MetaData.GetAbi()
-	if err != nil {
-		return nil, err
-	}
-	return messengerABI.Pack("receiveCrossChainMessage", message, rewardAddress)
 }

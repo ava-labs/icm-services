@@ -267,19 +267,22 @@ func (m *handlerBase) sendTxAndConfirm(
 
 // messageDelivered reports whether the destination TeleporterMessengerV2 has received the message.
 func (m *handlerBase) messageDelivered() (bool, error) {
-	teleporterMessenger, err := m.getTeleporterMessenger()
-	if err != nil {
-		return false, err
-	}
-	return teleporterMessenger.MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+	return MessageDelivered(context.Background(), m.destinationClient.Client(), m.teleporterAddress, m.teleporterMessageID)
 }
 
-func (m *handlerBase) getTeleporterMessenger() (*teleportermessengerv2.TeleporterMessengerV2, error) {
-	messenger, err := teleportermessengerv2.NewTeleporterMessengerV2(m.teleporterAddress, m.destinationClient.Client())
+// MessageDelivered reports whether the destination TeleporterMessengerV2 at
+// [teleporterAddress] has received the message with [messageID].
+func MessageDelivered(
+	ctx context.Context,
+	client evm.Client,
+	teleporterAddress common.Address,
+	messageID ids.ID,
+) (bool, error) {
+	messenger, err := teleportermessengerv2.NewTeleporterMessengerV2(teleporterAddress, client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to bind teleporter v2 messenger: %w", err)
+		return false, fmt.Errorf("failed to bind teleporter v2 messenger: %w", err)
 	}
-	return messenger, nil
+	return messenger.MessageReceived(&bind.CallOpts{Context: ctx}, messageID)
 }
 
 // selectSenderAddress picks a relayer EOA eligible to deliver the message, as the sender of
