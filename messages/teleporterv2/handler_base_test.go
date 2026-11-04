@@ -240,3 +240,30 @@ func (h *handlerMocks) routeCalls(t *testing.T, routes callRoutes) {
 		}).
 		AnyTimes()
 }
+
+// Checks that MessageDelivered queries messageReceived for the given message ID on the given
+// messenger and reports the messenger's answer.
+func TestMessageDelivered(t *testing.T) {
+	messageID := ids.ID{0xab}
+	expectedInput, err := teleportermessengerv2.PackMessageReceived(messageID)
+	require.NoError(t, err)
+
+	for _, delivered := range []bool{true, false} {
+		ctrl := gomock.NewController(t)
+		ethClient := mock_evm.NewMockClient(ctrl)
+		output, err := teleportermessengerv2.PackMessageReceivedOutput(delivered)
+		require.NoError(t, err)
+
+		ethClient.EXPECT().
+			CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, call ethereum.CallMsg, _ *big.Int) ([]byte, error) {
+				require.Equal(t, testTeleporterAddress, *call.To)
+				require.Equal(t, expectedInput, call.Data)
+				return output, nil
+			})
+
+		got, err := MessageDelivered(context.Background(), ethClient, testTeleporterAddress, messageID)
+		require.NoError(t, err)
+		require.Equal(t, delivered, got)
+	}
+}
