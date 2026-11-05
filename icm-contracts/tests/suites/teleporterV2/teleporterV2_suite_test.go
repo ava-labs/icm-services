@@ -179,6 +179,11 @@ var _ = ginkgo.Describe("[ICTT Teleporter V2 integration tests]", func() {
 		func(ctx context.Context) {
 			teleporterV2Flows.BasicRelay(ctx, log, localNetworkInstance, teleporterInfo)
 		})
+	ginkgo.It("Reverting Message Abandoned",
+		ginkgo.Label(teleporterMessengerV2Label),
+		func(ctx context.Context) {
+			teleporterV2Flows.RevertingMessageAbandoned(ctx, log, localNetworkInstance, teleporterInfo)
+		})
 
 	// ICTT tests
 	ginkgo.It("Transfer an ERC20 token between two L1s",
