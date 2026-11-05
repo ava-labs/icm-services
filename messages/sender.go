@@ -7,10 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/icm-services/vms/evm"
 	ethereum "github.com/ava-labs/libevm"
@@ -19,13 +19,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// estimateGasTimeout bounds one gas estimation. Nodes binary-search the gas, executing the
+// delivery many times, which can far exceed the timeout of an ordinary RPC.
+const estimateGasTimeout = 30 * time.Second
+
 // Sender delivers one message to a destination contract with a transaction. It decides, before
 // and after the transaction, whether the message is still worth paying for: a delivery that
-// reverts in simulation for a reason the message itself causes is abandoned without being
-// broadcast, a message another relayer delivered in the meantime is left alone, and a mined
-// delivery that ran out of gas is abandoned rather than retried. Abandoned deliveries are
-// reported with errors wrapping [ErrNonRetryable], so that the relayer checkpoints past the
-// message instead of exiting and replaying it on every restart.
+// reverts when the node executes it to estimate its gas, for a reason the message itself causes,
+// is abandoned without being broadcast, and so is one that does not fit in a block; a message
+// another relayer delivered in the meantime is left alone; and a mined delivery that ran out of
+// gas is abandoned rather than retried. Abandoned deliveries are reported with errors wrapping
+// [ErrNonRetryable], so that the relayer checkpoints past the message instead of exiting and
+// replaying it on every restart.
 type Sender struct {
 	Logger            logging.Logger
 	DestinationClient vms.DestinationClient
@@ -37,76 +42,92 @@ type Sender struct {
 	Delivered func() (bool, error)
 }
 
-// Send simulates the delivery and, unless the simulation shows it would revert, broadcasts it
-// and resolves the receipt. Returns the transaction hash of a successful delivery, or the zero
-// hash if nothing was sent because the message turned out to be delivered already.
+// Send has the destination node estimate the gas for the delivery, which executes it against
+// the chain's latest state, and unless that execution shows the delivery cannot be mined,
+// broadcasts it with the buffered estimate and resolves the receipt. Returns the transaction hash
+// of a successful delivery, or the zero hash if nothing was sent because the message turned out
+// to be delivered already.
 func (s *Sender) Send(
 	ctx context.Context,
 	accessList types.AccessList,
-	gasLimit uint64,
 	callData []byte,
 ) (common.Hash, error) {
-	err := s.Simulate(ctx, accessList, gasLimit, callData)
+	gasLimit, err := s.EstimateGas(ctx, accessList, callData)
 	var revert *evm.RevertError
 	switch {
 	case err == nil:
-	case !errors.As(err, &revert):
-		s.Logger.Error("Failed to simulate delivery", zap.Error(err))
-		return common.Hash{}, err
-	case revert.OutOfGas:
-		// Running out of gas in simulation is most likely deterministic too, but it is also what a
-		// node's RPC gas cap looks like when it is below the gas limit. Let the chain decide: if
-		// the transaction runs out of gas there as well, SendTxAndConfirm abandons the message
-		// after this one attempt.
-		s.Logger.Warn(
-			"Delivery ran out of gas in simulation, sending anyway",
-			zap.Uint64("gasLimit", gasLimit),
-			zap.String("reason", revert.Reason),
-		)
-	default:
+	case errors.As(err, &revert):
 		return s.AbandonRevert(revert)
+	default:
+		return common.Hash{}, err
 	}
 	return s.SendTxAndConfirm(accessList, gasLimit, callData)
 }
 
-// Simulate executes the delivery that SendTxAndConfirm would broadcast as an eth_call against
-// the destination chain's latest state, without broadcasting anything. It returns nil if the call
-// would succeed, an [*evm.RevertError] if the node executed the call and it failed, and any other
-// error if the call could not be simulated.
+// EstimateGas has the destination node estimate the gas for the delivery that SendTxAndConfirm
+// would broadcast, and returns the estimate with a safety margin, capped at the configured block
+// gas limit. Estimation executes the delivery against the chain's latest state without
+// broadcasting anything, so it is also the simulation that vets the delivery: it returns an
+// [*evm.RevertError] if the node ran the delivery and it reverted,
+// [ErrDeliveryExceedsBlockGasLimit] if the delivery succeeds with no gas the node may try, and
+// any other error if it could not be estimated.
 //
-// The call carries the same sender, calldata, access list and gas limit as the transaction. For
-// a delivery that carries a signed Warp message as a predicate in [accessList], the node does not
-// verify the predicate for a call: getVerifiedWarpMessage reports the message as valid and the
-// simulation runs every check the destination contract makes after verification against the
-// message itself. A revert is therefore reproducible from the message content, independent of
-// the signature, and would be mined identically on every retry. The verification failures a
-// retry with a fresh signature can fix are exactly the ones the simulation cannot produce.
+// The estimated call carries the same sender, calldata and access list as the transaction,
+// bounded by the configured block gas limit (zero leaves the bound to the node). For a delivery
+// that carries a signed Warp message as a predicate in [accessList], the node does not verify the
+// predicate for a call: getVerifiedWarpMessage reports the message as valid and the execution
+// runs every check the destination contract makes after verification against the message
+// itself. A revert is therefore reproducible from the message content, independent of the
+// signature, and would be mined identically on every retry. The verification failures a retry
+// with a fresh signature can fix are exactly the ones estimation cannot produce.
 //
-// Nodes silently cap the gas of a call at their RPC gas cap, so the destination node must allow
-// calls at least the configured block gas limit for the simulation to be faithful (subnet-evm
-// and geth default to 50M, against a 12M default block gas limit here).
-func (s *Sender) Simulate(
+// Nodes cap the gas they will try at their RPC gas cap, so the destination node must allow calls
+// at least the configured block gas limit for every delivery that fits in a block to be
+// estimated (subnet-evm and geth default to 50M, against a 12M default block gas limit here).
+func (s *Sender) EstimateGas(
 	ctx context.Context,
 	accessList types.AccessList,
-	gasLimit uint64,
 	callData []byte,
-) error {
-	ctx, cancel := context.WithTimeout(ctx, utils.DefaultRPCTimeout)
+) (uint64, error) {
+	// Estimation is a binary search over many executions, so it gets its own budget instead of
+	// the single-RPC timeout, and does not inherit what is left of the caller's deadline, which
+	// signature aggregation may have used up.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), estimateGasTimeout)
 	defer cancel()
-	_, err := s.DestinationClient.Client().CallContract(ctx, ethereum.CallMsg{
+	blockGasLimit := s.DestinationClient.BlockGasLimit()
+	estimated, err := s.DestinationClient.Client().EstimateGas(ctx, ethereum.CallMsg{
 		From:       s.SenderAddress(),
 		To:         &s.To,
-		Gas:        gasLimit,
+		Gas:        blockGasLimit,
 		Data:       callData,
 		AccessList: accessList,
-	}, nil)
-	if err == nil {
-		return nil
+	})
+	if err != nil {
+		if revert := evm.AsRevertError(err); revert != nil {
+			return 0, revert
+		}
+		if evm.ExceedsGasAllowance(err) {
+			s.Logger.Warn(
+				"Delivery does not fit in the destination block gas limit, not sending",
+				zap.Uint64("blockGasLimit", blockGasLimit),
+				zap.Error(err),
+			)
+			return 0, fmt.Errorf("%w: %w", ErrDeliveryExceedsBlockGasLimit, err)
+		}
+		s.Logger.Error("Failed to estimate delivery gas", zap.Error(err))
+		return 0, fmt.Errorf("failed to estimate delivery gas: %w", err)
 	}
-	if revert := evm.AsRevertError(err); revert != nil {
-		return revert
+
+	gasLimit := estimated * gasLimitBufferNumerator / gasLimitBufferDenominator
+	if blockGasLimit != 0 && gasLimit > blockGasLimit {
+		gasLimit = blockGasLimit
 	}
-	return fmt.Errorf("failed to simulate delivery: %w", err)
+	s.Logger.Debug(
+		"Estimated delivery gas",
+		zap.Uint64("estimatedGas", estimated),
+		zap.Uint64("gasLimit", gasLimit),
+	)
+	return gasLimit, nil
 }
 
 // AbandonRevert reports a delivery that reverts in simulation. The one benign cause is that
@@ -170,9 +191,9 @@ func (s *Sender) SendTxAndConfirm(
 		return txHash, nil
 	}
 
-	// Out of gas is non-retryable: the gas limit is computed from the message, or estimated
-	// against the same state, so a retry would fail identically and only bill the relayer for a
-	// second reverted transaction. A revert that left gas unspent is a logic failure, such as
+	// Out of gas is non-retryable: the gas limit was estimated against the same state, with a
+	// margin on top, so a retry would fail identically and only bill the relayer for a second
+	// reverted transaction. A revert that left gas unspent is a logic failure, such as
 	// verification against a validator set that has churned since the signature was aggregated,
 	// which a fresh attempt may resolve.
 	err = CheckReceiptStatus(receipt, gasLimit)
@@ -185,7 +206,7 @@ func (s *Sender) SendTxAndConfirm(
 	return common.Hash{}, err
 }
 
-// SenderAddress picks a relayer EOA eligible to deliver the message, as the sender of simulated
+// SenderAddress picks a relayer EOA eligible to deliver the message, as the sender of estimated
 // deliveries.
 func (s *Sender) SenderAddress() common.Address {
 	return SelectSenderAddress(s.DestinationClient.SenderAddresses(), s.AllowedRelayers)

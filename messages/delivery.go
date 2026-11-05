@@ -25,8 +25,12 @@ import (
 )
 
 const (
-	// gasLimitBufferNumerator/Denominator adds a safety margin on top of the estimated gas
-	// to absorb state drift between estimation and inclusion.
+	// gasLimitBufferNumerator/Denominator is the safety margin added to the estimated gas. The
+	// estimate is the least gas at which the delivery does not revert, and Teleporter does not
+	// revert when the message's own execution fails: it checks that the message's required gas is
+	// still available, forwards it to the destination less the 63/64 cut of EIP-150, and records a
+	// failed execution if that was not enough. At the bare estimate the execution can therefore
+	// come up short. The margin covers that, and state drift between estimation and inclusion.
 	gasLimitBufferNumerator   = 5
 	gasLimitBufferDenominator = 4
 )
