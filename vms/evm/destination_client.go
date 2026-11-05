@@ -102,6 +102,13 @@ func NewDestinationClient(
 		return nil, fmt.Errorf("failed to get chain ID from destination chain endpoint: %w", err)
 	}
 
+	// Deliveries are vetted by having the node estimate them at the block gas limit, and the
+	// verdict is only trusted on a node that allows calls that much gas.
+	err = CheckRPCGasCap(context.Background(), logger, ethClient, destinationBlockchain.BlockGasLimit)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create ProposerVM client for the destination chain
 	endpoint, err := url.Parse(destinationBlockchain.RPCEndpoint.BaseURL)
 	if err != nil {

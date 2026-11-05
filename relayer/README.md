@@ -347,7 +347,7 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   `"block-gas-limit": unsigned integer`
 
-  - The maximum amount of gas that can be used in a single block on this blockchain. The relayer has the destination node estimate the gas of each delivery within this limit, and abandons messages that do not fit; the node's RPC gas cap must therefore allow calls of at least this much gas. Defaults to 12,000,000 if not set for a given chain.
+  - The maximum amount of gas that can be used in a single block on this blockchain. The relayer has the destination node estimate the gas of each delivery within this limit, and abandons messages that do not fit; the node's RPC gas cap must therefore allow calls of at least this much gas, which the relayer checks when it connects to the node, refusing to start if the node reports a lower cap. Defaults to 12,000,000 if not set for a given chain.
 
   `"max-base-fee": unsigned integer`
 

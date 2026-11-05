@@ -99,6 +99,12 @@ func NewExternalEVMDestinationClient(
 	if networkChainID.Cmp(evmChainID) != 0 {
 		return nil, fmt.Errorf("chain ID mismatch: expected %s, got %s", chainID, networkChainID.String())
 	}
+
+	// Deliveries are vetted by having the node estimate them at the block gas limit, and the
+	// verdict is only trusted on a node that allows calls that much gas.
+	if err := CheckRPCGasCap(context.Background(), logger, wrappedClient, blockGasLimit); err != nil {
+		return nil, err
+	}
 	gasFeeData := &GasFeeConfig{
 		maxBaseFee:                 maxBaseFee,
 		suggestedPriorityFeeBuffer: suggestedPriorityFeeBuffer,
