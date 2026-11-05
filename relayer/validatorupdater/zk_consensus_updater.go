@@ -202,29 +202,15 @@ func (u *ConsensusUpdater) initializeLocalState(ctx context.Context) error {
 	return nil
 }
 
-// latestConfirmedSlot returns the highest beacon slot the contract has
-// confirmed by scanning its ConfirmedBeaconBlock events for the most recent one.
+// latestConfirmedSlot returns the contract's lastConfirmedSlot. It is read from storage rather
+// than from ConfirmedBeaconBlock events, so it needs no unbounded eth_getLogs query and reflects
+// a manualTransition that rewinds the slot.
 func (u *ConsensusUpdater) latestConfirmedSlot(ctx context.Context) (uint64, error) {
-	iter, err := u.contract.FilterConfirmedBeaconBlock(
-		&bind.FilterOpts{Context: ctx},
-		nil,
-		nil,
-	)
+	slot, err := u.contract.LastConfirmedSlot(&bind.CallOpts{Context: ctx})
 	if err != nil {
-		return 0, fmt.Errorf("failed to filter ConfirmedBeaconBlock events: %w", err)
+		return 0, fmt.Errorf("failed to read lastConfirmedSlot: %w", err)
 	}
-	defer iter.Close()
-
-	var latest uint64
-	for iter.Next() {
-		if slot := iter.Event.Slot; slot > latest {
-			latest = slot
-		}
-	}
-	if err := iter.Error(); err != nil {
-		return 0, err
-	}
-	return latest, nil
+	return slot, nil
 }
 
 // gasPriceWithinBounds reports whether the destination's suggested gas price
