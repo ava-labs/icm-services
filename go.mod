@@ -24,6 +24,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
+	github.com/prometheus/common v0.72.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/segmentio/encoding v0.5.4
 	github.com/spf13/cobra v1.10.2
@@ -250,7 +251,6 @@ require (
 	github.com/pk910/dynamic-ssz v1.4.0 // indirect
 	github.com/pk910/hashtree-bindings v0.2.6 // indirect
 	github.com/polyfloyd/go-errorlint v1.7.1 // indirect
-	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/quasilyte/go-ruleguard v0.4.3-0.20240823090925-0fe6f58b47b1 // indirect
 	github.com/quasilyte/go-ruleguard/dsl v0.3.22 // indirect
