@@ -10,7 +10,6 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	"github.com/ava-labs/icm-services/messages"
@@ -18,10 +17,8 @@ import (
 	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/icm-services/vms/evm"
-	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
 )
 
@@ -144,125 +141,16 @@ func (m *handlerBase) signMessage(
 	return signedMessage, nil
 }
 
-// simulateDelivery executes the delivery that sendTxAndConfirm would broadcast as an eth_call
-// against the destination chain's latest state, without broadcasting anything. It returns nil if
-// the call would succeed, an [*evm.RevertError] if the node executed the call and it failed, and
-// any other error if the call could not be simulated.
-//
-// The call carries the same sender, calldata, access list and gas limit as the transaction. Note
-// that nodes silently cap the gas of a call at their RPC gas cap, so the destination node must
-// allow calls at least the configured block gas limit for the simulation to be faithful
-// (subnet-evm and geth default to 50M, against a 12M default block gas limit here).
-func (m *handlerBase) simulateDelivery(
-	ctx context.Context,
-	accessList types.AccessList,
-	gasLimit uint64,
-	callData []byte,
-) error {
-	ctx, cancel := context.WithTimeout(ctx, utils.DefaultRPCTimeout)
-	defer cancel()
-	_, err := m.destinationClient.Client().CallContract(ctx, ethereum.CallMsg{
-		From:       m.selectSenderAddress(),
-		To:         &m.teleporterAddress,
-		Gas:        gasLimit,
-		Data:       callData,
-		AccessList: accessList,
-	}, nil)
-	if err == nil {
-		return nil
+// sender delivers the message to the destination TeleporterMessengerV2.
+func (m *handlerBase) sender() *messages.Sender {
+	return &messages.Sender{
+		// Receipts drive the gas a delivery needs, so they belong in every delivery log line.
+		Logger:            m.logger.With(zap.Int("numReceipts", len(m.teleporterMessage.Receipts))),
+		DestinationClient: m.destinationClient,
+		To:                m.teleporterAddress,
+		AllowedRelayers:   m.teleporterMessage.AllowedRelayerAddresses,
+		Delivered:         m.messageDelivered,
 	}
-	if revert := evm.AsRevertError(err); revert != nil {
-		return revert
-	}
-	return fmt.Errorf("failed to simulate delivery: %w", err)
-}
-
-// abandonSimulatedRevert reports a delivery that reverts in simulation. The one benign cause is
-// that another relayer delivered the message in the meantime, in which case there is nothing left
-// to do and the zero hash is returned. Any other revert is reproducible from the message, so the
-// returned error is non-retryable: broadcasting the delivery would only mine the same revert, and
-// retrying it with a fresh signature would mine it again. Abandoning the message lets the relayer
-// checkpoint past it instead of exiting and replaying it on every restart.
-func (m *handlerBase) abandonSimulatedRevert(revert *evm.RevertError) (common.Hash, error) {
-	delivered, err := m.messageDelivered()
-	if err != nil {
-		m.logger.Error(
-			"Failed to check if message has been delivered to destination chain.",
-			zap.Error(err),
-		)
-		return common.Hash{}, fmt.Errorf("failed to check if message has been delivered: %w", err)
-	}
-	if delivered {
-		m.logger.Info("Delivery reverts in simulation: message already delivered to destination.")
-		return common.Hash{}, nil
-	}
-
-	m.logger.Error(
-		"Delivery reverts in simulation, not sending",
-		zap.String("revertReason", revert.Reason),
-		zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
-	)
-	return common.Hash{}, fmt.Errorf("%w: %s", messages.ErrDeliveryReverts, revert.Reason)
-}
-
-// sendTxAndConfirm delivers [callData] to the destination TeleporterMessengerV2 and resolves the
-// receipt. A reverted transaction is not necessarily a failure: another relayer may have delivered
-// the message first, so delivery status is checked before the revert is reported as an error.
-func (m *handlerBase) sendTxAndConfirm(
-	accessList types.AccessList,
-	gasLimit uint64,
-	callData []byte,
-) (common.Hash, error) {
-	receipt, err := m.destinationClient.SendTx(
-		m.logger,
-		accessList,
-		set.Of(m.teleporterMessage.AllowedRelayerAddresses...),
-		m.teleporterAddress,
-		gasLimit,
-		callData,
-	)
-	if err != nil {
-		m.logger.Error("Failed to send tx.", zap.Error(err))
-		return common.Hash{}, err
-	}
-
-	txHash := receipt.TxHash
-	log := m.logger.With(zap.Stringer("txID", txHash))
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		log.Info("Delivered message to destination chain")
-		return txHash, nil
-	}
-
-	delivered, err := m.messageDelivered()
-	if err != nil {
-		log.Error("Transaction failed", zap.Error(err))
-		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
-	}
-	if delivered {
-		log.Info("Execution reverted: message already delivered to destination.")
-		return txHash, nil
-	}
-
-	// A revert that consumed the entire gas limit is an out-of-gas failure. The gas limit is
-	// computed from the message, or estimated against the same state, so a retry would fail
-	// identically and only bill the relayer for a second reverted transaction. Reverts that left
-	// gas unspent are logic failures, such as verification against a validator set that has
-	// churned since the signature was aggregated, which a fresh attempt may resolve.
-	if receipt.GasUsed >= gasLimit {
-		log.Error(
-			"Transaction ran out of gas",
-			zap.Uint64("gasUsed", receipt.GasUsed),
-			zap.Uint64("gasLimit", gasLimit),
-			zap.Int("numReceipts", len(m.teleporterMessage.Receipts)),
-		)
-		return common.Hash{}, fmt.Errorf(
-			"%w: used %d of %d",
-			messages.ErrDeliveryOutOfGas, receipt.GasUsed, gasLimit,
-		)
-	}
-
-	log.Error("Transaction failed")
-	return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
 }
 
 // messageDelivered reports whether the destination TeleporterMessengerV2 has received the message.
@@ -283,13 +171,4 @@ func MessageDelivered(
 		return false, fmt.Errorf("failed to bind teleporter v2 messenger: %w", err)
 	}
 	return messenger.MessageReceived(&bind.CallOpts{Context: ctx}, messageID)
-}
-
-// selectSenderAddress picks a relayer EOA eligible to deliver the message, as the sender of
-// simulated deliveries. Any eligible EOA gives the same result, since the only sender-dependent
-// check the messenger makes is the allowed-relayer one.
-func (m *handlerBase) selectSenderAddress() common.Address {
-	return messages.SelectSenderAddress(
-		m.destinationClient.SenderAddresses(), m.teleporterMessage.AllowedRelayerAddresses,
-	)
 }
