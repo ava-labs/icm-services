@@ -290,6 +290,11 @@ func (c *Config) initializeWarpConfigs(ctx context.Context) error {
 // [Config.initializeWarpConfigs] has been called
 func (c *Config) initializeTrackedSubnets() error {
 	for _, sourceBlockchain := range c.SourceBlockchains {
+		// A ZK-only source is not an Avalanche chain and has no validators to track. Tracking its
+		// subnet ID would also fail network health, which covers every tracked subnet.
+		if sourceBlockchain.IsZKOnly() {
+			continue
+		}
 		c.trackedSubnets.Add(sourceBlockchain.GetSubnetID())
 	}
 	for _, destinationBlockchain := range c.DestinationBlockchains {

@@ -24,6 +24,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -847,6 +848,38 @@ func TestInitializeTrackedSubnets(t *testing.T) {
 	expectedSubnets.Add(sourceSubnetID2)
 	expectedSubnets.Add(destSubnetID1)
 
+	require.True(t, expectedSubnets.Equals(cfg.GetTrackedSubnets()))
+}
+
+// A ZK-only source (e.g. Ethereum) is not an Avalanche chain: its configured subnet ID names no
+// real subnet, so it must not be tracked. A source with any non-ZK protocol still is.
+func TestInitializeTrackedSubnetsSkipsZKOnlySources(t *testing.T) {
+	zkSubnetID := ids.GenerateTestID()
+	mixedSubnetID := ids.GenerateTestID()
+	teleporterSubnetID := ids.GenerateTestID()
+	destSubnetID := ids.GenerateTestID()
+
+	zk := Protocol{Address: common.HexToAddress("0x01"), Type: ZK}
+	teleporter := Protocol{Address: common.HexToAddress("0x02"), Type: TELEPORTER}
+
+	zkSource := &SourceBlockchain{subnetID: zkSubnetID, protocols: []Protocol{zk}}
+	mixedSource := &SourceBlockchain{subnetID: mixedSubnetID, protocols: []Protocol{zk, teleporter}}
+	teleporterSource := &SourceBlockchain{subnetID: teleporterSubnetID, protocols: []Protocol{teleporter}}
+
+	require.True(t, zkSource.IsZKOnly())
+	require.False(t, mixedSource.IsZKOnly())
+	require.False(t, teleporterSource.IsZKOnly())
+	require.False(t, (&SourceBlockchain{}).IsZKOnly(), "a source with no protocols is not ZK-only")
+
+	cfg := &Config{
+		SourceBlockchains: []*SourceBlockchain{zkSource, mixedSource, teleporterSource},
+		DestinationBlockchains: []*DestinationBlockchain{
+			{subnetID: destSubnetID, blockchainID: ids.GenerateTestID()},
+		},
+	}
+	require.NoError(t, cfg.initializeTrackedSubnets())
+
+	expectedSubnets := set.Of(mixedSubnetID, teleporterSubnetID, destSubnetID)
 	require.True(t, expectedSubnets.Equals(cfg.GetTrackedSubnets()))
 }
 

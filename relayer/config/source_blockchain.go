@@ -148,6 +148,22 @@ func (s *SourceBlockchain) Protocols() []Protocol {
 	return s.protocols
 }
 
+// IsZKOnly reports whether every message protocol on the source is ZK. ZK messages are attested
+// by a zero-knowledge consensus proof, not Warp signatures, so such a source (e.g. Ethereum) has
+// no Avalanche subnet whose validators must be tracked or reachable. A source with any other
+// protocol still needs them.
+func (s *SourceBlockchain) IsZKOnly() bool {
+	if len(s.protocols) == 0 {
+		return false
+	}
+	for _, p := range s.protocols {
+		if p.Type != ZK {
+			return false
+		}
+	}
+	return true
+}
+
 // Specifies a supported destination blockchain and addresses for a source blockchain.
 type SupportedDestination struct {
 	BlockchainID string   `mapstructure:"blockchain-id" json:"blockchain-id"`

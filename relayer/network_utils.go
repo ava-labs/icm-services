@@ -43,6 +43,14 @@ func InitializeConnectionsAndCheckStake(
 
 	eg, ectx := errgroup.WithContext(cctx)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
+		// ZK messages carry a zero-knowledge consensus proof rather than Warp signatures, so a
+		// ZK-only source has no validator stake to connect to.
+		if sourceBlockchain.IsZKOnly() {
+			logger.Info("Skipping stake check for ZK-only source blockchain",
+				zap.Stringer("blockchainID", sourceBlockchain.GetBlockchainID()),
+			)
+			continue
+		}
 		eg.Go(func() error {
 			logger.Info("Checking sufficient stake for source blockchain",
 				zap.Stringer("subnetID", sourceBlockchain.GetSubnetID()),
