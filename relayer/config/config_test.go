@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1051,9 +1052,32 @@ func TestRedactURLCredentials(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, redactURLCredentials(tc.input))
+			require.Equal(t, tc.expected, RedactURLCredentials(tc.input))
 		})
 	}
+}
+
+// HTTP clients wrap request failures in a *url.Error whose message includes the full URL.
+// RedactURLError must strip credentials from it wherever it sits in the chain, and leave
+// errors without one untouched.
+func TestRedactURLError(t *testing.T) {
+	// The error http.Client.Do returns when the endpoint is unreachable.
+	requestErr := &url.Error{
+		Op:  "Post",
+		URL: "https://rpc.example.com/v2/SECRETKEY?key=SECRETKEY",
+		Err: fmt.Errorf("dial tcp: connection refused"),
+	}
+	wrapped := fmt.Errorf("failed to get chain ID: %w", requestErr)
+	require.ErrorContains(t, wrapped, "SECRETKEY") // the unredacted error leaks the key
+
+	redacted := RedactURLError(wrapped)
+	require.NotContains(t, redacted.Error(), "SECRETKEY")
+	require.ErrorContains(t, redacted, "https://rpc.example.com/"+redactedValue)
+	require.ErrorContains(t, redacted, "connection refused")
+
+	plain := fmt.Errorf("no URL here")
+	require.Equal(t, plain, RedactURLError(plain))
+	require.NoError(t, RedactURLError(nil))
 }
 
 // End-to-end check of the startup config log: endpoint URLs carrying credentials in the path,

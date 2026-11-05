@@ -389,8 +389,8 @@ func sanitizeValue(v reflect.Value, t reflect.Type) any {
 	case reflect.Map:
 		return sanitizeMap(v, t)
 	case reflect.String:
-		// Any string may be an endpoint URL carrying credentials; see redactURLCredentials.
-		return redactURLCredentials(v.String())
+		// Any string may be an endpoint URL carrying credentials; see RedactURLCredentials.
+		return RedactURLCredentials(v.String())
 	default:
 		// For other primitive types, return as-is
 		if v.CanInterface() {
@@ -400,14 +400,14 @@ func sanitizeValue(v reflect.Value, t reflect.Type) any {
 	}
 }
 
-// redactURLCredentials makes a string safe to log if it is a URL. Endpoint URLs routinely carry
+// RedactURLCredentials makes a string safe to log if it is a URL. Endpoint URLs routinely carry
 // credentials outside the userinfo: managed RPC providers put the API key in the path
 // (https://provider.example/v2/<KEY>) or in the query string (?key=<KEY>), and nothing about
 // the string proves a path segment or parameter is not a secret. Only the scheme and host
 // (with port) are kept; any userinfo, path, query or fragment is replaced with a fixed marker.
 // A string with a URL scheme that cannot be parsed is redacted entirely. Strings without a
-// scheme are returned unchanged.
-func redactURLCredentials(s string) string {
+// scheme are returned unchanged. Use it for any endpoint URL put into an error or log line.
+func RedactURLCredentials(s string) string {
 	if !strings.Contains(s, "://") {
 		return s
 	}
@@ -424,6 +424,44 @@ func redactURLCredentials(s string) string {
 	}
 	return u.Scheme + "://" + u.Host + "/" + redactedValue
 }
+
+// RedactURLError returns err with the URL of the first *url.Error in its chain redacted by
+// RedactURLCredentials. HTTP clients wrap request failures, and url.Parse its failures, in a
+// *url.Error whose message includes the full URL, so an error from a request to an endpoint
+// must pass through here before it is logged.
+//
+// The *url.Error is redacted in place; each failed request creates its own, so no other caller
+// observes the change. Wrappers such as fmt.Errorf copy the inner message when they are
+// created, so when the *url.Error sits below one, redacting it in place does not change the
+// outer message. In that case the result is a wrapper whose message has the raw URL replaced
+// too, and which still unwraps to err.
+func RedactURLError(err error) error {
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return err
+	}
+	rawURL := urlErr.URL
+	redactedURL := RedactURLCredentials(rawURL)
+	urlErr.URL = redactedURL
+	if err == error(urlErr) || rawURL == redactedURL {
+		return err
+	}
+	return &redactedURLError{
+		msg: strings.ReplaceAll(err.Error(), rawURL, redactedURL),
+		err: err,
+	}
+}
+
+// redactedURLError replaces the message of an error whose text embeds a URL that has since
+// been redacted, while still unwrapping to that error.
+type redactedURLError struct {
+	msg string
+	err error
+}
+
+func (e *redactedURLError) Error() string { return e.msg }
+
+func (e *redactedURLError) Unwrap() error { return e.err }
 
 // sanitizeStruct handles struct types recursively
 func sanitizeStruct(v reflect.Value, t reflect.Type) map[string]any {

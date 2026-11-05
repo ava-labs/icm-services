@@ -667,11 +667,14 @@ func startMerkleSetUpdater(
 	}
 	ethClient, err := ethclient.DialContext(ctx, extDest.RPCEndpoint)
 	if err != nil {
-		return fmt.Errorf("failed to connect to external EVM at %s: %w", extDest.RPCEndpoint, err)
+		return fmt.Errorf(
+			"failed to connect to external EVM at %s: %w",
+			config.RedactURLCredentials(extDest.RPCEndpoint), config.RedactURLError(err),
+		)
 	}
 	chainID, err := ethClient.ChainID(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get chain ID: %w", err)
+		return fmt.Errorf("failed to get chain ID: %w", config.RedactURLError(err))
 	}
 
 	privateKey, err := crypto.HexToECDSA(extDest.PrivateKey)
@@ -725,11 +728,14 @@ func startZKConsensusUpdater(
 ) error {
 	ethClient, err := ethclient.DialContext(ctx, zkCfg.RPCEndpoint)
 	if err != nil {
-		return fmt.Errorf("failed to connect to destination EVM at %s: %w", zkCfg.RPCEndpoint, err)
+		return fmt.Errorf(
+			"failed to connect to destination EVM at %s: %w",
+			config.RedactURLCredentials(zkCfg.RPCEndpoint), config.RedactURLError(err),
+		)
 	}
 	chainID, err := ethClient.ChainID(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get chain ID: %w", err)
+		return fmt.Errorf("failed to get chain ID: %w", config.RedactURLError(err))
 	}
 
 	privateKey, err := crypto.HexToECDSA(zkCfg.PrivateKey)
