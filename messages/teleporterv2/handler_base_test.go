@@ -22,10 +22,7 @@ import (
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	ethereum "github.com/ava-labs/libevm"
-	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/common/hexutil"
-	"github.com/ava-labs/libevm/crypto"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -67,46 +64,10 @@ func testTeleporterMessage() *teleportermessengerv2.TeleporterMessageV2 {
 	}
 }
 
-// rpcError mirrors the error libevm's RPC client returns for a JSON-RPC error object: the message
-// plus whatever the node put in the "data" field, which is the revert output for a reverted call.
-type rpcError struct {
-	msg  string
-	data any
-}
-
-func (e *rpcError) Error() string {
-	return e.msg
-}
-
-func (e *rpcError) ErrorData() any {
-	return e.data
-}
-
-// revertWithReason is the error a node returns for a call that reverted with Error(string).
-func revertWithReason(t *testing.T, reason string) error {
-	t.Helper()
-	stringType, err := abi.NewType("string", "", nil)
-	require.NoError(t, err)
-	packed, err := abi.Arguments{{Type: stringType}}.Pack(reason)
-	require.NoError(t, err)
-	data := append(crypto.Keccak256([]byte("Error(string)"))[:4], packed...)
-	return &rpcError{msg: "execution reverted: " + reason, data: hexutil.Encode(data)}
-}
-
-// panicRevert is the error a node returns for a call that reverted with Panic(code), as checked
-// arithmetic does on overflow (code 0x11).
-func panicRevert(t *testing.T, code uint64) error {
-	t.Helper()
-	uintType, err := abi.NewType("uint256", "", nil)
-	require.NoError(t, err)
-	packed, err := abi.Arguments{{Type: uintType}}.Pack(new(big.Int).SetUint64(code))
-	require.NoError(t, err)
-	data := append(crypto.Keccak256([]byte("Panic(uint256)"))[:4], packed...)
-	return &rpcError{msg: "execution reverted", data: hexutil.Encode(data)}
-}
-
 // handlerMocks are the mocked destination clients a test handler talks to, with what tests need
-// to recognize and answer its calls.
+// to recognize and answer its calls. The delivery decisions themselves are covered by the
+// messages.Sender tests; the handler tests check that each path hands the delivery the right
+// transaction and classifies what comes back from its own verification-specific steps.
 type handlerMocks struct {
 	destinationClient *mock_vms.MockDestinationClient
 	ethClient         *mock_evm.MockClient
