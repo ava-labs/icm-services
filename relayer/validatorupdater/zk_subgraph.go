@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/common"
 )
 
@@ -54,15 +55,17 @@ func (c *SubgraphClient) ConsensusProofsAfterSlot(
 	if err != nil {
 		return nil, err
 	}
+	// Errors from building or sending the request embed c.url, which may carry an API key, so
+	// they are redacted before being returned.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, config.RedactURLError(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("subgraph request failed: %w", err)
+		return nil, fmt.Errorf("subgraph request failed: %w", config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 

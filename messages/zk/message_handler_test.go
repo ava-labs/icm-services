@@ -6,10 +6,12 @@
 package zk
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	teleportermessengerv2 "github.com/ava-labs/icm-services/abi-bindings/go/TeleporterMessengerV2"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/messages"
@@ -20,6 +22,8 @@ import (
 	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/ethclient"
+	"github.com/ava-labs/libevm/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -173,6 +177,39 @@ func TestFindMessageLog(t *testing.T) {
 
 	_, err = findMessageLog(receipt, messageProtocolAddress, []byte{1, 2, 3})
 	require.Error(t, err)
+}
+
+// NewMessageHandler must not touch the source chain: the relayer skips messages whose handler
+// fails to build and still checkpoints their block, so an RPC failure there would drop the
+// message. With a nil source client, any RPC attempt would panic.
+func TestNewMessageHandlerMakesNoSourceRPCs(t *testing.T) {
+	factory, err := NewMessageHandlerFactory(messageProtocolAddress, messageProtocolConfig, nil)
+	require.NoError(t, err)
+
+	handler, err := factory.NewMessageHandler(
+		logging.NoLog{}, sourceMessage(validEventPayload), nil, nil, nil, ids.Empty, 0,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, handler)
+}
+
+// A source RPC failure must surface from locateSource as an error, which fails the delivery
+// attempt so it is retried and the block range is not checkpointed.
+func TestLocateSourceRPCFailure(t *testing.T) {
+	// An in-process RPC server with no methods registered: every call fails with
+	// "method not found", standing in for an unavailable source node.
+	server := rpc.NewServer()
+	defer server.Stop()
+	rpcClient := rpc.DialInProc(server)
+	defer rpcClient.Close()
+
+	handler := newTestHandler(t, nil)
+	handler.sourceClient = ethclient.NewClient(rpcClient)
+
+	err := handler.locateSource(context.Background())
+	require.ErrorContains(t, err, "failed to fetch source receipt")
+	require.Zero(t, handler.sourceBlockNumber)
+	require.Zero(t, handler.slot)
 }
 
 // Checks that messages the destination messenger is certain to reject are skipped before
