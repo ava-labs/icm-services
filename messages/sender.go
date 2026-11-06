@@ -82,8 +82,11 @@ func (s *Sender) Send(
 // with a fresh signature can fix are exactly the ones estimation cannot produce.
 //
 // Nodes cap the gas they will try at their RPC gas cap, so the destination node must allow calls
-// at least the configured block gas limit for every delivery that fits in a block to be
-// estimated (subnet-evm and geth default to 50M, against a 12M default block gas limit here).
+// of at least the configured block gas limit for its verdict to apply to the transaction
+// (subnet-evm and geth default to 50M, against a 12M default block gas limit here). The
+// destination client checks that when it connects, see [evm.CheckRPCGasCap]. A lower bound
+// reported here is therefore a node whose cap has dropped since; it is logged, and the delivery
+// is still abandoned.
 func (s *Sender) EstimateGas(
 	ctx context.Context,
 	accessList types.AccessList,
@@ -106,12 +109,20 @@ func (s *Sender) EstimateGas(
 		if revert := evm.AsRevertError(err); revert != nil {
 			return 0, revert
 		}
-		if evm.ExceedsGasAllowance(err) {
-			s.Logger.Warn(
-				"Delivery does not fit in the destination block gas limit, not sending",
-				zap.Uint64("blockGasLimit", blockGasLimit),
-				zap.Error(err),
-			)
+		if allowance, exceeds := evm.ExceedsGasAllowance(err); exceeds {
+			if allowance != 0 && allowance < blockGasLimit {
+				s.Logger.Error(
+					"Node capped the estimate below the block gas limit, not sending: its RPC gas cap dropped since startup",
+					zap.Uint64("allowance", allowance),
+					zap.Uint64("blockGasLimit", blockGasLimit),
+				)
+			} else {
+				s.Logger.Warn(
+					"Delivery does not fit in the destination block gas limit, not sending",
+					zap.Uint64("blockGasLimit", blockGasLimit),
+					zap.Error(err),
+				)
+			}
 			return 0, fmt.Errorf("%w: %w", ErrDeliveryExceedsBlockGasLimit, err)
 		}
 		s.Logger.Error("Failed to estimate delivery gas", zap.Error(err))

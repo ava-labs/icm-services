@@ -5,6 +5,8 @@ package evm
 
 import (
 	"errors"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/ava-labs/libevm/accounts/abi"
@@ -95,9 +97,32 @@ func revertReason(data []byte) string {
 	return hexutil.Encode(data)
 }
 
+// gasAllowanceMessage is the error geth-derived nodes return when gas estimation runs out of gas
+// at the most they would try; gasAllowancePattern captures the bound they state with it.
+const gasAllowanceMessage = "gas required exceeds allowance"
+
+var gasAllowancePattern = regexp.MustCompile(gasAllowanceMessage + ` \((\d+)\)`)
+
 // ExceedsGasAllowance reports whether [err] is a node's answer that gas estimation found no gas
-// limit at which the call succeeds, up to the most the node would try: the lower of the caller's
-// bound and the node's RPC gas cap. The call fails even at that bound.
-func ExceedsGasAllowance(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "gas required exceeds allowance")
+// limit at which the call succeeds, up to the most the node would try, and returns that bound:
+// the lower of the caller's gas limit and the node's RPC gas cap. The call ran out of gas at that
+// bound; a call that reverts there for any other reason is reported as a revert instead. The
+// bound is 0 if the node did not state it.
+func ExceedsGasAllowance(err error) (uint64, bool) {
+	if err == nil {
+		return 0, false
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, gasAllowanceMessage) {
+		return 0, false
+	}
+	match := gasAllowancePattern.FindStringSubmatch(msg)
+	if match == nil {
+		return 0, true
+	}
+	allowance, err := strconv.ParseUint(match[1], 10, 64)
+	if err != nil {
+		return 0, true
+	}
+	return allowance, true
 }
