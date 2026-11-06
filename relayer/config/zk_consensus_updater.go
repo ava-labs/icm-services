@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ava-labs/icm-services/utils"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/crypto"
 )
 
 // ZKConsensusUpdater configures a consensus updater for a ZKAdapter deployed on a destination
@@ -40,6 +42,11 @@ func (z *ZKConsensusUpdater) Validate() error {
 	}
 	if z.PrivateKey == "" {
 		return errors.New("private-key required for zk consensus updater")
+	}
+	// Parse the key the same way startup does, so a malformed key fails config validation
+	// instead of the updater's startup. The parse error is not wrapped, as the key is sensitive.
+	if _, err := crypto.HexToECDSA(z.PrivateKey); err != nil {
+		return fmt.Errorf("invalid private-key for zk consensus updater: %w", utils.ErrInvalidPrivateKeyHex)
 	}
 	if !common.IsHexAddress(z.AdapterAddress) {
 		return fmt.Errorf("invalid adapter-address %q", z.AdapterAddress)
