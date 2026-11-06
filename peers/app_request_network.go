@@ -55,6 +55,7 @@ var (
 
 type AppRequestNetwork struct {
 	network network.Network
+	nodeID  ids.NodeID
 	handler *RelayerExternalHandler
 	logger  logging.Logger
 
@@ -122,7 +123,7 @@ func NewNetwork(
 	}
 	testNetworkConfig.AllowPrivateIPs = cfg.GetAllowPrivateIPs()
 	testNetworkConfig.ConnectToAllValidators = true
-	// Set the TLS config if exists and log the NodeID
+	// Set the TLS config if exists
 	var cert *tls.Certificate
 	if cert = cfg.GetTLSCert(); cert != nil {
 		testNetworkConfig.TLSConfig = peer.TLSConfig(*cert, nil)
@@ -135,7 +136,6 @@ func NewNetwork(
 		return nil, fmt.Errorf("failed to parse cert: %w", err)
 	}
 	nodeID := ids.NodeIDFromCert(parsedCert)
-	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", nodeID))
 
 	testNetwork, err := network.NewTestNetwork(
 		logger,
@@ -223,6 +223,7 @@ func NewNetwork(
 
 	arNetwork := &AppRequestNetwork{
 		network:                testNetwork,
+		nodeID:                 nodeID,
 		handler:                handler,
 		logger:                 logger,
 		metrics:                metrics,
@@ -236,6 +237,11 @@ func NewNetwork(
 	go arNetwork.startUpdateTrackedValidators(ctx)
 
 	return arNetwork, nil
+}
+
+// NodeID returns the NodeID derived from the TLS certificate the network connects with.
+func (n *AppRequestNetwork) NodeID() ids.NodeID {
+	return n.nodeID
 }
 
 // trackSubnet adds the subnetID to the set of tracked subnets. Returns true iff the subnet was already being tracked.

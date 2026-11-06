@@ -213,6 +213,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer network.Shutdown()
+	// Logged here rather than in NewNetwork, whose logger only emits errors unless log-level is debug.
+	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", network.NodeID()))
 
 	err = relayer.InitializeConnectionsAndCheckStake(ctx, logger, network, cfg)
 	if err != nil {
