@@ -50,7 +50,7 @@ func (z *ZKConsensusUpdater) Validate(otherSenders map[common.Address]string) er
 	}
 	// Parse the key the same way startup does, so a malformed key fails config validation
 	// instead of the updater's startup. The parse error is not wrapped, as the key is sensitive.
-	privateKey, err := crypto.HexToECDSA(z.PrivateKey)
+	privateKey, err := crypto.HexToECDSA(utils.SanitizeHexString(z.PrivateKey))
 	if err != nil {
 		return fmt.Errorf("invalid private-key for zk consensus updater: %w", utils.ErrInvalidPrivateKeyHex)
 	}

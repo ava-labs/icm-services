@@ -740,7 +740,7 @@ func startZKConsensusUpdater(
 		return fmt.Errorf("failed to get chain ID: %w", config.RedactURLError(err))
 	}
 
-	privateKey, err := crypto.HexToECDSA(zkCfg.PrivateKey)
+	privateKey, err := crypto.HexToECDSA(utils.SanitizeHexString(zkCfg.PrivateKey))
 	if err != nil {
 		return fmt.Errorf("invalid private key: %w", err)
 	}

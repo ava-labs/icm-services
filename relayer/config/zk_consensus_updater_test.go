@@ -56,10 +56,9 @@ func TestZKConsensusUpdaterValidate(t *testing.T) {
 			invalidKey: true,
 		},
 		{
-			// Startup parses the key without stripping a 0x prefix, so validation rejects it too.
-			name:       "private-key with 0x prefix",
-			modify:     func(z *ZKConsensusUpdater) { z.PrivateKey = "0x" + validKey },
-			invalidKey: true,
+			// A 0x prefix is stripped, as for destination account keys and the sample config.
+			name:   "private-key with 0x prefix",
+			modify: func(z *ZKConsensusUpdater) { z.PrivateKey = "0x" + validKey },
 		},
 		{
 			name:        "invalid adapter-address",
