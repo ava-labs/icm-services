@@ -159,6 +159,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer network.Shutdown()
+	// Logged here rather than in NewNetwork, whose logger only emits errors unless log-level is debug.
+	logger.Info("Network starting with NodeID", zap.Stringer("NodeID", network.NodeID()))
 
 	go network.StartCacheValidatorSets(ctx)
 
