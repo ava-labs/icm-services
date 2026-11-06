@@ -105,7 +105,9 @@ func (u *ConsensusUpdater) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			u.logger.Info("ConsensusUpdater stopping")
-			return ctx.Err()
+			// Being asked to stop is a clean exit, not a failure: returning ctx.Err() would make
+			// the relayer's errgroup treat every graceful shutdown as an error.
+			return nil
 		case <-ticker.C:
 			if err := u.checkAndUpdate(ctx); err != nil {
 				u.logger.Error("Update check failed", zap.Error(err))
