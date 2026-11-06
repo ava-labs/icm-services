@@ -8,16 +8,8 @@ pub trait ValidationState {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Unvalidated;
 
-/// State marker: field args have been validated; `length` holds a `LengthType`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Validated;
-
 impl ValidationState for Unvalidated {
     type Length = String;
-}
-
-impl ValidationState for Validated {
-    type Length = LengthType;
 }
 
 /// Represents a Solidity integer type used as a length/count prefix.
