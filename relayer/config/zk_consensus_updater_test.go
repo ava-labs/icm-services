@@ -77,7 +77,7 @@ func TestZKConsensusUpdaterValidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := valid()
 			tc.modify(&cfg)
-			err := cfg.Validate()
+			err := cfg.Validate(nil)
 
 			switch {
 			case tc.invalidKey:
@@ -89,6 +89,71 @@ func TestZKConsensusUpdaterValidate(t *testing.T) {
 			default:
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+// The updater's account must not be shared with any other signing account the relayer is
+// configured with, or their transactions' nonces collide on-chain.
+func TestZKConsensusUpdaterRejectsSharedSender(t *testing.T) {
+	newKeyHex := func() string {
+		key, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		return common.Bytes2Hex(crypto.FromECDSA(key))
+	}
+	zkKey, destinationKey, updaterKey, deliveryKey := newKeyHex(), newKeyHex(), newKeyHex(), newKeyHex()
+
+	newConfig := func(destinationKey, deliveryKey string) *Config {
+		return &Config{
+			DestinationBlockchains: []*DestinationBlockchain{
+				{BlockchainID: "destination-1", AccountPrivateKeys: []string{destinationKey}},
+			},
+			ExternalEVMDestinations: []*ExternalEVMDestination{
+				{ContractAddress: "0x02", PrivateKey: updaterKey, DeliveryPrivateKey: deliveryKey},
+			},
+		}
+	}
+
+	testCases := []struct {
+		name string
+		cfg  *Config
+		// errContains is empty when the accounts are distinct.
+		errContains string
+	}{
+		{
+			name: "distinct accounts",
+			cfg:  newConfig(destinationKey, deliveryKey),
+		},
+		{
+			name:        "shared with a destination account key",
+			cfg:         newConfig(zkKey, deliveryKey),
+			errContains: "destination blockchain destination-1 account key",
+		},
+		{
+			// Keys are compared by derived address, so a 0x prefix does not hide a match.
+			name:        "shared with an external delivery-private-key",
+			cfg:         newConfig(destinationKey, "0x"+zkKey),
+			errContains: "external EVM destination 0x02 delivery-private-key",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			updater := ZKConsensusUpdater{
+				RPCEndpoint:    "https://rpc.example.com",
+				PrivateKey:     zkKey,
+				AdapterAddress: "0x0000000000000000000000000000000000000001",
+				SubgraphURL:    "https://subgraph.example.com",
+			}
+			err := updater.Validate(tc.cfg.senderAccountAddresses())
+			if tc.errContains == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.errContains)
+			require.ErrorContains(t, err, "nonces would collide")
+			// The key is sensitive and must not leak into the error.
+			require.NotContains(t, err.Error(), zkKey)
 		})
 	}
 }

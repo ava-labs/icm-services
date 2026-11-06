@@ -152,11 +152,14 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Validate the consensus updaters for ZKAdapters on destination chains.
+	// Validate the consensus updaters for ZKAdapters on destination chains. Each updater's
+	// account must differ from every other signing account, including other updaters'.
+	senders := c.senderAccountAddresses()
 	for _, z := range c.ZKConsensusUpdaters {
-		if err := z.Validate(); err != nil {
+		if err := z.Validate(senders); err != nil {
 			return fmt.Errorf("failed to validate zk consensus updater: %w", err)
 		}
+		senders[z.senderAddress] = fmt.Sprintf("zk consensus updater for adapter %s", z.AdapterAddress)
 	}
 
 	// Validate the source chains and store the source subnet and chain IDs for future use
