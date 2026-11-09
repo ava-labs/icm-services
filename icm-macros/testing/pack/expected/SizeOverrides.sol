@@ -26,29 +26,33 @@ library PackMethods {
 
     function packDynamicStruct(DynamicStruct memory obj) public pure returns (bytes memory) {
         bytes memory Addresses_bytes;
-        require(obj.Hash.length == Lengths.HASH_LENGTH, "packDynamicStruct: invalid Hash length");
-        require(bytes(obj.Tag).length == 3, "packDynamicStruct: invalid Tag length");
-        require(obj.Pair.length == Lengths.PAIR_LENGTH, "packDynamicStruct: invalid Pair length");
+        require(obj.Hash.length == (Lengths.HASH_LENGTH), "packDynamicStruct: invalid Hash length");
+        require(bytes(obj.Tag).length == (3), "packDynamicStruct: invalid Tag length");
+        require(obj.Pair.length == (Lengths.PAIR_LENGTH), "packDynamicStruct: invalid Pair length");
         bytes memory Pair_bytes;
         bytes memory ParsedHash_bytes = abi.encodePacked(obj.ParsedHash);
-        require(ParsedHash_bytes.length == 32, "packDynamicStruct: invalid ParsedHash length");
-        uint256 Addresses_0_count = obj.Addresses.length;
-        Addresses_bytes = abi.encodePacked(uint32(Addresses_0_count));
-        for (uint256 i_0 = 0; i_0 < Addresses_0_count;) {
-            bytes memory Addresses_1_bytes;
-            Addresses_1_bytes = abi.encodePacked(obj.Addresses[i_0]);
-            Addresses_bytes = abi.encodePacked(Addresses_bytes, Addresses_1_bytes);
-            unchecked {
-                ++i_0;
+        require(ParsedHash_bytes.length == (32), "packDynamicStruct: invalid ParsedHash length");
+        {
+            uint256 Addresses_0_count = obj.Addresses.length;
+            Addresses_bytes = abi.encodePacked(uint32(Addresses_0_count));
+            for (uint256 i_0 = 0; i_0 < Addresses_0_count;) {
+                bytes memory Addresses_1_bytes;
+                Addresses_1_bytes = abi.encodePacked(obj.Addresses[i_0]);
+                Addresses_bytes = abi.encodePacked(Addresses_bytes, Addresses_1_bytes);
+                unchecked {
+                    ++i_0;
+                }
             }
         }
-        uint256 Pair_0_count = obj.Pair.length;
-        for (uint256 i_0 = 0; i_0 < Pair_0_count;) {
-            bytes memory Pair_1_bytes;
-            Pair_1_bytes = abi.encodePacked(obj.Pair[i_0]);
-            Pair_bytes = abi.encodePacked(Pair_bytes, Pair_1_bytes);
-            unchecked {
-                ++i_0;
+        {
+            uint256 Pair_0_count = obj.Pair.length;
+            for (uint256 i_0 = 0; i_0 < Pair_0_count;) {
+                bytes memory Pair_1_bytes;
+                Pair_1_bytes = abi.encodePacked(obj.Pair[i_0]);
+                Pair_bytes = abi.encodePacked(Pair_bytes, Pair_1_bytes);
+                unchecked {
+                    ++i_0;
+                }
             }
         }
         return abi.encodePacked(

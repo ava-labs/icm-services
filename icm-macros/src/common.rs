@@ -98,14 +98,14 @@ impl LengthSpec {
     /// type selects a prefix of that type; any other non-empty value is taken as a constant
     /// length expression, which only `solc` can check.
     pub fn validate(value: String, field_name: &str, struct_name: &str) -> eyre::Result<Self> {
-        if let Ok(ty) = LengthType::validate(&value) {
-            return Ok(Self::Type(ty));
-        }
         if value.is_empty() {
             eyre::bail!(
                 "empty `length` for field `{field_name}` of `{struct_name}`: expected a Solidity \
                  integer type or a constant length expression"
             );
+        }
+        if let Ok(ty) = LengthType::validate(&value) {
+            return Ok(Self::Type(ty));
         }
         Ok(Self::Constant(value))
     }
@@ -114,10 +114,14 @@ impl LengthSpec {
 /// Splits the argument list of the `{open}...)` annotation in `comment` (`open` being e.g.
 /// `#[pack(`) on top-level commas, returning each argument trimmed. Parentheses are balanced and
 /// quoted strings are skipped, so constant expressions such as `type(uint16).max` or
-/// `Lib.f(a, b)` survive intact. Returns `None` if the annotation is absent or its parentheses
-/// never close.
-pub fn annotation_args<'a>(comment: &'a str, open: &str) -> Option<Vec<&'a str>> {
-    let start = comment.find(open)? + open.len();
+/// `Lib.f(a, b)` survive intact. Returns `Ok(None)` if the annotation is absent, and an error if
+/// it is present but a quoted string or its parentheses never close: a mistyped annotation must
+/// not be silently treated as a missing one.
+pub fn annotation_args<'a>(comment: &'a str, open: &str) -> eyre::Result<Option<Vec<&'a str>>> {
+    let Some(annotation_start) = comment.find(open) else {
+        return Ok(None);
+    };
+    let start = annotation_start + open.len();
     let mut depth = 0usize;
     let mut quoted = false;
     let mut args = Vec::new();
@@ -130,7 +134,7 @@ pub fn annotation_args<'a>(comment: &'a str, open: &str) -> Option<Vec<&'a str>>
             b')' if depth > 0 => depth -= 1,
             b')' => {
                 args.push(comment[arg_start..i].trim());
-                return Some(args);
+                return Ok(Some(args));
             }
             b',' if depth == 0 => {
                 args.push(comment[arg_start..i].trim());
@@ -139,7 +143,18 @@ pub fn annotation_args<'a>(comment: &'a str, open: &str) -> Option<Vec<&'a str>>
             _ => {}
         }
     }
-    None
+    // Quote the offending line rather than the whole comment block.
+    let annotation = comment[annotation_start..]
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim_end();
+    let problem = if quoted {
+        "unterminated string"
+    } else {
+        "unbalanced parentheses"
+    };
+    eyre::bail!("{problem} in annotation `{annotation}`")
 }
 
 #[cfg(test)]
@@ -212,18 +227,16 @@ mod tests {
 
     #[test]
     fn test_annotation_args() {
-        assert_eq!(annotation_args("#[pack()]", "#[pack("), Some(vec![""]));
+        let args = |comment: &'static str, open: &str| annotation_args(comment, open).unwrap();
+        assert_eq!(args("#[pack()]", "#[pack("), Some(vec![""]));
+        assert_eq!(args("#[pack(ignore)]", "#[pack("), Some(vec!["ignore"]));
         assert_eq!(
-            annotation_args("#[pack(ignore)]", "#[pack("),
-            Some(vec!["ignore"])
-        );
-        assert_eq!(
-            annotation_args("/// #[unpack(contract = \"Foo\", calldata)]", "#[unpack("),
+            args("/// #[unpack(contract = \"Foo\", calldata)]", "#[unpack("),
             Some(vec!["contract = \"Foo\"", "calldata"])
         );
         // parentheses in a constant expression do not end the argument list
         assert_eq!(
-            annotation_args(
+            args(
                 "#[unpack(length = type(uint16).max, method = \"Lib.f\")]",
                 "#[unpack("
             ),
@@ -231,20 +244,36 @@ mod tests {
         );
         // nor do commas nested inside them
         assert_eq!(
-            annotation_args("#[pack(length = Lib.f(a, b) * (1 + 2))]", "#[pack("),
+            args("#[pack(length = Lib.f(a, b) * (1 + 2))]", "#[pack("),
             Some(vec!["length = Lib.f(a, b) * (1 + 2)"])
         );
         // delimiters inside a quoted value are literal
         assert_eq!(
-            annotation_args("#[pack(method = \"f(a,b)\", ignore)]", "#[pack("),
+            args("#[pack(method = \"f(a,b)\", ignore)]", "#[pack("),
             Some(vec!["method = \"f(a,b)\"", "ignore"])
         );
-        assert_eq!(annotation_args("#[pack]", "#[pack("), None);
-        assert_eq!(annotation_args("#[unpack()]", "#[pack("), None);
+        // an absent annotation is not an error
+        assert_eq!(args("#[pack]", "#[pack("), None);
+        assert_eq!(args("#[unpack()]", "#[pack("), None);
+    }
+
+    #[test]
+    fn test_annotation_args_malformed() {
+        // a present but malformed annotation is an error rather than an absent annotation, and
+        // the message quotes only the offending line of the comment
+        let err = annotation_args("/// #[pack(length = (1 + 2]\n/// more docs", "#[pack(")
+            .unwrap_err()
+            .to_string();
         assert_eq!(
-            annotation_args("#[pack(length = (1 + 2]", "#[pack("),
-            None,
-            "unbalanced parentheses never close the annotation"
+            err,
+            "unbalanced parentheses in annotation `#[pack(length = (1 + 2]`"
+        );
+        let err = annotation_args("#[unpack(method = \"Foo.bar)]", "#[unpack(")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "unterminated string in annotation `#[unpack(method = \"Foo.bar)]`"
         );
     }
 }

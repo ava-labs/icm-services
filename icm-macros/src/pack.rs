@@ -286,6 +286,10 @@ mod tests {
                 "testing/pack/errors/EmptyLength.sol",
                 "empty `length` for field `data` of `HasEmptyLength`",
             ),
+            (
+                "testing/pack/errors/MalformedAnnotation.sol",
+                "unbalanced parentheses in annotation `#[pack(length = (1 + 2]`",
+            ),
         ];
         for (path, expected) in cases {
             let err = reforge::testing::test_macro_err(path, derive_pack)

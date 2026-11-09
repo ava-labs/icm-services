@@ -4,11 +4,12 @@
 //! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
 //! name unconditionally — callers must not rename it.
 
-use crate::common::LengthSpec;
-use crate::unpack::hooks::UnpackArgs;
 use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
+
+use crate::common::LengthSpec;
+use crate::unpack::hooks::UnpackArgs;
 
 /// Generates the code to unpack an elementary Solidity type from the front of `data`.
 /// The result is stored in a freshly declared local named `output`.
@@ -276,12 +277,13 @@ pub fn unpack_struct(
             }
         } else {
             let node = UnpackingTreeNode {
+                fn_name: &fn_name,
                 depth: 0,
                 output: local_name.clone(),
                 ty: &field.ty.kind,
                 length: field_args.length.clone().unwrap_or_default(),
             };
-            inline_unpack(ctx, &fn_name, args.calldata, target_contract, node)?
+            inline_unpack(ctx, args.calldata, target_contract, node)?
         };
         body.push_str(&deserialize_field_code);
         body.push_str(&format!("\nresult.{field_name} = {local_name};"));
@@ -308,6 +310,8 @@ pub fn unpack_struct(
 /// A struct that tracks a recursive enumeration through a type to fully
 /// expand its packing algorithm. Modelled as a node in a tree
 struct UnpackingTreeNode<'a> {
+    /// The name of the generated function, used only to label its revert messages
+    fn_name: &'a str,
     /// The level of recursion in the type
     depth: u8,
     /// The variable which will store the result at this
@@ -321,14 +325,13 @@ struct UnpackingTreeNode<'a> {
 
 fn inline_unpack(
     ctx: &Gcx,
-    fn_name: &str,
     calldata: bool,
     target_contract: Option<ContractId>,
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
         TypeKind::Elementary(ty) => {
-            unpack_elementary(fn_name, &node.output, *ty, calldata, &node.length)
+            unpack_elementary(node.fn_name, &node.output, *ty, calldata, &node.length)
         }
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
@@ -343,13 +346,14 @@ fn inline_unpack(
             let type_name = get_type_name(ctx, &arr.element.kind, target_contract)?;
             let next_output = format!("{}_{}", node.output, node.depth + 1);
             let next_node = UnpackingTreeNode {
+                fn_name: node.fn_name,
                 depth: node.depth + 1,
                 output: next_output.clone(),
                 ty: &arr.element.kind,
                 length: LengthSpec::default(),
             };
             let output = sanitize_local(&node.output);
-            let inner = inline_unpack(ctx, fn_name, calldata, target_contract, next_node)?;
+            let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
             let (read_length, advance_past_count) = match &node.length {
                 LengthSpec::Constant(expr) => (format!("uint256 length = {expr};"), String::new()),
                 LengthSpec::Type(length_type) => {

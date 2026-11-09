@@ -320,6 +320,10 @@ mod tests {
                 "testing/unpack/errors/EmptyLength.sol",
                 "empty `length` for field `data` of `HasEmptyLength`",
             ),
+            (
+                "testing/unpack/errors/MalformedAnnotation.sol",
+                "unterminated string in annotation `#[unpack(method = \"parseData)]`",
+            ),
         ];
         for (path, expected) in cases {
             let err = reforge::testing::test_macro_err(path, derive_unpack)

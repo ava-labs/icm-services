@@ -46,9 +46,11 @@ fn length_cast(len_expr: &str, length_type: LengthType) -> String {
 
 /// Emits a `require` asserting that `len_expr` equals the constant `expr`. A value that does not
 /// have the agreed fixed length must fail here: without a prefix on the wire, the receiver would
-/// otherwise decode every later field out of alignment.
+/// otherwise decode every later field out of alignment. The constant is parenthesized so that an
+/// expression binding looser than `==` (a ternary, say) is compared as a unit, just as the unpack
+/// side evaluates it.
 fn length_guard(fn_name: &str, field_name: &str, len_expr: &str, expr: &str) -> String {
-    format!("\nrequire({len_expr} == {expr}, \"{fn_name}: invalid {field_name} length\");")
+    format!("\nrequire({len_expr} == ({expr}), \"{fn_name}: invalid {field_name} length\");")
 }
 
 /// Generates a Solidity `pack` function for an enum type.
@@ -162,9 +164,13 @@ pub fn pack_struct(
     }
     // collect the arguments for abi.encodePacked into a comma-separated list
     let encode_packed_args = encode_packed_args.join(", ");
-    // recursively expand the packing methods for the composite types and add them to the body
+    // recursively expand the packing methods for the composite types and add them to the body.
+    // Each expansion gets its own block so that its count local goes out of scope once its loop
+    // is done: under legacy codegen every function-scoped local holds a stack slot until the
+    // function returns, and a struct with many array fields would otherwise hit "Stack too deep".
     for node in recursive_packings {
-        body.push_str(&expand_packings_recursively(ctx, node)?);
+        let expansion = expand_packings_recursively(ctx, node)?;
+        body.push_str(&format!("\n{{{expansion}\n}}"));
     }
     let vis = vis_prefix(&args.visibility);
     Ok(format!(
