@@ -828,6 +828,11 @@ fn element_assert_loop(
 /// A word boundary is any position adjacent to a non-identifier character
 /// (`[^a-zA-Z0-9_]`) or the start/end of the string.
 fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
+    // a defensive check that prevents the subsequent while loop from
+    // continuing indefinitely.
+    if var.is_empty() {
+        return expr.to_string();
+    }
     fn is_ident(c: char) -> bool {
         c.is_alphanumeric() || c == '_'
     }
