@@ -828,7 +828,9 @@ fn element_assert_loop(
 
 /// Replaces whole-word occurrences of `var` in `expr` with `replacement`.
 /// A word boundary is any position adjacent to a non-identifier character
-/// (`[^a-zA-Z0-9_]`) or the start/end of the string.
+/// (`[^a-zA-Z0-9_]`) or the start/end of the string, **except** that an
+/// occurrence preceded by `.` is not replaced — that position is a member
+/// access on another object, not a reference to the capture variable.
 fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
     // a defensive check that prevents the subsequent while loop from
     // continuing indefinitely.
@@ -852,7 +854,7 @@ fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
         } else {
             before.chars().last()
         };
-        let left_ok = left_char.is_none_or(|c| !is_ident(c));
+        let left_ok = left_char.is_none_or(|c| !is_ident(c) && c != '.');
         let right_ok = after.chars().next().is_none_or(|c| !is_ident(c));
         result.push_str(before);
         if left_ok && right_ok {
@@ -910,10 +912,31 @@ mod tests {
     fn test_substitute_var_word_boundary_edges() {
         // var at the very end of expr
         assert_eq!(substitute_var("check(x)", "x", "v"), "check(v)");
-        // var preceded immediately by non-ident (dot, paren, operator)
-        assert_eq!(substitute_var("a.x", "x", "v"), "a.v");
+        // var preceded by paren or operator — IS replaced
+        assert_eq!(substitute_var("(x)", "x", "v"), "(v)");
+        assert_eq!(substitute_var("!x", "x", "v"), "!v");
+        // var preceded by dot — is a member access, NOT replaced
+        assert_eq!(substitute_var("a.x", "x", "v"), "a.x");
+        // var itself followed by dot (member access on the var) — IS replaced
+        assert_eq!(substitute_var("x.foo", "x", "v"), "v.foo");
         // var surrounded by ident chars — must NOT replace
         assert_eq!(substitute_var("ax", "x", "v"), "ax");
         assert_eq!(substitute_var("xa", "x", "v"), "xa");
+    }
+
+    #[test]
+    fn test_substitute_var_dot_member_name() {
+        // |data| { data.data.length > 0 } — the second `data` is a member name, not the var
+        assert_eq!(
+            substitute_var("data.data.length > 0", "data", "result"),
+            "result.data.length > 0",
+        );
+        // |each x| { x.x != 0 } — same pattern with a short name
+        assert_eq!(substitute_var("x.x != 0", "x", "_elem"), "_elem.x != 0",);
+        // var appears standalone and as member — only standalone replaced
+        assert_eq!(
+            substitute_var("s != s.s", "s", "result"),
+            "result != result.s",
+        );
     }
 }
