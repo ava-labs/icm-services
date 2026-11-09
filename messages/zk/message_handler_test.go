@@ -1,6 +1,8 @@
 // Copyright (C) 2026, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
+// THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
+
 package zk
 
 import (
@@ -13,10 +15,13 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/zk/proofs"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/vms"
+	"github.com/ava-labs/icm-services/vms/mocks"
 	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 var (
@@ -83,6 +88,19 @@ func sourceMessage(payload []byte) *messages.SourceMessage {
 		ProtocolAddress:    messageProtocolAddress,
 		Payload:            payload,
 		SourceTxID:         common.HexToHash("0x01"),
+	}
+}
+
+// newTestHandler builds a handler for the valid message with the given destination client.
+func newTestHandler(t *testing.T, destinationClient vms.DestinationClient) *messageHandler {
+	t.Helper()
+	messageConfig, err := ConfigFromMap(messageProtocolConfig.Settings)
+	require.NoError(t, err)
+	return &messageHandler{
+		messageConfig:     messageConfig,
+		destinationClient: destinationClient,
+		sourceMessage:     *sourceMessage(validEventPayload),
+		teleporterMessage: validTeleporterMessage,
 	}
 }
 
@@ -155,6 +173,68 @@ func TestFindMessageLog(t *testing.T) {
 
 	_, err = findMessageLog(receipt, messageProtocolAddress, []byte{1, 2, 3})
 	require.Error(t, err)
+}
+
+// Checks that messages the destination messenger is certain to reject are skipped before
+// any proof building: a spoofed origin, or a relayer restriction excluding every sender key.
+func TestShouldDeliverMessage(t *testing.T) {
+	senders := []common.Address{common.HexToAddress("0x11"), common.HexToAddress("0x22")}
+	otherRelayer := common.HexToAddress("0x33")
+
+	// withMessage returns a copy of the valid message with the given origin teleporter and
+	// allowed relayers.
+	withMessage := func(origin common.Address, allowed []common.Address) *teleportermessengerv2.TeleporterMessageV2 {
+		message := *validTeleporterMessage
+		message.OriginTeleporterAddress = origin
+		message.AllowedRelayerAddresses = allowed
+		return &message
+	}
+
+	testCases := []struct {
+		name          string
+		message       *teleportermessengerv2.TeleporterMessageV2
+		shouldDeliver bool
+	}{
+		{
+			name:          "origin is not the configured teleporter",
+			message:       withMessage(sourceTeleporterAddress, nil),
+			shouldDeliver: false,
+		},
+		{
+			name:          "no sender key in allowed relayers",
+			message:       withMessage(destinationTeleporterAddress, []common.Address{otherRelayer}),
+			shouldDeliver: false,
+		},
+		{
+			name:          "sender key in allowed relayers",
+			message:       withMessage(destinationTeleporterAddress, []common.Address{otherRelayer, senders[1]}),
+			shouldDeliver: true,
+		},
+		{
+			name:          "unrestricted relayers",
+			message:       withMessage(destinationTeleporterAddress, nil),
+			shouldDeliver: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			destinationClient := mocks.NewMockDestinationClient(ctrl)
+			destinationClient.EXPECT().SenderAddresses().Return(senders).AnyTimes()
+
+			handler := newTestHandler(t, destinationClient)
+			handler.teleporterMessage = test.message
+
+			ok, reason := handler.shouldDeliverMessage()
+			require.Equal(t, test.shouldDeliver, ok)
+			if test.shouldDeliver {
+				require.Empty(t, reason)
+			} else {
+				require.NotEmpty(t, reason)
+			}
+		})
+	}
 }
 
 func testExecProof() *zkadapter.ExecutionProof {

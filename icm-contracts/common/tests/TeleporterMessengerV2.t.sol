@@ -10,12 +10,14 @@ import {
 import {
     IAdapter,
     TeleporterICMMessage,
+    TeleporterMessage,
     TeleporterMessageV2,
     TeleporterMessageInput,
     TeleporterMessageReceipt,
     TeleporterFeeInfo
 } from "../ITeleporterMessengerV2.sol";
 import {TeleporterMessengerV2} from "../TeleporterMessengerV2.sol";
+import {ITeleporterReceiver} from "@teleporter/ITeleporterReceiver.sol";
 import {UnitTestMockERC20} from "@mocks/UnitTestMockERC20.sol";
 
 /// @dev Adapter that accepts every message, so tests can reach the messenger's own checks.
@@ -302,6 +304,209 @@ contract TeleporterMessengerV2MarkReceiptTest is Test {
             requiredGasLimit: 100_000,
             allowedRelayerAddresses: new address[](0),
             message: hex"deadbeef"
+        });
+    }
+}
+
+/// @dev Receiver that reverts while `shouldRevert` is set, and otherwise records what was delivered to it.
+contract SwitchableReceiver is ITeleporterReceiver {
+    address public immutable teleporterContract;
+    bool public shouldRevert = true;
+    bytes32 public lastSourceBlockchainID;
+    address public lastOriginSenderAddress;
+    bytes public lastMessage;
+
+    constructor(
+        address teleporterContract_
+    ) {
+        teleporterContract = teleporterContract_;
+    }
+
+    function setShouldRevert(
+        bool shouldRevert_
+    ) external {
+        shouldRevert = shouldRevert_;
+    }
+
+    function receiveTeleporterMessage(
+        bytes32 sourceBlockchainID,
+        address originSenderAddress,
+        bytes calldata message
+    ) external {
+        require(msg.sender == teleporterContract, "SwitchableReceiver: unauthorized");
+        require(!shouldRevert, "SwitchableReceiver: execution failed");
+        lastSourceBlockchainID = sourceBlockchainID;
+        lastOriginSenderAddress = originSenderAddress;
+        lastMessage = message;
+    }
+}
+
+contract TeleporterMessengerV2RetryMessageExecutionTest is Test {
+    bytes32 private constant _BLOCKCHAIN_ID = hex"01";
+    bytes32 private constant _OTHER_BLOCKCHAIN_ID = hex"02";
+    address private constant _INITIALIZER = address(0x1234);
+    address private constant _ORIGIN_SENDER = address(0x5E4D);
+    address private constant _RELAYER_REWARD_ADDRESS = address(0x5EED);
+    uint256 private constant _MESSAGE_NONCE = 42;
+    bytes private constant _PAYLOAD = hex"deadbeef";
+
+    AcceptAllAdapter private _adapter;
+    TeleporterMessengerV2 private _teleporter;
+    SwitchableReceiver private _receiver;
+
+    event MessageExecutionFailed(
+        bytes32 indexed messageID, bytes32 indexed sourceBlockchainID, TeleporterMessage message
+    );
+    event MessageExecuted(bytes32 indexed messageID, bytes32 indexed sourceBlockchainID);
+
+    function setUp() public {
+        _adapter = new AcceptAllAdapter();
+        _teleporter = new TeleporterMessengerV2(address(_adapter), _INITIALIZER);
+        vm.prank(_INITIALIZER);
+        _teleporter.initialize(_BLOCKCHAIN_ID);
+        _receiver = new SwitchableReceiver(address(_teleporter));
+    }
+
+    /// @dev A failed message is stored as the hash of the {TeleporterMessage} emitted in
+    /// {MessageExecutionFailed}, so passing that struct back must execute the message.
+    function testRetryExecutesFailedMessage() public {
+        (bytes32 messageID, TeleporterMessage memory message) =
+            _receiveFailedMessage(address(_receiver));
+
+        _receiver.setShouldRevert(false);
+        vm.expectEmit(true, true, true, true, address(_teleporter));
+        emit MessageExecuted(messageID, _OTHER_BLOCKCHAIN_ID);
+        _teleporter.retryMessageExecution(_OTHER_BLOCKCHAIN_ID, message);
+
+        assertEq(_receiver.lastSourceBlockchainID(), _OTHER_BLOCKCHAIN_ID);
+        assertEq(_receiver.lastOriginSenderAddress(), _ORIGIN_SENDER);
+        assertEq(_receiver.lastMessage(), _PAYLOAD);
+        assertEq(_teleporter.receivedFailedMessageHashes(messageID), bytes32(0));
+
+        // A message can be executed at most once.
+        vm.expectRevert("TeleporterMessenger: message not found");
+        _teleporter.retryMessageExecution(_OTHER_BLOCKCHAIN_ID, message);
+    }
+
+    function testRetryRevertsWhenExecutionFailsAgain() public {
+        (bytes32 messageID, TeleporterMessage memory message) =
+            _receiveFailedMessage(address(_receiver));
+
+        vm.expectRevert("TeleporterMessenger: retry execution failed");
+        _teleporter.retryMessageExecution(_OTHER_BLOCKCHAIN_ID, message);
+
+        // The message stays retryable.
+        assertEq(_teleporter.receivedFailedMessageHashes(messageID), keccak256(abi.encode(message)));
+    }
+
+    function testRetryRevertsInvalidMessageHash() public {
+        (bytes32 messageID, TeleporterMessage memory message) =
+            _receiveFailedMessage(address(_receiver));
+        bytes32 failedMessageHash = _teleporter.receivedFailedMessageHashes(messageID);
+        _receiver.setShouldRevert(false);
+
+        message.message = hex"beef";
+        vm.expectRevert("TeleporterMessenger: invalid message hash");
+        _teleporter.retryMessageExecution(_OTHER_BLOCKCHAIN_ID, message);
+
+        assertEq(_teleporter.receivedFailedMessageHashes(messageID), failedMessageHash);
+        assertEq(_receiver.lastMessage(), hex"");
+    }
+
+    function testRetryRevertsMessageNotFound() public {
+        TeleporterMessage memory message =
+            _toTeleporterMessage(_buildMessage(address(_receiver)).message);
+
+        vm.expectRevert("TeleporterMessenger: message not found");
+        _teleporter.retryMessageExecution(_OTHER_BLOCKCHAIN_ID, message);
+    }
+
+    /// @dev A message delivered to an address without code is stored as failed, and can be retried
+    /// once a contract has been deployed there.
+    function testRetryAfterCodeDeployedAtDestination() public {
+        address destination = address(0xCAFE);
+        (bytes32 messageID, TeleporterMessage memory message) = _receiveFailedMessage(destination);
+
+        vm.expectRevert("TeleporterMessenger: destination address has no code");
+        _teleporter.retryMessageExecution(_OTHER_BLOCKCHAIN_ID, message);
+
+        // Deploy the receiver's code at the destination. Its storage is empty there, so it does
+        // not revert.
+        vm.etch(destination, address(_receiver).code);
+        vm.expectEmit(true, true, true, true, address(_teleporter));
+        emit MessageExecuted(messageID, _OTHER_BLOCKCHAIN_ID);
+        _teleporter.retryMessageExecution(_OTHER_BLOCKCHAIN_ID, message);
+
+        assertEq(SwitchableReceiver(destination).lastSourceBlockchainID(), _OTHER_BLOCKCHAIN_ID);
+        assertEq(SwitchableReceiver(destination).lastOriginSenderAddress(), _ORIGIN_SENDER);
+        assertEq(SwitchableReceiver(destination).lastMessage(), _PAYLOAD);
+        assertEq(_teleporter.receivedFailedMessageHashes(messageID), bytes32(0));
+    }
+
+    /// @dev Delivers a message to `destination` whose execution fails, and returns its message ID
+    /// together with the {TeleporterMessage} emitted in {MessageExecutionFailed}.
+    function _receiveFailedMessage(
+        address destination
+    ) private returns (bytes32, TeleporterMessage memory) {
+        TeleporterICMMessage memory icmMessage = _buildMessage(destination);
+        TeleporterMessage memory message = _toTeleporterMessage(icmMessage.message);
+        bytes32 messageID =
+            _teleporter.calculateMessageID(_OTHER_BLOCKCHAIN_ID, _BLOCKCHAIN_ID, _MESSAGE_NONCE);
+
+        vm.expectEmit(true, true, true, true, address(_teleporter));
+        emit MessageExecutionFailed(messageID, _OTHER_BLOCKCHAIN_ID, message);
+        _teleporter.receiveCrossChainMessage(icmMessage, _RELAYER_REWARD_ADDRESS);
+
+        // The message counts as delivered, and its hash is stored for retries.
+        assertTrue(_teleporter.messageReceived(messageID));
+        assertEq(_teleporter.getRelayerRewardAddress(messageID), _RELAYER_REWARD_ADDRESS);
+        assertEq(_teleporter.receivedFailedMessageHashes(messageID), keccak256(abi.encode(message)));
+        return (messageID, message);
+    }
+
+    /// @dev Builds a message with non-empty relayer and receipt lists, so that the dynamic fields
+    /// take part in the hash comparison.
+    function _buildMessage(
+        address destination
+    ) private view returns (TeleporterICMMessage memory) {
+        address[] memory allowedRelayerAddresses = new address[](1);
+        allowedRelayerAddresses[0] = address(this);
+        TeleporterMessageReceipt[] memory receipts = new TeleporterMessageReceipt[](1);
+        receipts[0] = TeleporterMessageReceipt({
+            receivedMessageNonce: 7, relayerRewardAddress: _RELAYER_REWARD_ADDRESS
+        });
+        TeleporterMessageV2 memory teleporterMessage = TeleporterMessageV2({
+            messageNonce: _MESSAGE_NONCE,
+            originSenderAddress: _ORIGIN_SENDER,
+            originTeleporterAddress: address(_teleporter),
+            destinationBlockchainID: _BLOCKCHAIN_ID,
+            destinationAddress: destination,
+            requiredGasLimit: 100_000,
+            allowedRelayerAddresses: allowedRelayerAddresses,
+            receipts: receipts,
+            message: _PAYLOAD
+        });
+        return TeleporterICMMessage({
+            message: teleporterMessage,
+            sourceNetworkID: 1,
+            sourceBlockchainID: _OTHER_BLOCKCHAIN_ID,
+            attestation: hex""
+        });
+    }
+
+    /// @dev Mirrors the conversion the messenger performs on delivery.
+    function _toTeleporterMessage(
+        TeleporterMessageV2 memory message
+    ) private pure returns (TeleporterMessage memory) {
+        return TeleporterMessage({
+            messageNonce: message.messageNonce,
+            originSenderAddress: message.originSenderAddress,
+            destinationBlockchainID: message.destinationBlockchainID,
+            destinationAddress: message.destinationAddress,
+            requiredGasLimit: message.requiredGasLimit,
+            allowedRelayerAddresses: message.allowedRelayerAddresses,
+            receipts: message.receipts,
+            message: message.message
         });
     }
 }
