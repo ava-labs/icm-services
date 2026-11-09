@@ -6,19 +6,22 @@ use solar::sema::Gcx;
 use solar::sema::hir::{Enum, ItemId, Struct, TypeKind};
 
 use crate::common::LengthType;
-use crate::pack::hooks::PackArgs;
+use crate::pack::hooks::{LengthSpec, PackArgs};
 
-pub fn pack_elementary(var: &str, ty: ElementaryType, length_type: LengthType) -> String {
-    match ty {
-        ElementaryType::Bytes => {
-            let len = length_cast(&format!("{var}.length"), length_type);
-            format!("abi.encodePacked({len}, {var})")
+pub fn pack_elementary(var: &str, ty: ElementaryType, length: LengthSpec) -> String {
+    let len_expr = match ty {
+        ElementaryType::Bytes => format!("{var}.length"),
+        ElementaryType::String => format!("bytes({var}).length"),
+        _ => return format!("abi.encodePacked({var})"),
+    };
+    match length {
+        LengthSpec::Drop => format!("abi.encodePacked({var})"),
+        LengthSpec::Type(length_type) => {
+            format!(
+                "abi.encodePacked({}, {var})",
+                length_cast(&len_expr, length_type)
+            )
         }
-        ElementaryType::String => {
-            let len = length_cast(&format!("bytes({var}).length"), length_type);
-            format!("abi.encodePacked({len}, {var})")
-        }
-        _ => format!("abi.encodePacked({var})"),
     }
 }
 
@@ -141,9 +144,8 @@ struct PackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
-    /// The Solidity type to use for this node's length/count prefix.
-    /// Defaults to `uint256`.
-    length: LengthType,
+    /// How this node's length/count prefix is encoded. Defaults to a `uint256` prefix.
+    length: LengthSpec,
 }
 
 fn custom_type_name(ctx: &Gcx, item_id: ItemId) -> String {
@@ -173,20 +175,26 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
                 accessor: format!("{}[{loop_var}]", node.accessor),
                 output: next_output.clone(),
                 ty: &arr.element.kind,
-                length: LengthType::default(),
+                length: LengthSpec::default(),
             };
             let inner = expand_packings_recursively(ctx, next_node)?;
-            let count = length_cast(&format!("{}.length", node.accessor), node.length);
+            let init = match node.length {
+                LengthSpec::Drop => format!("{} = abi.encodePacked();", node.output),
+                LengthSpec::Type(length_type) => {
+                    let count = length_cast(&format!("{}.length", node.accessor), length_type);
+                    format!("{} = abi.encodePacked({count});", node.output)
+                }
+            };
 
             format!(
-                "\n{} = abi.encodePacked({count});\
+                "\n{init}\
                 \nfor (uint256 {loop_var} = 0; {loop_var} < {}.length;){{\
                 \n    bytes memory {next_output};\
                 \n    {inner}\
                 \n    {} = abi.encodePacked({}, {next_output});\
                 \n    unchecked {{ ++{loop_var};}}\
                 \n}}",
-                node.output, node.accessor, node.output, node.output
+                node.accessor, node.output, node.output
             )
         }
         TypeKind::Custom(item_id) => {

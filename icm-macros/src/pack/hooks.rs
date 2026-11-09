@@ -7,7 +7,7 @@ use solar::ast::Span;
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, SourceId, Struct};
 
-use crate::common::{LengthType, Unvalidated, Validated, ValidationState};
+use crate::common::{LengthType, Unvalidated, ValidationState};
 
 pub struct PackArgs {
     pub contract: Option<ContractId>,
@@ -16,10 +16,35 @@ pub struct PackArgs {
     pub visibility: String,
 }
 
+/// How the length/count of a dynamically sized field is encoded.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LengthSpec {
+    /// Prefix the payload with its length/count, encoded as this Solidity integer type.
+    Type(LengthType),
+    /// Omit the length/count prefix entirely. The receiver must know the length
+    /// (pairs with `#[unpack(length = constant)]`).
+    Drop,
+}
+
+impl Default for LengthSpec {
+    /// The default is a `uint256` prefix.
+    fn default() -> Self {
+        Self::Type(LengthType::default())
+    }
+}
+
+/// State marker: field args have been validated; `length` holds a `LengthSpec`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Validated;
+
+impl ValidationState for Validated {
+    type Length = LengthSpec;
+}
+
 /// Per-field pack annotations, generic over their validation state.
 ///
 /// - `FieldArgs<Unvalidated>`: raw parse output; `length` is `Option<String>`.
-/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthType>`.
+/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthSpec>`.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FieldArgs<S: ValidationState = Unvalidated> {
     pub method: Option<String>,
@@ -39,10 +64,15 @@ impl FieldArgs<Unvalidated> {
         let length = self
             .length
             .map(|ty| {
-                LengthType::validate(&ty).wrap_err(format!(
-                    "length type `{ty}` for field `{field_name}` of `{struct_name}` \
-                     must be a Solidity integer type"
-                ))
+                if ty == "drop" {
+                    return Ok(LengthSpec::Drop);
+                }
+                LengthType::validate(&ty)
+                    .map(LengthSpec::Type)
+                    .wrap_err(format!(
+                        "length type `{ty}` for field `{field_name}` of `{struct_name}` \
+                         must be a Solidity integer type or `drop`"
+                    ))
             })
             .transpose()?;
         Ok(FieldArgs {
@@ -307,6 +337,7 @@ mod tests {
                 Some("#[pack(ignore, method=\"Foo.bar\")]".to_string()),
                 Some("#[pack(length = uint32)]".to_string()),
                 Some("#[pack(method=\"Foo.bar\", length = uint64)]".to_string()),
+                Some("#[pack(length = drop)]".to_string()),
             ],
         )
         .unwrap();
@@ -352,5 +383,37 @@ mod tests {
                 length: Some("uint64".to_string()),
             }
         );
+        assert_eq!(
+            raw.fields[5],
+            FieldArgs {
+                method: None,
+                ignore: false,
+                length: Some("drop".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_length() {
+        let validate = |length: &str| {
+            FieldArgs::<Unvalidated> {
+                method: None,
+                ignore: false,
+                length: Some(length.to_string()),
+            }
+            .validate("data", "Foo")
+            .map(|f| f.length)
+        };
+        assert_eq!(
+            validate("uint32").unwrap(),
+            Some(LengthSpec::Type(LengthType::Uint(4)))
+        );
+        assert_eq!(validate("drop").unwrap(), Some(LengthSpec::Drop));
+        let err = validate("bool").unwrap_err().to_string();
+        assert!(
+            err.contains("length type `bool` for field `data` of `Foo`"),
+            "{err}"
+        );
+        assert!(validate("32").is_err(), "a constant is not a pack length");
     }
 }

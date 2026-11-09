@@ -24,6 +24,12 @@ struct Sizes {
     // #[pack(length=uint32)]
     // #[unpack(length=uint32)]
     address[] Addresses;
+    // #[pack(length=drop)]
+    // #[unpack(length=RoundTrip.PAIR_LENGTH)]
+    address[] Pair;
+    // #[pack(length=drop, method="RoundTrip.reverseBytes")]
+    // #[unpack(length=32, method="RoundTrip.reverseBytes")]
+    bytes ReverseHash;
 }
 
 // #[pack(contract="RoundTrip")]
@@ -62,7 +68,23 @@ library RoundTrip {
         // #[pack(length=uint32)]
         // #[unpack(length=uint32)]
         address[] Addresses;
+        // #[pack(length=drop)]
+        // #[unpack(length=PAIR_LENGTH)]
+        address[] Pair;
+        // #[pack(length=drop, method="reverseBytes")]
+        // #[unpack(length=32, method="reverseBytes")]
+        bytes ReverseHash;
     }
 
+    uint256 internal constant PAIR_LENGTH = 2;
 
+    function reverseBytes(bytes memory reversed) public pure returns (bytes memory) {
+        uint256 length = reversed.length;
+        bytes memory res = new bytes(length);
+        for (uint256 i = 0; i < length;) {
+            res[length - 1 - i] = reversed[i];
+            unchecked { ++i; }
+        }
+        return res;
+    }
 }
