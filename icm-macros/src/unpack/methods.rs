@@ -735,15 +735,17 @@ fn remaining_guard(fn_name: &str, label: &str) -> String {
 /// by the generated unpacking function body. Appends trailing underscores until the name is free.
 ///
 /// Reserved names: `data`, `result`, `read`, `length`, `i`, `_initial_length`, `_final_length`,
-/// `data_length`, `data_orig_length`, `_len_before`, `_slice`.
+/// `data_length`, `data_orig_length`, `_len_before`, `_slice`, `_j`, `_elem`.
 fn sanitize_local(name: &str) -> String {
     const RESERVED: &[&str] = &[
         "data",
+        "_elem",
         "result",
         "read",
         "length",
         "i",
         "_initial_length",
+        "_j",
         "_final_length",
         "data_length",
         "data_orig_length",
