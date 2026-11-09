@@ -137,7 +137,7 @@ pub fn parse_args(
     let doc_comment = reforge::get_comment(ctx, source_id, span, data)?;
     let struct_def = ctx.hir.structs().find(|s| s.span == span);
 
-    let field_meta: Vec<(Option<String>, bool)> = struct_def
+    let field_meta: Vec<(Option<String>, bool, String)> = struct_def
         .map(|s| {
             s.fields
                 .iter()
@@ -145,13 +145,18 @@ pub fn parse_args(
                     let field = ctx.hir.variable(field_id);
                     let comment = reforge::get_comment(ctx, source_id, field.span, data);
                     let memory = type_requires_memory(&field.ty);
-                    (comment, memory)
+                    let name = field
+                        .name
+                        .map(|n| n.as_str().to_string())
+                        .unwrap_or_default();
+                    (comment, memory, name)
                 })
                 .collect()
         })
         .unwrap_or_default();
+    let struct_name = struct_def.map(|s| s.name.as_str()).unwrap_or("");
 
-    let mut raw = match parse_comment(&doc_comment, &field_meta) {
+    let mut raw = match parse_comment(&doc_comment, &field_meta, struct_name) {
         Ok(Some(raw)) => raw,
         Ok(None) => return None,
         Err(e) => return Some(Err(e)),
@@ -202,7 +207,8 @@ pub fn parse_args(
 /// a field's annotation is malformed.
 pub(crate) fn parse_comment(
     comment: &str,
-    field_meta: &[(Option<String>, bool)],
+    field_meta: &[(Option<String>, bool, String)],
+    struct_name: &str,
 ) -> eyre::Result<Option<RawUnpackArgs>> {
     // annotation_args handles error detection for malformed annotations (unterminated
     // strings, unbalanced parens) and tells us whether the annotation is present.
@@ -237,7 +243,7 @@ pub(crate) fn parse_comment(
                     Some(Err(e)) => return Err(e),
                     None => {
                         return Err(eyre::eyre!(
-                            "assert value {val:?} is not a valid closure; \
+                            "assert value {val:?} on `{struct_name}` is not a valid closure; \
                              expected `|name| {{ expr }}` or `|each name| {{ expr }}`"
                         ));
                     }
@@ -255,7 +261,7 @@ pub(crate) fn parse_comment(
 
     let fields = field_meta
         .iter()
-        .map(|(c, memory)| parse_field_args(c.as_deref(), *memory))
+        .map(|(c, memory, field_name)| parse_field_args(c.as_deref(), *memory, field_name))
         .collect::<eyre::Result<_>>()?;
 
     Ok(Some(RawUnpackArgs {
@@ -278,7 +284,11 @@ fn type_requires_memory(ty: &Type) -> bool {
     }
 }
 
-fn parse_field_args(comment: Option<&str>, memory: bool) -> eyre::Result<FieldArgs<Unvalidated>> {
+fn parse_field_args(
+    comment: Option<&str>,
+    memory: bool,
+    field_name: &str,
+) -> eyre::Result<FieldArgs<Unvalidated>> {
     let annotation = comment
         .map(|c| annotation_args(c, "#[unpack("))
         .transpose()?
@@ -321,8 +331,8 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> eyre::Result<FieldAr
                         Some(Err(e)) => return Err(e),
                         None => {
                             return Err(eyre::eyre!(
-                                "assert value {inner:?} is not a valid closure; \
-                                 expected `|name| {{ expr }}` or `|each name| {{ expr }}`"
+"assert value {inner:?} on field `{field_name}` is not a valid \
+                                 closure; expected `|name| {{ expr }}` or `|each name| {{ expr }}`"
                             ));
                         }
                     }
@@ -438,10 +448,15 @@ mod tests {
 
     #[test]
     fn test_basic() {
-        let field_meta = vec![(None, false), (None, true), (None, false), (None, false)];
-        let raw = parse_comment("#[unpack]", &field_meta).unwrap();
+let field_meta = vec![
+            (None, false, String::new()),
+            (None, true, String::new()),
+            (None, false, String::new()),
+            (None, false, String::new()),
+        ];
+        let raw = parse_comment("#[unpack]", &field_meta, "").unwrap();
         assert!(raw.is_none());
-        let raw = parse_comment("#[unpack()]", &field_meta)
+        let raw = parse_comment("#[unpack()]", &field_meta, "")
             .unwrap()
             .expect("Test failed");
         assert_eq!(raw.contract, None);
@@ -459,7 +474,8 @@ mod tests {
     fn test_all_keys() {
         let raw = parse_comment(
             "#[unpack(contract=\"Foo\", name=\"Bar\", visibility=\"private\", calldata)]",
-            &vec![(None, false); 4],
+            &vec![(None, false, String::new()); 4],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -475,15 +491,20 @@ mod tests {
 
     #[test]
     fn test_flags() {
-        let raw = parse_comment("#[unpack(solhint-disable)]", &vec![(None, false); 2])
-            .unwrap()
-            .unwrap();
+let raw = parse_comment(
+            "#[unpack(solhint-disable)]",
+            &vec![(None, false, String::new()); 2],
+            "",
+        )
+        .unwrap()
+        .unwrap();
         assert!(raw.solhint_disable);
         assert!(!raw.calldata);
 
         let raw = parse_comment(
             "#[unpack(calldata, solhint-disable)]",
-            &vec![(None, false); 2],
+            &vec![(None, false, String::new()); 2],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -497,12 +518,18 @@ mod tests {
         let raw = parse_comment(
             "#[unpack()]",
             &vec![
-                (Some("#[unpack(length = \"uint32\")]".to_string()), false),
+                (
+                    Some("#[unpack(length = \"uint32\")]".to_string()),
+                    false,
+                    String::new(),
+                ),
                 (
                     Some("#[unpack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
                     false,
+                    String::new(),
                 ),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -533,7 +560,8 @@ mod tests {
         // type-level assert, alone
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.version == 1 }")]"#,
-            &vec![(None, false); 1],
+            &vec![(None, false, String::new()); 1],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -550,7 +578,8 @@ mod tests {
         // assert can appear before other args (no longer required to be last)
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.version == 1 }", calldata)]"#,
-            &vec![(None, false); 1],
+            &vec![(None, false, String::new()); 1],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -568,7 +597,8 @@ mod tests {
         // multiple asserts
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.version == 1 }", assert = "|r| { r.x > 0 }")]"#,
-            &vec![(None, false); 1],
+            &vec![(None, false, String::new()); 1],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -593,7 +623,8 @@ mod tests {
         // body containing a function call with commas and parens (safe inside quotes)
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { isValid(r, 0) }")]"#,
-            &vec![(None, false); 1],
+            &vec![(None, false, String::new()); 1],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -613,7 +644,9 @@ mod tests {
             &vec![(
                 Some(r#"#[unpack(assert = "|b| { b.length == 48 }")]"#.to_string()),
                 true,
+                String::new(),
             )],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -633,7 +666,9 @@ mod tests {
             &vec![(
                 Some(r#"#[unpack(assert = "|each x| { x > 0 }")]"#.to_string()),
                 false,
+                String::new(),
             )],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -653,7 +688,9 @@ mod tests {
             &vec![(
                 Some(r#"#[unpack(assert = "|eachItem| { eachItem > 0 }")]"#.to_string()),
                 false,
+                String::new(),
             )],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -673,7 +710,8 @@ mod tests {
         // Assert body contains a Solidity string literal with a comma.
         let raw = parse_comment(
             r#"#[unpack(assert = "|each c| { c != "," }")]"#,
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -690,7 +728,8 @@ mod tests {
         // Assert body contains a Solidity string literal with a `)`.
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { keccak256(")") == hash }")]"#,
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -707,7 +746,8 @@ mod tests {
         // Assert body contains a Solidity string literal with `//`.
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.url != "http://" }")]"#,
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -724,7 +764,8 @@ mod tests {
         // Other args after a string-literal assert are still parsed.
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.sep != "," }", calldata)]"#,
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -737,7 +778,9 @@ mod tests {
             &vec![(
                 Some(r#"#[unpack(assert = "|each c| { c != "," }")]"#.to_string()),
                 false,
+                String::new(),
             )],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -757,7 +800,8 @@ mod tests {
         // Single-line assert with a Solidity string literal containing `//`.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| { r.url != \"http://\" }\")]",
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -774,7 +818,8 @@ mod tests {
         // Multi-line assert: `//` comment prefixes on continuation lines must be stripped.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| {\n//     r.version == 1\n// }\")]",
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -791,7 +836,8 @@ mod tests {
         // Block comment style with `*` prefixes on continuation lines.
         let raw = parse_comment(
             "/**\n * #[unpack(assert = \"|r| {\n *    r.value == 0\n *  }\")]\n */",
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -811,7 +857,8 @@ mod tests {
         // `//` comment lines inside a multi-line closure body must be preserved.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| {\n//    // this value\n//    // should always be zero\n//    r.value == 0\n//  }\")]",
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -828,7 +875,8 @@ mod tests {
         // /* */ outer + // inner.
         let raw = parse_comment(
             "/**\n * #[unpack(assert = \"|r| {\n *    // this comment\n *    r.value == 0\n *  }\")]\n */",
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -848,7 +896,8 @@ mod tests {
         // An empty closure body must be an error, not a silent no-op.
         let err = parse_comment(
             r#"#[unpack(assert = "|r| { }")]"#,
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap_err()
         .to_string();
@@ -857,7 +906,8 @@ mod tests {
         // A body containing only a comment must also be an error.
         let err = parse_comment(
             r#"#[unpack(assert = "|r| { // just a comment }")]"#,
-            &vec![(None, false)],
+            &vec![(None, false, String::new())],
+            "",
         )
         .unwrap_err()
         .to_string();
@@ -866,10 +916,25 @@ mod tests {
 
     #[test]
     fn test_assert_capture_errors() {
-        // empty capture
+        // empty capture in a type-level assert
         let err = parse_comment(
             r#"#[unpack(assert = "|| { true }")]"#,
-            &vec![(None, false); 1],
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("empty capture name"), "wrong error: {err}");
+
+        // empty capture in a field-level assert
+        let err = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|| { true }")]"#.to_string()),
+                false,
+                "myField".to_string(),
+            )],
+            "",
         )
         .unwrap_err()
         .to_string();
@@ -878,32 +943,52 @@ mod tests {
         // non-identifier capture name
         let err = parse_comment(
             r#"#[unpack(assert = "|2bad| { true }")]"#,
-            &vec![(None, false); 1],
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
         )
         .unwrap_err()
         .to_string();
         assert!(err.contains("not a valid identifier"), "wrong error: {err}");
 
-        // malformed assert (missing pipe)
+        // empty capture after `each`
+        let err = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|each | { true }")]"#.to_string()),
+                false,
+                "myField".to_string(),
+            )],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("empty capture name"), "wrong error: {err}");
+
+        // malformed assert (missing pipe) on a type-level assert — None path
         let err = parse_comment(
             r#"#[unpack(assert = "x > 0")]"#,
-            &vec![(None, false); 1],
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
         )
         .unwrap_err()
         .to_string();
         assert!(err.contains("not a valid closure"), "wrong error: {err}");
+        assert!(err.contains("MyStruct"), "error should name the struct: {err}");
 
-        // malformed assert (missing braces) on a field-level assert
+        // malformed assert (missing braces) on a field-level assert — None path
         let err = parse_comment(
             "#[unpack()]",
             &vec![(
                 Some(r#"#[unpack(assert = "|x| x > 0")]"#.to_string()),
                 false,
+                "myField".to_string(),
             )],
+            "",
         )
         .unwrap_err()
         .to_string();
         assert!(err.contains("not a valid closure"), "wrong error: {err}");
+        assert!(err.contains("myField"), "error should name the field: {err}");
     }
 
     #[test]
@@ -911,22 +996,34 @@ mod tests {
         let raw = parse_comment(
             "#[unpack(visibility=\"private\", name=\"Foo\")]",
             &vec![
-                (Some("#[unpack(method=\"Foo.bar\")]".to_string()), false),
-                (Some("#[unpack(default)]".to_string()), true),
+                (
+                    Some("#[unpack(method=\"Foo.bar\")]".to_string()),
+                    false,
+                    String::new(),
+                ),
+                (Some("#[unpack(default)]".to_string()), true, String::new()),
                 (
                     Some("#[unpack(default, method=\"Foo.bar\")]".to_string()),
                     false,
+                    String::new(),
                 ),
-                (Some("#[unpack(length = uint32)]".to_string()), true),
+                (
+                    Some("#[unpack(length = uint32)]".to_string()),
+                    true,
+                    String::new(),
+                ),
                 (
                     Some("#[unpack(method=\"Foo.bar\", length = uint64)]".to_string()),
                     true,
+                    String::new(),
                 ),
                 (
                     Some("#[unpack(length = BLST.BLS_SIGNATURE_LENGTH)]".to_string()),
                     true,
+                    String::new(),
                 ),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -1004,12 +1101,15 @@ mod tests {
                 (
                     Some("#[unpack(length = uint256(Lengths.HASH_LENGTH))]".to_string()),
                     true,
+                    String::new(),
                 ),
                 (
                     Some("#[unpack(length = (2 * 16), method=\"parseHash\")]".to_string()),
                     true,
+                    String::new(),
                 ),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -1038,7 +1138,7 @@ mod tests {
     #[test]
     fn test_malformed_annotation() {
         // a malformed annotation is an error, not an absent annotation
-        let err = parse_comment("#[unpack(name = \"Foo)]", &[])
+        let err = parse_comment("#[unpack(name = \"Foo)]", &[], "")
             .unwrap_err()
             .to_string();
         assert!(
@@ -1047,7 +1147,8 @@ mod tests {
         );
         let err = parse_comment(
             "#[unpack()]",
-            &[(Some("#[unpack(length = (1 + 2]".to_string()), true)],
+            &[(Some("#[unpack(length = (1 + 2]".to_string()), true, String::new())],
+            "",
         )
         .unwrap_err()
         .to_string();
