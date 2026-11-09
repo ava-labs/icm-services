@@ -841,7 +841,16 @@ fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
     while let Some(pos) = remaining.find(var) {
         let before = &remaining[..pos];
         let after = &remaining[pos + var.len()..];
-        let left_ok = before.chars().last().is_none_or(|c| !is_ident(c));
+        // When the match is at the start of `remaining` (before is empty), the true
+        // left-boundary char is the last char already written to `result`.  Using
+        // `before.chars().last()` alone would yield `None` and incorrectly report a
+        // word boundary when the previous push ended with an identifier character.
+        let left_char = if before.is_empty() {
+            result.chars().last()
+        } else {
+            before.chars().last()
+        };
+        let left_ok = left_char.is_none_or(|c| !is_ident(c));
         let right_ok = after.chars().next().is_none_or(|c| !is_ident(c));
         result.push_str(before);
         if left_ok && right_ok {
@@ -853,4 +862,56 @@ fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
     }
     result.push_str(remaining);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_substitute_var_basic() {
+        // Simple whole-word replacement at start, middle, end
+        assert_eq!(substitute_var("x > 0", "x", "result"), "result > 0");
+        assert_eq!(substitute_var("v == v", "v", "out"), "out == out");
+        assert_eq!(substitute_var("1 + x", "x", "result"), "1 + result");
+    }
+
+    #[test]
+    fn test_substitute_var_no_partial_match() {
+        // Should NOT replace "s" inside "address"
+        assert_eq!(
+            substitute_var("s.owner != address(0)", "s", "result"),
+            "result.owner != address(0)",
+        );
+        // Should NOT replace "s" inside either occurrence of "address"
+        assert_eq!(
+            substitute_var("s.address != address(0)", "s", "result"),
+            "result.address != address(0)",
+        );
+        // var appears only inside a longer word — no substitution
+        assert_eq!(
+            substitute_var("address != address(0)", "s", "result"),
+            "address != address(0)",
+        );
+    }
+
+    #[test]
+    fn test_substitute_var_repeated_var() {
+        // var appears multiple times as a whole word
+        assert_eq!(
+            substitute_var("x > 0 && x < 100", "x", "v"),
+            "v > 0 && v < 100",
+        );
+    }
+
+    #[test]
+    fn test_substitute_var_word_boundary_edges() {
+        // var at the very end of expr
+        assert_eq!(substitute_var("check(x)", "x", "v"), "check(v)");
+        // var preceded immediately by non-ident (dot, paren, operator)
+        assert_eq!(substitute_var("a.x", "x", "v"), "a.v");
+        // var surrounded by ident chars — must NOT replace
+        assert_eq!(substitute_var("ax", "x", "v"), "ax");
+        assert_eq!(substitute_var("xa", "x", "v"), "xa");
+    }
 }
