@@ -375,6 +375,9 @@ fn parse_field_args(
 /// Finds the index of the `)` that closes the current paren level, skipping
 /// over any nested `(...)` pairs and `"..."` quoted strings.
 /// Returns `None` if no such `)` exists.
+///
+/// See [`strip_comment_prefixes`] for the quote / brace nesting rules that
+/// allow Solidity string literals inside assert closure bodies.
 fn find_closing_paren(s: &str) -> Option<usize> {
     let mut depth = 0usize;
     let mut in_quotes = false;
@@ -398,6 +401,9 @@ fn find_closing_paren(s: &str) -> Option<usize> {
 }
 
 /// Splits `s` on commas that are outside of `"..."` quoted strings.
+///
+/// See [`strip_comment_prefixes`] for the quote / brace nesting rules that
+/// allow Solidity string literals inside assert closure bodies.
 fn split_args(s: &str) -> Vec<&str> {
     let mut result = Vec::new();
     let mut start = 0;
