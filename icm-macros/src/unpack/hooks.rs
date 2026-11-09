@@ -219,7 +219,13 @@ pub(crate) fn parse_comment(
     };
     let pack_start = comment.find("#[unpack(").unwrap(); // safe: annotation_args confirmed it
     let args_start = pack_start + "#[unpack(".len();
-    let args_end = args_start + find_closing_paren(&comment[args_start..]).unwrap(); // likewise
+    let Some(closing) = find_closing_paren(&comment[args_start..]) else {
+        return Err(eyre::eyre!(
+            "#[unpack(...)] annotation on `{struct_name}` has an unclosed `(` \
+             — check for an unbalanced or stray `\"`"
+        ));
+    };
+    let args_end = args_start + closing;
     let args_segments = CommentVisitor::new(&comment[args_start..args_end]).parse();
     let args_str = join_segments(&args_segments);
 
@@ -302,8 +308,13 @@ fn parse_field_args(
     let comment = comment.unwrap(); // safe: annotation_args confirmed the annotation is present
     let pack_start = comment.find("#[unpack(").unwrap();
     let args_start = pack_start + "#[unpack(".len();
-    let args_end = args_start + find_closing_paren(&comment[args_start..]).unwrap();
-    let raw_args = comment[args_start..args_end].trim();
+    let Some(args_end_rel) = find_closing_paren(&comment[args_start..]) else {
+        return Err(eyre::eyre!(
+            "#[unpack(...)] annotation on field `{field_name}` has an unclosed `(` \
+             — check for an unbalanced or stray `\"`"
+        ));
+    };
+    let raw_args = comment[args_start..args_start + args_end_rel].trim();
     let args_segments = CommentVisitor::new(raw_args).parse();
     let args_str = join_segments(&args_segments);
 
@@ -1188,5 +1199,34 @@ let raw = parse_comment(
             err.contains("empty `length` for field `data` of `Foo`"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn test_unclosed_paren() {
+        // Stray " in a struct-level annotation: annotation_args catches the unterminated string.
+        // Previously this silently produced None (no unpack function generated).
+        let err = parse_comment(
+            r#"#[unpack(method = "parseX)]"#,
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("unterminated string"), "wrong error: {err}");
+
+        // Stray " in a field-level annotation: annotation_args catches the unterminated string.
+        // Previously this silently returned default FieldArgs, dropping method/length/assert.
+        let err = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(method = "parseField)]"#.to_string()),
+                false,
+                "myField".to_string(),
+            )],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("unterminated string"), "wrong error: {err}");
     }
 }
