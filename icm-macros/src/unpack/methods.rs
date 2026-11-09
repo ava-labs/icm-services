@@ -250,6 +250,18 @@ pub fn unpack_struct(
             );
         }
         let deserialize_field_code = if let Some(method) = &field_args.method {
+            if field_args
+                .assert
+                .iter()
+                .any(|a| a.captured == CaptureType::Element)
+            {
+                eyre::bail!(
+                    "`each` assert on field `{field_name}` with `method = \"{method}\"` is not \
+                     supported: element-level assertions require type information that is not \
+                     available after a custom method call; apply the assertion inside `{method}` \
+                     instead"
+                );
+            }
             if let Some(LengthSpec::Constant(expr)) = &field_args.length {
                 // method + constant: pass a pre-sliced buffer of exactly `expr` bytes.
                 // The method returns just the value — no bytes-consumed count needed.

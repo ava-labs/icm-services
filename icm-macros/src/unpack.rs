@@ -356,6 +356,14 @@ mod tests {
                 "testing/unpack/errors/EachOnCustom.sol",
                 "`each` assert on `inner` requires a container type (array, bytes, string, or bytesN), not `Inner`",
             ),
+            (
+                "testing/unpack/errors/EachOnMethodField.sol",
+                "`each` assert on field `values` with `method = \"readValues\"` is not supported",
+            ),
+            (
+                "testing/unpack/errors/AssertOnDefault.sol",
+                "Cannot use `assert` on field `value` of `HasAssertOnDefault` with `default`",
+            ),
         ];
         for (path, expected) in cases {
             let err = reforge::testing::test_macro_err(path, derive_unpack)

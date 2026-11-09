@@ -337,6 +337,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> eyre::Result<FieldAr
         FieldArgs {
             default: true,
             memory,
+            assert: asserts,
             ..Default::default()
         }
     } else {
