@@ -24,10 +24,10 @@ struct Sizes {
     // #[pack(length=uint32)]
     // #[unpack(length=uint32)]
     address[] Addresses;
-    // #[pack(length=drop)]
+    // #[pack(length=RoundTrip.PAIR_LENGTH)]
     // #[unpack(length=RoundTrip.PAIR_LENGTH)]
     address[] Pair;
-    // #[pack(length=drop, method="RoundTrip.reverseBytes")]
+    // #[pack(length=32, method="RoundTrip.reverseBytes")]
     // #[unpack(length=32, method="RoundTrip.reverseBytes")]
     bytes ReverseHash;
 }
@@ -68,10 +68,10 @@ library RoundTrip {
         // #[pack(length=uint32)]
         // #[unpack(length=uint32)]
         address[] Addresses;
-        // #[pack(length=drop)]
+        // #[pack(length=PAIR_LENGTH)]
         // #[unpack(length=PAIR_LENGTH)]
         address[] Pair;
-        // #[pack(length=drop, method="reverseBytes")]
+        // #[pack(length=32, method="reverseBytes")]
         // #[unpack(length=32, method="reverseBytes")]
         bytes ReverseHash;
     }

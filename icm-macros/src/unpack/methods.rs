@@ -4,10 +4,12 @@
 //! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
 //! name unconditionally — callers must not rename it.
 
-use crate::unpack::hooks::{LengthSpec, UnpackArgs};
 use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
+
+use crate::common::LengthSpec;
+use crate::unpack::hooks::UnpackArgs;
 
 /// Generates the code to unpack an elementary Solidity type from the front of `data`.
 /// The result is stored in a freshly declared local named `output`.
@@ -16,7 +18,10 @@ use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
 ///
 /// Only the bytes consumed by this type are removed from `data`; the rest remains available
 /// for subsequent unpacking calls.
+///
+/// `fn_name` is the generated function's name, used only to label its revert messages.
 pub fn unpack_elementary(
+    fn_name: &str,
     output: &str,
     ty: ElementaryType,
     calldata: bool,
@@ -30,7 +35,9 @@ pub fn unpack_elementary(
                 LengthSpec::Constant(expr) => {
                     // No length prefix in the stream; the length is a known constant expression.
                     // It is evaluated into a local first: inline assembly can only reference
-                    // literal constants directly, not expressions such as `Lib.CONST`.
+                    // literal constants directly, not expressions such as `Lib.CONST`. The
+                    // memory path checks that enough input remains before copying, so a short
+                    // buffer reverts here just as the calldata slice does.
                     if calldata {
                         format!(
                             "\n{type_name} memory {output};\
@@ -45,10 +52,12 @@ pub fn unpack_elementary(
                             ElementaryType::Bytes => "new bytes(length)",
                             _ => "string(new bytes(length))",
                         };
+                        let guard = remaining_guard(fn_name, &output);
                         format!(
                             "\n{type_name} memory {output};\
                             \n{{\
                             \n    uint256 length = {expr};\
+                            \n    {guard}\
                             \n    {output} = {alloc};\
                             \n    assembly {{\
                             \n        mcopy(add({output}, 32), add(data, 32), length)\
@@ -212,7 +221,9 @@ pub fn unpack_struct(
                 // method + constant: pass a pre-sliced buffer of exactly `expr` bytes.
                 // The method returns just the value — no bytes-consumed count needed.
                 // As in `unpack_elementary`, the constant is evaluated into a local so that
-                // non-literal expressions can be used from inline assembly.
+                // non-literal expressions can be used from inline assembly, and the memory
+                // path checks that enough input remains before copying so that `method` is
+                // never handed bytes from past the end of `data`.
                 if args.calldata {
                     format!(
                         "\n{declaration}\
@@ -223,10 +234,12 @@ pub fn unpack_struct(
                         \n}}"
                     )
                 } else {
+                    let guard = remaining_guard(&fn_name, &local_name);
                     format!(
                         "\n{declaration}\
                         \n{{\
                         \n    uint256 length = {expr};\
+                        \n    {guard}\
                         \n    bytes memory _slice = new bytes(length);\
                         \n    assembly {{ mcopy(add(_slice, 32), add(data, 32), length) }}\
                         \n    {local_name} = {method}(_slice);\
@@ -264,6 +277,7 @@ pub fn unpack_struct(
             }
         } else {
             let node = UnpackingTreeNode {
+                fn_name: &fn_name,
                 depth: 0,
                 output: local_name.clone(),
                 ty: &field.ty.kind,
@@ -296,6 +310,8 @@ pub fn unpack_struct(
 /// A struct that tracks a recursive enumeration through a type to fully
 /// expand its packing algorithm. Modelled as a node in a tree
 struct UnpackingTreeNode<'a> {
+    /// The name of the generated function, used only to label its revert messages
+    fn_name: &'a str,
     /// The level of recursion in the type
     depth: u8,
     /// The variable which will store the result at this
@@ -314,7 +330,9 @@ fn inline_unpack(
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
-        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata, &node.length),
+        TypeKind::Elementary(ty) => {
+            unpack_elementary(node.fn_name, &node.output, *ty, calldata, &node.length)
+        }
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
             // and allocates `new T[](length)`, which cannot be assigned to a `T[N]` field.
@@ -328,6 +346,7 @@ fn inline_unpack(
             let type_name = get_type_name(ctx, &arr.element.kind, target_contract)?;
             let next_output = format!("{}_{}", node.output, node.depth + 1);
             let next_node = UnpackingTreeNode {
+                fn_name: node.fn_name,
                 depth: node.depth + 1,
                 output: next_output.clone(),
                 ty: &arr.element.kind,
@@ -598,6 +617,13 @@ fn slice_memory(array: &str, bytes_read: &str, new_length: &str) -> String {
     \n    mstore({array}, _{array}_new_len)\
     \n}}"
     )
+}
+
+/// Emits a `require` that at least `length` bytes remain in the memory buffer `data`, so that a
+/// short input reverts before anything is read past its end. The calldata paths get the same
+/// check from slicing.
+fn remaining_guard(fn_name: &str, label: &str) -> String {
+    format!("require(length <= data.length, \"{fn_name}: data too short for {label}\");")
 }
 
 /// Returns a local variable name that does not clash with any names introduced
