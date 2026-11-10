@@ -190,15 +190,28 @@ func TestSenderSendAbandonsEstimationRevert(t *testing.T) {
 
 // A delivery that succeeds with no gas the node may try, bounded by the block gas limit, cannot
 // be mined. The node reports that instead of an estimate, and the message is abandoned without
-// anything being broadcast.
+// anything being broadcast. The destination client checks at startup that the node tries the
+// full block gas limit, so a lower or unstated bound only changes what is logged.
 func TestSenderSendExceedingGasAllowanceIsNonRetryable(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	st := newSenderTest(t, ctrl)
-	st.expectEstimation(t, 0, errors.New("gas required exceeds allowance (12000000)"))
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "at the block gas limit", err: errors.New("gas required exceeds allowance (12000000)")},
+		{name: "below the block gas limit", err: errors.New("gas required exceeds allowance (8000000)")},
+		{name: "unstated bound", err: errors.New("gas required exceeds allowance")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			st := newSenderTest(t, ctrl)
+			st.expectEstimation(t, 0, tt.err)
 
-	_, err := send(st)
-	require.ErrorIs(t, err, ErrDeliveryExceedsBlockGasLimit)
-	require.ErrorIs(t, err, ErrNonRetryable)
+			_, err := send(st)
+			require.ErrorIs(t, err, ErrDeliveryExceedsBlockGasLimit)
+			require.ErrorIs(t, err, ErrNonRetryable)
+		})
+	}
 }
 
 // A revert because another relayer delivered the message first is not a failure: there is

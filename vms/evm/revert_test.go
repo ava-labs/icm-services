@@ -148,10 +148,42 @@ func TestAsRevertError(t *testing.T) {
 }
 
 func TestExceedsGasAllowance(t *testing.T) {
-	require.True(t, ExceedsGasAllowance(errors.New("gas required exceeds allowance (12000000)")))
-	require.True(t, ExceedsGasAllowance(
-		fmt.Errorf("failed to estimate: %w", errors.New("gas required exceeds allowance (50000000)")),
-	))
-	require.False(t, ExceedsGasAllowance(errors.New("execution reverted")))
-	require.False(t, ExceedsGasAllowance(nil))
+	tests := []struct {
+		name      string
+		err       error
+		allowance uint64
+		exceeds   bool
+	}{
+		{
+			name:      "out of gas at the caller's limit",
+			err:       errors.New("gas required exceeds allowance (12000000)"),
+			allowance: 12_000_000,
+			exceeds:   true,
+		},
+		{
+			name:      "wrapped, out of gas at the node's cap",
+			err:       fmt.Errorf("failed to estimate: %w", errors.New("gas required exceeds allowance (8000000)")),
+			allowance: 8_000_000,
+			exceeds:   true,
+		},
+		{
+			name:    "bound not stated",
+			err:     errors.New("gas required exceeds allowance"),
+			exceeds: true,
+		},
+		{
+			name: "revert",
+			err:  errors.New("execution reverted"),
+		},
+		{
+			name: "nil",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			allowance, exceeds := ExceedsGasAllowance(tt.err)
+			require.Equal(t, tt.exceeds, exceeds)
+			require.Equal(t, tt.allowance, allowance)
+		})
+	}
 }
