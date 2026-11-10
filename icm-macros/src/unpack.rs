@@ -26,10 +26,10 @@
 //!
 //! `visibility`: Set the visibility of the generated function. Defaults to `public`.
 //!
-//! `assert = "|var| { expr }"`: Assert a post-condition on the fully-deserialized struct. The
-//! closure value must be a quoted string. `var` is replaced with `result` (the decoded struct) in
-//! the emitted `require` expression. Multiple `assert` keys may appear; each generates a separate
-//! `require` call emitted just before the function's `return` statement. Not valid on enums.
+//! `assert = "|var| { body }"`: Assert post-conditions on the fully-deserialized struct. The
+//! closure value must be a quoted string. `var` is replaced with `result` (the decoded struct).
+//! Multiple `assert` keys may appear; each is emitted just before the function's `return`
+//! statement. Not valid on enums. See _Assert closure bodies_ below.
 //!
 //! `calldata` (flag): Accept `bytes calldata data` instead of `bytes memory data`. The generated
 //! code uses calldata array slices throughout, avoiding any memory allocation for the buffer itself.
@@ -62,15 +62,35 @@
 //! fields decoded by a helper that does not implement the `(uint256, T)` unpack convention. Pairs
 //! with `#[pack(method = "expr", length = constant)]`.
 //!
-//! `assert = "|var| { expr }"`: Assert a post-condition on the decoded field value. `var` is
-//! replaced with the field's local variable name. Emitted as `require(expr)` immediately after
-//! `result.field = local`. Multiple `assert` keys may appear on a single field.
+//! `assert = "|var| { body }"`: Assert post-conditions on the decoded field value. `var` is
+//! replaced with the field's local variable name. Emitted immediately after `result.field = local`.
+//! Multiple `assert` keys may appear on a single field. See _Assert closure bodies_ below.
 //!
-//! `assert = "|each var| { expr }"`: Assert a post-condition on each element of a container field
+//! `assert = "|each var| { body }"`: Assert a post-condition on each element of a container field
 //! (array, `bytes`, `string`, or `bytesN`). For arrays, `var` is replaced with the per-element
 //! local inside the decode loop. For `bytes`/`string`/`bytesN`, a post-decode loop iterates the
 //! bytes and binds `bytes1 _elem`; `var` is replaced with `_elem`. Not valid on non-container
-//! types or at the type level.
+//! types or at the type level. See _Assert closure bodies_ below.
+//!
+//! _Assert closure bodies_
+//! All assert forms use the closure syntax `|var| { body }` or `|each var| { body }`. The
+//! capture name (`var`) is a plain Solidity identifier that is substituted textually throughout
+//! the body. The `each` keyword signals an element-level assertion; without it the capture refers
+//! to the whole field or decoded struct.
+//!
+//! The body is a restricted mini-language — not full Solidity. It is split on `;` and each
+//! non-empty, non-comment statement is emitted as a separate `require()` in its own anonymous
+//! scope. `//` and `/* */` comment lines immediately before a statement are emitted before the
+//! corresponding `require()`.
+//!
+//! Only boolean expressions are supported. The restrictions are not enforced at parse time and
+//! will produce Solidity compiler errors if violated:
+//!
+//! - Variable declarations and assignments are not valid — they are not boolean expressions.
+//! - Nested control flow (`if`, `for`, `while`, block scopes) will be mis-split on the `;`
+//!   inside the nested block, producing broken `require()` calls.
+//! - An expression may span multiple text lines; they are flattened with spaces so line breaks
+//!   are purely cosmetic.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the unpack

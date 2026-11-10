@@ -1,6 +1,20 @@
 //! This module contains the tools the unpack macros use to know when they should
 //! be run and extract optional arguments that can be passed to them.
 //! This is done by analyzing comment strings.
+//!
+//! ## Assert closure bodies
+//!
+//! The `assert = "|var| { body }"` annotation value uses a restricted mini-language.
+//! [`parse_closure`] splits the body on `;` and emits each non-empty, non-comment
+//! statement as a separate [`AssertDef`]. Only boolean expressions are valid — the
+//! parser does not understand Solidity statement structure, so:
+//!
+//! - **Variable declarations and assignments** are not detected at parse time and will
+//!   produce a Solidity compiler error downstream.
+//! - **Nested control flow** (`if`, `for`, `while`, block scopes) is not supported;
+//!   nested `{` / `}` confuse the `;`-splitter and will produce broken `require()` calls.
+//! - **Multi-line expressions** are supported: text lines belonging to a single `;`-
+//!   terminated statement are flattened with spaces, so line breaks are purely cosmetic.
 
 mod visitor;
 use visitor::{ClosureVisitor, CommentVisitor, join_segments};
@@ -850,6 +864,26 @@ let raw = parse_comment(
             }]
         );
 
+        // Multi-line assert with a Solidity string literal containing `//` —
+        // the comment prefixes on continuation lines are stripped, but `//`
+        // inside the string literal on its own line is preserved.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//     r.url != \"http://\"\n// }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: r#"r.url != "http://""#.to_string(),
+            }]
+        );
+
         // Block comment style with `*` prefixes on continuation lines.
         let raw = parse_comment(
             "/**\n * #[unpack(assert = \"|r| {\n *    r.value == 0\n *  }\")]\n */",
@@ -885,6 +919,25 @@ let raw = parse_comment(
                 captured: CaptureType::Field,
                 var: "r".to_string(),
                 comment: "// this value\n// should always be zero".to_string(),
+                expr: "r.value == 0".to_string(),
+            }]
+        );
+
+        // An empty continuation line (`//` with nothing after it) must not
+        // interfere with the comment-preserving on the lines around it.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//    // this value\n//\n//    r.value == 0\n//  }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "// this value".to_string(),
                 expr: "r.value == 0".to_string(),
             }]
         );

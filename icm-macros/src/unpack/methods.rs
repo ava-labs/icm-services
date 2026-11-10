@@ -179,7 +179,7 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::
             .iter()
             .map(|a| {
                 let expr = substitute_var(&a.expr, &a.var, "result");
-                format!("\n    require({expr});")
+                format!("\n{}", emit_assert(&a.comment, &expr))
             })
             .collect();
         format!(
@@ -344,7 +344,7 @@ pub fn unpack_struct(
             .filter(|a| a.captured == CaptureType::Field)
         {
             let expr = substitute_var(&assert_def.expr, &assert_def.var, &local_name);
-            body.push_str(&format!("\nrequire({expr});"));
+            body.push_str(&format!("\n{}", emit_assert(&assert_def.comment, &expr)));
         }
     }
     let mut epilogue = pre_return;
@@ -355,7 +355,7 @@ pub fn unpack_struct(
                 if !epilogue.is_empty() {
                     epilogue.push('\n');
                 }
-                epilogue.push_str(&format!("require({expr});"));
+                epilogue.push_str(&emit_assert(&assert_def.comment, &expr));
             }
             CaptureType::Element => {
                 eyre::bail!(
@@ -449,7 +449,7 @@ fn inline_unpack(
                 .iter()
                 .map(|a| {
                     let expr = substitute_var(&a.expr, &a.var, &next_output);
-                    format!("\n        require({expr});")
+                    format!("\n{}", emit_assert(&a.comment, &expr))
                 })
                 .collect();
             let (read_length, advance_past_count) = match &node.length {
@@ -780,6 +780,17 @@ fn read_length_memory(size: usize) -> String {
     }
 }
 
+/// Wraps a single assert expression in an anonymous scope, optionally preceded by a
+/// comment block. The anonymous scope ensures that any locals introduced by the
+/// assertion expression cannot collide with names in adjacent assertion scopes.
+fn emit_assert(comment: &str, expr: &str) -> String {
+    if comment.is_empty() {
+        format!("{{\nrequire({expr});\n}}")
+    } else {
+        format!("{{\n{comment}\nrequire({expr});\n}}")
+    }
+}
+
 /// Returns the visibility keyword with a trailing space, or an empty string when
 /// `visibility` is empty (i.e. for file-level functions that take no visibility specifier).
 fn vis_prefix(visibility: &str) -> String {
@@ -816,7 +827,7 @@ fn element_assert_loop(
         .iter()
         .map(|a| {
             let expr = substitute_var(&a.expr, &a.var, "_elem");
-            format!("\n    require({expr});")
+            format!("\n{}", emit_assert(&a.comment, &expr))
         })
         .collect();
     Ok(format!(

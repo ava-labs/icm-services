@@ -116,7 +116,7 @@ struct MyStruct {
 | `contract` | key-value | Name of the contract/library to inject the generated function into. | *(none — free-standing)* |
 | `name` | key-value | Override the generated function name. | `unpack{TypeName}` |
 | `visibility` | key-value | Visibility of the generated function. | `public` |
-| `assert = "\|var\| { expr }"` | key-value | Emit `require(expr)` before the function returns, with `var` replaced by `result` (the decoded struct). May appear multiple times. Not valid on enums. | *(none)* |
+| `assert = "\|var\| { body }"` | key-value | Emit post-conditions before the function returns. `var` is replaced by `result` (the decoded struct). May appear multiple times. See [Assert closure bodies](#assert-closure-bodies). Not valid on enums. | *(none)* |
 | `calldata` | flag | Accept `bytes calldata data` instead of `bytes memory data`. | *(off)* |
 | `solhint-disable` | flag | Wrap the generated function with `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly`. | *(off)* |
 
@@ -130,6 +130,41 @@ The closure value must be a quoted string so that commas and `=` signs inside th
 //  )]
 struct MyStruct { ... }
 ```
+
+#### Assert closure bodies
+
+The closure body is a restricted mini-language — not full Solidity. The parser splits it on `;` and emits each non-empty, non-comment statement as a separate `require()` wrapped in an anonymous scope. Comments (`//` or `/* */`) that immediately precede a statement are emitted before the corresponding `require()`.
+
+```solidity
+// #[unpack(
+//    assert = "|s| {
+//        // must be non-empty
+//        s.length > 0;
+//        // and within the allowed range
+//        s.length <= MAX_SIZE;
+//    }",
+//  )]
+struct MyStruct { ... }
+```
+
+Generated:
+
+```solidity
+{
+    // must be non-empty
+    require(result.length > 0);
+}
+{
+    // and within the allowed range
+    require(result.length <= MAX_SIZE);
+}
+```
+
+**Restrictions — only boolean expressions are supported:**
+
+- Every `;`-terminated statement must be a boolean expression suitable for `require()`. Variable declarations, assignments, and other non-boolean statements are not detected at parse time and will produce a Solidity compiler error.
+- Nested control flow (`if`, `for`, `while`, block scopes) is not supported. The parser does not understand Solidity statement structure and splits purely on `;`, so a nested block will be split incorrectly across multiple broken `require()` calls.
+- An expression that spans multiple text lines is flattened to a single line with spaces, so line breaks inside a boolean expression are fine — they are purely cosmetic.
 
 #### Field-level annotations
 

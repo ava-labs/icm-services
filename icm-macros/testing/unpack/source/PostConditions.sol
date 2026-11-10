@@ -31,7 +31,15 @@ library PackMethods {
         bool flag;
     }
 
-    function parseMethod(bytes calldata data) pure public returns (uint256, Method memory) {
+    // #[unpack(
+    //    assert = "|r| { r.data.length > 0 }",
+    //    assert = "|r| { r.data.length % 2 == 0 }",
+    // )]
+    struct MultilineAssert {
+        bytes data;
+    }
+
+    function parseMethod(bytes calldata data) public pure returns (uint256, Method memory) {
         Method memory res;
         if (data[0] != 0) {
             res.flag = true;
