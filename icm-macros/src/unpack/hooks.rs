@@ -1062,6 +1062,67 @@ let raw = parse_comment(
     }
 
     #[test]
+    fn test_assert_block_comment_plus_expr() {
+        // An inline `/* ... */` block comment on the same line as an expression must not
+        // consume the expression.  Previously the whole line was pushed to comment_lines and
+        // the expression was silently dropped, emitting no require().
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { /* v1 only */ r.version == 1 }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "/* v1 only */".to_string(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // A closing `*/` on the same line as the expression (multi-line block comment):
+        // `/* \n */ expr` — the expression after `*/` must not be dropped.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//    /*\n//     */ r.version == 1\n//  }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "/*\n*/".to_string(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // A trailing `/* */` after the expression on the same line stays in `expr` —
+        // Solidity accepts block comments inside require() arguments, so this is valid.
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 /* v1 only */ }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: "r.version == 1 /* v1 only */".to_string(),
+            }]
+        );
+    }
+
+    #[test]
     fn test_field_args() {
         let raw = parse_comment(
             "#[unpack(visibility=\"private\", name=\"Foo\")]",
