@@ -12,8 +12,12 @@ concurrency:
   group: nightly-tests
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   nightly_zk_test:
+    permissions:
+      contents: read
     name: nightly-zk-test
     runs-on: ubuntu-22.04
     timeout-minutes: 240
@@ -23,6 +27,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

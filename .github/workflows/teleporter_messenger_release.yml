@@ -8,8 +8,13 @@ on:
     tags:
       - "teleporter-v[0-9].0.0"
 
+permissions: {}
+
 jobs:
   build_and_upload_artifacts:
+    permissions:
+      contents: write
+      pull-requests: read
     name: Build and Upload Teleporter Artifacts
     runs-on: ubuntu-22.04
     env:
@@ -23,6 +28,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -58,22 +64,40 @@ jobs:
         id: artifacts
         run: |
           go run icm-contracts/utils/contract-deployment/contractDeploymentTools.go constructKeylessTx out/TeleporterMessenger.sol/TeleporterMessenger.json
-          mv UniversalTeleporterDeployerTransaction.txt ${{ env.deployment_tx_fn }}
-          mv UniversalTeleporterDeployerAddress.txt ${{ env.deployer_addr_fn }}
-          mv UniversalTeleporterMessengerContractAddress.txt ${{ env.contract_addr_fn }}
-          mv out/TeleporterMessenger.sol/TeleporterMessenger.bin ${{ env.teleporter_messenger_bytecode_fn }}
-          mv out/TeleporterRegistry.sol/TeleporterRegistry.bin ${{ env.teleporter_registry_bytecode_fn }}
+          mv UniversalTeleporterDeployerTransaction.txt ${deployment_tx_fn}
+          mv UniversalTeleporterDeployerAddress.txt ${deployer_addr_fn}
+          mv UniversalTeleporterMessengerContractAddress.txt ${contract_addr_fn}
+          mv out/TeleporterMessenger.sol/TeleporterMessenger.bin ${teleporter_messenger_bytecode_fn}
+          mv out/TeleporterRegistry.sol/TeleporterRegistry.bin ${teleporter_registry_bytecode_fn}
 
       - name: Create release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          name: ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
-          prerelease: false
-          body: ${{ steps.build_changelog.outputs.changelog }}
-          files: |
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_NAME: ${{ github.ref_name }}
+          RELEASE_BODY: ${{ steps.build_changelog.outputs.changelog }}
+          RELEASE_FILES: |
             ${{ env.deployment_tx_fn }}
             ${{ env.deployer_addr_fn }}
             ${{ env.contract_addr_fn }}
             ${{ env.teleporter_messenger_bytecode_fn }}
             ${{ env.teleporter_registry_bytecode_fn}}
+        run: |
+          set -eo pipefail
+          files=()
+          while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            for f in $pattern; do
+              [ -e "$f" ] || { echo "::error::No file matches ${pattern}"; exit 1; }
+              files+=("$f")
+            done
+          done <<< "${RELEASE_FILES}"
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --title "${RELEASE_NAME}" --notes "${RELEASE_BODY}" --prerelease=false
+            if [ ${#files[@]} -gt 0 ]; then
+              gh release upload "${RELEASE_TAG}" "${files[@]}" --clobber --repo "${GITHUB_REPOSITORY}"
+            fi
+          else
+            gh release create "${RELEASE_TAG}" "${files[@]}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" --title "${RELEASE_NAME}" --notes "${RELEASE_BODY}"
+          fi
