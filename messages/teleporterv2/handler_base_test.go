@@ -8,6 +8,7 @@ import (
 	"context"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -19,6 +20,7 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/utils"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	ethereum "github.com/ava-labs/libevm"
@@ -227,4 +229,44 @@ func TestMessageDelivered(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, delivered, got)
 	}
+}
+
+// The handlers' own messageReceived query carries a deadline, so that a node that stops answering
+// fails the attempt instead of blocking it forever.
+func TestHandlerMessageDeliveredIsBounded(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	handler, handlerMocks := newTestWarpHandler(t, ctrl)
+	deliveredOutput, err := teleportermessengerv2.PackMessageReceivedOutput(true)
+	require.NoError(t, err)
+	handlerMocks.ethClient.EXPECT().
+		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, call ethereum.CallMsg, _ *big.Int) ([]byte, error) {
+			require.Equal(t, handlerMocks.messageReceivedInput, call.Data)
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok, "messageReceived query must be bounded")
+			require.WithinDuration(t, time.Now().Add(utils.DefaultRPCTimeout), deadline, time.Second)
+			return deliveredOutput, nil
+		}).
+		Times(1)
+
+	delivered, err := handler.messageDelivered()
+	require.NoError(t, err)
+	require.True(t, delivered)
+}
+
+// relay hands the delivery one context to sign the message and then simulate its delivery on, so
+// the deadline must leave time for the simulation on top of the signing.
+func TestRelayDeadlineCoversSimulation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	handler, handlerMocks := newTestWarpHandler(t, ctrl)
+	handlerMocks.routeCalls(t, callRoutes{delivered: false})
+
+	var deadline time.Time
+	txHash, err := handler.relay(func(ctx context.Context) (common.Hash, error) {
+		deadline, _ = ctx.Deadline()
+		return common.Hash{}, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, common.Hash{}, txHash)
+	require.WithinDuration(t, time.Now().Add(utils.DefaultSignAndSimulateTimeout), deadline, time.Second)
 }

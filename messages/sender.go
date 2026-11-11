@@ -91,6 +91,8 @@ func (s *Sender) Simulate(
 	gasLimit uint64,
 	callData []byte,
 ) error {
+	// Callers that sign the message on the same context budget for this call on top of the
+	// signing, see [utils.DefaultSignAndSimulateTimeout].
 	ctx, cancel := context.WithTimeout(ctx, utils.DefaultRPCTimeout)
 	defer cancel()
 	_, err := s.DestinationClient.Client().CallContract(ctx, ethereum.CallMsg{
