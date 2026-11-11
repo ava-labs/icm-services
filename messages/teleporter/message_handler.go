@@ -278,7 +278,9 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 
 	startCreateSignedMessageTime := time.Now()
 
-	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
+	// The delivery is simulated on this context once the message is signed, so the deadline leaves
+	// time for that on top of the signing.
+	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultSignAndSimulateTimeout)
 	defer cancel()
 
 	// Determine the appropriate P-Chain height for validator set selection
@@ -324,9 +326,13 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	return txHash, nil
 }
 
-// messageDelivered reports whether the destination Teleporter has received the message.
+// messageDelivered reports whether the destination Teleporter has received the message. Every
+// query gets an RPC timeout of its own, so that a node that stops answering fails the attempt
+// instead of blocking it forever.
 func (m *messageHandler) messageDelivered() (bool, error) {
-	return m.getTeleporterMessenger().MessageReceived(&bind.CallOpts{}, m.teleporterMessageID)
+	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer cancel()
+	return m.getTeleporterMessenger().MessageReceived(&bind.CallOpts{Context: ctx}, m.teleporterMessageID)
 }
 
 // parseMessage decodes the Teleporter message that [message] was sent as. Teleporter sends its

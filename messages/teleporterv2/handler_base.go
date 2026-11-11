@@ -96,7 +96,9 @@ func (m *handlerBase) relay(deliver func(ctx context.Context) (common.Hash, erro
 		return common.Hash{}, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultCreateSignedMessageTimeout)
+	// The delivery is simulated on this context once the message is signed, so the deadline leaves
+	// time for that on top of the signing.
+	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultSignAndSimulateTimeout)
 	defer cancel()
 
 	txHash, err := deliver(ctx)
@@ -153,9 +155,13 @@ func (m *handlerBase) sender() *messages.Sender {
 	}
 }
 
-// messageDelivered reports whether the destination TeleporterMessengerV2 has received the message.
+// messageDelivered reports whether the destination TeleporterMessengerV2 has received the
+// message. Every query gets an RPC timeout of its own, so that a node that stops answering fails
+// the attempt instead of blocking it forever.
 func (m *handlerBase) messageDelivered() (bool, error) {
-	return MessageDelivered(context.Background(), m.destinationClient.Client(), m.teleporterAddress, m.teleporterMessageID)
+	ctx, cancel := context.WithTimeout(context.Background(), utils.DefaultRPCTimeout)
+	defer cancel()
+	return MessageDelivered(ctx, m.destinationClient.Client(), m.teleporterAddress, m.teleporterMessageID)
 }
 
 // MessageDelivered reports whether the destination TeleporterMessengerV2 at

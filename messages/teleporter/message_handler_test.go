@@ -6,8 +6,10 @@ package teleporter
 import (
 	"bytes"
 	"context"
+	"errors"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -572,4 +574,52 @@ func TestSendMessageSimulatedRevertIsNonRetryable(t *testing.T) {
 	require.ErrorIs(t, err, messages.ErrDeliveryReverts)
 	require.ErrorIs(t, err, messages.ErrNonRetryable)
 	require.ErrorContains(t, err, "arithmetic underflow or overflow")
+}
+
+// The messageReceived query carries a deadline, so that a node that stops answering fails the
+// attempt instead of blocking it forever.
+func TestMessageDeliveredIsBounded(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	s := newSendMessageTest(t, ctrl)
+	deliveredOutput, err := teleportermessenger.PackMessageReceivedOutput(true)
+	require.NoError(t, err)
+	s.ethClient.EXPECT().
+		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, call ethereum.CallMsg, _ *big.Int) ([]byte, error) {
+			require.Equal(t, s.messageReceivedInput, call.Data)
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok, "messageReceived query must be bounded")
+			require.WithinDuration(t, time.Now().Add(utils.DefaultRPCTimeout), deadline, time.Second)
+			return deliveredOutput, nil
+		}).
+		Times(1)
+
+	delivered, err := s.handler.messageDelivered()
+	require.NoError(t, err)
+	require.True(t, delivered)
+}
+
+// ProcessMessage signs the message and then simulates its delivery on one context, so the
+// deadline must leave time for the simulation on top of the signing. The P-chain height lookup is
+// the first step to receive the context, and failing it ends the attempt there.
+func TestProcessMessageDeadlineCoversSimulation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	s := newSendMessageTest(t, ctrl)
+	s.routeCalls(t, false, nil)
+	metrics := mocks.NewMockMetrics(ctrl)
+	metrics.EXPECT().IncFailedRelayMessageCount(gomock.Any()).Times(1)
+	s.handler.metrics = metrics
+
+	var deadline time.Time
+	s.destinationClient.EXPECT().
+		GetPChainHeightForDestination(gomock.Any()).
+		DoAndReturn(func(ctx context.Context) (uint64, error) {
+			deadline, _ = ctx.Deadline()
+			return 0, errors.New("connection refused")
+		}).
+		Times(1)
+
+	_, err := s.handler.ProcessMessage()
+	require.Error(t, err)
+	require.WithinDuration(t, time.Now().Add(utils.DefaultSignAndSimulateTimeout), deadline, time.Second)
 }
