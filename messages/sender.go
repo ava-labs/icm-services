@@ -82,9 +82,13 @@ func (s *Sender) Send(
 // the signature, and would be mined identically on every retry. The verification failures a
 // retry with a fresh signature can fix are exactly the ones the simulation cannot produce.
 //
-// Nodes silently cap the gas of a call at their RPC gas cap, so the destination node must allow
-// calls at least the configured block gas limit for the simulation to be faithful (subnet-evm
-// and geth default to 50M, against a 12M default block gas limit here).
+// Nodes silently cap the gas of a call at their RPC gas cap, so the destination node's cap must
+// be at least the delivery gas limit, which can be as high as the destination's configured
+// block-gas-limit (subnet-evm and geth default the cap to 50M, against a 12M default block gas
+// limit here). With a lower cap the relayer may skip messages it could have delivered: a call cut
+// short of the message's required gas limit fails the destination contract's own gas check, such
+// as Teleporter's "insufficient gas", which is a revert rather than an out-of-gas error, and
+// [Sender.Send] abandons a delivery that reverts in simulation without broadcasting it.
 func (s *Sender) Simulate(
 	ctx context.Context,
 	accessList types.AccessList,
