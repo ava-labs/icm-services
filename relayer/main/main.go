@@ -704,6 +704,7 @@ func startMerkleSetUpdater(
 		pollInterval,
 		maxUpdateInterval,
 		extDest.MaxGasPriceGwei,
+		extDest.GetTxInclusionTimeout(),
 	)
 
 	return updater.Start(ctx)
