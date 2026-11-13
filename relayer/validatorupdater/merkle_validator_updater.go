@@ -21,6 +21,7 @@ import (
 	"github.com/ava-labs/icm-services/peers/clients"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
+	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -46,16 +47,45 @@ type registryCaller interface {
 	) (merklevalidatorsetregistry.ValidatorSetMerkleCommitment, error)
 }
 
-var _ registryCaller = (*merklevalidatorsetregistry.MerkleValidatorSetRegistry)(nil)
+// registry is the subset of the MerkleValidatorSetRegistry binding the updater
+// uses.
+type registry interface {
+	registryCaller
+	AllowPChainFallback(opts *bind.CallOpts) (bool, error)
+	RegisterValidatorSet(
+		opts *bind.TransactOpts,
+		message merklevalidatorsetregistry.ICMMessage,
+		signingChainID [32]byte,
+	) (*types.Transaction, error)
+}
+
+var _ registry = (*merklevalidatorsetregistry.MerkleValidatorSetRegistry)(nil)
+
+// txTracker is the subset of evm.TxTracker the updater uses to see the update
+// transactions it broadcasts through to a known outcome.
+type txTracker interface {
+	WaitMined(ctx context.Context, tx *types.Transaction) (*types.Receipt, error)
+	Unconfirmed() *types.Transaction
+	Resolve(ctx context.Context, allowReplacement func(context.Context) (bool, error)) (bool, error)
+}
+
+var _ txTracker = (*evm.TxTracker)(nil)
 
 type MerkleSetUpdater struct {
 	logger              logging.Logger
 	pChainClient        clients.CanonicalValidatorState
 	signatureAggregator *aggregator.SignatureAggregator
 	ethClient           *ethclient.Client
-	contract            *merklevalidatorsetregistry.MerkleValidatorSetRegistry
+	contract            registry
 	contractAddress     common.Address
 	txOpts              *bind.TransactOpts
+	// txTracker follows the update transactions the updater broadcasts. A wait for
+	// one to be mined is bounded, since the updater has a single goroutine and a
+	// transaction that never mines would otherwise end all further updates. One
+	// that is not mined in time stays with the tracker as unconfirmed, and no new
+	// update is built until it is settled, because a second transaction would only
+	// queue behind its nonce.
+	txTracker txTracker
 
 	networkID    uint32
 	blockchainID ids.ID
@@ -91,6 +121,7 @@ func NewMerkleSetUpdater(
 	pollInterval time.Duration,
 	maxUpdateInterval time.Duration,
 	maxGasPriceGwei uint64,
+	txInclusionTimeout time.Duration,
 ) *MerkleSetUpdater {
 	maxGasPriceWei := new(big.Int).Mul(new(big.Int).SetUint64(maxGasPriceGwei), weiPerGwei)
 	return &MerkleSetUpdater{
@@ -101,6 +132,7 @@ func NewMerkleSetUpdater(
 		contract:            contract,
 		contractAddress:     contractAddress,
 		txOpts:              txOpts,
+		txTracker:           evm.NewTxTracker(logger, ethClient, txOpts.From, txOpts.Signer, txInclusionTimeout),
 		networkID:           networkID,
 		blockchainID:        blockchainID,
 		subnetID:            subnetID,
@@ -138,6 +170,19 @@ func (s *MerkleSetUpdater) Start(ctx context.Context) error {
 }
 
 func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
+	// An update whose transaction has not been seen mined comes first. If it is
+	// outbid it may be replaced, which like any update transaction waits for the
+	// gas price to be within bounds.
+	if s.txTracker.Unconfirmed() != nil {
+		settled, err := s.txTracker.Resolve(ctx, s.gasPriceWithinBounds)
+		if err != nil || !settled {
+			return err
+		}
+		// Whatever the transaction did to the contract, the updater has not observed
+		// it, so the local state is re-read before the next update is built.
+		s.initialized = false
+	}
+
 	if !s.initialized {
 		return s.initializeLocalState(ctx)
 	}
@@ -189,6 +234,12 @@ func (s *MerkleSetUpdater) checkAndUpdate(ctx context.Context) error {
 	)
 
 	err = s.performUpdate(ctx, validatorSetUpdate, s.subnetID)
+	if errors.Is(err, evm.ErrTxUnconfirmed) {
+		// The transaction is out and may yet be mined, so the update has not failed.
+		// Falling back to the P-Chain now would broadcast a second transaction behind
+		// it. The next poll follows up on this one instead.
+		return nil
+	}
 	if err != nil {
 		// Does not retry if the update is for the P-chain itself, or if fallback to P-Chain signing is disabled.
 		if s.subnetID == constants.PrimaryNetworkID || !s.allowPChainFallback {
@@ -285,10 +336,15 @@ func (s *MerkleSetUpdater) initializeLocalState(ctx context.Context) error {
 			onChainVS.PChainHeight, err)
 	}
 
+	// Re-reading the commitment the updater already mirrors is not an update, so
+	// it leaves the staleness clock running. Otherwise a refresh whose transaction
+	// was dropped would not be retried for another maxUpdateInterval.
+	if s.lastUpdateTime.IsZero() || onChainVS.PChainHeight != s.localPChainHeight {
+		s.lastUpdateTime = time.Now()
+	}
 	s.localValidatorSet = validators
 	s.localPChainHeight = onChainVS.PChainHeight
 	s.localTotalWeight = sumWeights(validators)
-	s.lastUpdateTime = time.Now()
 	s.initialized = true
 
 	s.logger.Info("Initialized local validator set from contract",
@@ -361,6 +417,10 @@ func (s *MerkleSetUpdater) performUpdate(
 	if signingChain != constants.PrimaryNetworkID && signingChain != s.subnetID {
 		return fmt.Errorf("invalid signing chain %s: must be P-Chain or this subnet (%s)",
 			signingChain, s.subnetID)
+	}
+	// At most one update transaction is outstanding at a time; see txTracker.
+	if tx := s.txTracker.Unconfirmed(); tx != nil {
+		return fmt.Errorf("%w: %s", evm.ErrTxUnconfirmed, tx.Hash())
 	}
 
 	signingPChainHeight := s.localPChainHeight
@@ -447,7 +507,7 @@ func (s *MerkleSetUpdater) sendUpdate(
 		return fmt.Errorf("registerValidatorSet failed: %w", err)
 	}
 
-	receipt, err := bind.WaitMined(ctx, s.ethClient, tx)
+	receipt, err := s.txTracker.WaitMined(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("waiting for validator set tx: %w", err)
 	}
