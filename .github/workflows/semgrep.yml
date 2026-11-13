@@ -6,18 +6,29 @@ on:
   pull_request:
     branches:
       - "dependabot/**"
+
+# The job only reads the checkout and uploads a SARIF file.
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   semgrep:
     name: semgrep/ci
     runs-on: ubuntu-latest
 
+    # Every step runs inside this image, so it is pinned by digest. Dependabot does not update
+    # container images in workflows, so bump it by hand: take the multi-arch index digest of the
+    # new version tag, e.g. from `docker buildx imagetools inspect semgrep/semgrep:<version>`.
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep:1.184.0@sha256:cc1b68266f267878b39739373ea9985b9a78e5d64497dd875c8de100b22695ed
 
     if: (github.actor != 'dependabot[bot]')
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # The repo keeps descriptive require strings, so skip the rule that asks for custom errors.
       - run: >-
           semgrep ci --dry-run --sarif
