@@ -412,6 +412,8 @@ _Note:_ Given these semantics for computing the starting block height, it's poss
 
 ### API
 
+Request bodies are limited to 48 KiB, which fits the largest Warp message that can be relayed. A larger request is rejected with `HTTP 413`.
+
 #### `/relay`
 - Used to manually relay a Warp message. The body of the request must contain the following JSON:
 

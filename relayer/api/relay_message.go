@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
+	warpPayload "github.com/ava-labs/avalanchego/vms/platformvm/warp/payload"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer"
 	"github.com/ava-labs/icm-services/utils"
@@ -17,6 +18,12 @@ import (
 const (
 	RelayAPIPath        = "/relay"
 	RelayMessageAPIPath = RelayAPIPath + "/message"
+
+	// MaxRequestBodySize bounds the size of a relayer API request body. The largest valid request
+	// is a /relay/message one, which carries a base64 encoded unsigned Warp message. The message
+	// handlers reject a Warp payload over warpPayload.MaxMessageSize, so twice that leaves room
+	// for the base64 expansion (4/3), the framing around the payload and the rest of the JSON.
+	MaxRequestBodySize = 2 * warpPayload.MaxMessageSize
 )
 
 func sanitizeLogValue(value string) string {
@@ -53,13 +60,26 @@ func HandleRelay(mux *http.ServeMux, logger logging.Logger, messageCoordinator *
 	mux.Handle(RelayAPIPath, relayAPIHandler(logger, messageCoordinator))
 }
 
+// decodeRequest decodes the body of [r] into [req], reading at most MaxRequestBodySize of it. If
+// that fails, it writes the error response and returns false.
+func decodeRequest(logger logging.Logger, w http.ResponseWriter, r *http.Request, req any) bool {
+	status, err := utils.DecodeJSONBody(w, r, MaxRequestBodySize, req)
+	if err == nil {
+		return true
+	}
+	msg := "could not decode request body"
+	if status == http.StatusRequestEntityTooLarge {
+		msg = "request body too large"
+	}
+	logger.Warn("Could not decode request body", zap.Error(err))
+	http.Error(w, msg, status)
+	return false
+}
+
 func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req ManualWarpMessageRequest
-		err := json.NewDecoder(r.Body).Decode(&req)
-		if err != nil {
-			logger.Warn("Could not decode request body", zap.Error(err))
-			http.Error(w, "could not decode request body", http.StatusBadRequest)
+		if !decodeRequest(logger, w, r, &req) {
 			return
 		}
 
@@ -117,10 +137,7 @@ func relayMessageAPIHandler(logger logging.Logger, messageCoordinator *relayer.M
 func relayAPIHandler(logger logging.Logger, messageCoordinator *relayer.MessageCoordinator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req RelayMessageRequest
-		err := json.NewDecoder(r.Body).Decode(&req)
-		if err != nil {
-			logger.Warn("Could not decode request body", zap.Error(err))
-			http.Error(w, "could not decode request body", http.StatusBadRequest)
+		if !decodeRequest(logger, w, r, &req) {
 			return
 		}
 
