@@ -73,16 +73,25 @@ fi
 
 # Default dev gas limit (11.5M) is too low for the validator set registry Nick's-method deploy and
 # large updateValidatorSet calldata; raise the block ceiling for integration tests.
+#
+# The unauthenticated HTTP RPC is bound to loopback only (every consumer dials 127.0.0.1:5050),
+# with geth's default localhost vhosts and no CORS origins, so other hosts and browser origins
+# cannot reach the unlocked dev account. The debug namespace is deliberately not enabled on HTTP:
+# it exposes handlers that create or truncate caller-named files (e.g. debug_writeMemProfile).
+#
+# debug_traceTransaction is still available over the IPC socket, which serves every namespace but
+# is only accessible to the user running the node (geth creates it with mode 0600). The e2e
+# harness connects to it; see localEthereumNetworkIPCPath in
+# icm-contracts/tests/network/local_ethereum_network.go, which must match --ipcpath.
 geth --dev \
     --dev.gaslimit 30000000 \
     --verbosity 1 \
     --http \
-    --http.addr "0.0.0.0" \
+    --http.addr "127.0.0.1" \
     --http.port "5050" \
-    --http.vhosts "*" \
-    --http.corsdomain "*" \
     --datadir "$data_dir" \
-    --http.api "eth,net,web3,debug" \
+    --ipcpath "$data_dir/geth.ipc" \
+    --http.api "eth,net,web3" \
     --rpc.txfeecap 50 \
     --rpc.allow-unprotected-txs \
     --dev.period 1 &
