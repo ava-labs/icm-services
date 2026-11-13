@@ -412,7 +412,8 @@ fn inline_unpack(
 ) -> eyre::Result<String> {
     Ok(match node.ty {
         TypeKind::Elementary(ty) => {
-            let mut code = unpack_elementary(node.fn_name, &node.output, *ty, calldata, &node.length);
+            let mut code =
+                unpack_elementary(node.fn_name, &node.output, *ty, calldata, &node.length);
             if !node.element_asserts.is_empty() {
                 code.push_str(&element_assert_loop(
                     *ty,

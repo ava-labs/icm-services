@@ -37,9 +37,12 @@ pub struct UnpackArgs {
     pub assert: Vec<AssertDef>,
 }
 
+/// Whether the closure variable captures a container element or the whole decoded value.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum CaptureType {
+    /// `|each var|` — variable is bound to each element inside the decode loop.
     Element,
+    /// `|var|` — variable is bound to the whole field or decoded struct.
     #[default]
     Field,
 }
@@ -355,7 +358,7 @@ fn parse_field_args(
                         Some(Err(e)) => return Err(e),
                         None => {
                             return Err(eyre::eyre!(
-"assert value {inner:?} on field `{field_name}` is not a valid \
+                                "assert value {inner:?} on field `{field_name}` is not a valid \
                                  closure; expected `|name| {{ expr }}` or `|each name| {{ expr }}`"
                             ));
                         }
@@ -472,7 +475,7 @@ mod tests {
 
     #[test]
     fn test_basic() {
-let field_meta = vec![
+        let field_meta = vec![
             (None, false, String::new()),
             (None, true, String::new()),
             (None, false, String::new()),
@@ -515,7 +518,7 @@ let field_meta = vec![
 
     #[test]
     fn test_flags() {
-let raw = parse_comment(
+        let raw = parse_comment(
             "#[unpack(solhint-disable)]",
             &vec![(None, false, String::new()); 2],
             "",
@@ -1036,7 +1039,10 @@ let raw = parse_comment(
         .unwrap_err()
         .to_string();
         assert!(err.contains("not a valid closure"), "wrong error: {err}");
-        assert!(err.contains("MyStruct"), "error should name the struct: {err}");
+        assert!(
+            err.contains("MyStruct"),
+            "error should name the struct: {err}"
+        );
 
         // malformed assert (missing braces) on a field-level assert — None path
         let err = parse_comment(
@@ -1051,7 +1057,10 @@ let raw = parse_comment(
         .unwrap_err()
         .to_string();
         assert!(err.contains("not a valid closure"), "wrong error: {err}");
-        assert!(err.contains("myField"), "error should name the field: {err}");
+        assert!(
+            err.contains("myField"),
+            "error should name the field: {err}"
+        );
     }
 
     #[test]
@@ -1271,7 +1280,11 @@ let raw = parse_comment(
         );
         let err = parse_comment(
             "#[unpack()]",
-            &[(Some("#[unpack(length = (1 + 2]".to_string()), true, String::new())],
+            &[(
+                Some("#[unpack(length = (1 + 2]".to_string()),
+                true,
+                String::new(),
+            )],
             "",
         )
         .unwrap_err()

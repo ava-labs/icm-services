@@ -19,6 +19,8 @@ impl SegSep {
     }
 }
 
+/// One piece of the args string after comment prefixes have been stripped, together
+/// with the separator that should precede it when the segments are joined.
 pub(super) struct Segment<'a> {
     /// Separator to insert before this segment when joining (ignored for the
     /// first non-empty segment).
@@ -27,10 +29,17 @@ pub(super) struct Segment<'a> {
     pub(super) statement: &'a str,
 }
 
+/// Tracks whether the visitor is currently inside a Solidity comment inside a
+/// closure body. Used by both `CommentVisitor` (to avoid mis-stripping `//`
+/// that is content inside a string literal) and `ClosureVisitor` (to classify
+/// lines as comment vs expression).
 #[derive(Default)]
 pub(super) enum CommentType {
+    /// Inside a `//` line comment.
     Comment,
+    /// Inside a `/* ... */` block comment.
     Multiline,
+    /// Not inside any comment.
     #[default]
     None,
 }
@@ -57,6 +66,12 @@ impl CommentType {
     }
 }
 
+/// Strips annotation comment prefixes (`//`, `///`, `* `) from a raw multi-line annotation
+/// argument string, producing a flat list of [`Segment`]s ready to be joined into a single
+/// expression string.
+///
+/// Lines inside a double-quoted value (e.g. a closure body) are treated as content rather
+/// than comment syntax, so Solidity `//` and `/* */` inside those values are left intact.
 pub(super) struct CommentVisitor<'a> {
     raw: &'a str,
     pos: usize,
@@ -89,6 +104,7 @@ impl<'a> CommentVisitor<'a> {
         }
     }
 
+    /// Runs the visitor to completion and returns the collected segments.
     pub(super) fn parse(mut self) -> Vec<Segment<'a>> {
         while self.pos < self.raw.len() {
             self.handle_byte();
@@ -98,6 +114,9 @@ impl<'a> CommentVisitor<'a> {
         self.segments
     }
 
+    /// Processes one logical unit starting at `self.pos`. Calls each `mark_*` helper in
+    /// order, then advances `pos` by the number of bytes consumed (1–3 depending on the
+    /// token at the current position).
     fn handle_byte(&mut self) {
         let pos = self.pos;
         let advance_by = self.advance_by(pos);
@@ -113,6 +132,9 @@ impl<'a> CommentVisitor<'a> {
         self.pos += advance_by;
     }
 
+    /// Returns how many bytes `handle_byte` should consume at `pos`. Multi-byte tokens
+    /// (`*/`, `//`, `///`, `* `) are consumed in one step so that their constituent bytes
+    /// are never individually re-examined as potential comment or segment boundaries.
     fn advance_by(&self, pos: usize) -> usize {
         let b = self.raw.as_bytes()[pos];
         match b {
@@ -144,12 +166,19 @@ impl<'a> CommentVisitor<'a> {
         }
     }
 
+    /// Toggles `in_quotes` on each `"` that appears outside a brace block. Braces inside
+    /// a quoted value are not Rust string delimiters, so the toggle is suppressed while
+    /// `brace_depth > 0`.
     fn mark_in_quotes(&mut self, byte: u8) {
         if byte == b'"' && self.brace_depth == 0 {
             self.in_quotes = !self.in_quotes;
         }
     }
 
+    /// Tracks the nesting depth of `{ }` pairs inside a quoted value. This depth is used
+    /// by `mark_in_quotes` to suppress quote-toggle on a `"` that opens a Solidity string
+    /// literal inside a closure body, and by `mark_comments` to gate Solidity comment
+    /// tracking to lines that are actually inside a closure body.
     fn mark_brace_depth(&mut self, b: u8) {
         if b == b'{' && self.in_quotes {
             self.brace_depth += 1;
@@ -158,6 +187,11 @@ impl<'a> CommentVisitor<'a> {
         }
     }
 
+    /// Updates `comment_tracker` as the visitor crosses comment boundaries. Outside a
+    /// quoted closure value this is a no-op — annotation `//` prefixes are handled by
+    /// `mark_segment`, not here. Inside a quoted closure value (`in_quotes &&
+    /// brace_depth > 0`) it detects `//` and `/* */` so that `mark_segment` does not
+    /// misidentify Solidity comment syntax as an annotation prefix.
     fn mark_comments(&mut self, pos: usize) {
         match self.raw.as_bytes()[pos] {
             b'*' if self.comment_tracker.is_multiline() => {
@@ -188,10 +222,19 @@ impl<'a> CommentVisitor<'a> {
         }
     }
 
+    /// Clears the active Solidity comment state. Called when a comment terminator is
+    /// reached (`\n` for `//`, `*/` for `/* */`).
     fn push_comment(&mut self) {
         self.comment_tracker.exit_comment();
     }
 
+    /// Decides whether the byte at `pos` starts a segment boundary and, if so, closes
+    /// the current segment and begins a new one. Boundaries are:
+    /// - `* ` / `*` at line-start — block-comment continuation prefix, stripped entirely.
+    /// - `\n` — ends the current line; the newline itself is excluded from both segments.
+    ///   Sets `seg_sep` to `Newline` inside a quoted value and `Space` outside.
+    /// - `//` / `///` at line-start (or inside quotes where `newline` is true) — annotation
+    ///   comment prefix, stripped by advancing past the slashes.
     fn mark_segment(&mut self, pos: usize, advance_by: usize) {
         match self.raw.as_bytes()[pos] {
             // `* ` or `*` block-comment continuation prefix at start of line.
@@ -218,6 +261,9 @@ impl<'a> CommentVisitor<'a> {
         }
     }
 
+    /// Closes the segment `[seg_start, pos)` and sets `seg_start` to `pos + skip`,
+    /// effectively consuming `skip` bytes of delimiter that should not appear in either
+    /// the current or the next segment.
     fn push_segment(&mut self, pos: usize, skip: usize) {
         self.segments.push(Segment {
             sep: self.seg_sep,
@@ -226,6 +272,10 @@ impl<'a> CommentVisitor<'a> {
         self.seg_start = pos + skip;
     }
 
+    /// Maintains the `newline` flag: set to `true` after `\n` and kept `true` through
+    /// subsequent whitespace, cleared to `false` on the first non-whitespace byte. This
+    /// distinguishes a `//` annotation prefix at the logical line-start from mid-line `//`
+    /// such as in `http://`.
     fn mark_newline(&mut self, b: u8) {
         if b == b'\n' {
             self.newline = true;
@@ -394,6 +444,10 @@ impl<'a> ClosureVisitor<'a> {
         }
     }
 
+    /// Splits `body` into trimmed non-empty lines and classifies each into
+    /// [`Self::comment_lines`] or [`Self::expr_lines`]. Leading `//` and `/* */`
+    /// lines before the first expression are treated as doc comments; everything
+    /// else is treated as expression content.
     pub(super) fn classify_lines(&mut self, body: &'a str) {
         for line in body.lines() {
             let l = line.trim();
