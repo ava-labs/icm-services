@@ -31,8 +31,15 @@ library PackMethods {
     }
 
     // #[unpack(
-    //    assert = "|r| { r.data.length > 0 }",
-    //    assert = "|r| { r.data.length % 2 == 0 }",
+    //    assert = "|r| {
+    //        // the payload must be
+    //        // non-empty
+    //        r.data.length > 0
+    //    }",
+    //    assert = "|r| {
+    //        // and must be an even number of bytes
+    //        r.data.length % 2 == 0
+    //    }",
     // )]
     struct MultilineAssert {
         bytes data;
@@ -151,9 +158,12 @@ library PackMethods {
         uint256 _final_length;
         assembly { _final_length := mload(data) }
         {
+            // the payload must be
+            // non-empty
             require(result.data.length > 0);
         }
         {
+            // and must be an even number of bytes
             require(result.data.length % 2 == 0);
         }
         return (_initial_length - _final_length, result);

@@ -5,16 +5,15 @@
 //! ## Assert closure bodies
 //!
 //! The `assert = "|var| { body }"` annotation value uses a restricted mini-language.
-//! [`parse_closure`] splits the body on `;` and emits each non-empty, non-comment
-//! statement as a separate [`AssertDef`]. Only boolean expressions are valid — the
+//! Each `assert = "..."` key produces exactly one [`AssertDef`]. Use multiple `assert`
+//! attributes for multiple postconditions. Only boolean expressions are valid — the
 //! parser does not understand Solidity statement structure, so:
 //!
 //! - **Variable declarations and assignments** are not detected at parse time and will
 //!   produce a Solidity compiler error downstream.
-//! - **Nested control flow** (`if`, `for`, `while`, block scopes) is not supported;
-//!   nested `{` / `}` confuse the `;`-splitter and will produce broken `require()` calls.
-//! - **Multi-line expressions** are supported: text lines belonging to a single `;`-
-//!   terminated statement are flattened with spaces, so line breaks are purely cosmetic.
+//! - **Nested control flow** (`if`, `for`, `while`, block scopes) is not supported.
+//! - **Multi-line expressions** are supported: text lines are flattened with spaces,
+//!   so line breaks are purely cosmetic.
 
 mod visitor;
 use visitor::{ClosureVisitor, CommentVisitor, join_segments};
@@ -389,9 +388,6 @@ fn parse_field_args(
 /// Finds the index of the `)` that closes the current paren level, skipping
 /// over any nested `(...)` pairs and `"..."` quoted strings.
 /// Returns `None` if no such `)` exists.
-///
-/// See [`strip_comment_prefixes`] for the quote / brace nesting rules that
-/// allow Solidity string literals inside assert closure bodies.
 fn find_closing_paren(s: &str) -> Option<usize> {
     let mut depth = 0usize;
     let mut in_quotes = false;
@@ -415,9 +411,6 @@ fn find_closing_paren(s: &str) -> Option<usize> {
 }
 
 /// Splits `s` on commas that are outside of `"..."` quoted strings.
-///
-/// See [`strip_comment_prefixes`] for the quote / brace nesting rules that
-/// allow Solidity string literals inside assert closure bodies.
 fn split_args(s: &str) -> Vec<&str> {
     let mut result = Vec::new();
     let mut start = 0;
