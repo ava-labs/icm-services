@@ -133,15 +133,17 @@ struct MyStruct { ... }
 
 #### Assert closure bodies
 
-The closure body is a restricted mini-language — not full Solidity. The parser splits it on `;` and emits each non-empty, non-comment statement as a separate `require()` wrapped in an anonymous scope. Comments (`//` or `/* */`) that immediately precede a statement are emitted before the corresponding `require()`.
+The closure body is a restricted mini-language — not full Solidity. Each `assert = "..."` key produces exactly one `require()` call. For multiple postconditions, use multiple `assert` attributes. A leading `//` or `/* */` comment inside the body is emitted before the `require()`.
 
 ```solidity
 // #[unpack(
 //    assert = "|s| {
 //        // must be non-empty
-//        s.length > 0;
+//        s.length > 0
+//    }",
+//    assert = "|s| {
 //        // and within the allowed range
-//        s.length <= MAX_SIZE;
+//        s.length <= MAX_SIZE
 //    }",
 //  )]
 struct MyStruct { ... }
@@ -162,8 +164,8 @@ Generated:
 
 **Restrictions — only boolean expressions are supported:**
 
-- Every `;`-terminated statement must be a boolean expression suitable for `require()`. Variable declarations, assignments, and other non-boolean statements are not detected at parse time and will produce a Solidity compiler error.
-- Nested control flow (`if`, `for`, `while`, block scopes) is not supported. The parser does not understand Solidity statement structure and splits purely on `;`, so a nested block will be split incorrectly across multiple broken `require()` calls.
+- The body must be a single boolean expression suitable for `require()`. Variable declarations, assignments, and other non-boolean statements are not detected at parse time and will produce a Solidity compiler error.
+- Nested control flow (`if`, `for`, `while`, block scopes) is not supported.
 - An expression that spans multiple text lines is flattened to a single line with spaces, so line breaks inside a boolean expression are fine — they are purely cosmetic.
 
 #### Field-level annotations
