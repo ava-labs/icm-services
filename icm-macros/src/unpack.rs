@@ -26,6 +26,11 @@
 //!
 //! `visibility`: Set the visibility of the generated function. Defaults to `public`.
 //!
+//! `assert = "|var| { body }"`: Assert post-conditions on the fully-deserialized struct. The
+//! closure value must be a quoted string. `var` is replaced with `result` (the decoded struct).
+//! Multiple `assert` keys may appear; each is emitted just before the function's `return`
+//! statement. Not valid on enums. See _Assert closure bodies_ below.
+//!
 //! `calldata` (flag): Accept `bytes calldata data` instead of `bytes memory data`. The generated
 //! code uses calldata array slices throughout, avoiding any memory allocation for the buffer itself.
 //!
@@ -56,6 +61,36 @@
 //! bytes-consumed count); the macro advances `data` by `constant` bytes. Use this for fixed-size
 //! fields decoded by a helper that does not implement the `(uint256, T)` unpack convention. Pairs
 //! with `#[pack(method = "expr", length = constant)]`.
+//!
+//! `assert = "|var| { body }"`: Assert post-conditions on the decoded field value. `var` is
+//! replaced with the field's local variable name. Emitted immediately after `result.field = local`.
+//! Multiple `assert` keys may appear on a single field. See _Assert closure bodies_ below.
+//!
+//! `assert = "|each var| { body }"`: Assert a post-condition on each element of a container field
+//! (array, `bytes`, `string`, or `bytesN`). For arrays, `var` is replaced with the per-element
+//! local inside the decode loop. For `bytes`/`string`/`bytesN`, a post-decode loop iterates the
+//! bytes and binds `bytes1 _elem`; `var` is replaced with `_elem`. Not valid on non-container
+//! types or at the type level. See _Assert closure bodies_ below.
+//!
+//! _Assert closure bodies_
+//! All assert forms use the closure syntax `|var| { body }` or `|each var| { body }`. The
+//! capture name (`var`) is a plain Solidity identifier that is substituted textually throughout
+//! the body. The `each` keyword signals an element-level assertion; without it the capture refers
+//! to the whole field or decoded struct.
+//!
+//! The body is a restricted mini-language — not full Solidity. It is split on `;` and each
+//! non-empty, non-comment statement is emitted as a separate `require()` in its own anonymous
+//! scope. `//` and `/* */` comment lines immediately before a statement are emitted before the
+//! corresponding `require()`.
+//!
+//! Only boolean expressions are supported. The restrictions are not enforced at parse time and
+//! will produce Solidity compiler errors if violated:
+//!
+//! - Variable declarations and assignments are not valid — they are not boolean expressions.
+//! - Nested control flow (`if`, `for`, `while`, block scopes) will be mis-split on the `;`
+//!   inside the nested block, producing broken `require()` calls.
+//! - An expression may span multiple text lines; they are flattened with spaces so line breaks
+//!   are purely cosmetic.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the unpack
@@ -238,7 +273,8 @@ pub fn derive_unpack(
 
         let type_name =
             qualified_type_name(ctx, enum_def.name.as_str(), enum_def.contract, arg.contract);
-        let code = methods::unpack_enum(enum_def, arg, &type_name);
+        let code = methods::unpack_enum(enum_def, arg, &type_name)
+            .map_err(foundry_compilers::error::SolcError::msg)?;
 
         let path = ctx
             .sources
@@ -323,6 +359,30 @@ mod tests {
             (
                 "testing/unpack/errors/MalformedAnnotation.sol",
                 "unterminated string in annotation `#[unpack(method = \"parseData)]`",
+            ),
+            (
+                "testing/unpack/errors/EachOnStruct.sol",
+                "`each` assert on `HasEachAssert` is not valid at the type level: structs are not container types",
+            ),
+            (
+                "testing/unpack/errors/EachOnEnum.sol",
+                "`each` assert on `HasEachAssert` is not valid: enums are not container types",
+            ),
+            (
+                "testing/unpack/errors/EachOnNonContainer.sol",
+                "`each` assert on `value` requires a container type (array, bytes, string, or bytesN), not `uint256`",
+            ),
+            (
+                "testing/unpack/errors/EachOnCustom.sol",
+                "`each` assert on `inner` requires a container type (array, bytes, string, or bytesN), not `Inner`",
+            ),
+            (
+                "testing/unpack/errors/EachOnMethodField.sol",
+                "`each` assert on field `values` with `method = \"readValues\"` is not supported",
+            ),
+            (
+                "testing/unpack/errors/AssertOnDefault.sol",
+                "Cannot use `assert` on field `value` of `HasAssertOnDefault` with `default`",
             ),
         ];
         for (path, expected) in cases {

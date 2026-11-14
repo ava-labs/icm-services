@@ -1,6 +1,22 @@
 //! This module contains the tools the unpack macros use to know when they should
 //! be run and extract optional arguments that can be passed to them.
 //! This is done by analyzing comment strings.
+//!
+//! ## Assert closure bodies
+//!
+//! The `assert = "|var| { body }"` annotation value uses a restricted mini-language.
+//! Each `assert = "..."` key produces exactly one [`AssertDef`]. Use multiple `assert`
+//! attributes for multiple postconditions. Only boolean expressions are valid — the
+//! parser does not understand Solidity statement structure, so:
+//!
+//! - **Variable declarations and assignments** are not detected at parse time and will
+//!   produce a Solidity compiler error downstream.
+//! - **Nested control flow** (`if`, `for`, `while`, block scopes) is not supported.
+//! - **Multi-line expressions** are supported: text lines are flattened with spaces,
+//!   so line breaks are purely cosmetic.
+
+mod visitor;
+use visitor::{ClosureVisitor, CommentVisitor, join_segments};
 
 use reforge::PreprocessingData;
 use solar::ast::{ElementaryType, Span};
@@ -16,6 +32,29 @@ pub struct UnpackArgs {
     pub visibility: String,
     pub calldata: bool,
     pub solhint_disable: bool,
+    /// Type-level post-condition. The capture name is replaced with `result`
+    /// (the decoded struct) in the assertion body.
+    pub assert: Vec<AssertDef>,
+}
+
+/// Whether the closure variable captures a container element or the whole decoded value.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum CaptureType {
+    /// `|each var|` — variable is bound to each element inside the decode loop.
+    Element,
+    /// `|var|` — variable is bound to the whole field or decoded struct.
+    #[default]
+    Field,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssertDef {
+    pub captured: CaptureType,
+    pub var: String,
+    /// Inline comment lines that precede this assertion's expression in the
+    /// closure body. Empty when there is no leading comment.
+    pub comment: String,
+    pub expr: String,
 }
 
 /// Per-field unpack annotations, generic over their validation state.
@@ -28,6 +67,8 @@ pub struct FieldArgs<S: ValidationState = Unvalidated> {
     pub default: bool,
     pub memory: bool,
     pub length: Option<S::Length>,
+    /// Field-level post-conditions.
+    pub assert: Vec<AssertDef>,
 }
 
 impl FieldArgs<Unvalidated> {
@@ -38,6 +79,12 @@ impl FieldArgs<Unvalidated> {
         field_name: &str,
         struct_name: &str,
     ) -> eyre::Result<FieldArgs<Validated>> {
+        if self.default && !self.assert.is_empty() {
+            eyre::bail!(
+                "Cannot use `assert` on field `{field_name}` of `{struct_name}` with `default`: \
+                 default fields are skipped during unpacking"
+            );
+        }
         let length = self
             .length
             .map(|value| LengthSpec::validate(value, field_name, struct_name))
@@ -47,6 +94,7 @@ impl FieldArgs<Unvalidated> {
             default: self.default,
             memory: self.memory,
             length,
+            assert: self.assert,
         })
     }
 }
@@ -61,6 +109,7 @@ pub(crate) struct RawUnpackArgs {
     pub visibility: String,
     pub calldata: bool,
     pub solhint_disable: bool,
+    pub assert: Vec<AssertDef>,
 }
 
 impl RawUnpackArgs {
@@ -104,7 +153,7 @@ pub fn parse_args(
     let doc_comment = reforge::get_comment(ctx, source_id, span, data)?;
     let struct_def = ctx.hir.structs().find(|s| s.span == span);
 
-    let field_meta: Vec<(Option<String>, bool)> = struct_def
+    let field_meta: Vec<(Option<String>, bool, String)> = struct_def
         .map(|s| {
             s.fields
                 .iter()
@@ -112,13 +161,18 @@ pub fn parse_args(
                     let field = ctx.hir.variable(field_id);
                     let comment = reforge::get_comment(ctx, source_id, field.span, data);
                     let memory = type_requires_memory(&field.ty);
-                    (comment, memory)
+                    let name = field
+                        .name
+                        .map(|n| n.as_str().to_string())
+                        .unwrap_or_default();
+                    (comment, memory, name)
                 })
                 .collect()
         })
         .unwrap_or_default();
+    let struct_name = struct_def.map(|s| s.name.as_str()).unwrap_or("");
 
-    let raw = match parse_comment(&doc_comment, &field_meta) {
+    let mut raw = match parse_comment(&doc_comment, &field_meta, struct_name) {
         Ok(Some(raw)) => raw,
         Ok(None) => return None,
         Err(e) => return Some(Err(e)),
@@ -145,6 +199,7 @@ pub fn parse_args(
     let solhint_disable = raw.solhint_disable;
     let name = raw.name.clone();
     let visibility = raw.visibility.clone();
+    let assert = std::mem::take(&mut raw.assert);
 
     let fields = match raw.validate_fields(ctx, struct_def) {
         Ok(f) => f,
@@ -158,6 +213,7 @@ pub fn parse_args(
         visibility,
         calldata,
         solhint_disable,
+        assert,
     }))
 }
 
@@ -167,25 +223,53 @@ pub fn parse_args(
 /// a field's annotation is malformed.
 pub(crate) fn parse_comment(
     comment: &str,
-    field_meta: &[(Option<String>, bool)],
+    field_meta: &[(Option<String>, bool, String)],
+    struct_name: &str,
 ) -> eyre::Result<Option<RawUnpackArgs>> {
-    let Some(args) = annotation_args(comment, "#[unpack(")? else {
+    // annotation_args handles error detection for malformed annotations (unterminated
+    // strings, unbalanced parens) and tells us whether the annotation is present.
+    // CommentVisitor is then used for the actual content extraction, since annotation_args
+    // does not strip the `//` / `* ` comment-line prefixes needed for multi-line annotations.
+    let Some(_) = annotation_args(comment, "#[unpack(")? else {
         return Ok(None);
     };
+    let pack_start = comment.find("#[unpack(").unwrap(); // safe: annotation_args confirmed it
+    let args_start = pack_start + "#[unpack(".len();
+    let Some(closing) = find_closing_paren(&comment[args_start..]) else {
+        return Err(eyre::eyre!(
+            "#[unpack(...)] annotation on `{struct_name}` has an unclosed `(` \
+             — check for an unbalanced or stray `\"`"
+        ));
+    };
+    let args_end = args_start + closing;
+    let args_segments = CommentVisitor::new(&comment[args_start..args_end]).parse();
+    let args_str = join_segments(&args_segments);
 
     let mut contract = None;
     let mut name = None;
     let mut visibility = "public".to_string();
     let mut calldata = false;
     let mut solhint_disable = false;
+    let mut asserts: Vec<AssertDef> = Vec::new();
 
-    for arg in args {
+    for arg in split_args(&args_str) {
+        let arg = arg.trim();
         if let Some((key, val)) = arg.split_once('=') {
             let val = val.trim().trim_matches('"');
             match key.trim() {
                 "contract" => contract = Some(val.to_string()),
                 "name" => name = Some(val.to_string()),
                 "visibility" => visibility = val.to_string(),
+                "assert" => match parse_closure(val) {
+                    Some(Ok(defs)) => asserts.extend(defs),
+                    Some(Err(e)) => return Err(e),
+                    None => {
+                        return Err(eyre::eyre!(
+                            "assert value {val:?} on `{struct_name}` is not a valid closure; \
+                             expected `|name| {{ expr }}` or `|each name| {{ expr }}`"
+                        ));
+                    }
+                },
                 _ => {}
             }
         } else {
@@ -199,7 +283,7 @@ pub(crate) fn parse_comment(
 
     let fields = field_meta
         .iter()
-        .map(|c| parse_field_args(c.0.as_deref(), c.1))
+        .map(|(c, memory, field_name)| parse_field_args(c.as_deref(), *memory, field_name))
         .collect::<eyre::Result<_>>()?;
 
     Ok(Some(RawUnpackArgs {
@@ -209,6 +293,7 @@ pub(crate) fn parse_comment(
         visibility,
         calldata,
         solhint_disable,
+        assert: asserts,
     }))
 }
 
@@ -221,29 +306,67 @@ fn type_requires_memory(ty: &Type) -> bool {
     }
 }
 
-fn parse_field_args(comment: Option<&str>, memory: bool) -> eyre::Result<FieldArgs<Unvalidated>> {
+fn parse_field_args(
+    comment: Option<&str>,
+    memory: bool,
+    field_name: &str,
+) -> eyre::Result<FieldArgs<Unvalidated>> {
     let annotation = comment
         .map(|c| annotation_args(c, "#[unpack("))
         .transpose()?
         .flatten();
-    let Some(args) = annotation else {
+    let Some(_) = annotation else {
         return Ok(FieldArgs {
             memory,
             ..Default::default()
         });
     };
+    let comment = comment.unwrap(); // safe: annotation_args confirmed the annotation is present
+    let pack_start = comment.find("#[unpack(").unwrap();
+    let args_start = pack_start + "#[unpack(".len();
+    let Some(args_end_rel) = find_closing_paren(&comment[args_start..]) else {
+        return Err(eyre::eyre!(
+            "#[unpack(...)] annotation on field `{field_name}` has an unclosed `(` \
+             — check for an unbalanced or stray `\"`"
+        ));
+    };
+    let raw_args = comment[args_start..args_start + args_end_rel].trim();
+    let args_segments = CommentVisitor::new(raw_args).parse();
+    let args_str = join_segments(&args_segments);
+
+    if args_str.trim() == "default" {
+        return Ok(FieldArgs {
+            default: true,
+            memory,
+            ..Default::default()
+        });
+    }
 
     let mut method = None;
     let mut default = false;
     let mut length = None;
-    for arg in args {
-        if let Some((key, val)) = arg.split_once('=') {
+    let mut asserts: Vec<AssertDef> = Vec::new();
+    for arg in split_args(&args_str) {
+        if let Some((key, val)) = arg.trim().split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
                 "length" => length = Some(val.trim().trim_matches('"').to_string()),
+                "assert" => {
+                    let inner = val.trim().trim_matches('"');
+                    match parse_closure(inner) {
+                        Some(Ok(defs)) => asserts.extend(defs),
+                        Some(Err(e)) => return Err(e),
+                        None => {
+                            return Err(eyre::eyre!(
+                                "assert value {inner:?} on field `{field_name}` is not a valid \
+                                 closure; expected `|name| {{ expr }}` or `|each name| {{ expr }}`"
+                            ));
+                        }
+                    }
+                }
                 _ => {}
             }
-        } else if arg == "default" {
+        } else if arg.trim() == "default" {
             default = true;
         }
     }
@@ -251,6 +374,7 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> eyre::Result<FieldAr
         FieldArgs {
             default: true,
             memory,
+            assert: asserts,
             ..Default::default()
         }
     } else {
@@ -259,8 +383,89 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> eyre::Result<FieldAr
             default: false,
             memory,
             length,
+            assert: asserts,
         }
     })
+}
+
+/// Finds the index of the `)` that closes the current paren level, skipping
+/// over any nested `(...)` pairs and `"..."` quoted strings.
+/// Returns `None` if no such `)` exists.
+fn find_closing_paren(s: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_quotes = false;
+    let mut brace_depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '"' if brace_depth == 0 => in_quotes = !in_quotes,
+            '{' if in_quotes => brace_depth += 1,
+            '}' if in_quotes && brace_depth > 0 => brace_depth -= 1,
+            '(' if !in_quotes => depth += 1,
+            ')' if !in_quotes => {
+                if depth == 0 {
+                    return Some(i);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits `s` on commas that are outside of `"..."` quoted strings.
+fn split_args(s: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut in_quotes = false;
+    let mut brace_depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '"' if brace_depth == 0 => in_quotes = !in_quotes,
+            '{' if in_quotes => brace_depth += 1,
+            '}' if in_quotes && brace_depth > 0 => brace_depth -= 1,
+            ',' if !in_quotes => {
+                result.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    result.push(&s[start..]);
+    result
+}
+
+/// Parses a closure of the form `|[each] capture| { body }` and returns a single
+/// `AssertDef` for the body expression. Any leading `//` or `/* */` Solidity comment
+/// lines are extracted into `AssertDef::comment`; everything else is the expression.
+///
+/// Each `assert = "..."` annotation key produces exactly one `AssertDef`. Use multiple
+/// `assert = ...` attributes for multiple postconditions.
+///
+/// - Returns `None` if the string doesn't look like a closure (no leading `|` or no body).
+/// - Returns `Some(Err(...))` if the capture name is invalid or the body is empty.
+/// - Returns `Some(Ok(...))` with a single-element vec on success.
+fn parse_closure(s: &str) -> Option<eyre::Result<Vec<AssertDef>>> {
+    let mut visitor = ClosureVisitor::new(s.trim());
+    let (captured, var) = match visitor.parse_capture() {
+        Some(Ok(t)) => t,
+        Some(Err(e)) => return Some(Err(e)),
+        None => return None,
+    };
+    let body = visitor.extract_body()?;
+    visitor.classify_lines(body);
+    let expr = visitor.expr_lines.join(" ");
+    if expr.is_empty() {
+        return Some(Err(eyre::eyre!(
+            "assert closure body for `{var}` contains no boolean expressions"
+        )));
+    }
+    Some(Ok(vec![AssertDef {
+        captured,
+        var,
+        comment: visitor.comment_lines.join("\n"),
+        expr,
+    }]))
 }
 
 #[cfg(test)]
@@ -270,10 +475,15 @@ mod tests {
 
     #[test]
     fn test_basic() {
-        let field_meta = vec![(None, false), (None, true), (None, false), (None, false)];
-        let raw = parse_comment("#[unpack]", &field_meta).unwrap();
+        let field_meta = vec![
+            (None, false, String::new()),
+            (None, true, String::new()),
+            (None, false, String::new()),
+            (None, false, String::new()),
+        ];
+        let raw = parse_comment("#[unpack]", &field_meta, "").unwrap();
         assert!(raw.is_none());
-        let raw = parse_comment("#[unpack()]", &field_meta)
+        let raw = parse_comment("#[unpack()]", &field_meta, "")
             .unwrap()
             .expect("Test failed");
         assert_eq!(raw.contract, None);
@@ -281,6 +491,7 @@ mod tests {
         assert_eq!(raw.visibility, "public".to_string());
         assert!(!raw.calldata);
         assert!(!raw.solhint_disable);
+        assert!(raw.assert.is_empty());
         let mut expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         expected[1].memory = true;
         assert_eq!(raw.fields, expected);
@@ -290,7 +501,8 @@ mod tests {
     fn test_all_keys() {
         let raw = parse_comment(
             "#[unpack(contract=\"Foo\", name=\"Bar\", visibility=\"private\", calldata)]",
-            &vec![(None, false); 4],
+            &vec![(None, false, String::new()); 4],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -299,21 +511,27 @@ mod tests {
         assert_eq!(raw.visibility, "private".to_string());
         assert!(raw.calldata);
         assert!(!raw.solhint_disable);
+        assert!(raw.assert.is_empty());
         let expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         assert_eq!(raw.fields, expected);
     }
 
     #[test]
     fn test_flags() {
-        let raw = parse_comment("#[unpack(solhint-disable)]", &vec![(None, false); 2])
-            .unwrap()
-            .unwrap();
+        let raw = parse_comment(
+            "#[unpack(solhint-disable)]",
+            &vec![(None, false, String::new()); 2],
+            "",
+        )
+        .unwrap()
+        .unwrap();
         assert!(raw.solhint_disable);
         assert!(!raw.calldata);
 
         let raw = parse_comment(
             "#[unpack(calldata, solhint-disable)]",
-            &vec![(None, false); 2],
+            &vec![(None, false, String::new()); 2],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -327,12 +545,18 @@ mod tests {
         let raw = parse_comment(
             "#[unpack()]",
             &vec![
-                (Some("#[unpack(length = \"uint32\")]".to_string()), false),
+                (
+                    Some("#[unpack(length = \"uint32\")]".to_string()),
+                    false,
+                    String::new(),
+                ),
                 (
                     Some("#[unpack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
                     false,
+                    String::new(),
                 ),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -343,6 +567,7 @@ mod tests {
                 default: false,
                 memory: false,
                 length: Some("uint32".to_string()),
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -352,7 +577,550 @@ mod tests {
                 default: false,
                 memory: false,
                 length: Some("uint64".to_string()),
+                assert: vec![],
             }
+        );
+    }
+
+    #[test]
+    fn test_assert() {
+        // type-level assert, alone
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 }")]"#,
+            &vec![(None, false, String::new()); 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // assert can appear before other args (no longer required to be last)
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 }", calldata)]"#,
+            &vec![(None, false, String::new()); 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(raw.calldata);
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // multiple asserts
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 }", assert = "|r| { r.x > 0 }")]"#,
+            &vec![(None, false, String::new()); 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![
+                AssertDef {
+                    captured: CaptureType::Field,
+                    var: "r".to_string(),
+                    comment: String::new(),
+                    expr: "r.version == 1".to_string(),
+                },
+                AssertDef {
+                    captured: CaptureType::Field,
+                    var: "r".to_string(),
+                    comment: String::new(),
+                    expr: "r.x > 0".to_string(),
+                },
+            ]
+        );
+
+        // body containing a function call with commas and parens (safe inside quotes)
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { isValid(r, 0) }")]"#,
+            &vec![(None, false, String::new()); 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: "isValid(r, 0)".to_string(),
+            }]
+        );
+
+        // field-level assert
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|b| { b.length == 48 }")]"#.to_string()),
+                true,
+                String::new(),
+            )],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.fields[0].assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "b".to_string(),
+                comment: String::new(),
+                expr: "b.length == 48".to_string(),
+            }]
+        );
+
+        // element-level assert using `each` keyword
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|each x| { x > 0 }")]"#.to_string()),
+                false,
+                String::new(),
+            )],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.fields[0].assert,
+            vec![AssertDef {
+                captured: CaptureType::Element,
+                var: "x".to_string(),
+                comment: String::new(),
+                expr: "x > 0".to_string(),
+            }]
+        );
+
+        // `each` prefix on a variable name that starts with "each" is not treated as the keyword
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|eachItem| { eachItem > 0 }")]"#.to_string()),
+                false,
+                String::new(),
+            )],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.fields[0].assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "eachItem".to_string(),
+                comment: String::new(),
+                expr: "eachItem > 0".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_assert_solidity_string_literals() {
+        // Assert body contains a Solidity string literal with a comma.
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|each c| { c != "," }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Element,
+                var: "c".to_string(),
+                comment: String::new(),
+                expr: r#"c != ",""#.to_string(),
+            }]
+        );
+
+        // Assert body contains a Solidity string literal with a `)`.
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { keccak256(")") == hash }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: r#"keccak256(")") == hash"#.to_string(),
+            }]
+        );
+
+        // Assert body contains a Solidity string literal with `//`.
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.url != "http://" }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: r#"r.url != "http://""#.to_string(),
+            }]
+        );
+
+        // Other args after a string-literal assert are still parsed.
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.sep != "," }", calldata)]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(raw.calldata);
+        assert_eq!(raw.assert[0].expr, r#"r.sep != ",""#.to_string());
+
+        // Field-level: same handling.
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|each c| { c != "," }")]"#.to_string()),
+                false,
+                String::new(),
+            )],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.fields[0].assert,
+            vec![AssertDef {
+                captured: CaptureType::Element,
+                var: "c".to_string(),
+                comment: String::new(),
+                expr: r#"c != ",""#.to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_assert_multiline() {
+        // Single-line assert with a Solidity string literal containing `//`.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| { r.url != \"http://\" }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: r#"r.url != "http://""#.to_string(),
+            }]
+        );
+
+        // Multi-line assert: `//` comment prefixes on continuation lines must be stripped.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//     r.version == 1\n// }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // Multi-line assert with a Solidity string literal containing `//` —
+        // the comment prefixes on continuation lines are stripped, but `//`
+        // inside the string literal on its own line is preserved.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//     r.url != \"http://\"\n// }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: r#"r.url != "http://""#.to_string(),
+            }]
+        );
+
+        // Block comment style with `*` prefixes on continuation lines.
+        let raw = parse_comment(
+            "/**\n * #[unpack(assert = \"|r| {\n *    r.value == 0\n *  }\")]\n */",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: "r.value == 0".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_assert_inline_comments() {
+        // `//` comment lines inside a multi-line closure body must be preserved.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//    // this value\n//    // should always be zero\n//    r.value == 0\n//  }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "// this value\n// should always be zero".to_string(),
+                expr: "r.value == 0".to_string(),
+            }]
+        );
+
+        // An empty continuation line (`//` with nothing after it) must not
+        // interfere with the comment-preserving on the lines around it.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//    // this value\n//\n//    r.value == 0\n//  }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "// this value".to_string(),
+                expr: "r.value == 0".to_string(),
+            }]
+        );
+
+        // /* */ outer + // inner.
+        let raw = parse_comment(
+            "/**\n * #[unpack(assert = \"|r| {\n *    // this comment\n *    r.value == 0\n *  }\")]\n */",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "// this comment".to_string(),
+                expr: "r.value == 0".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_assert_empty_body() {
+        // An empty closure body must be an error, not a silent no-op.
+        let err = parse_comment(
+            r#"#[unpack(assert = "|r| { }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("no boolean expressions"), "wrong error: {err}");
+
+        // A body containing only a comment must also be an error.
+        let err = parse_comment(
+            r#"#[unpack(assert = "|r| { // just a comment }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("no boolean expressions"), "wrong error: {err}");
+    }
+
+    #[test]
+    fn test_assert_capture_errors() {
+        // empty capture in a type-level assert
+        let err = parse_comment(
+            r#"#[unpack(assert = "|| { true }")]"#,
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("empty capture name"), "wrong error: {err}");
+
+        // empty capture in a field-level assert
+        let err = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|| { true }")]"#.to_string()),
+                false,
+                "myField".to_string(),
+            )],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("empty capture name"), "wrong error: {err}");
+
+        // non-identifier capture name
+        let err = parse_comment(
+            r#"#[unpack(assert = "|2bad| { true }")]"#,
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("not a valid identifier"), "wrong error: {err}");
+
+        // empty capture after `each`
+        let err = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|each | { true }")]"#.to_string()),
+                false,
+                "myField".to_string(),
+            )],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("empty capture name"), "wrong error: {err}");
+
+        // malformed assert (missing pipe) on a type-level assert — None path
+        let err = parse_comment(
+            r#"#[unpack(assert = "x > 0")]"#,
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("not a valid closure"), "wrong error: {err}");
+        assert!(
+            err.contains("MyStruct"),
+            "error should name the struct: {err}"
+        );
+
+        // malformed assert (missing braces) on a field-level assert — None path
+        let err = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(assert = "|x| x > 0")]"#.to_string()),
+                false,
+                "myField".to_string(),
+            )],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("not a valid closure"), "wrong error: {err}");
+        assert!(
+            err.contains("myField"),
+            "error should name the field: {err}"
+        );
+    }
+
+    #[test]
+    fn test_assert_block_comment_plus_expr() {
+        // An inline `/* ... */` block comment on the same line as an expression must not
+        // consume the expression.  Previously the whole line was pushed to comment_lines and
+        // the expression was silently dropped, emitting no require().
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { /* v1 only */ r.version == 1 }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "/* v1 only */".to_string(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // A closing `*/` on the same line as the expression (multi-line block comment):
+        // `/* \n */ expr` — the expression after `*/` must not be dropped.
+        let raw = parse_comment(
+            "#[unpack(assert = \"|r| {\n//    /*\n//     */ r.version == 1\n//  }\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: "/*\n*/".to_string(),
+                expr: "r.version == 1".to_string(),
+            }]
+        );
+
+        // A trailing `/* */` after the expression on the same line stays in `expr` —
+        // Solidity accepts block comments inside require() arguments, so this is valid.
+        let raw = parse_comment(
+            r#"#[unpack(assert = "|r| { r.version == 1 /* v1 only */ }")]"#,
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![AssertDef {
+                captured: CaptureType::Field,
+                var: "r".to_string(),
+                comment: String::new(),
+                expr: "r.version == 1 /* v1 only */".to_string(),
+            }]
         );
     }
 
@@ -361,22 +1129,34 @@ mod tests {
         let raw = parse_comment(
             "#[unpack(visibility=\"private\", name=\"Foo\")]",
             &vec![
-                (Some("#[unpack(method=\"Foo.bar\")]".to_string()), false),
-                (Some("#[unpack(default)]".to_string()), true),
+                (
+                    Some("#[unpack(method=\"Foo.bar\")]".to_string()),
+                    false,
+                    String::new(),
+                ),
+                (Some("#[unpack(default)]".to_string()), true, String::new()),
                 (
                     Some("#[unpack(default, method=\"Foo.bar\")]".to_string()),
                     false,
+                    String::new(),
                 ),
-                (Some("#[unpack(length = uint32)]".to_string()), true),
+                (
+                    Some("#[unpack(length = uint32)]".to_string()),
+                    true,
+                    String::new(),
+                ),
                 (
                     Some("#[unpack(method=\"Foo.bar\", length = uint64)]".to_string()),
                     true,
+                    String::new(),
                 ),
                 (
                     Some("#[unpack(length = BLST.BLS_SIGNATURE_LENGTH)]".to_string()),
                     true,
+                    String::new(),
                 ),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -389,6 +1169,7 @@ mod tests {
                 default: false,
                 memory: false,
                 length: None,
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -398,6 +1179,7 @@ mod tests {
                 default: true,
                 memory: true,
                 length: None,
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -407,6 +1189,7 @@ mod tests {
                 default: true,
                 memory: false,
                 length: None,
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -416,6 +1199,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some("uint32".to_string()),
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -425,6 +1209,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some("uint64".to_string()),
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -434,6 +1219,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some("BLST.BLS_SIGNATURE_LENGTH".to_string()),
+                assert: vec![],
             }
         );
     }
@@ -448,12 +1234,15 @@ mod tests {
                 (
                     Some("#[unpack(length = uint256(Lengths.HASH_LENGTH))]".to_string()),
                     true,
+                    String::new(),
                 ),
                 (
                     Some("#[unpack(length = (2 * 16), method=\"parseHash\")]".to_string()),
                     true,
+                    String::new(),
                 ),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -464,6 +1253,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some("uint256(Lengths.HASH_LENGTH)".to_string()),
+                assert: vec![],
             }
         );
         assert_eq!(
@@ -473,6 +1263,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some("(2 * 16)".to_string()),
+                assert: vec![],
             }
         );
     }
@@ -480,7 +1271,7 @@ mod tests {
     #[test]
     fn test_malformed_annotation() {
         // a malformed annotation is an error, not an absent annotation
-        let err = parse_comment("#[unpack(name = \"Foo)]", &[])
+        let err = parse_comment("#[unpack(name = \"Foo)]", &[], "")
             .unwrap_err()
             .to_string();
         assert!(
@@ -489,7 +1280,12 @@ mod tests {
         );
         let err = parse_comment(
             "#[unpack()]",
-            &[(Some("#[unpack(length = (1 + 2]".to_string()), true)],
+            &[(
+                Some("#[unpack(length = (1 + 2]".to_string()),
+                true,
+                String::new(),
+            )],
+            "",
         )
         .unwrap_err()
         .to_string();
@@ -507,6 +1303,7 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some(length.to_string()),
+                assert: vec![],
             }
             .validate("data", "Foo")
             .map(|f| f.length)
@@ -528,5 +1325,34 @@ mod tests {
             err.contains("empty `length` for field `data` of `Foo`"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn test_unclosed_paren() {
+        // Stray " in a struct-level annotation: annotation_args catches the unterminated string.
+        // Previously this silently produced None (no unpack function generated).
+        let err = parse_comment(
+            r#"#[unpack(method = "parseX)]"#,
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("unterminated string"), "wrong error: {err}");
+
+        // Stray " in a field-level annotation: annotation_args catches the unterminated string.
+        // Previously this silently returned default FieldArgs, dropping method/length/assert.
+        let err = parse_comment(
+            "#[unpack()]",
+            &vec![(
+                Some(r#"#[unpack(method = "parseField)]"#.to_string()),
+                false,
+                "myField".to_string(),
+            )],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("unterminated string"), "wrong error: {err}");
     }
 }

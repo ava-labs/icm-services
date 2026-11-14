@@ -9,7 +9,7 @@ use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
 
 use crate::common::LengthSpec;
-use crate::unpack::hooks::UnpackArgs;
+use crate::unpack::hooks::{AssertDef, CaptureType, UnpackArgs};
 
 /// Generates the code to unpack an elementary Solidity type from the front of `data`.
 /// The result is stored in a freshly declared local named `output`.
@@ -143,7 +143,17 @@ pub fn unpack_elementary(
     }
 }
 
-pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> String {
+pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::Result<String> {
+    if args
+        .assert
+        .iter()
+        .any(|a| a.captured == CaptureType::Element)
+    {
+        eyre::bail!(
+            "`each` assert on `{}` is not valid: enums are not container types",
+            enum_def.name,
+        );
+    }
     let fn_name = args
         .name
         .unwrap_or_else(|| format!("unpack{}", enum_def.name));
@@ -153,16 +163,39 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> String
         "bytes memory data"
     };
     let vis = vis_prefix(&args.visibility);
-    let body = format!(
-        "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\n    return (1, {type_name}(uint8(data[0])));\n}}"
-    );
-    if args.solhint_disable {
+    let field_asserts: Vec<_> = args
+        .assert
+        .iter()
+        .filter(|a| a.captured == CaptureType::Field)
+        .collect();
+    let body = if field_asserts.is_empty() {
+        format!(
+            "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
+            \n    return (1, {type_name}(uint8(data[0])));\
+            \n}}"
+        )
+    } else {
+        let assert_lines: String = field_asserts
+            .iter()
+            .map(|a| {
+                let expr = substitute_var(&a.expr, &a.var, "result");
+                format!("\n{}", emit_assert(&a.comment, &expr))
+            })
+            .collect();
+        format!(
+            "function {fn_name}({input}) {vis}pure returns (uint256, {type_name}) {{\
+            \n    {type_name} result = {type_name}(uint8(data[0]));{assert_lines}\
+            \n    return (1, result);\
+            \n}}"
+        )
+    };
+    Ok(if args.solhint_disable {
         format!(
             "// solhint-disable no-inline-assembly\n{body}\n// solhint-enable no-inline-assembly"
         )
     } else {
         body
-    }
+    })
 }
 
 pub fn unpack_struct(
@@ -217,6 +250,18 @@ pub fn unpack_struct(
             );
         }
         let deserialize_field_code = if let Some(method) = &field_args.method {
+            if field_args
+                .assert
+                .iter()
+                .any(|a| a.captured == CaptureType::Element)
+            {
+                eyre::bail!(
+                    "`each` assert on field `{field_name}` with `method = \"{method}\"` is not \
+                     supported: element-level assertions require type information that is not \
+                     available after a custom method call; apply the assertion inside `{method}` \
+                     instead"
+                );
+            }
             if let Some(LengthSpec::Constant(expr)) = &field_args.length {
                 // method + constant: pass a pre-sliced buffer of exactly `expr` bytes.
                 // The method returns just the value — no bytes-consumed count needed.
@@ -282,11 +327,43 @@ pub fn unpack_struct(
                 output: local_name.clone(),
                 ty: &field.ty.kind,
                 length: field_args.length.clone().unwrap_or_default(),
+                element_asserts: field_args
+                    .assert
+                    .iter()
+                    .filter(|a| a.captured == CaptureType::Element)
+                    .cloned()
+                    .collect(),
             };
             inline_unpack(ctx, args.calldata, target_contract, node)?
         };
         body.push_str(&deserialize_field_code);
         body.push_str(&format!("\nresult.{field_name} = {local_name};"));
+        for assert_def in field_args
+            .assert
+            .iter()
+            .filter(|a| a.captured == CaptureType::Field)
+        {
+            let expr = substitute_var(&assert_def.expr, &assert_def.var, &local_name);
+            body.push_str(&format!("\n{}", emit_assert(&assert_def.comment, &expr)));
+        }
+    }
+    let mut epilogue = pre_return;
+    for assert_def in &args.assert {
+        match assert_def.captured {
+            CaptureType::Field => {
+                let expr = substitute_var(&assert_def.expr, &assert_def.var, "result");
+                if !epilogue.is_empty() {
+                    epilogue.push('\n');
+                }
+                epilogue.push_str(&emit_assert(&assert_def.comment, &expr));
+            }
+            CaptureType::Element => {
+                eyre::bail!(
+                    "`each` assert on `{}` is not valid at the type level: structs are not container types",
+                    struct_def.name,
+                );
+            }
+        }
     }
     let vis = vis_prefix(&args.visibility);
     let func = format!(
@@ -294,7 +371,7 @@ pub fn unpack_struct(
         \n    {length_tracking}\
         \n    {type_name} memory result;\
         \n    {body}\
-        \n    {pre_return}\
+        \n    {epilogue}\
         \n    return ({bytes_read}, result);\
         \n}}"
     );
@@ -321,6 +398,10 @@ struct UnpackingTreeNode<'a> {
     ty: &'a TypeKind<'a>,
     /// How this node's length/count is encoded. Defaults to a `uint256` prefix.
     length: LengthSpec,
+    /// `CaptureType::Element` asserts to inject into this node's array loop body,
+    /// substituting the capture variable with the per-element local. Only consulted
+    /// when `ty` is an array; never propagated to the recursive element node.
+    element_asserts: Vec<AssertDef>,
 }
 
 fn inline_unpack(
@@ -331,7 +412,16 @@ fn inline_unpack(
 ) -> eyre::Result<String> {
     Ok(match node.ty {
         TypeKind::Elementary(ty) => {
-            unpack_elementary(node.fn_name, &node.output, *ty, calldata, &node.length)
+            let mut code =
+                unpack_elementary(node.fn_name, &node.output, *ty, calldata, &node.length);
+            if !node.element_asserts.is_empty() {
+                code.push_str(&element_assert_loop(
+                    *ty,
+                    &node.output,
+                    &node.element_asserts,
+                )?);
+            }
+            code
         }
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
@@ -351,9 +441,18 @@ fn inline_unpack(
                 output: next_output.clone(),
                 ty: &arr.element.kind,
                 length: LengthSpec::default(),
+                element_asserts: vec![],
             };
             let output = sanitize_local(&node.output);
             let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
+            let element_assert_code: String = node
+                .element_asserts
+                .iter()
+                .map(|a| {
+                    let expr = substitute_var(&a.expr, &a.var, &next_output);
+                    format!("\n{}", emit_assert(&a.comment, &expr))
+                })
+                .collect();
             let (read_length, advance_past_count) = match &node.length {
                 LengthSpec::Constant(expr) => (format!("uint256 length = {expr};"), String::new()),
                 LengthSpec::Type(length_type) => {
@@ -386,13 +485,20 @@ fn inline_unpack(
                 \n    {output} = new {type_name}[](length);\
                 \n    for (uint256 i = 0; i < length;){{\
                 \n        {inner}\
-                \n        {output}[i] = {next_output};\
+                \n        {output}[i] = {next_output};{element_assert_code}\
                 \n        unchecked {{ ++i;}}\
                 \n    }}\
                 \n}}"
             )
         }
         TypeKind::Custom(item_id) => {
+            if !node.element_asserts.is_empty() {
+                let type_name = custom_type_name(ctx, *item_id);
+                eyre::bail!(
+                    "`each` assert on `{}` requires a container type (array, bytes, string, or bytesN), not `{type_name}`",
+                    node.output,
+                );
+            }
             let type_name = custom_type_name(ctx, *item_id);
             // A type owned by another contract needs both a qualified declaration and a
             // qualified call, but the generated helper's location depends on that type's
@@ -630,15 +736,17 @@ fn remaining_guard(fn_name: &str, label: &str) -> String {
 /// by the generated unpacking function body. Appends trailing underscores until the name is free.
 ///
 /// Reserved names: `data`, `result`, `read`, `length`, `i`, `_initial_length`, `_final_length`,
-/// `data_length`, `data_orig_length`, `_len_before`, `_slice`.
+/// `data_length`, `data_orig_length`, `_len_before`, `_slice`, `_j`, `_elem`.
 fn sanitize_local(name: &str) -> String {
     const RESERVED: &[&str] = &[
         "data",
+        "_elem",
         "result",
         "read",
         "length",
         "i",
         "_initial_length",
+        "_j",
         "_final_length",
         "data_length",
         "data_orig_length",
@@ -673,6 +781,17 @@ fn read_length_memory(size: usize) -> String {
     }
 }
 
+/// Wraps a single assert expression in an anonymous scope, optionally preceded by a
+/// comment block. The anonymous scope ensures that any locals introduced by the
+/// assertion expression cannot collide with names in adjacent assertion scopes.
+fn emit_assert(comment: &str, expr: &str) -> String {
+    if comment.is_empty() {
+        format!("{{\nrequire({expr});\n}}")
+    } else {
+        format!("{{\n{comment}\nrequire({expr});\n}}")
+    }
+}
+
 /// Returns the visibility keyword with a trailing space, or an empty string when
 /// `visibility` is empty (i.e. for file-level functions that take no visibility specifier).
 fn vis_prefix(visibility: &str) -> String {
@@ -680,5 +799,156 @@ fn vis_prefix(visibility: &str) -> String {
         String::new()
     } else {
         format!("{visibility} ")
+    }
+}
+
+/// Generates a post-decode element-assertion loop for container elementary types
+/// (`bytes`, `string`, `bytesN`). Each iteration binds `bytes1 _elem` to the current
+/// element and evaluates the assert expressions with the capture variable substituted
+/// by `_elem`. Returns an empty string for non-container types.
+fn element_assert_loop(
+    ty: ElementaryType,
+    output: &str,
+    asserts: &[AssertDef],
+) -> eyre::Result<String> {
+    let (length_expr, access_expr) = match ty {
+        ElementaryType::Bytes => (format!("{output}.length"), format!("{output}[_j]")),
+        ElementaryType::String => (
+            format!("bytes({output}).length"),
+            format!("bytes({output})[_j]"),
+        ),
+        ElementaryType::FixedBytes(s) => (s.bytes().to_string(), format!("{output}[_j]")),
+        _ => eyre::bail!(
+            "`each` assert on `{output}` requires a container type (array, bytes, string, or bytesN), \
+             not `{}`",
+            elementary_type_name(ty),
+        ),
+    };
+    let assert_lines: String = asserts
+        .iter()
+        .map(|a| {
+            let expr = substitute_var(&a.expr, &a.var, "_elem");
+            format!("\n{}", emit_assert(&a.comment, &expr))
+        })
+        .collect();
+    Ok(format!(
+        "\nfor (uint256 _j = 0; _j < {length_expr}; _j++){{\
+        \n    bytes1 _elem = {access_expr};{assert_lines}\
+        \n}}"
+    ))
+}
+
+/// Replaces whole-word occurrences of `var` in `expr` with `replacement`.
+/// A word boundary is any position adjacent to a non-identifier character
+/// (`[^a-zA-Z0-9_]`) or the start/end of the string, **except** that an
+/// occurrence preceded by `.` is not replaced — that position is a member
+/// access on another object, not a reference to the capture variable.
+fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
+    // a defensive check that prevents the subsequent while loop from
+    // continuing indefinitely.
+    if var.is_empty() {
+        return expr.to_string();
+    }
+    fn is_ident(c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
+    }
+    let mut result = String::new();
+    let mut remaining = expr;
+    while let Some(pos) = remaining.find(var) {
+        let before = &remaining[..pos];
+        let after = &remaining[pos + var.len()..];
+        // When the match is at the start of `remaining` (before is empty), the true
+        // left-boundary char is the last char already written to `result`.  Using
+        // `before.chars().last()` alone would yield `None` and incorrectly report a
+        // word boundary when the previous push ended with an identifier character.
+        let left_char = if before.is_empty() {
+            result.chars().last()
+        } else {
+            before.chars().last()
+        };
+        let left_ok = left_char.is_none_or(|c| !is_ident(c) && c != '.');
+        let right_ok = after.chars().next().is_none_or(|c| !is_ident(c));
+        result.push_str(before);
+        if left_ok && right_ok {
+            result.push_str(replacement);
+        } else {
+            result.push_str(var);
+        }
+        remaining = after;
+    }
+    result.push_str(remaining);
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_substitute_var_basic() {
+        // Simple whole-word replacement at start, middle, end
+        assert_eq!(substitute_var("x > 0", "x", "result"), "result > 0");
+        assert_eq!(substitute_var("v == v", "v", "out"), "out == out");
+        assert_eq!(substitute_var("1 + x", "x", "result"), "1 + result");
+    }
+
+    #[test]
+    fn test_substitute_var_no_partial_match() {
+        // Should NOT replace "s" inside "address"
+        assert_eq!(
+            substitute_var("s.owner != address(0)", "s", "result"),
+            "result.owner != address(0)",
+        );
+        // Should NOT replace "s" inside either occurrence of "address"
+        assert_eq!(
+            substitute_var("s.address != address(0)", "s", "result"),
+            "result.address != address(0)",
+        );
+        // var appears only inside a longer word — no substitution
+        assert_eq!(
+            substitute_var("address != address(0)", "s", "result"),
+            "address != address(0)",
+        );
+    }
+
+    #[test]
+    fn test_substitute_var_repeated_var() {
+        // var appears multiple times as a whole word
+        assert_eq!(
+            substitute_var("x > 0 && x < 100", "x", "v"),
+            "v > 0 && v < 100",
+        );
+    }
+
+    #[test]
+    fn test_substitute_var_word_boundary_edges() {
+        // var at the very end of expr
+        assert_eq!(substitute_var("check(x)", "x", "v"), "check(v)");
+        // var preceded by paren or operator — IS replaced
+        assert_eq!(substitute_var("(x)", "x", "v"), "(v)");
+        assert_eq!(substitute_var("!x", "x", "v"), "!v");
+        // var preceded by dot — is a member access, NOT replaced
+        assert_eq!(substitute_var("a.x", "x", "v"), "a.x");
+        // var itself followed by dot (member access on the var) — IS replaced
+        assert_eq!(substitute_var("x.foo", "x", "v"), "v.foo");
+        // var surrounded by ident chars — must NOT replace
+        assert_eq!(substitute_var("ax", "x", "v"), "ax");
+        assert_eq!(substitute_var("xa", "x", "v"), "xa");
+    }
+
+    #[test]
+    fn test_substitute_var_dot_member_name() {
+        // |data| { data.data.length > 0 } — the second `data` is a member name, not the var
+        assert_eq!(
+            substitute_var("data.data.length > 0", "data", "result"),
+            "result.data.length > 0",
+        );
+        // |each x| { x.x != 0 } — same pattern with a short name
+        assert_eq!(substitute_var("x.x != 0", "x", "_elem"), "_elem.x != 0",);
+        // var appears standalone and as member — only standalone replaced
+        assert_eq!(
+            substitute_var("s != s.s", "s", "result"),
+            "result != result.s",
+        );
     }
 }
