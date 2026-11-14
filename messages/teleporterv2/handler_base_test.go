@@ -8,6 +8,7 @@ import (
 	"context"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -19,13 +20,11 @@ import (
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/messages/mocks"
 	"github.com/ava-labs/icm-services/relayer/config"
+	"github.com/ava-labs/icm-services/utils"
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	ethereum "github.com/ava-labs/libevm"
-	"github.com/ava-labs/libevm/accounts/abi"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/common/hexutil"
-	"github.com/ava-labs/libevm/crypto"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -67,46 +66,10 @@ func testTeleporterMessage() *teleportermessengerv2.TeleporterMessageV2 {
 	}
 }
 
-// rpcError mirrors the error libevm's RPC client returns for a JSON-RPC error object: the message
-// plus whatever the node put in the "data" field, which is the revert output for a reverted call.
-type rpcError struct {
-	msg  string
-	data any
-}
-
-func (e *rpcError) Error() string {
-	return e.msg
-}
-
-func (e *rpcError) ErrorData() any {
-	return e.data
-}
-
-// revertWithReason is the error a node returns for a call that reverted with Error(string).
-func revertWithReason(t *testing.T, reason string) error {
-	t.Helper()
-	stringType, err := abi.NewType("string", "", nil)
-	require.NoError(t, err)
-	packed, err := abi.Arguments{{Type: stringType}}.Pack(reason)
-	require.NoError(t, err)
-	data := append(crypto.Keccak256([]byte("Error(string)"))[:4], packed...)
-	return &rpcError{msg: "execution reverted: " + reason, data: hexutil.Encode(data)}
-}
-
-// panicRevert is the error a node returns for a call that reverted with Panic(code), as checked
-// arithmetic does on overflow (code 0x11).
-func panicRevert(t *testing.T, code uint64) error {
-	t.Helper()
-	uintType, err := abi.NewType("uint256", "", nil)
-	require.NoError(t, err)
-	packed, err := abi.Arguments{{Type: uintType}}.Pack(new(big.Int).SetUint64(code))
-	require.NoError(t, err)
-	data := append(crypto.Keccak256([]byte("Panic(uint256)"))[:4], packed...)
-	return &rpcError{msg: "execution reverted", data: hexutil.Encode(data)}
-}
-
 // handlerMocks are the mocked destination clients a test handler talks to, with what tests need
-// to recognize and answer its calls.
+// to recognize and answer its calls. The delivery decisions themselves are covered by the
+// messages.Sender tests; the handler tests check that each path hands the delivery the right
+// transaction and classifies what comes back from its own verification-specific steps.
 type handlerMocks struct {
 	destinationClient *mock_vms.MockDestinationClient
 	ethClient         *mock_evm.MockClient
@@ -266,4 +229,44 @@ func TestMessageDelivered(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, delivered, got)
 	}
+}
+
+// The handlers' own messageReceived query carries a deadline, so that a node that stops answering
+// fails the attempt instead of blocking it forever.
+func TestHandlerMessageDeliveredIsBounded(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	handler, handlerMocks := newTestWarpHandler(t, ctrl)
+	deliveredOutput, err := teleportermessengerv2.PackMessageReceivedOutput(true)
+	require.NoError(t, err)
+	handlerMocks.ethClient.EXPECT().
+		CallContract(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, call ethereum.CallMsg, _ *big.Int) ([]byte, error) {
+			require.Equal(t, handlerMocks.messageReceivedInput, call.Data)
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok, "messageReceived query must be bounded")
+			require.WithinDuration(t, time.Now().Add(utils.DefaultRPCTimeout), deadline, time.Second)
+			return deliveredOutput, nil
+		}).
+		Times(1)
+
+	delivered, err := handler.messageDelivered()
+	require.NoError(t, err)
+	require.True(t, delivered)
+}
+
+// relay hands the delivery one context to sign the message and then simulate its delivery on, so
+// the deadline must leave time for the simulation on top of the signing.
+func TestRelayDeadlineCoversSimulation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	handler, handlerMocks := newTestWarpHandler(t, ctrl)
+	handlerMocks.routeCalls(t, callRoutes{delivered: false})
+
+	var deadline time.Time
+	txHash, err := handler.relay(func(ctx context.Context) (common.Hash, error) {
+		deadline, _ = ctx.Deadline()
+		return common.Hash{}, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, common.Hash{}, txHash)
+	require.WithinDuration(t, time.Now().Add(utils.DefaultSignAndSimulateTimeout), deadline, time.Second)
 }
