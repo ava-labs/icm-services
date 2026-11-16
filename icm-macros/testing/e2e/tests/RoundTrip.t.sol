@@ -72,7 +72,8 @@ contract TestRoundTrip is Test {
         bytes memory b,
         string memory s,
         address addr,
-        uint8 numAddresses
+        uint8 numAddresses,
+        bytes32 hash
     ) public pure {
         vm.assume(b.length <= 255);
         vm.assume(bytes(s).length <= 65535);
@@ -83,7 +84,17 @@ contract TestRoundTrip is Test {
             addrs[i] = addr;
         }
 
-        Sizes memory original = Sizes({Bytes: b, String: s, Addresses: addrs});
+        address[] memory pair = new address[](2);
+        pair[0] = addr;
+        pair[1] = address(uint160(uint256(hash)));
+
+        Sizes memory original = Sizes({
+            Bytes: b,
+            String: s,
+            Addresses: addrs,
+            Pair: pair,
+            ReverseHash: abi.encodePacked(hash)
+        });
 
         bytes memory data = packSizes(original);
         (, Sizes memory deserialized) = unpackSizes(data);
@@ -94,13 +105,18 @@ contract TestRoundTrip is Test {
         for (uint256 i = 0; i < original.Addresses.length; i++) {
             assertEq(deserialized.Addresses[i], original.Addresses[i]);
         }
+        assertEq(deserialized.Pair.length, 2);
+        assertEq(deserialized.Pair[0], original.Pair[0]);
+        assertEq(deserialized.Pair[1], original.Pair[1]);
+        assertEq(deserialized.ReverseHash, original.ReverseHash);
     }
 
     function testRoundTripSizesCalldata(
         bytes memory b,
         string memory s,
         address addr,
-        uint8 numAddresses
+        uint8 numAddresses,
+        bytes32 hash
     ) public pure {
         vm.assume(b.length <= 255);
         vm.assume(bytes(s).length <= 65535);
@@ -111,7 +127,17 @@ contract TestRoundTrip is Test {
             addrs[i] = addr;
         }
 
-        RoundTrip.Sizes memory original = RoundTrip.Sizes({Bytes: b, String: s, Addresses: addrs});
+        address[] memory pair = new address[](2);
+        pair[0] = addr;
+        pair[1] = address(uint160(uint256(hash)));
+
+        RoundTrip.Sizes memory original = RoundTrip.Sizes({
+            Bytes: b,
+            String: s,
+            Addresses: addrs,
+            Pair: pair,
+            ReverseHash: abi.encodePacked(hash)
+        });
 
         bytes memory data = RoundTrip.packSizes(original);
         (, RoundTrip.Sizes memory deserialized) = RoundTrip.unpackSizes(data);
@@ -122,5 +148,89 @@ contract TestRoundTrip is Test {
         for (uint256 i = 0; i < original.Addresses.length; i++) {
             assertEq(deserialized.Addresses[i], original.Addresses[i]);
         }
+        assertEq(deserialized.Pair.length, 2);
+        assertEq(deserialized.Pair[0], original.Pair[0]);
+        assertEq(deserialized.Pair[1], original.Pair[1]);
+        assertEq(deserialized.ReverseHash, original.ReverseHash);
+    }
+
+    // External helpers so vm.expectRevert() can intercept the generated functions.
+    function callPackSizes(Sizes memory sizes) external pure returns (bytes memory) {
+        return packSizes(sizes);
+    }
+
+    function callPackSizesLibrary(RoundTrip.Sizes memory sizes) external pure returns (bytes memory) {
+        return RoundTrip.packSizes(sizes);
+    }
+
+    function callUnpackSizes(bytes memory data) external pure returns (uint256, Sizes memory) {
+        return unpackSizes(data);
+    }
+
+    function callUnpackSizesCalldata(bytes calldata data) external pure returns (uint256, RoundTrip.Sizes memory) {
+        return RoundTrip.unpackSizes(data);
+    }
+
+    function _validSizes() internal pure returns (Sizes memory) {
+        address[] memory addrs = new address[](1);
+        addrs[0] = address(0x1234);
+        address[] memory pair = new address[](2);
+        pair[0] = address(0x1);
+        pair[1] = address(0x2);
+        return Sizes({
+            Bytes: hex"0102",
+            String: "abc",
+            Addresses: addrs,
+            Pair: pair,
+            ReverseHash: abi.encodePacked(keccak256("hash"))
+        });
+    }
+
+    function _validLibrarySizes() internal pure returns (RoundTrip.Sizes memory) {
+        Sizes memory sizes = _validSizes();
+        return RoundTrip.Sizes({
+            Bytes: sizes.Bytes,
+            String: sizes.String,
+            Addresses: sizes.Addresses,
+            Pair: sizes.Pair,
+            ReverseHash: sizes.ReverseHash
+        });
+    }
+
+    // A fixed-count array that does not have the agreed count must not be packed, since the
+    // stream carries no count for the receiver to check.
+    function testPackSizesRejectsWrongPairCount() public {
+        Sizes memory original = _validSizes();
+        original.Pair = new address[](3);
+        vm.expectRevert(bytes("packSizes: invalid Pair length"));
+        this.callPackSizes(original);
+    }
+
+    // With method + constant the check applies to the method's output.
+    function testPackSizesRejectsShortHash() public {
+        RoundTrip.Sizes memory original = _validLibrarySizes();
+        original.ReverseHash = new bytes(20);
+        vm.expectRevert(bytes("packSizes: invalid ReverseHash length"));
+        this.callPackSizesLibrary(original);
+    }
+
+    // A memory buffer that ends inside a fixed-length field reverts at that field.
+    function testUnpackSizesRejectsShortData() public {
+        bytes memory data = packSizes(_validSizes());
+        // Drop the final byte, which belongs to the 32-byte ReverseHash.
+        assembly {
+            mstore(data, sub(mload(data), 1))
+        }
+        vm.expectRevert(bytes("unpackSizes: data too short for ReverseHash"));
+        this.callUnpackSizes(data);
+    }
+
+    function testUnpackSizesCalldataRejectsShortData() public {
+        bytes memory data = RoundTrip.packSizes(_validLibrarySizes());
+        assembly {
+            mstore(data, sub(mload(data), 1))
+        }
+        vm.expectRevert();
+        this.callUnpackSizesCalldata(data);
     }
 }

@@ -7,7 +7,7 @@ use solar::ast::{ElementaryType, Span};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, ItemId, SourceId, Struct, Type, TypeKind};
 
-use crate::common::{LengthType, Unvalidated, Validated, ValidationState};
+use crate::common::{LengthSpec, Unvalidated, Validated, ValidationState, annotation_args};
 
 pub struct UnpackArgs {
     pub contract: Option<ContractId>,
@@ -21,7 +21,7 @@ pub struct UnpackArgs {
 /// Per-field unpack annotations, generic over their validation state.
 ///
 /// - `FieldArgs<Unvalidated>`: raw parse output; `length` is `Option<String>`.
-/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthType>`.
+/// - `FieldArgs<Validated>`:   HIR-resolved;    `length` is `Option<LengthSpec>`.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FieldArgs<S: ValidationState = Unvalidated> {
     pub method: Option<String>,
@@ -31,22 +31,16 @@ pub struct FieldArgs<S: ValidationState = Unvalidated> {
 }
 
 impl FieldArgs<Unvalidated> {
-    /// Validates the `length` string (if present), converting this
+    /// Resolves the `length` string (if present) into a [`LengthSpec`], converting this
     /// `FieldArgs<Unvalidated>` into a `FieldArgs<Validated>`.
     pub fn validate(
         self,
         field_name: &str,
         struct_name: &str,
     ) -> eyre::Result<FieldArgs<Validated>> {
-        use eyre::WrapErr;
         let length = self
             .length
-            .map(|ty| {
-                LengthType::validate(&ty).wrap_err(format!(
-                    "length type `{ty}` for field `{field_name}` of `{struct_name}` \
-                     must be a Solidity integer type"
-                ))
-            })
+            .map(|value| LengthSpec::validate(value, field_name, struct_name))
             .transpose()?;
         Ok(FieldArgs {
             method: self.method,
@@ -59,6 +53,7 @@ impl FieldArgs<Unvalidated> {
 
 /// Intermediate parsed args before HIR resolution. Contract is stored as a name
 /// string rather than a ContractId.
+#[derive(Debug)]
 pub(crate) struct RawUnpackArgs {
     pub contract: Option<String>,
     pub name: Option<String>,
@@ -97,8 +92,9 @@ impl RawUnpackArgs {
 /// Fetches the comment preceding the given HIR item and parses any `#[unpack(...)]`
 /// annotation from it. For structs, also fetches and parses `#[unpack(...)]` annotations
 /// on each field. Resolves the optional `contract` name to a `ContractId` via the HIR.
-/// Returns `None` if no annotation is present on the item itself, or
-/// `Some(Err(...))` if a `contract` name was specified but not found in the HIR.
+/// Returns `None` if no annotation is present on the item itself, or `Some(Err(...))` if an
+/// annotation is malformed, a field's `length` is invalid, or a `contract` name was specified
+/// but not found in the HIR.
 pub fn parse_args(
     ctx: &Gcx,
     source_id: SourceId,
@@ -122,7 +118,11 @@ pub fn parse_args(
         })
         .unwrap_or_default();
 
-    let raw = parse_comment(&doc_comment, &field_meta)?;
+    let raw = match parse_comment(&doc_comment, &field_meta) {
+        Ok(Some(raw)) => raw,
+        Ok(None) => return None,
+        Err(e) => return Some(Err(e)),
+    };
 
     let contract = match raw.contract.as_deref() {
         None => None,
@@ -163,15 +163,15 @@ pub fn parse_args(
 
 /// Pure string-parsing layer. Extracts unpack args from a pre-fetched comment string
 /// and a list of pre-fetched field comment strings (one per field, in order).
-/// Returns None if no #[unpack(...)] annotation is present.
+/// Returns `Ok(None)` if no #[unpack(...)] annotation is present, and an error if the item's or
+/// a field's annotation is malformed.
 pub(crate) fn parse_comment(
     comment: &str,
     field_meta: &[(Option<String>, bool)],
-) -> Option<RawUnpackArgs> {
-    let pack_start = comment.find("#[unpack(")?;
-    let args_start = pack_start + "#[unpack(".len();
-    let args_end = args_start + comment[args_start..].find(')')?;
-    let args_str = &comment[args_start..args_end];
+) -> eyre::Result<Option<RawUnpackArgs>> {
+    let Some(args) = annotation_args(comment, "#[unpack(")? else {
+        return Ok(None);
+    };
 
     let mut contract = None;
     let mut name = None;
@@ -179,9 +179,8 @@ pub(crate) fn parse_comment(
     let mut calldata = false;
     let mut solhint_disable = false;
 
-    for pair in args_str.split(',') {
-        let pair = pair.trim();
-        if let Some((key, val)) = pair.split_once('=') {
+    for arg in args {
+        if let Some((key, val)) = arg.split_once('=') {
             let val = val.trim().trim_matches('"');
             match key.trim() {
                 "contract" => contract = Some(val.to_string()),
@@ -190,7 +189,7 @@ pub(crate) fn parse_comment(
                 _ => {}
             }
         } else {
-            match pair {
+            match arg {
                 "calldata" => calldata = true,
                 "solhint-disable" => solhint_disable = true,
                 _ => {}
@@ -201,16 +200,16 @@ pub(crate) fn parse_comment(
     let fields = field_meta
         .iter()
         .map(|c| parse_field_args(c.0.as_deref(), c.1))
-        .collect();
+        .collect::<eyre::Result<_>>()?;
 
-    Some(RawUnpackArgs {
+    Ok(Some(RawUnpackArgs {
         contract,
         name,
         fields,
         visibility,
         calldata,
         solhint_disable,
-    })
+    }))
 }
 
 fn type_requires_memory(ty: &Type) -> bool {
@@ -222,51 +221,33 @@ fn type_requires_memory(ty: &Type) -> bool {
     }
 }
 
-fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs<Unvalidated> {
-    let Some(comment) = comment else {
-        return FieldArgs {
+fn parse_field_args(comment: Option<&str>, memory: bool) -> eyre::Result<FieldArgs<Unvalidated>> {
+    let annotation = comment
+        .map(|c| annotation_args(c, "#[unpack("))
+        .transpose()?
+        .flatten();
+    let Some(args) = annotation else {
+        return Ok(FieldArgs {
             memory,
             ..Default::default()
-        };
+        });
     };
-    let Some(pack_start) = comment.find("#[unpack(") else {
-        return FieldArgs {
-            memory,
-            ..Default::default()
-        };
-    };
-    let args_start = pack_start + "#[unpack(".len();
-    let Some(args_end_rel) = comment[args_start..].find(')') else {
-        return FieldArgs {
-            memory,
-            ..Default::default()
-        };
-    };
-    let args_str = comment[args_start..args_start + args_end_rel].trim();
-
-    if args_str == "default" {
-        return FieldArgs {
-            default: true,
-            memory,
-            ..Default::default()
-        };
-    }
 
     let mut method = None;
     let mut default = false;
     let mut length = None;
-    for arg in args_str.split(',') {
-        if let Some((key, val)) = arg.trim().split_once('=') {
+    for arg in args {
+        if let Some((key, val)) = arg.split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
                 "length" => length = Some(val.trim().trim_matches('"').to_string()),
                 _ => {}
             }
-        } else if arg.trim() == "default" {
+        } else if arg == "default" {
             default = true;
         }
     }
-    if default {
+    Ok(if default {
         FieldArgs {
             default: true,
             memory,
@@ -279,19 +260,22 @@ fn parse_field_args(comment: Option<&str>, memory: bool) -> FieldArgs<Unvalidate
             memory,
             length,
         }
-    }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::LengthType;
 
     #[test]
     fn test_basic() {
         let field_meta = vec![(None, false), (None, true), (None, false), (None, false)];
-        let raw = parse_comment("#[unpack]", &field_meta);
+        let raw = parse_comment("#[unpack]", &field_meta).unwrap();
         assert!(raw.is_none());
-        let raw = parse_comment("#[unpack()]", &field_meta).expect("Test failed");
+        let raw = parse_comment("#[unpack()]", &field_meta)
+            .unwrap()
+            .expect("Test failed");
         assert_eq!(raw.contract, None);
         assert_eq!(raw.name, None);
         assert_eq!(raw.visibility, "public".to_string());
@@ -308,6 +292,7 @@ mod tests {
             "#[unpack(contract=\"Foo\", name=\"Bar\", visibility=\"private\", calldata)]",
             &vec![(None, false); 4],
         )
+        .unwrap()
         .unwrap();
         assert_eq!(raw.contract, Some("Foo".to_string()));
         assert_eq!(raw.name, Some("Bar".to_string()));
@@ -320,7 +305,9 @@ mod tests {
 
     #[test]
     fn test_flags() {
-        let raw = parse_comment("#[unpack(solhint-disable)]", &vec![(None, false); 2]).unwrap();
+        let raw = parse_comment("#[unpack(solhint-disable)]", &vec![(None, false); 2])
+            .unwrap()
+            .unwrap();
         assert!(raw.solhint_disable);
         assert!(!raw.calldata);
 
@@ -328,6 +315,7 @@ mod tests {
             "#[unpack(calldata, solhint-disable)]",
             &vec![(None, false); 2],
         )
+        .unwrap()
         .unwrap();
         assert!(raw.calldata);
         assert!(raw.solhint_disable);
@@ -346,6 +334,7 @@ mod tests {
                 ),
             ],
         )
+        .unwrap()
         .unwrap();
         assert_eq!(
             raw.fields[0],
@@ -383,8 +372,13 @@ mod tests {
                     Some("#[unpack(method=\"Foo.bar\", length = uint64)]".to_string()),
                     true,
                 ),
+                (
+                    Some("#[unpack(length = BLST.BLS_SIGNATURE_LENGTH)]".to_string()),
+                    true,
+                ),
             ],
         )
+        .unwrap()
         .unwrap();
         assert_eq!(raw.name, Some("Foo".to_string()));
         assert_eq!(raw.visibility, "private".to_string());
@@ -432,6 +426,107 @@ mod tests {
                 memory: true,
                 length: Some("uint64".to_string()),
             }
+        );
+        assert_eq!(
+            raw.fields[5],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some("BLST.BLS_SIGNATURE_LENGTH".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_length_expressions() {
+        // A constant length may contain parentheses and commas without ending the annotation
+        // or swallowing the arguments after it.
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![
+                (
+                    Some("#[unpack(length = uint256(Lengths.HASH_LENGTH))]".to_string()),
+                    true,
+                ),
+                (
+                    Some("#[unpack(length = (2 * 16), method=\"parseHash\")]".to_string()),
+                    true,
+                ),
+            ],
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.fields[0],
+            FieldArgs {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some("uint256(Lengths.HASH_LENGTH)".to_string()),
+            }
+        );
+        assert_eq!(
+            raw.fields[1],
+            FieldArgs {
+                method: Some("parseHash".to_string()),
+                default: false,
+                memory: true,
+                length: Some("(2 * 16)".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_malformed_annotation() {
+        // a malformed annotation is an error, not an absent annotation
+        let err = parse_comment("#[unpack(name = \"Foo)]", &[])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("unterminated string in annotation `#[unpack(name = \"Foo)]`"),
+            "{err}"
+        );
+        let err = parse_comment(
+            "#[unpack()]",
+            &[(Some("#[unpack(length = (1 + 2]".to_string()), true)],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("unbalanced parentheses in annotation `#[unpack(length = (1 + 2]`"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_length() {
+        let validate = |length: &str| {
+            FieldArgs::<Unvalidated> {
+                method: None,
+                default: false,
+                memory: true,
+                length: Some(length.to_string()),
+            }
+            .validate("data", "Foo")
+            .map(|f| f.length)
+        };
+        assert_eq!(
+            validate("uint32").unwrap(),
+            Some(LengthSpec::Type(LengthType::Uint(4)))
+        );
+        assert_eq!(
+            validate("32").unwrap(),
+            Some(LengthSpec::Constant("32".to_string()))
+        );
+        assert_eq!(
+            validate("BLST.SIG_LENGTH").unwrap(),
+            Some(LengthSpec::Constant("BLST.SIG_LENGTH".to_string()))
+        );
+        let err = validate("").unwrap_err().to_string();
+        assert!(
+            err.contains("empty `length` for field `data` of `Foo`"),
+            "{err}"
         );
     }
 }

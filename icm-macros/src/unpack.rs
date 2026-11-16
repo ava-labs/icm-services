@@ -43,9 +43,19 @@
 //! `#[unpack(default)]`: Skip this field; the struct is returned with a zero value for it.
 //! Intended for use alongside `#[pack(ignore)]`.
 //!
-//! `#[unpack(length=...)]`: Specify the solidity type used to serialize the length of a dynamically
-//! sized type. This must be an unsigned integer solidity type. If unspecified, the default is
-//! `uint256`.
+//! `#[unpack(length = uintN)]`: Specify the Solidity integer type used to encode the length (or
+//! element count) prefix of a dynamically sized field. If unspecified, the default is `uint256`.
+//!
+//! `#[unpack(length = constant)]`: No prefix is read; `constant` (any Solidity expression, e.g.
+//! `32`, `BLST.SIG_LENGTH` or `type(uint16).max`) gives the field's byte length or element count.
+//! Pairs with `#[pack(length = constant)]`. For `bytes`/`string` fields the generated function
+//! reverts if fewer than `constant` bytes remain.
+//!
+//! `#[unpack(method = "expr", length = constant)]`: Pass a pre-sliced buffer of exactly `constant`
+//! bytes to `expr`, reverting if fewer remain. The method returns just the field value (no
+//! bytes-consumed count); the macro advances `data` by `constant` bytes. Use this for fixed-size
+//! fields decoded by a helper that does not implement the `(uint256, T)` unpack convention. Pairs
+//! with `#[pack(method = "expr", length = constant)]`.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the unpack
@@ -65,11 +75,13 @@
 //! Field decoding per type:
 //!   - Fixed-size elementary types: read their exact packed byte width via assembly shift/mask,
 //!     then advance `data` by that width.
-//!   - `bytes` / `string`: the first 32 bytes of the stream encode the payload length; the
-//!     payload is copied into a fresh allocation via `mcopy`. This is the only field type that
-//!     allocates; the resulting value is independent of `data`.
-//!   - Arrays: the first 32 bytes of the stream encode the element count; each element is then
-//!     decoded inline in a loop.
+//!   - `bytes` / `string`: the length prefix (32 bytes by default, see `length = uintN`) encodes
+//!     the payload length; the payload is copied into a fresh allocation via `mcopy`. This is the
+//!     only field type that allocates; the resulting value is independent of `data`. With
+//!     `length = constant` no prefix is read and exactly `constant` bytes are copied, after
+//!     checking that many remain.
+//!   - Arrays: the count prefix (32 bytes by default) encodes the element count, or
+//!     `length = constant` supplies it; each element is then decoded inline in a loop.
 //!   - Custom struct/enum/UDVT: delegates to `unpack{TypeName}(data)`.
 //!   - Mappings / function types: error — must use `#[unpack(method = "...")]` or
 //!     `#[unpack(default)]`.
@@ -305,8 +317,12 @@ mod tests {
                 "Cannot unpack mapping field `data`",
             ),
             (
-                "testing/unpack/errors/BadLengthType.sol",
-                "length type `bool` for field `data` of `HasBadLength` must be a Solidity integer type",
+                "testing/unpack/errors/EmptyLength.sol",
+                "empty `length` for field `data` of `HasEmptyLength`",
+            ),
+            (
+                "testing/unpack/errors/MalformedAnnotation.sol",
+                "unterminated string in annotation `#[unpack(method = \"parseData)]`",
             ),
         ];
         for (path, expected) in cases {

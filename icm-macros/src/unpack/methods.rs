@@ -4,11 +4,12 @@
 //! named `data` (`bytes calldata data` or `bytes memory data`). Generated code assumes this
 //! name unconditionally — callers must not rename it.
 
-use crate::common::LengthType;
-use crate::unpack::hooks::UnpackArgs;
 use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
+
+use crate::common::LengthSpec;
+use crate::unpack::hooks::UnpackArgs;
 
 /// Generates the code to unpack an elementary Solidity type from the front of `data`.
 /// The result is stored in a freshly declared local named `output`.
@@ -17,48 +18,92 @@ use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
 ///
 /// Only the bytes consumed by this type are removed from `data`; the rest remains available
 /// for subsequent unpacking calls.
+///
+/// `fn_name` is the generated function's name, used only to label its revert messages.
 pub fn unpack_elementary(
+    fn_name: &str,
     output: &str,
     ty: ElementaryType,
     calldata: bool,
-    length_type: LengthType,
+    length: &LengthSpec,
 ) -> String {
     let output = sanitize_local(output);
     match ty {
         ElementaryType::Bytes | ElementaryType::String => {
             let type_name = elementary_type_name(ty);
-            let prefix_size = length_type.byte_width();
-            if calldata {
-                let read_len = read_length_calldata(prefix_size);
-                format!(
-                    "\n{type_name} memory {output};\
-                \n{{\
-                \n    uint256 length = {read_len};\
-                \n    {output} = {type_name}(data[{prefix_size}:length + {prefix_size}]);\
-                \n    data = data[{prefix_size} + length:];\
-                \n}}"
-                )
-            } else {
-                let alloc = match ty {
-                    ElementaryType::Bytes => "new bytes(data_length)".to_string(),
-                    _ => "string(new bytes(data_length))".to_string(),
-                };
-                let read_len = read_length_memory(prefix_size);
-                let payload_offset = 32 + prefix_size;
-                format!(
-                    "\n{type_name} memory {output};\
-                \n{{\
-                \n    uint256 data_length;\
-                \n    assembly {{ data_length := {read_len} }}\
-                \n    {output} = {alloc};\
-                \n    assembly {{\
-                \n        mcopy(add({output}, 32), add(data, {payload_offset}), data_length)\
-                \n        let _data_orig_len := mload(data)\
-                \n        data := add(data, add({prefix_size}, data_length))\
-                \n        mstore(data, sub(_data_orig_len, add({prefix_size}, data_length)))\
-                \n    }}\
-                \n}}"
-                )
+            match length {
+                LengthSpec::Constant(expr) => {
+                    // No length prefix in the stream; the length is a known constant expression.
+                    // It is evaluated into a local first: inline assembly can only reference
+                    // literal constants directly, not expressions such as `Lib.CONST`. The
+                    // memory path checks that enough input remains before copying, so a short
+                    // buffer reverts here just as the calldata slice does.
+                    if calldata {
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    uint256 length = {expr};\
+                            \n    {output} = {type_name}(data[0:length]);\
+                            \n    data = data[length:];\
+                            \n}}"
+                        )
+                    } else {
+                        let alloc = match ty {
+                            ElementaryType::Bytes => "new bytes(length)",
+                            _ => "string(new bytes(length))",
+                        };
+                        let guard = remaining_guard(fn_name, &output);
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    uint256 length = {expr};\
+                            \n    {guard}\
+                            \n    {output} = {alloc};\
+                            \n    assembly {{\
+                            \n        mcopy(add({output}, 32), add(data, 32), length)\
+                            \n        let _data_orig_len := mload(data)\
+                            \n        data := add(data, length)\
+                            \n        mstore(data, sub(_data_orig_len, length))\
+                            \n    }}\
+                            \n}}"
+                        )
+                    }
+                }
+                LengthSpec::Type(length_type) => {
+                    let prefix_size = length_type.byte_width();
+                    if calldata {
+                        let read_len = read_length_calldata(prefix_size);
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    uint256 length = {read_len};\
+                            \n    {output} = {type_name}(data[{prefix_size}:length + {prefix_size}]);\
+                            \n    data = data[{prefix_size} + length:];\
+                            \n}}"
+                        )
+                    } else {
+                        let alloc = match ty {
+                            ElementaryType::Bytes => "new bytes(data_length)".to_string(),
+                            _ => "string(new bytes(data_length))".to_string(),
+                        };
+                        let read_len = read_length_memory(prefix_size);
+                        let payload_offset = 32 + prefix_size;
+                        format!(
+                            "\n{type_name} memory {output};\
+                            \n{{\
+                            \n    uint256 data_length;\
+                            \n    assembly {{ data_length := {read_len} }}\
+                            \n    {output} = {alloc};\
+                            \n    assembly {{\
+                            \n        mcopy(add({output}, 32), add(data, {payload_offset}), data_length)\
+                            \n        let _data_orig_len := mload(data)\
+                            \n        data := add(data, add({prefix_size}, data_length))\
+                            \n        mstore(data, sub(_data_orig_len, add({prefix_size}, data_length)))\
+                            \n    }}\
+                            \n}}"
+                        )
+                    }
+                }
             }
         }
         _ => {
@@ -172,7 +217,41 @@ pub fn unpack_struct(
             );
         }
         let deserialize_field_code = if let Some(method) = &field_args.method {
-            if args.calldata {
+            if let Some(LengthSpec::Constant(expr)) = &field_args.length {
+                // method + constant: pass a pre-sliced buffer of exactly `expr` bytes.
+                // The method returns just the value — no bytes-consumed count needed.
+                // As in `unpack_elementary`, the constant is evaluated into a local so that
+                // non-literal expressions can be used from inline assembly, and the memory
+                // path checks that enough input remains before copying so that `method` is
+                // never handed bytes from past the end of `data`.
+                if args.calldata {
+                    format!(
+                        "\n{declaration}\
+                        \n{{\
+                        \n    uint256 length = {expr};\
+                        \n    {local_name} = {method}(data[0:length]);\
+                        \n    data = data[length:];\
+                        \n}}"
+                    )
+                } else {
+                    let guard = remaining_guard(&fn_name, &local_name);
+                    format!(
+                        "\n{declaration}\
+                        \n{{\
+                        \n    uint256 length = {expr};\
+                        \n    {guard}\
+                        \n    bytes memory _slice = new bytes(length);\
+                        \n    assembly {{ mcopy(add(_slice, 32), add(data, 32), length) }}\
+                        \n    {local_name} = {method}(_slice);\
+                        \n    assembly {{\
+                        \n        let _data_orig_len := mload(data)\
+                        \n        data := add(data, length)\
+                        \n        mstore(data, sub(_data_orig_len, length))\
+                        \n    }}\
+                        \n}}"
+                    )
+                }
+            } else if args.calldata {
                 format!(
                     "\n{declaration}\
                     \n{{\
@@ -198,10 +277,11 @@ pub fn unpack_struct(
             }
         } else {
             let node = UnpackingTreeNode {
+                fn_name: &fn_name,
                 depth: 0,
                 output: local_name.clone(),
                 ty: &field.ty.kind,
-                length: field_args.length.unwrap_or_default(),
+                length: field_args.length.clone().unwrap_or_default(),
             };
             inline_unpack(ctx, args.calldata, target_contract, node)?
         };
@@ -230,6 +310,8 @@ pub fn unpack_struct(
 /// A struct that tracks a recursive enumeration through a type to fully
 /// expand its packing algorithm. Modelled as a node in a tree
 struct UnpackingTreeNode<'a> {
+    /// The name of the generated function, used only to label its revert messages
+    fn_name: &'a str,
     /// The level of recursion in the type
     depth: u8,
     /// The variable which will store the result at this
@@ -237,9 +319,8 @@ struct UnpackingTreeNode<'a> {
     output: String,
     /// The type of this node
     ty: &'a TypeKind<'a>,
-    /// The Solidity type to use for this node's length/count prefix.
-    /// Defaults to `uint256`.
-    length: LengthType,
+    /// How this node's length/count is encoded. Defaults to a `uint256` prefix.
+    length: LengthSpec,
 }
 
 fn inline_unpack(
@@ -249,7 +330,9 @@ fn inline_unpack(
     node: UnpackingTreeNode<'_>,
 ) -> eyre::Result<String> {
     Ok(match node.ty {
-        TypeKind::Elementary(ty) => unpack_elementary(&node.output, *ty, calldata, node.length),
+        TypeKind::Elementary(ty) => {
+            unpack_elementary(node.fn_name, &node.output, *ty, calldata, &node.length)
+        }
         TypeKind::Array(arr) => {
             // Only dynamic arrays are supported: the generated code reads a length prefix
             // and allocates `new T[](length)`, which cannot be assigned to a `T[N]` field.
@@ -263,31 +346,37 @@ fn inline_unpack(
             let type_name = get_type_name(ctx, &arr.element.kind, target_contract)?;
             let next_output = format!("{}_{}", node.output, node.depth + 1);
             let next_node = UnpackingTreeNode {
+                fn_name: node.fn_name,
                 depth: node.depth + 1,
                 output: next_output.clone(),
                 ty: &arr.element.kind,
-                length: LengthType::default(),
+                length: LengthSpec::default(),
             };
             let output = sanitize_local(&node.output);
             let inner = inline_unpack(ctx, calldata, target_contract, next_node)?;
-            let prefix_size = node.length.byte_width();
-            let (read_length, advance_past_count) = if calldata {
-                (
-                    format!("uint256 length = {};", read_length_calldata(prefix_size)),
-                    format!("data = data[{prefix_size}:];"),
-                )
-            } else {
-                (
-                    format!(
-                        "uint256 length; assembly {{ length := {} }}",
-                        read_length_memory(prefix_size)
-                    ),
-                    slice_memory(
-                        "data",
-                        &prefix_size.to_string(),
-                        &format!("sub(mload(data), {prefix_size})"),
-                    ),
-                )
+            let (read_length, advance_past_count) = match &node.length {
+                LengthSpec::Constant(expr) => (format!("uint256 length = {expr};"), String::new()),
+                LengthSpec::Type(length_type) => {
+                    let prefix_size = length_type.byte_width();
+                    if calldata {
+                        (
+                            format!("uint256 length = {};", read_length_calldata(prefix_size)),
+                            format!("data = data[{prefix_size}:];"),
+                        )
+                    } else {
+                        (
+                            format!(
+                                "uint256 length; assembly {{ length := {} }}",
+                                read_length_memory(prefix_size)
+                            ),
+                            slice_memory(
+                                "data",
+                                &prefix_size.to_string(),
+                                &format!("sub(mload(data), {prefix_size})"),
+                            ),
+                        )
+                    }
+                }
             };
             format!(
                 "\n{type_name}[] memory {output};\
@@ -530,11 +619,18 @@ fn slice_memory(array: &str, bytes_read: &str, new_length: &str) -> String {
     )
 }
 
+/// Emits a `require` that at least `length` bytes remain in the memory buffer `data`, so that a
+/// short input reverts before anything is read past its end. The calldata paths get the same
+/// check from slicing.
+fn remaining_guard(fn_name: &str, label: &str) -> String {
+    format!("require(length <= data.length, \"{fn_name}: data too short for {label}\");")
+}
+
 /// Returns a local variable name that does not clash with any names introduced
 /// by the generated unpacking function body. Appends trailing underscores until the name is free.
 ///
 /// Reserved names: `data`, `result`, `read`, `length`, `i`, `_initial_length`, `_final_length`,
-/// `data_length`, `data_orig_length`, `_len_before`.
+/// `data_length`, `data_orig_length`, `_len_before`, `_slice`.
 fn sanitize_local(name: &str) -> String {
     const RESERVED: &[&str] = &[
         "data",
@@ -547,6 +643,7 @@ fn sanitize_local(name: &str) -> String {
         "data_length",
         "data_orig_length",
         "_len_before",
+        "_slice",
     ];
     let mut out = name.to_string();
     while RESERVED.contains(&out.as_str()) {

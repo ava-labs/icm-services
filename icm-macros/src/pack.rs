@@ -28,16 +28,28 @@
 //!
 //! _Fields_
 //! As mentioned above, each non-primitive field is assumed to also possess a pack method. This is
-//! assumed to be in the scope in which the macro-expanded code will be placed. If not, or it is
-//! desired to use a different serialization method, the field can be annotated with a comment of
-//! the form `#[pack(method = "...")]`. Note that this is only relevant for structs, not enums.
+//! assumed to be in the scope in which the macro-expanded code will be placed. To override this
+//! or handle special cases, annotate the field:
 //!
-//! It is also possible to annotate a field with `#[pack(ignore)]` and its serialization will be
-//! skipped by the macro-generated code.
+//! `#[pack(method = "expr")]`: Use `expr(obj.field)` to serialize the field instead of the default
+//! encoder. The method must return `bytes`, which is inserted verbatim: no length prefix is added,
+//! so a `length = uintN` annotation on the field is ignored.
 //!
-//! If a field is a dynamically sized type, by default its length will be encoded using a uint256.
-//! This can be changed by annotating the field with `#[pack(length = ...)]`, which should provide
-//! an unsigned integer solidity type.
+//! `#[pack(ignore)]`: Skip this field entirely. Intended for use alongside `#[unpack(default)]`.
+//!
+//! `#[pack(length = uintN)]`: If a field is a dynamically sized type, by default its length (or
+//! element count) is encoded as a `uint256` prefix. This selects a different Solidity integer type
+//! for the prefix.
+//!
+//! `#[pack(length = constant)]`: Omit the length prefix entirely. `constant` (any Solidity
+//! expression, e.g. `32`, `BLST.SIG_LENGTH` or `type(uint16).max`) is the fixed byte length of a
+//! `bytes`/`string` field or the element count of an array, and the generated function reverts if
+//! the value's length differs: without a prefix the receiver could not detect the mismatch. The
+//! receiver annotates the field with `#[unpack(length = constant)]`.
+//!
+//! `#[pack(method = "expr", length = constant)]`: As `method`, but the bytes returned by `expr`
+//! must be exactly `constant` long, which the generated function checks. The receiver annotates
+//! the field with `#[unpack(method = "expr", length = constant)]`.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the pack
@@ -271,8 +283,12 @@ mod tests {
                 "contract `NonExistent` specified in #[pack(contract=...)] was not found",
             ),
             (
-                "testing/pack/errors/BadLengthType.sol",
-                "length type `bool` for field `data` of `HasBadLength` must be a Solidity integer type",
+                "testing/pack/errors/EmptyLength.sol",
+                "empty `length` for field `data` of `HasEmptyLength`",
+            ),
+            (
+                "testing/pack/errors/MalformedAnnotation.sol",
+                "unbalanced parentheses in annotation `#[pack(length = (1 + 2]`",
             ),
         ];
         for (path, expected) in cases {
