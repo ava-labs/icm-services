@@ -20,9 +20,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// maxTransitionsPerTick caps consensus transitions on destination
-// chain applied per poll interval
-const maxTransitionsPerTick = 4
+const (
+	// maxTransitionsPerTick caps consensus transitions on destination
+	// chain applied per poll interval
+	maxTransitionsPerTick = 4
+
+	// subgraphPageSize is how many proofs one subgraph query fetches. It exceeds
+	// maxTransitionsPerTick because the subgraph may index several proofs over the same slots
+	// (e.g. from other provers, or extending other states), of which only the one whose
+	// preState matches the contract's current state can be applied.
+	subgraphPageSize = 100
+
+	// slotsPerEpoch matches ZKStateManager's SLOT_PER_EPOCH.
+	slotsPerEpoch = 32
+)
 
 // ConsensusUpdater keeps the destination ZKAdapter's view of Ethereum
 // consensus up to sync by applying Boundless proofs of beacon chain
@@ -31,8 +42,11 @@ const maxTransitionsPerTick = 4
 // The ZKStateManager imposes two properties this updater is built around:
 //
 //  1. Transitions are sequential: each proof's journal preState must match
-//     the contract's stored state, so proofs are applied in ascending
-//     finalizedSlot order from the contract's current position.
+//     the contract's stored state. The updater therefore selects proofs by
+//     state, not by slot alone: it applies the proof whose preState equals the
+//     contract's current state, then the one extending that proof's postState,
+//     and so on. Slot order alone is not enough, as lastConfirmedSlot is zero on
+//     a fresh deployment and the subgraph may index proofs of other states.
 //
 //  2. Transitions are time-bounded: a single transition may span at most
 //     permissibleTimespan of chain time, so this updater must run
@@ -57,10 +71,13 @@ type ConsensusUpdater struct {
 	// transitioned the contract to. It is also used as the subgraph query lower
 	// bound.
 	lastAppliedSlot uint64
-	// synced reports whether the contract's latest applied slot has been read
-	// into lastAppliedSlot. Set false on boot and after a transition revert;
-	// while false, the next tick reads it from the contract before applying
-	// proofs.
+	// currentState is the contract's consensus state: the preState the next applied proof must
+	// carry. It advances to each applied proof's postState.
+	currentState zkadapter.ConsensusState
+	// synced reports whether the contract's latest applied slot and current
+	// state have been read into lastAppliedSlot and currentState. Set false on
+	// boot and after a transition revert; while false, the next tick reads them
+	// from the contract before applying proofs.
 	synced bool
 }
 
@@ -123,14 +140,24 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 		}
 	}
 
-	// Fetch new consensus proofs from subgraph tool after the last applied slot.
-	proofs, err := u.subgraphClient.ConsensusProofsAfterSlot(ctx, u.lastAppliedSlot, maxTransitionsPerTick)
+	// Fetch the indexed proofs that may extend the contract's current state.
+	proofs, err := u.subgraphClient.ConsensusProofsAfterSlot(ctx, u.queryLowerBound(), subgraphPageSize)
 	if err != nil {
 		return fmt.Errorf("failed to query subgraph: %w", err)
 	}
-	if len(proofs) == 0 {
-		u.logger.Debug("No new consensus proofs",
+
+	proof, journal := u.nextProof(proofs)
+	if proof == nil {
+		logFn := u.logger.Debug
+		if len(proofs) > 0 {
+			// Proofs exist past the contract's position, yet none extends its state: the subgraph
+			// is missing the next link of the chain.
+			logFn = u.logger.Warn
+		}
+		logFn("No indexed consensus proof extends the contract's current state",
 			zap.Uint64("lastAppliedSlot", u.lastAppliedSlot),
+			zap.Uint64("finalizedEpoch", u.currentState.FinalizedCheckpoint.Epoch),
+			zap.Int("candidates", len(proofs)),
 		)
 		return nil
 	}
@@ -143,7 +170,7 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 		return nil
 	}
 
-	for _, proof := range proofs {
+	for applied := 0; proof != nil && applied < maxTransitionsPerTick; applied++ {
 		if err := u.applyTransition(ctx, proof); err != nil {
 			// This means the relayer's lastAppliedSlot has diverged from
 			// the contract. In this case, we re-sync the contract and retry on the
@@ -159,8 +186,44 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 			u.synced = false
 			return nil
 		}
+		u.currentState = journal.PostState
+		proof, journal = u.nextProof(proofs)
 	}
 	return nil
+}
+
+// queryLowerBound returns the slot after which the subgraph is queried for proofs extending
+// currentState. Such a proof finalizes a slot after lastAppliedSlot and after the state's own
+// finalized checkpoint. The checkpoint bound is what matters on a fresh deployment, where
+// lastAppliedSlot is still zero and querying from it would return the oldest indexed proofs.
+// It is taken one epoch early, as a checkpoint's block may precede its epoch's first slot when
+// slots were skipped.
+func (u *ConsensusUpdater) queryLowerBound() uint64 {
+	bound := u.lastAppliedSlot
+	if epoch := u.currentState.FinalizedCheckpoint.Epoch; epoch > 1 {
+		bound = max(bound, (epoch-1)*slotsPerEpoch)
+	}
+	return bound
+}
+
+// nextProof returns the first of proofs, with its decoded journal, that extends currentState
+// and finalizes a slot after lastAppliedSlot, or nil if none does. The contract rejects any
+// other proof, so the rest are not applied. Proofs whose journal cannot be decoded are skipped.
+func (u *ConsensusUpdater) nextProof(proofs []*ConsensusProof) (*ConsensusProof, *consensusJournal) {
+	for _, proof := range proofs {
+		journal, err := decodeJournal(proof.JournalData)
+		if err != nil {
+			u.logger.Warn("Skipping consensus proof with undecodable journal",
+				zap.Uint64("finalizedSlot", proof.FinalizedSlot),
+				zap.Error(err),
+			)
+			continue
+		}
+		if journal.PreState == u.currentState && journal.FinalizedSlot > u.lastAppliedSlot {
+			return proof, journal
+		}
+	}
+	return nil, nil
 }
 
 // applyTransition submits one consensus transition and waits for it to mine.
@@ -195,11 +258,17 @@ func (u *ConsensusUpdater) initializeLocalState(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to read contract consensus position: %w", err)
 	}
+	state, err := u.contract.GetCurrentState(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to read contract consensus state: %w", err)
+	}
 
 	u.lastAppliedSlot = slot
+	u.currentState = state
 	u.synced = true
 	u.logger.Info("Synced the consensus state from contract",
 		zap.Uint64("lastAppliedSlot", slot),
+		zap.Uint64("finalizedEpoch", state.FinalizedCheckpoint.Epoch),
 	)
 	return nil
 }

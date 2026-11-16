@@ -283,6 +283,16 @@ contract ZKStateManager is AccessControl {
     }
 
     /**
+     * @notice Returns the current trusted consensus state, which the `preState` of the next
+     * transition's journal must match.
+     * @dev Lets off-chain updaters select the proof that extends this state. `lastConfirmedSlot`
+     * alone cannot, as it is zero until the first transition.
+     */
+    function getCurrentState() external view returns (Consensus.State memory) {
+        return _currentState;
+    }
+
+    /**
      * @notice Returns the wall-clock time at which `epoch` begins on the tracked beacon chain.
      */
     function epochTimestamp(
