@@ -32,7 +32,14 @@ import (
 var _ LocalNetwork = (*LocalEthereumNetwork)(nil)
 
 type LocalEthereumNetwork struct {
-	BaseURL         string
+	// BaseURL is the node's HTTP JSON-RPC endpoint. It is bound to loopback and serves only the
+	// eth, net and web3 namespaces. Out-of-process consumers (e.g. the relayer under test) are
+	// configured with it.
+	BaseURL string
+	// EthClient is connected to the node's IPC socket rather than to BaseURL. The socket is only
+	// accessible to the user running the tests and serves every namespace, so the harness can
+	// call debug_traceTransaction (see utils.TraceTransaction) without the debug namespace being
+	// enabled on the HTTP transport.
 	EthClient       *ethclient.Client
 	ChainID         *big.Int
 	globalFundedKey *secp256k1.PrivateKey
@@ -40,7 +47,10 @@ type LocalEthereumNetwork struct {
 }
 
 const (
-	localEthereumNetworkBaseURL   = "http://127.0.0.1:5050"
+	localEthereumNetworkBaseURL = "http://127.0.0.1:5050"
+	// localEthereumNetworkIPCPath is the node's IPC socket, relative to the home directory. It
+	// must match the --ipcpath that ethereum/run_ethereum_network.sh passes to geth.
+	localEthereumNetworkIPCPath   = ".local_geth_network/geth.ipc"
 	localEthereumNetworkFundedKey = "764A4A322753120B4667A20B6309CB5EC754A22BDBCBD62398BE8F803B255337"
 	ethereumNetworkStartupTimeout = 60 * time.Second
 )
@@ -195,11 +205,17 @@ func (n *LocalEthereumNetwork) TearDownNetwork() {
 	}
 }
 
-// waitForEthereumNetwork polls the Ethereum RPC endpoint until it responds successfully
-// or the timeout is reached.
+// waitForEthereumNetwork polls the Ethereum HTTP RPC endpoint until it responds successfully
+// or the timeout is reached, then returns a client connected to the node's IPC socket.
 func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethclient.Client, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve home directory for Ethereum IPC socket: %w", err)
+	}
+	ipcPath := filepath.Join(homeDir, localEthereumNetworkIPCPath)
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -217,12 +233,15 @@ func waitForEthereumNetwork(ctx context.Context, timeout time.Duration) (*ethcli
 			)
 			if err == nil {
 				resp.Body.Close()
-				// Successfully connected, now try to create a proper client
-				client, err := ethclient.Dial(localEthereumNetworkBaseURL)
+				// The HTTP endpoint is up, so out-of-process consumers can reach the node. Now
+				// connect the harness's own client over IPC.
+				client, err := ethclient.DialContext(ctx, ipcPath)
 				if err == nil {
 					return client, nil
 				} else {
-					log.Warn("Failed to create Ethereum client, retrying in 1 second")
+					log.Warn(fmt.Sprintf(
+						"Failed to connect to Ethereum IPC socket %s, retrying in 1 second: %v", ipcPath, err,
+					))
 				}
 			} else {
 				log.Debug("Failed to connect to Ethereum RPC endpoint, retrying in 1 second")
