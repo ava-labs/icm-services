@@ -58,6 +58,12 @@ const (
 	validatorSetCacheSize = 100
 
 	apiReadHeaderTimeout = 10 * time.Second
+	// A request body is at most api.MaxRequestBodySize, so a sender that has not delivered a whole
+	// request within apiReadTimeout is dropped rather than holding its connection and buffered
+	// bytes open, as is a keep-alive connection that stays idle for apiIdleTimeout. There is no
+	// write timeout, because relaying a message can take far longer than reading the request.
+	apiReadTimeout = 30 * time.Second
+	apiIdleTimeout = 2 * time.Minute
 )
 
 func main() {
@@ -305,6 +311,8 @@ func main() {
 			Addr:              fmt.Sprintf(":%d", cfg.APIPort),
 			Handler:           apiMux,
 			ReadHeaderTimeout: apiReadHeaderTimeout,
+			ReadTimeout:       apiReadTimeout,
+			IdleTimeout:       apiIdleTimeout,
 		}
 		// Handle graceful shutdown
 		go func() {
