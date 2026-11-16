@@ -178,8 +178,16 @@ func (c *Config) Validate() error {
 	}
 	c.blockchainIDToSubnetID = blockchainIDToSubnetID
 
-	for _, l1ID := range c.blockchainIDToSubnetID {
-		c.trackedSubnets.Add(l1ID)
+	// Track the subnet of every destination and source, except ZK-only sources: they are not
+	// Avalanche chains, so their configured subnet ID names no subnet whose validators can be
+	// tracked, and tracking it would fail network health. blockchainIDToSubnetID keeps them.
+	for _, d := range c.DestinationBlockchains {
+		c.trackedSubnets.Add(d.subnetID)
+	}
+	for _, s := range c.SourceBlockchains {
+		if !s.IsZKOnly() {
+			c.trackedSubnets.Add(s.subnetID)
+		}
 	}
 
 	if c.InitialConnectionTimeoutSeconds == 0 {

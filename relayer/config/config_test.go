@@ -883,6 +883,31 @@ func TestInitializeTrackedSubnetsSkipsZKOnlySources(t *testing.T) {
 	require.True(t, expectedSubnets.Equals(cfg.GetTrackedSubnets()))
 }
 
+// Validate fills the tracked subnets itself, before initializeTrackedSubnets runs, so it must
+// also leave out ZK-only sources. Otherwise their bogus subnet ID fails network health forever.
+func TestValidateDoesNotTrackZKOnlySourceSubnets(t *testing.T) {
+	zkSubnetID := ids.GenerateTestID()
+	zkSource := TestValidSourceBlockchainConfig
+	zkSource.BlockchainID = ids.GenerateTestID().String()
+	zkSource.SubnetID = zkSubnetID.String()
+	zkSource.MessageContracts = map[string]MessageProtocolConfig{
+		"0x0000000000000000000000000000000000000001": {MessageFormat: ZK.String()},
+	}
+	teleporterSource := TestValidSourceBlockchainConfig
+	destination := TestValidDestinationBlockchainConfig
+
+	cfg := TestValidConfig
+	cfg.trackedSubnets = set.Set[ids.ID]{}
+	cfg.SourceBlockchains = []*SourceBlockchain{&teleporterSource, &zkSource}
+	cfg.DestinationBlockchains = []*DestinationBlockchain{&destination}
+	require.NoError(t, cfg.Validate())
+
+	tracked := cfg.GetTrackedSubnets()
+	require.False(t, tracked.Contains(zkSubnetID), "ZK-only source subnet must not be tracked")
+	require.True(t, tracked.Contains(teleporterSource.GetSubnetID()))
+	require.True(t, tracked.Contains(destination.GetSubnetID()))
+}
+
 func TestConfigSanitization(t *testing.T) {
 	testCases := []struct {
 		name           string
