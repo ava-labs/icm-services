@@ -24,6 +24,7 @@ library FirstContract {
 
     function packStruct(Struct memory obj) public pure returns (bytes memory) {
         /* solhint-disable var-name-mixedcase */
+
         bytes memory names_bytes;
         {
             uint256 names_0_count = obj.names.length;
@@ -56,6 +57,7 @@ library SecondContract {
 
     function packStruct(Struct memory obj) public pure returns (bytes memory) {
         /* solhint-disable var-name-mixedcase */
+
         bytes memory names_bytes;
         {
             uint256 names_0_count = obj.names.length;
