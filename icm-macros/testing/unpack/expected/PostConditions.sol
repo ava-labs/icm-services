@@ -148,6 +148,9 @@ library PackMethods {
     }
 
     function unpackMultilineAssert(bytes memory data) public pure returns (uint256, MultilineAssert memory) {
+        /* solhint-disable no-inline-assembly */
+        /* solhint-disable var-name-mixedcase */
+        /* solhint-disable reason-string */
         uint256 _initial_length;
         assembly { _initial_length := mload(data) }
         MultilineAssert memory result;
@@ -177,5 +180,8 @@ library PackMethods {
             require(result.data.length % 2 == 0);
         }
         return (_initial_length - _final_length, result);
+        /* solhint-enable no-inline-assembly */
+        /* solhint-enable var-name-mixedcase */
+        /* solhint-enable reason-string */
     }
 }
