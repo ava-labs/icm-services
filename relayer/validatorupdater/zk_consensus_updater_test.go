@@ -120,6 +120,25 @@ func TestNextProof(t *testing.T) {
 		proof, _ := u.nextProof([]*ConsensusProof{unrelated, second})
 		require.Nil(t, proof)
 	})
+
+	// A proof the contract rejects must not block a valid proof from the same state indexed
+	// after it.
+	t.Run("failed proof is skipped for the same state", func(t *testing.T) {
+		alternative := testProof(t, startingState, testState(103), 101*slotsPerEpoch)
+		u := &ConsensusUpdater{logger: logging.NoLog{}, currentState: startingState}
+		proofs := []*ConsensusProof{first, alternative}
+
+		u.markProofFailed(first)
+		proof, _ := u.nextProof(proofs)
+		require.Same(t, alternative, proof)
+
+		// Once the contract's state moves, earlier failures no longer apply.
+		u.currentState = testState(99)
+		u.markProofFailed(alternative)
+		u.currentState = startingState
+		proof, _ = u.nextProof(proofs)
+		require.Same(t, first, proof)
+	})
 }
 
 func TestQueryLowerBound(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
@@ -67,18 +68,22 @@ type ConsensusUpdater struct {
 	// suggested gas price exceeds this value, transitions are deferred until
 	// the next poll. A zero value disables gas gating.
 	maxGasPriceWei *big.Int
-	// lastAppliedSlot is the highest finalizedSlot this updater has successfully
-	// transitioned the contract to. It is also used as the subgraph query lower
-	// bound.
+	// lastAppliedSlot is the contract's lastConfirmedSlot. It is read from the contract at the
+	// start of each tick and advances with each transition this updater applies. It is also
+	// used as the subgraph query lower bound.
 	lastAppliedSlot uint64
 	// currentState is the contract's consensus state: the preState the next applied proof must
-	// carry. It advances to each applied proof's postState.
+	// carry. It is read from the contract at the start of each tick, so a change made outside
+	// this updater (another submitter, or an admin manualTransition) is picked up, and advances
+	// to each applied proof's postState.
 	currentState zkadapter.ConsensusState
-	// synced reports whether the contract's latest applied slot and current
-	// state have been read into lastAppliedSlot and currentState. Set false on
-	// boot and after a transition revert; while false, the next tick reads them
-	// from the contract before applying proofs.
-	synced bool
+	// failedProofs holds the proofs, keyed by proofKey, whose transition failed from
+	// failedProofsState. nextProof skips them, so a proof the contract rejects cannot block a
+	// valid proof indexed after it. It is cleared when the contract's state moves away from
+	// failedProofsState, and when every matching proof has failed, so a proof that failed for a
+	// transient reason is retried rather than skipped for good.
+	failedProofs      map[common.Hash]struct{}
+	failedProofsState zkadapter.ConsensusState
 }
 
 func NewConsensusUpdater(
@@ -134,10 +139,11 @@ func (u *ConsensusUpdater) Start(ctx context.Context) error {
 }
 
 func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
-	if !u.synced {
-		if err := u.initializeLocalState(ctx); err != nil {
-			return err
-		}
+	// Re-read the contract's position every tick rather than trusting the cached one. Both are
+	// view calls, and without this a state change made outside this updater would leave no
+	// proof matching the cached state, stalling the updater for good.
+	if err := u.syncLocalState(ctx); err != nil {
+		return err
 	}
 
 	// Fetch the indexed proofs that may extend the contract's current state.
@@ -147,6 +153,12 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 	}
 
 	proof, journal := u.nextProof(proofs)
+	if proof == nil && len(u.failedProofs) > 0 {
+		// Every proof extending the current state has failed. Retry them from the first, as
+		// their failures may have been transient.
+		u.failedProofs = nil
+		proof, journal = u.nextProof(proofs)
+	}
 	if proof == nil {
 		logFn := u.logger.Debug
 		if len(proofs) > 0 {
@@ -172,18 +184,15 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 
 	for applied := 0; proof != nil && applied < maxTransitionsPerTick; applied++ {
 		if err := u.applyTransition(ctx, proof); err != nil {
-			// This means the relayer's lastAppliedSlot has diverged from
-			// the contract. In this case, we re-sync the contract and retry on the
-			// next tick.
-			u.logger.Warn("Transition failed, resyncing local state from contract",
+			// The next tick re-reads the contract's state. If it moved (e.g. another party
+			// applied a proof first), the updater continues from there.
+			u.logger.Warn("Transition failed, retrying on the next tick",
 				zap.Uint64("finalizedSlot", proof.FinalizedSlot),
 				zap.Error(err),
 			)
-			// We set this to false because the transition fails if the contract's state is ahead
-			// of the lastAppliedSlot. This can happen if another party has updated the contract
-			// with a proof before the relayer did. Thus, we set the synced flag to false and read
-			// the contract's current state so on the next tick we are back in sync with the contract.
-			u.synced = false
+			// The contract may also have rejected the proof itself, in which case the next tick
+			// finds the state unchanged and must try another proof instead of this one again.
+			u.markProofFailed(proof)
 			return nil
 		}
 		u.currentState = journal.PostState
@@ -208,9 +217,13 @@ func (u *ConsensusUpdater) queryLowerBound() uint64 {
 
 // nextProof returns the first of proofs, with its decoded journal, that extends currentState
 // and finalizes a slot after lastAppliedSlot, or nil if none does. The contract rejects any
-// other proof, so the rest are not applied. Proofs whose journal cannot be decoded are skipped.
+// other proof, so the rest are not applied. Proofs whose journal cannot be decoded, and proofs
+// that already failed from currentState, are skipped.
 func (u *ConsensusUpdater) nextProof(proofs []*ConsensusProof) (*ConsensusProof, *consensusJournal) {
 	for _, proof := range proofs {
+		if _, failed := u.failedProofs[proofKey(proof)]; failed {
+			continue
+		}
 		journal, err := decodeJournal(proof.JournalData)
 		if err != nil {
 			u.logger.Warn("Skipping consensus proof with undecodable journal",
@@ -224,6 +237,21 @@ func (u *ConsensusUpdater) nextProof(proofs []*ConsensusProof) (*ConsensusProof,
 		}
 	}
 	return nil, nil
+}
+
+// markProofFailed records that proof failed to transition the contract from currentState.
+func (u *ConsensusUpdater) markProofFailed(proof *ConsensusProof) {
+	if u.failedProofs == nil || u.failedProofsState != u.currentState {
+		u.failedProofs = make(map[common.Hash]struct{})
+		u.failedProofsState = u.currentState
+	}
+	u.failedProofs[proofKey(proof)] = struct{}{}
+}
+
+// proofKey identifies a proof by its journal and seal, which together are what the contract
+// verifies.
+func proofKey(proof *ConsensusProof) common.Hash {
+	return crypto.Keccak256Hash(proof.JournalData, proof.Seal)
 }
 
 // applyTransition submits one consensus transition and waits for it to mine.
@@ -251,9 +279,9 @@ func (u *ConsensusUpdater) applyTransition(ctx context.Context, proof *Consensus
 	return nil
 }
 
-// initializeLocalState reconstructs the contract's current consensus position.
-// The contract itself is the checkpoint so no local persistence is needed.
-func (u *ConsensusUpdater) initializeLocalState(ctx context.Context) error {
+// syncLocalState reads the contract's current consensus position into lastAppliedSlot and
+// currentState. The contract itself is the checkpoint so no local persistence is needed.
+func (u *ConsensusUpdater) syncLocalState(ctx context.Context) error {
 	slot, err := u.latestConfirmedSlot(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to read contract consensus position: %w", err)
@@ -263,13 +291,21 @@ func (u *ConsensusUpdater) initializeLocalState(ctx context.Context) error {
 		return fmt.Errorf("failed to read contract consensus state: %w", err)
 	}
 
+	// Log only a change from the cached position, as this runs every tick. On boot the cache is
+	// empty, so the first read is always logged.
+	if slot != u.lastAppliedSlot || state != u.currentState {
+		u.logger.Info("Synced the consensus state from contract",
+			zap.Uint64("lastAppliedSlot", slot),
+			zap.Uint64("finalizedEpoch", state.FinalizedCheckpoint.Epoch),
+		)
+	}
 	u.lastAppliedSlot = slot
 	u.currentState = state
-	u.synced = true
-	u.logger.Info("Synced the consensus state from contract",
-		zap.Uint64("lastAppliedSlot", slot),
-		zap.Uint64("finalizedEpoch", state.FinalizedCheckpoint.Epoch),
-	)
+	// Failures from a state the contract has since left say nothing about the proofs that
+	// extend its new state.
+	if state != u.failedProofsState {
+		u.failedProofs = nil
+	}
 	return nil
 }
 
