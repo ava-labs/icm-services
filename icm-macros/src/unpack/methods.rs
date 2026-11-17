@@ -178,7 +178,7 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::
         let assert_lines: String = field_asserts
             .iter()
             .map(|a| {
-                let expr = substitute_var(&a.expr, &a.var, "result");
+                let expr = render_expr(&a.expr, &a.var_spans, "result");
                 format!("\n{}", emit_assert(&a.comment, &expr))
             })
             .collect();
@@ -343,7 +343,7 @@ pub fn unpack_struct(
             .iter()
             .filter(|a| a.captured == CaptureType::Field)
         {
-            let expr = substitute_var(&assert_def.expr, &assert_def.var, &local_name);
+            let expr = render_expr(&assert_def.expr, &assert_def.var_spans, &local_name);
             body.push_str(&format!("\n{}", emit_assert(&assert_def.comment, &expr)));
         }
     }
@@ -351,7 +351,7 @@ pub fn unpack_struct(
     for assert_def in &args.assert {
         match assert_def.captured {
             CaptureType::Field => {
-                let expr = substitute_var(&assert_def.expr, &assert_def.var, "result");
+                let expr = render_expr(&assert_def.expr, &assert_def.var_spans, "result");
                 if !epilogue.is_empty() {
                     epilogue.push('\n');
                 }
@@ -449,7 +449,7 @@ fn inline_unpack(
                 .element_asserts
                 .iter()
                 .map(|a| {
-                    let expr = substitute_var(&a.expr, &a.var, &next_output);
+                    let expr = render_expr(&a.expr, &a.var_spans, &next_output);
                     format!("\n{}", emit_assert(&a.comment, &expr))
                 })
                 .collect();
@@ -827,7 +827,7 @@ fn element_assert_loop(
     let assert_lines: String = asserts
         .iter()
         .map(|a| {
-            let expr = substitute_var(&a.expr, &a.var, "_elem");
+            let expr = render_expr(&a.expr, &a.var_spans, "_elem");
             format!("\n{}", emit_assert(&a.comment, &expr))
         })
         .collect();
@@ -838,45 +838,16 @@ fn element_assert_loop(
     ))
 }
 
-/// Replaces whole-word occurrences of `var` in `expr` with `replacement`.
-/// A word boundary is any position adjacent to a non-identifier character
-/// (`[^a-zA-Z0-9_]`) or the start/end of the string, **except** that an
-/// occurrence preceded by `.` is not replaced — that position is a member
-/// access on another object, not a reference to the capture variable.
-fn substitute_var(expr: &str, var: &str, replacement: &str) -> String {
-    // a defensive check that prevents the subsequent while loop from
-    // continuing indefinitely.
-    if var.is_empty() {
-        return expr.to_string();
-    }
-    fn is_ident(c: char) -> bool {
-        c.is_alphanumeric() || c == '_'
-    }
+/// Renders an expression by substituting `replacement` at every pre-computed span.
+fn render_expr(expr: &str, var_spans: &[std::ops::Range<usize>], replacement: &str) -> String {
     let mut result = String::new();
-    let mut remaining = expr;
-    while let Some(pos) = remaining.find(var) {
-        let before = &remaining[..pos];
-        let after = &remaining[pos + var.len()..];
-        // When the match is at the start of `remaining` (before is empty), the true
-        // left-boundary char is the last char already written to `result`.  Using
-        // `before.chars().last()` alone would yield `None` and incorrectly report a
-        // word boundary when the previous push ended with an identifier character.
-        let left_char = if before.is_empty() {
-            result.chars().last()
-        } else {
-            before.chars().last()
-        };
-        let left_ok = left_char.is_none_or(|c| !is_ident(c) && c != '.');
-        let right_ok = after.chars().next().is_none_or(|c| !is_ident(c));
-        result.push_str(before);
-        if left_ok && right_ok {
-            result.push_str(replacement);
-        } else {
-            result.push_str(var);
-        }
-        remaining = after;
+    let mut pos = 0;
+    for span in var_spans {
+        result.push_str(&expr[pos..span.start]);
+        result.push_str(replacement);
+        pos = span.end;
     }
-    result.push_str(remaining);
+    result.push_str(&expr[pos..]);
     result
 }
 
@@ -885,70 +856,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_substitute_var_basic() {
-        // Simple whole-word replacement at start, middle, end
-        assert_eq!(substitute_var("x > 0", "x", "result"), "result > 0");
-        assert_eq!(substitute_var("v == v", "v", "out"), "out == out");
-        assert_eq!(substitute_var("1 + x", "x", "result"), "1 + result");
+    fn test_render_expr_basic() {
+        assert_eq!(render_expr("x > 0", &[0..1], "result"), "result > 0");
+        assert_eq!(render_expr("v == v", &[0..1, 5..6], "out"), "out == out");
+        assert_eq!(render_expr("1 + x", &[4..5], "result"), "1 + result");
     }
 
     #[test]
-    fn test_substitute_var_no_partial_match() {
-        // Should NOT replace "s" inside "address"
+    fn test_render_expr_no_spans() {
+        // No spans — expr is returned verbatim.
         assert_eq!(
-            substitute_var("s.owner != address(0)", "s", "result"),
-            "result.owner != address(0)",
-        );
-        // Should NOT replace "s" inside either occurrence of "address"
-        assert_eq!(
-            substitute_var("s.address != address(0)", "s", "result"),
-            "result.address != address(0)",
-        );
-        // var appears only inside a longer word — no substitution
-        assert_eq!(
-            substitute_var("address != address(0)", "s", "result"),
-            "address != address(0)",
+            render_expr("address != address(0)", &[], "result"),
+            "address != address(0)"
         );
     }
 
     #[test]
-    fn test_substitute_var_repeated_var() {
-        // var appears multiple times as a whole word
+    fn test_render_expr_multiple_spans() {
+        // Two non-adjacent spans in one expression.
         assert_eq!(
-            substitute_var("x > 0 && x < 100", "x", "v"),
+            render_expr("x > 0 && x < 100", &[0..1, 9..10], "v"),
             "v > 0 && v < 100",
         );
     }
 
     #[test]
-    fn test_substitute_var_word_boundary_edges() {
-        // var at the very end of expr
-        assert_eq!(substitute_var("check(x)", "x", "v"), "check(v)");
-        // var preceded by paren or operator — IS replaced
-        assert_eq!(substitute_var("(x)", "x", "v"), "(v)");
-        assert_eq!(substitute_var("!x", "x", "v"), "!v");
-        // var preceded by dot — is a member access, NOT replaced
-        assert_eq!(substitute_var("a.x", "x", "v"), "a.x");
-        // var itself followed by dot (member access on the var) — IS replaced
-        assert_eq!(substitute_var("x.foo", "x", "v"), "v.foo");
-        // var surrounded by ident chars — must NOT replace
-        assert_eq!(substitute_var("ax", "x", "v"), "ax");
-        assert_eq!(substitute_var("xa", "x", "v"), "xa");
-    }
-
-    #[test]
-    fn test_substitute_var_dot_member_name() {
-        // |data| { data.data.length > 0 } — the second `data` is a member name, not the var
-        assert_eq!(
-            substitute_var("data.data.length > 0", "data", "result"),
-            "result.data.length > 0",
-        );
-        // |each x| { x.x != 0 } — same pattern with a short name
-        assert_eq!(substitute_var("x.x != 0", "x", "_elem"), "_elem.x != 0",);
-        // var appears standalone and as member — only standalone replaced
-        assert_eq!(
-            substitute_var("s != s.s", "s", "result"),
-            "result != result.s",
-        );
+    fn test_render_expr_member_access() {
+        // span covers only the leading var, not the member name after `.`
+        assert_eq!(render_expr("x.foo", &[0..1], "v"), "v.foo");
+        // no span for `.x` member — untouched
+        assert_eq!(render_expr("a.x", &[], "v"), "a.x");
     }
 }

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use super::CaptureType;
 
 /// How two adjacent segments should be joined when reconstructing the args string.
@@ -332,10 +334,17 @@ fn validate_capture_name(name: &str) -> eyre::Result<()> {
 /// remaining non-empty lines are `expr_lines`.
 pub(super) struct ClosureVisitor<'a> {
     raw: &'a str,
+    /// The capture variable name, set by `parse_capture` and used by `push_line`.
+    var_name: Option<&'a str>,
     pos: usize,
     comment_tracker: CommentType,
     pub(super) comment_lines: Vec<&'a str>,
     pub(super) expr_lines: Vec<&'a str>,
+    /// Running byte offset of the next line's start in the eventual `expr_lines.join(" ")`.
+    expr_offset: usize,
+    /// Byte ranges within `expr_lines.join(" ")` where the capture variable should be
+    /// substituted. Populated by `push_line`.
+    pub(super) var_spans: Vec<Range<usize>>,
 }
 
 impl<'a> ClosureVisitor<'a> {
@@ -343,9 +352,12 @@ impl<'a> ClosureVisitor<'a> {
         Self {
             raw: s,
             pos: 0,
+            var_name: None,
             comment_tracker: CommentType::default(),
             comment_lines: Vec::new(),
             expr_lines: Vec::new(),
+            expr_offset: 0,
+            var_spans: Vec::new(),
         }
     }
 
@@ -367,12 +379,14 @@ impl<'a> ClosureVisitor<'a> {
                 if let Err(e) = validate_capture_name(var) {
                     return Some(Err(e));
                 }
+                self.var_name = Some(var);
                 (CaptureType::Element, var.to_string())
             }
             None => {
                 if let Err(e) = validate_capture_name(capture_raw) {
                     return Some(Err(e));
                 }
+                self.var_name = Some(capture_raw);
                 (CaptureType::Field, capture_raw.to_string())
             }
         };
@@ -430,7 +444,7 @@ impl<'a> ClosureVisitor<'a> {
             self.comment_tracker.exit_comment();
             let after = l[close + 2..].trim();
             if !after.is_empty() {
-                self.expr_lines.push(after);
+                self.push_line(after);
             }
         } else {
             self.comment_lines.push(l);
@@ -442,7 +456,7 @@ impl<'a> ClosureVisitor<'a> {
         if self.comment_tracker.is_multiline() {
             self.mark_in_block_comment(l);
         } else if !self.expr_lines.is_empty() {
-            self.expr_lines.push(l);
+            self.push_line(l);
         } else if l.starts_with("//") {
             self.comment_lines.push(l);
         } else if l.starts_with("/*") {
@@ -450,14 +464,14 @@ impl<'a> ClosureVisitor<'a> {
                 self.comment_lines.push(&l[..close + 2]);
                 let after = l[close + 2..].trim();
                 if !after.is_empty() {
-                    self.expr_lines.push(after);
+                    self.push_line(after);
                 }
             } else {
                 self.comment_lines.push(l);
                 self.comment_tracker.set_multiline();
             }
         } else {
-            self.expr_lines.push(l);
+            self.push_line(l);
         }
     }
 
@@ -472,5 +486,75 @@ impl<'a> ClosureVisitor<'a> {
                 self.handle_line(l);
             }
         }
+    }
+
+    /// Pushes `line` onto `expr_lines` and records byte ranges within the eventual
+    /// `expr_lines.join(" ")` where `var_name` should be substituted.
+    ///
+    /// Occurrences inside Solidity string literals (`"..."` / `'...'`, with `\` escape
+    /// handling) and non-word-boundary hits are skipped. Solidity strings cannot span
+    /// lines, so string-literal state resets fresh for each call.
+    fn push_line(&mut self, line: &'a str) {
+        if let Some(var) = self.var_name {
+            let line_start = self.expr_offset;
+            let mut remaining = line;
+            let mut inner_offset = 0usize;
+            let mut quote: Option<char> = None;
+            let mut escaped = false;
+            // Before the first expr line there is no leading separator; for subsequent
+            // lines `join(" ")` inserts a space, which counts as a word boundary.
+            let mut last_char: Option<char> = if self.expr_lines.is_empty() {
+                None
+            } else {
+                Some(' ')
+            };
+
+            while let Some(pos) = remaining.find(var) {
+                let before = &remaining[..pos];
+                let after = &remaining[pos + var.len()..];
+
+                // Advance string-literal state over `before`.
+                let in_string = {
+                    for c in before.chars() {
+                        if escaped {
+                            escaped = false;
+                            continue;
+                        }
+                        match quote {
+                            None => {
+                                if c == '"' || c == '\'' {
+                                    quote = Some(c);
+                                }
+                            }
+                            Some(q) if c == q => quote = None,
+                            Some(_) if c == '\\' => escaped = true,
+                            _ => {}
+                        }
+                    }
+                    quote.is_some()
+                };
+
+                let left_char = if before.is_empty() {
+                    last_char
+                } else {
+                    before.chars().last()
+                };
+                let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+                let left_ok = left_char.is_none_or(|c| !is_ident(c) && c != '.');
+                let right_ok = after.chars().next().is_none_or(|c| !is_ident(c));
+
+                if left_ok && right_ok && !in_string {
+                    let abs_start = line_start + inner_offset + pos;
+                    self.var_spans.push(abs_start..abs_start + var.len());
+                }
+
+                last_char = var.chars().last();
+                inner_offset += pos + var.len();
+                remaining = after;
+            }
+        }
+        // +1 accounts for the space `join(" ")` inserts before the next line.
+        self.expr_offset += line.len() + 1;
+        self.expr_lines.push(line);
     }
 }

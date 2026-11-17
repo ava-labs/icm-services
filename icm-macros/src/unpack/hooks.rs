@@ -18,6 +18,8 @@
 mod visitor;
 use visitor::{ClosureVisitor, CommentVisitor, join_segments};
 
+use std::ops::Range;
+
 use reforge::PreprocessingData;
 use solar::ast::{ElementaryType, Span};
 use solar::sema::Gcx;
@@ -50,7 +52,8 @@ pub enum CaptureType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AssertDef {
     pub captured: CaptureType,
-    pub var: String,
+    /// Byte ranges within `expr` where the capture variable should be substituted.
+    pub var_spans: Vec<Range<usize>>,
     /// Inline comment lines that precede this assertion's expression in the
     /// closure body. Empty when there is no leading comment.
     pub comment: String,
@@ -472,8 +475,8 @@ fn parse_closure(s: &str) -> Option<eyre::Result<Vec<AssertDef>>> {
     }
     Some(Ok(vec![AssertDef {
         captured,
-        var,
         comment: visitor.comment_lines.join("\n"),
+        var_spans: visitor.var_spans,
         expr,
     }]))
 }
@@ -482,6 +485,25 @@ fn parse_closure(s: &str) -> Option<eyre::Result<Vec<AssertDef>>> {
 mod tests {
     use super::*;
     use crate::common::LengthType;
+
+    /// Convenience constructor: builds an `AssertDef` with `var_spans` derived from
+    /// parsing `closure_src` through the visitor, so tests don't hardcode byte offsets.
+    fn assert_def(
+        captured: CaptureType,
+        closure_src: &str,
+        comment: &str,
+        expr: &str,
+    ) -> AssertDef {
+        let defs = parse_closure(closure_src)
+            .expect("closure present")
+            .expect("closure valid");
+        assert_eq!(defs.len(), 1);
+        let d = defs.into_iter().next().unwrap();
+        assert_eq!(d.captured, captured);
+        assert_eq!(d.comment, comment);
+        assert_eq!(d.expr, expr);
+        d
+    }
 
     #[test]
     fn test_basic() {
@@ -604,12 +626,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: "r.version == 1".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { r.version == 1 }",
+                "",
+                "r.version == 1"
+            )]
         );
 
         // assert can appear before other args (no longer required to be last)
@@ -623,12 +645,12 @@ mod tests {
         assert!(raw.calldata);
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: "r.version == 1".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { r.version == 1 }",
+                "",
+                "r.version == 1"
+            )]
         );
 
         // multiple asserts
@@ -642,18 +664,13 @@ mod tests {
         assert_eq!(
             raw.assert,
             vec![
-                AssertDef {
-                    captured: CaptureType::Field,
-                    var: "r".to_string(),
-                    comment: String::new(),
-                    expr: "r.version == 1".to_string(),
-                },
-                AssertDef {
-                    captured: CaptureType::Field,
-                    var: "r".to_string(),
-                    comment: String::new(),
-                    expr: "r.x > 0".to_string(),
-                },
+                assert_def(
+                    CaptureType::Field,
+                    "|r| { r.version == 1 }",
+                    "",
+                    "r.version == 1"
+                ),
+                assert_def(CaptureType::Field, "|r| { r.x > 0 }", "", "r.x > 0"),
             ]
         );
 
@@ -667,12 +684,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: "isValid(r, 0)".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { isValid(r, 0) }",
+                "",
+                "isValid(r, 0)"
+            )]
         );
 
         // field-level assert
@@ -689,12 +706,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.fields[0].assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "b".to_string(),
-                comment: String::new(),
-                expr: "b.length == 48".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { b.length == 48 }",
+                "",
+                "b.length == 48"
+            )]
         );
 
         // element-level assert using `each` keyword
@@ -711,12 +728,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.fields[0].assert,
-            vec![AssertDef {
-                captured: CaptureType::Element,
-                var: "x".to_string(),
-                comment: String::new(),
-                expr: "x > 0".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Element,
+                "|each x| { x > 0 }",
+                "",
+                "x > 0"
+            )]
         );
 
         // `each` prefix on a variable name that starts with "each" is not treated as the keyword
@@ -733,12 +750,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.fields[0].assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "eachItem".to_string(),
-                comment: String::new(),
-                expr: "eachItem > 0".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|eachItem| { eachItem > 0 }",
+                "",
+                "eachItem > 0"
+            )]
         );
     }
 
@@ -754,12 +771,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Element,
-                var: "c".to_string(),
-                comment: String::new(),
-                expr: r#"c != ",""#.to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Element,
+                r#"|each c| { c != "," }"#,
+                "",
+                r#"c != ",""#
+            )]
         );
 
         // Assert body contains a Solidity string literal with a `)`.
@@ -772,12 +789,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: r#"keccak256(")") == hash"#.to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                r#"|r| { keccak256(")") == hash }"#,
+                "",
+                r#"keccak256(")") == hash"#
+            )]
         );
 
         // Assert body contains a Solidity string literal with `//`.
@@ -790,12 +807,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: r#"r.url != "http://""#.to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                r#"|r| { r.url != "http://" }"#,
+                "",
+                r#"r.url != "http://""#
+            )]
         );
 
         // Other args after a string-literal assert are still parsed.
@@ -823,13 +840,45 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.fields[0].assert,
-            vec![AssertDef {
-                captured: CaptureType::Element,
-                var: "c".to_string(),
-                comment: String::new(),
-                expr: r#"c != ",""#.to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Element,
+                r#"|each c| { c != "," }"#,
+                "",
+                r#"c != ",""#
+            )]
         );
+
+        // Collision: var name appears both as a real reference and inside a string
+        // literal. Only the real reference should become a span.
+        let defs = parse_closure(r#"|s| { keccak256(bytes(s.name)) != keccak256("s") }"#)
+            .unwrap()
+            .unwrap();
+        let def = &defs[0];
+        assert_eq!(def.expr, r#"keccak256(bytes(s.name)) != keccak256("s")"#);
+        // Only the standalone `s` before `.name` should be a span; the `s` inside
+        // the string literal must not appear.
+        assert_eq!(
+            def.var_spans.len(),
+            1,
+            "expected exactly one span, got {:?}",
+            def.var_spans
+        );
+        assert_eq!(&def.expr[def.var_spans[0].clone()], "s");
+
+        // Escaped quote: `"\""` must not close the string early, so the `s` inside
+        // `"\"s\""` is still inside a literal and must not become a span.
+        let defs = parse_closure(r#"|s| { s.ok && keccak256("\"s\"") == h }"#)
+            .unwrap()
+            .unwrap();
+        let def = &defs[0];
+        // Only the leading standalone `s` reference should be a span.
+        assert_eq!(
+            def.var_spans.len(),
+            1,
+            "expected exactly one span, got {:?}",
+            def.var_spans
+        );
+        assert_eq!(&def.expr[def.var_spans[0].clone()], "s");
     }
 
     #[test]
@@ -844,12 +893,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: r#"r.url != "http://""#.to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                r#"|r| { r.url != "http://" }"#,
+                "",
+                r#"r.url != "http://""#
+            )]
         );
 
         // Multi-line assert: `//` comment prefixes on continuation lines must be stripped.
@@ -862,12 +911,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: "r.version == 1".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { r.version == 1 }",
+                "",
+                "r.version == 1"
+            )]
         );
 
         // Multi-line assert with a Solidity string literal containing `//` —
@@ -882,12 +931,12 @@ mod tests {
         .expect("valid parse");
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: r#"r.url != "http://""#.to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                r#"|r| { r.url != "http://" }"#,
+                "",
+                r#"r.url != "http://""#
+            )]
         );
 
         // Block comment style with `*` prefixes on continuation lines.
@@ -900,12 +949,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: "r.value == 0".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { r.value == 0 }",
+                "",
+                "r.value == 0"
+            )]
         );
     }
 
@@ -921,12 +970,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: "// this value\n// should always be zero".to_string(),
-                expr: "r.value == 0".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { // this value\n// should always be zero\nr.value == 0 }",
+                "// this value\n// should always be zero",
+                "r.value == 0",
+            )]
         );
 
         // An empty continuation line (`//` with nothing after it) must not
@@ -940,12 +989,12 @@ mod tests {
         .expect("valid parse");
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: "// this value".to_string(),
-                expr: "r.value == 0".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { // this value\nr.value == 0 }",
+                "// this value",
+                "r.value == 0",
+            )]
         );
 
         // /* */ outer + // inner.
@@ -958,12 +1007,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: "// this comment".to_string(),
-                expr: "r.value == 0".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { // this comment\nr.value == 0 }",
+                "// this comment",
+                "r.value == 0",
+            )]
         );
     }
 
@@ -1112,12 +1161,12 @@ mod tests {
         .expect("valid parse");
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: "/* v1 only */".to_string(),
-                expr: "r.version == 1".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { /* v1 only */ r.version == 1 }",
+                "/* v1 only */",
+                "r.version == 1",
+            )]
         );
 
         // A closing `*/` on the same line as the expression (multi-line block comment):
@@ -1131,12 +1180,12 @@ mod tests {
         .expect("valid parse");
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: "/*\n*/".to_string(),
-                expr: "r.version == 1".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { /*\n*/ r.version == 1 }",
+                "/*\n*/",
+                "r.version == 1",
+            )]
         );
 
         // A trailing `/* */` after the expression on the same line stays in `expr` —
@@ -1150,12 +1199,12 @@ mod tests {
         .expect("valid parse");
         assert_eq!(
             raw.assert,
-            vec![AssertDef {
-                captured: CaptureType::Field,
-                var: "r".to_string(),
-                comment: String::new(),
-                expr: "r.version == 1 /* v1 only */".to_string(),
-            }]
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { r.version == 1 /* v1 only */ }",
+                "",
+                "r.version == 1 /* v1 only */",
+            )]
         );
     }
 
