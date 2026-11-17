@@ -157,23 +157,17 @@ func signatureAggregationAPIHandler(
 		metrics.AggregateSignaturesRequestCount.Inc()
 		startTime := time.Now()
 
-		// Fail oversized bodies before they are buffered, and before any hex decoding, so a single
+		// Oversized bodies fail before they are buffered, and before any hex decoding, so a single
 		// request cannot allocate memory proportional to an attacker-chosen size.
-		r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBodySize)
-
 		var req AggregateSignatureRequest
-		err := json.NewDecoder(r.Body).Decode(&req)
+		status, err := utils.DecodeJSONBody(w, r, MaxRequestBodySize, &req)
 		if err != nil {
-			var maxBytesErr *http.MaxBytesError
-			if errors.As(err, &maxBytesErr) {
-				msg := "Request body too large"
-				logger.Warn(msg, zap.Int64("limit", maxBytesErr.Limit))
-				writeJSONError(logger, w, http.StatusRequestEntityTooLarge, msg)
-				return
-			}
 			msg := "Could not decode request body"
+			if status == http.StatusRequestEntityTooLarge {
+				msg = "Request body too large"
+			}
 			logger.Warn(msg, zap.Error(err))
-			writeJSONError(logger, w, http.StatusBadRequest, msg)
+			writeJSONError(logger, w, status, msg)
 			return
 		}
 		var decodedMessage []byte
