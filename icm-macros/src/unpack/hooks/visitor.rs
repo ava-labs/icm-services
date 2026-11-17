@@ -380,29 +380,46 @@ impl<'a> ClosureVisitor<'a> {
         Some(Ok(result))
     }
 
+    /// Returns the unprocessed tail of `raw` after the last advance.
+    pub(super) fn remaining(&self) -> &'a str {
+        &self.raw[self.pos..]
+    }
+
     /// Finds the `{ ... }` body from the current position, advances `pos` past the
     /// closing `}`, and returns the trimmed inner content.
-    pub(super) fn extract_body(&mut self) -> Option<&'a str> {
+    ///
+    /// Returns an error if there is any non-whitespace text between the current
+    /// position and the opening `{`, or if no `{` is found at all.
+    pub(super) fn extract_body(&mut self) -> eyre::Result<&'a str> {
         let tail = &self.raw[self.pos..];
         let s = tail.trim_start();
         let trim_len = tail.len() - s.len();
-        let brace_start = s.find('{')? + 1;
+        if !s.starts_with('{') {
+            eyre::bail!(
+                "unexpected text before closure body `{{`; \
+                 expected `|name| {{ expr }}`, found `{s}`"
+            );
+        }
+        let brace_start = 1; // s starts with '{'
         let inner = &s[brace_start..];
         let mut depth = 0usize;
-        let brace_end = inner.char_indices().find_map(|(i, c)| match c {
-            '{' => {
-                depth += 1;
-                None
-            }
-            '}' if depth == 0 => Some(i),
-            '}' => {
-                depth -= 1;
-                None
-            }
-            _ => None,
-        })?;
+        let brace_end = inner
+            .char_indices()
+            .find_map(|(i, c)| match c {
+                '{' => {
+                    depth += 1;
+                    None
+                }
+                '}' if depth == 0 => Some(i),
+                '}' => {
+                    depth -= 1;
+                    None
+                }
+                _ => None,
+            })
+            .ok_or_else(|| eyre::eyre!("closure body is missing closing `}}`"))?;
         self.pos += trim_len + brace_start + brace_end + 1;
-        Some(inner[..brace_end].trim())
+        Ok(inner[..brace_end].trim())
     }
 
     /// Handles one line while already inside a `/* ... */` block comment.

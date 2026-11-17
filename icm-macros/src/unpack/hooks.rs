@@ -452,7 +452,17 @@ fn parse_closure(s: &str) -> Option<eyre::Result<Vec<AssertDef>>> {
         Some(Err(e)) => return Some(Err(e)),
         None => return None,
     };
-    let body = visitor.extract_body()?;
+    let body = match visitor.extract_body() {
+        Ok(b) => b,
+        Err(e) => return Some(Err(e)),
+    };
+    let tail = visitor.remaining().trim();
+    if !tail.is_empty() {
+        return Some(Err(eyre::eyre!(
+            "unexpected text after closure body `}}`; \
+             expected `|name| {{ expr }}`, found `{tail}`"
+        )));
+    }
     visitor.classify_lines(body);
     let expr = visitor.expr_lines.join(" ");
     if expr.is_empty() {
@@ -1044,7 +1054,7 @@ mod tests {
             "error should name the struct: {err}"
         );
 
-        // malformed assert (missing braces) on a field-level assert — None path
+        // missing braces: body text with no `{` triggers a specific error from extract_body
         let err = parse_comment(
             "#[unpack()]",
             &vec![(
@@ -1056,10 +1066,35 @@ mod tests {
         )
         .unwrap_err()
         .to_string();
-        assert!(err.contains("not a valid closure"), "wrong error: {err}");
         assert!(
-            err.contains("myField"),
-            "error should name the field: {err}"
+            err.contains("unexpected text before closure body"),
+            "wrong error: {err}"
+        );
+
+        // non-whitespace between capture and `{` is rejected
+        let err = parse_comment(
+            r#"#[unpack(assert = "|r| something { r.a > 0 }")]"#,
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("unexpected text before closure body"),
+            "wrong error: {err}"
+        );
+
+        // non-whitespace after closing `}` is rejected
+        let err = parse_comment(
+            r#"#[unpack(assert = "|r| { r.a > 0 } && r.b > 0")]"#,
+            &vec![(None, false, String::new()); 1],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("unexpected text after closure body"),
+            "wrong error: {err}"
         );
     }
 
