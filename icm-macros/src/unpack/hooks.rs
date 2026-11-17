@@ -257,6 +257,9 @@ pub(crate) fn parse_comment(
 
     for arg in split_args(&args_str) {
         let arg = arg.trim();
+        if arg.is_empty() {
+            continue;
+        }
         if let Some((key, val)) = arg.split_once('=') {
             let val = val.trim().trim_matches('"');
             match key.trim() {
@@ -273,13 +276,21 @@ pub(crate) fn parse_comment(
                         ));
                     }
                 },
-                _ => {}
+                key => {
+                    return Err(eyre::eyre!(
+                        "unknown key `{key}` in #[unpack(...)] on `{struct_name}`"
+                    ));
+                }
             }
         } else {
             match arg {
                 "calldata" => calldata = true,
                 "solhint-disable" => solhint_disable = true,
-                _ => {}
+                _ => {
+                    return Err(eyre::eyre!(
+                        "unknown flag `{arg}` in #[unpack(...)] on `{struct_name}`"
+                    ));
+                }
             }
         }
     }
@@ -1375,6 +1386,20 @@ mod tests {
         .to_string();
         assert!(
             err.contains("unbalanced parentheses in annotation `#[unpack(length = (1 + 2]`"),
+            "{err}"
+        );
+        let err = parse_comment("#[unpack(bogus = \"x\")]", &[], "MyStruct")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("unknown key `bogus` in #[unpack(...)] on `MyStruct`"),
+            "{err}"
+        );
+        let err = parse_comment("#[unpack(bogus)]", &[], "MyStruct")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("unknown flag `bogus` in #[unpack(...)] on `MyStruct`"),
             "{err}"
         );
     }
