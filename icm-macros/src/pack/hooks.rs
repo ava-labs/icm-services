@@ -604,6 +604,49 @@ mod tests {
     }
 
     #[test]
+    fn test_assert_block_comment_annotations() {
+        // `/* */` block comment style with `* ` continuation prefixes — the prefixes must be
+        // stripped so that the closure body is correctly extracted.
+        let raw = parse_comment(
+            "/**\n * #[pack(assert = \"|b| {\n *     b.length > 0\n * }\")]\n */",
+            &vec![None; 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { b.length > 0 }",
+                "",
+                "b.length > 0"
+            )]
+        );
+
+        // Multi-line expression in a block comment: `&&` on a continuation line must not
+        // lose its operator due to the `* ` prefix strip.
+        let raw = parse_comment(
+            "/**\n * #[pack(assert = \"|b| {\n *     b.length > 0\n *     && b.length <= 100\n * }\")]\n */",
+            &vec![None; 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(raw.assert[0].expr, "b.length > 0 && b.length <= 100");
+
+        // Star-less `/* */` annotation — no `* ` on continuation lines, body still correct.
+        let raw = parse_comment(
+            "/* #[pack(assert = \"|b| {\n    b.length > 0\n}\")]",
+            &vec![None; 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(raw.assert[0].expr, "b.length > 0");
+    }
+
+    #[test]
     fn test_validate_length() {
         let validate = |length: &str| {
             FieldArgs::<Unvalidated> {
