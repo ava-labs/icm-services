@@ -518,9 +518,7 @@ impl<'a> ClosureVisitor<'a> {
                             None => {
                                 if c == '"' || c == '\'' {
                                     quote = Some(c);
-                                } else if c == '/'
-                                    && before.as_bytes().get(i + 1) == Some(&b'*')
-                                {
+                                } else if c == '/' && before.as_bytes().get(i + 1) == Some(&b'*') {
                                     in_block = true;
                                     skip_next = true;
                                 }
