@@ -126,11 +126,18 @@ pub fn annotation_args<'a>(comment: &'a str, open: &str) -> eyre::Result<Option<
     let start = annotation_start + open.len();
     let mut depth = 0usize;
     let mut quoted = false;
+    // Tracks `{...}` depth inside a quoted value. While a closure body like `"|b| { expr }"`
+    // is inside its outer quotes, inner `"..."` Solidity string literals must not toggle
+    // `quoted`. The rule mirrors `split_args` and `find_closing_paren`: quote-toggling is
+    // suppressed while `brace_depth > 0`, and braces only count while already quoted.
+    let mut brace_depth = 0usize;
     let mut args = Vec::new();
     let mut arg_start = start;
     for (i, byte) in comment.bytes().enumerate().skip(start) {
         match byte {
-            b'"' => quoted = !quoted,
+            b'"' if brace_depth == 0 => quoted = !quoted,
+            b'{' if quoted => brace_depth += 1,
+            b'}' if quoted && brace_depth > 0 => brace_depth -= 1,
             _ if quoted => {}
             b'(' => depth += 1,
             b')' if depth > 0 => depth -= 1,
@@ -151,7 +158,7 @@ pub fn annotation_args<'a>(comment: &'a str, open: &str) -> eyre::Result<Option<
         .next()
         .unwrap_or("")
         .trim_end();
-    let problem = if quoted {
+    let problem = if quoted || brace_depth > 0 {
         "unterminated string"
     } else {
         "unbalanced parentheses"
@@ -1127,6 +1134,24 @@ pub mod tests {
         assert_eq!(
             args("#[pack(method = \"f(a,b)\", ignore)]", "#[pack("),
             Some(vec!["method = \"f(a,b)\"", "ignore"])
+        );
+        // a Solidity string literal inside a closure value must not desync the scanner:
+        // the `"` that opens/closes the inner literal must not be treated as the end of
+        // the outer quoted annotation value, so a `,` inside the literal must not split.
+        assert_eq!(
+            args(
+                r#"#[pack(assert = "|b| { b == "foo, bar" }", name = "X")]"#,
+                "#[pack("
+            ),
+            Some(vec![
+                r#"assert = "|b| { b == "foo, bar" }""#,
+                r#"name = "X""#
+            ])
+        );
+        // `{` and `}` in an unquoted expression do not confuse the scanner
+        assert_eq!(
+            args("#[pack(length = foo({bar}))]", "#[pack("),
+            Some(vec!["length = foo({bar})"])
         );
         // an absent annotation is not an error
         assert_eq!(args("#[pack]", "#[pack("), None);
