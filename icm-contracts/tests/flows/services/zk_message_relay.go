@@ -20,6 +20,7 @@ import (
 	"github.com/ava-labs/icm-services/icm-contracts/tests/network"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/icm-contracts/tests/utils"
+	"github.com/ava-labs/icm-services/messages/zk"
 	relayercfg "github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
@@ -124,12 +125,26 @@ func ZKMessageRelay(
 		database.AllAllowedAddress,
 	)
 
-	// expectSkipped asserts that the relayer checkpoints past the message in [sourceHeight]
-	// without broadcasting a transaction for it, and keeps running.
-	expectSkipped := func(sourceHeight uint64, nonceBefore uint64) {
+	// skippedCount returns how many messages the relayer has skipped for [skipReason].
+	skippedCount := func(skipReason string) float64 {
+		count, err := utils.FailedRelayMessageCount(ctx, relayerConfig.MetricsPort, skipReason)
+		Expect(err).Should(BeNil())
+		return count
+	}
+
+	// expectSkipped asserts that the relayer's zk message handler skips the message in
+	// [sourceHeight] for [skipReason], checkpoints past it without broadcasting a transaction for
+	// it, and keeps running. The skip count proves the handler saw the message: a message the
+	// relayer never routed would also be checkpointed past without a transaction.
+	expectSkipped := func(sourceHeight uint64, nonceBefore uint64, skipReason string, skippedBefore float64) {
+		Eventually(func() (float64, error) {
+			return utils.FailedRelayMessageCount(ctx, relayerConfig.MetricsPort, skipReason)
+		}, 120*time.Second, time.Second).Should(BeNumerically(">", skippedBefore),
+			"the relayer did not skip the message for the expected reason")
+
 		Eventually(func() (uint64, error) {
 			return utils.RelayerCheckpoint(jsonDB, relayerID)
-		}, 120*time.Second, time.Second).Should(BeNumerically(">=", sourceHeight),
+		}, 30*time.Second, time.Second).Should(BeNumerically(">=", sourceHeight),
 			"the relayer did not checkpoint past the skipped message")
 
 		nonce, err := l1Info.EthClient.NonceAt(ctx, relayerAddress, nil)
@@ -149,6 +164,7 @@ func ZKMessageRelay(
 	// messenger. The relayer must recognize it is not from the configured messenger and skip it.
 	nonceBefore, err := l1Info.EthClient.NonceAt(ctx, relayerAddress, nil)
 	Expect(err).Should(BeNil())
+	skippedBefore := skippedCount(zk.SkipReasonUnknownOrigin)
 
 	log.Info("Sending a message from Ethereum whose origin is not the messenger")
 	ethAdapter, err := zkadapter.NewZKAdapter(adapterAddr, ethereumNetwork.EthClient)
@@ -166,11 +182,12 @@ func ZKMessageRelay(
 	})
 	Expect(err).Should(BeNil())
 	forgedReceipt := utils.WaitForTransactionSuccess(ctx, ethereumNetwork.EthClient, forgedTx.Hash())
-	expectSkipped(forgedReceipt.BlockNumber.Uint64(), nonceBefore)
+	expectSkipped(forgedReceipt.BlockNumber.Uint64(), nonceBefore, zk.SkipReasonUnknownOrigin, skippedBefore)
 
 	// A message only another relayer may deliver is skipped
 	nonceBefore, err = l1Info.EthClient.NonceAt(ctx, relayerAddress, nil)
 	Expect(err).Should(BeNil())
+	skippedBefore = skippedCount(zk.SkipReasonNoAllowedRelayer)
 
 	log.Info("Sending a message from Ethereum that only another relayer may deliver")
 	ethTeleporter, err := teleportermessengerv2.NewTeleporterMessengerV2(ethTeleporterAddr, ethereumNetwork.EthClient)
@@ -190,7 +207,7 @@ func ZKMessageRelay(
 	})
 	Expect(err).Should(BeNil())
 	restrictedReceipt := utils.WaitForTransactionSuccess(ctx, ethereumNetwork.EthClient, restrictedTx.Hash())
-	expectSkipped(restrictedReceipt.BlockNumber.Uint64(), nonceBefore)
+	expectSkipped(restrictedReceipt.BlockNumber.Uint64(), nonceBefore, zk.SkipReasonNoAllowedRelayer, skippedBefore)
 
 	log.Info("ZKMessageRelay e2e test PASSED: relayer skipped undeliverable Ethereum -> L1 messages")
 }

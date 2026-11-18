@@ -50,6 +50,13 @@ const (
 	anchorPollInterval = 30 * time.Second
 )
 
+// Reasons shouldDeliverMessage gives for skipping a message. Each is reported as the
+// failure_reason label of the relayer's failed_relay_message_count metric.
+const (
+	SkipReasonUnknownOrigin    = "origin is not the configured teleporter"
+	SkipReasonNoAllowedRelayer = "no relayer key in the message's allowed relayers"
+)
+
 type factory struct {
 	messageConfig   *Config
 	protocolAddress common.Address
@@ -315,13 +322,13 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 // retrying a message that can never land.
 func (m *messageHandler) shouldDeliverMessage() (bool, string) {
 	if m.teleporterMessage.OriginTeleporterAddress != m.messageConfig.teleporterAddress() {
-		return false, "origin is not the configured teleporter"
+		return false, SkipReasonUnknownOrigin
 	}
 
 	if !messages.ContainsAllowedRelayer(
 		m.teleporterMessage.AllowedRelayerAddresses, m.destinationClient.SenderAddresses(),
 	) {
-		return false, "no relayer key in the message's allowed relayers"
+		return false, SkipReasonNoAllowedRelayer
 	}
 	return true, ""
 }
