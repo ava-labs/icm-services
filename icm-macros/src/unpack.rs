@@ -78,19 +78,18 @@
 //! the body. The `each` keyword signals an element-level assertion; without it the capture refers
 //! to the whole field or decoded struct.
 //!
-//! The body is a restricted mini-language — not full Solidity. It is split on `;` and each
-//! non-empty, non-comment statement is emitted as a separate `require()` in its own anonymous
-//! scope. `//` and `/* */` comment lines immediately before a statement are emitted before the
-//! corresponding `require()`.
+//! The body is a restricted mini-language — not full Solidity. Each `assert = "..."` key
+//! produces exactly one `require()` in its own anonymous scope. For multiple postconditions,
+//! use multiple `assert` attributes. A leading `//` or `/* */` comment line inside the body
+//! is emitted before the `require()`; trailing comments are stripped.
 //!
 //! Only boolean expressions are supported. The restrictions are not enforced at parse time and
 //! will produce Solidity compiler errors if violated:
 //!
 //! - Variable declarations and assignments are not valid — they are not boolean expressions.
-//! - Nested control flow (`if`, `for`, `while`, block scopes) will be mis-split on the `;`
-//!   inside the nested block, producing broken `require()` calls.
+//! - Nested control flow (`if`, `for`, `while`, block scopes) is not supported.
 //! - An expression may span multiple text lines; they are flattened with spaces so line breaks
-//!   are purely cosmetic.
+//!   are purely cosmetic. A trailing `;` is silently stripped.
 //!
 //! _Arrays_
 //! Arrays are supported by the macro. The macro will walk the array's elements and call the unpack

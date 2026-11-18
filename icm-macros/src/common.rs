@@ -860,7 +860,14 @@ pub(crate) fn parse_closure(s: &str) -> Option<eyre::Result<Vec<AssertDef>>> {
         )));
     }
     visitor.classify_lines(body);
-    let expr = visitor.expr_lines.join(" ");
+    // Strip a trailing `;` so that `|r| { r.a > 0; }` does not emit `require(r.a > 0;)`.
+    // var_spans are unaffected: they are byte ranges into the joined string that all precede
+    // the semicolon.
+    let expr = visitor
+        .expr_lines
+        .join(" ")
+        .trim_end_matches(|c: char| c == ';' || c.is_whitespace())
+        .to_string();
     if expr.is_empty() {
         return Some(Err(eyre::eyre!(
             "assert closure body for `{var}` contains no boolean expressions"
@@ -987,6 +994,18 @@ pub mod tests {
             def.var_spans
         );
         assert_eq!(&def.expr[def.var_spans[0].clone()], "s");
+    }
+
+    #[test]
+    fn test_assert_trailing_semicolon() {
+        // A trailing `;` on the expression must be stripped so that the generated
+        // `require(expr)` is valid Solidity (not `require(expr;)`).
+        let defs = parse_closure("|r| { r.a > 0; }").unwrap().unwrap();
+        assert_eq!(defs[0].expr, "r.a > 0");
+
+        // Semicolons in the middle of an expression are left alone.
+        let defs = parse_closure("|r| { r.a > 0 }").unwrap().unwrap();
+        assert_eq!(defs[0].expr, "r.a > 0");
     }
 
     #[test]
