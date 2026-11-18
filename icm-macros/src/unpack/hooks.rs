@@ -338,7 +338,11 @@ fn parse_field_args(
     let mut length = None;
     let mut asserts: Vec<AssertDef> = Vec::new();
     for arg in split_args(&args_str) {
-        if let Some((key, val)) = arg.trim().split_once('=') {
+        let arg = arg.trim();
+        if arg.is_empty() {
+            continue;
+        }
+        if let Some((key, val)) = arg.split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
                 "length" => length = Some(val.trim().trim_matches('"').to_string()),
@@ -355,10 +359,21 @@ fn parse_field_args(
                         }
                     }
                 }
-                _ => {}
+                key => {
+                    return Err(eyre::eyre!(
+                        "unknown key `{key}` in #[unpack(...)] field annotation on `{field_name}`"
+                    ));
+                }
             }
-        } else if arg.trim() == "default" {
-            default = true;
+        } else {
+            match arg {
+                "default" => default = true,
+                _ => {
+                    return Err(eyre::eyre!(
+                        "unknown flag `{arg}` in #[unpack(...)] field annotation on `{field_name}`"
+                    ));
+                }
+            }
         }
     }
     Ok(if default {
@@ -1202,6 +1217,37 @@ mod tests {
             .to_string();
         assert!(
             err.contains("unknown flag `bogus` in #[unpack(...)] on `MyStruct`"),
+            "{err}"
+        ); // Field-level unknown key (e.g. misspelled `asserts`).
+        let err = parse_comment(
+            "#[unpack()]",
+            &[(
+                Some("#[unpack(asserts = \"|x| { x > 0 }\")]".to_string()),
+                false,
+                "MyStruct".to_string(),
+            )],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("unknown key `asserts` in #[unpack(...)] field annotation on `MyStruct`"),
+            "{err}"
+        );
+        // Field-level unknown flag.
+        let err = parse_comment(
+            "#[unpack()]",
+            &[(
+                Some("#[unpack(bogus)]".to_string()),
+                false,
+                "MyStruct".to_string(),
+            )],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("unknown flag `bogus` in #[unpack(...)] field annotation on `MyStruct`"),
             "{err}"
         );
     }
