@@ -357,18 +357,36 @@ impl<'a> ClosureVisitor<'a> {
 
     /// Strips a trailing `//`-style line comment, returning only the code that
     /// precedes it. `//` inside a Solidity string literal (`"..."` or `'...'`,
-    /// with `\` escape handling) is not treated as a comment start.
+    /// with `\` escape handling) or inside a `/* ... */` block comment is not
+    /// treated as a comment start.
     fn strip_line_comment(l: &'a str) -> &'a str {
         let mut quote: Option<char> = None;
         let mut escaped = false;
+        let mut in_block = false;
+        let mut skip_next = false;
         for (i, c) in l.char_indices() {
+            if skip_next {
+                skip_next = false;
+                continue;
+            }
             if escaped {
                 escaped = false;
+                continue;
+            }
+            if in_block {
+                if c == '*' && l.as_bytes().get(i + 1) == Some(&b'/') {
+                    in_block = false;
+                    skip_next = true;
+                }
                 continue;
             }
             match quote {
                 None => match c {
                     '"' | '\'' => quote = Some(c),
+                    '/' if l.as_bytes().get(i + 1) == Some(&b'*') => {
+                        in_block = true;
+                        skip_next = true;
+                    }
                     '/' if l.as_bytes().get(i + 1) == Some(&b'/') => {
                         return l[..i].trim_end();
                     }
@@ -464,6 +482,7 @@ impl<'a> ClosureVisitor<'a> {
             let mut inner_offset = 0usize;
             let mut quote: Option<char> = None;
             let mut escaped = false;
+            let mut in_block = false;
             // Before the first expr line there is no leading separator; for subsequent
             // lines `join(" ")` inserts a space, which counts as a word boundary.
             let mut last_char: Option<char> = if self.expr_lines.is_empty() {
@@ -476,17 +495,34 @@ impl<'a> ClosureVisitor<'a> {
                 let before = &remaining[..pos];
                 let after = &remaining[pos + var.len()..];
 
-                // Advance string-literal state over `before`.
-                let in_string = {
-                    for c in before.chars() {
+                // Advance string-literal and block-comment state over `before`.
+                let in_non_code = {
+                    let mut skip_next = false;
+                    for (i, c) in before.char_indices() {
+                        if skip_next {
+                            skip_next = false;
+                            continue;
+                        }
                         if escaped {
                             escaped = false;
+                            continue;
+                        }
+                        if in_block {
+                            if c == '*' && before.as_bytes().get(i + 1) == Some(&b'/') {
+                                in_block = false;
+                                skip_next = true;
+                            }
                             continue;
                         }
                         match quote {
                             None => {
                                 if c == '"' || c == '\'' {
                                     quote = Some(c);
+                                } else if c == '/'
+                                    && before.as_bytes().get(i + 1) == Some(&b'*')
+                                {
+                                    in_block = true;
+                                    skip_next = true;
                                 }
                             }
                             Some(q) if c == q => quote = None,
@@ -494,7 +530,7 @@ impl<'a> ClosureVisitor<'a> {
                             _ => {}
                         }
                     }
-                    quote.is_some()
+                    quote.is_some() || in_block
                 };
 
                 let left_char = if before.is_empty() {
@@ -506,7 +542,7 @@ impl<'a> ClosureVisitor<'a> {
                 let left_ok = left_char.is_none_or(|c| !is_ident(c) && c != '.');
                 let right_ok = after.chars().next().is_none_or(|c| !is_ident(c));
 
-                if left_ok && right_ok && !in_string {
+                if left_ok && right_ok && !in_non_code {
                     let abs_start = line_start + inner_offset + pos;
                     self.var_spans.push(abs_start..abs_start + var.len());
                 }
@@ -1057,6 +1093,22 @@ pub mod tests {
             def.var_spans
         );
         assert_eq!(&def.expr[def.var_spans[0].clone()], "s");
+
+        // `'` inside a `/* ... */` block comment must not open a string literal:
+        // capture names after the comment must still be detected.
+        let defs = parse_closure("|r| { r.ok && /* r's note */ r.value > 0 }")
+            .unwrap()
+            .unwrap();
+        let def = &defs[0];
+        assert_eq!(def.expr, "r.ok && /* r's note */ r.value > 0");
+        assert_eq!(
+            def.var_spans.len(),
+            2,
+            "expected two spans, got {:?}",
+            def.var_spans
+        );
+        assert_eq!(&def.expr[def.var_spans[0].clone()], "r");
+        assert_eq!(&def.expr[def.var_spans[1].clone()], "r");
     }
 
     #[test]
@@ -1098,6 +1150,13 @@ pub mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(defs[0].expr, r#"b == "http://x""#);
+
+        // `//` inside a `/* ... */` inline block comment must not cut the expression:
+        // `/* see https://x */` should be preserved in the expr, not truncated at `//`.
+        let defs = parse_closure("|r| { r.value > 0 /* see https://x.com/path */ }")
+            .unwrap()
+            .unwrap();
+        assert_eq!(defs[0].expr, "r.value > 0 /* see https://x.com/path */");
     }
 
     #[test]
