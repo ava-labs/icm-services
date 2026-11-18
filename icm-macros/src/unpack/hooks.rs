@@ -222,7 +222,7 @@ pub(crate) fn parse_comment(
         ));
     };
     let args_end = args_start + closing;
-    let args_segments = CommentVisitor::new(&comment[args_start..args_end]).parse();
+    let args_segments = CommentVisitor::new(comment, args_start, args_end).parse();
     let args_str = join_segments(&args_segments);
 
     let mut contract = None;
@@ -321,8 +321,8 @@ fn parse_field_args(
              — check for an unbalanced or stray `\"`"
         ));
     };
-    let raw_args = comment[args_start..args_start + args_end_rel].trim();
-    let args_segments = CommentVisitor::new(raw_args).parse();
+    let args_end = args_start + args_end_rel;
+    let args_segments = CommentVisitor::new(comment, args_start, args_end).parse();
     let args_str = join_segments(&args_segments);
 
     if args_str.trim() == "default" {
@@ -804,6 +804,24 @@ mod tests {
                 "r.value == 0"
             )]
         );
+
+        // Star-less `/* */` outer with no inner comment — body lines have no prefix to strip.
+        let raw = parse_comment(
+            "/* #[unpack(assert = \"|r| {\n   r.version == 1\n}\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { r.version == 1 }",
+                "",
+                "r.version == 1"
+            )]
+        );
     }
 
     #[test]
@@ -860,6 +878,25 @@ mod tests {
                 "|r| { // this comment\nr.value == 0 }",
                 "// this comment",
                 "r.value == 0",
+            )]
+        );
+
+        // Star-less /* */ outer + // inner: the // must be treated as a Solidity comment,
+        // not stripped as an annotation prefix.
+        let raw = parse_comment(
+            "/* #[unpack(assert = \"|r| {\n   // version check\n   r.version == 1\n}\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { // version check\nr.version == 1 }",
+                "// version check",
+                "r.version == 1",
             )]
         );
     }
@@ -921,6 +958,42 @@ mod tests {
                 "|r| { r.version == 1 /* v1 only */ }",
                 "",
                 "r.version == 1 /* v1 only */",
+            )]
+        );
+
+        // `/* */` outer with `* ` prefixes + inline `/* */` inner on a continuation line.
+        let raw = parse_comment(
+            "/**\n * #[unpack(assert = \"|r| {\n *    /* v1 only */ r.version == 1\n *  }\")]\n */",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { /* v1 only */ r.version == 1 }",
+                "/* v1 only */",
+                "r.version == 1",
+            )]
+        );
+
+        // Star-less `/* */` outer + inline `/* */` inner on a continuation line.
+        let raw = parse_comment(
+            "/* #[unpack(assert = \"|r| {\n   /* v1 only */ r.version == 1\n}\")]",
+            &vec![(None, false, String::new())],
+            "",
+        )
+        .expect("annotation present")
+        .expect("valid parse");
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|r| { /* v1 only */ r.version == 1 }",
+                "/* v1 only */",
+                "r.version == 1",
             )]
         );
     }

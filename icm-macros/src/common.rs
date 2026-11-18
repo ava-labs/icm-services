@@ -522,6 +522,46 @@ impl<'a> ClosureVisitor<'a> {
     }
 }
 
+/// Whether the annotation lives inside a `//`-style or `/* */`-style comment.
+/// Used by [`CommentVisitor`] to decide which line-start prefix to strip inside
+/// a quoted closure body.
+pub(crate) enum AnnotationStyle {
+    /// Annotation is in a `//`-style comment, or inside a single-line `/* ... */`
+    /// block that closes before the first `\n`. In either case, `//` at line-start
+    /// inside a quoted closure body is an annotation-continuation prefix and should
+    /// be stripped.
+    LineComment,
+    /// Annotation is in a multi-line `/* */`-style comment; `//` at line-start
+    /// inside a quoted closure body is a Solidity comment, not a prefix.
+    BlockComment,
+}
+
+impl AnnotationStyle {
+    /// Detects the style from the full comment string. Returns
+    /// [`AnnotationStyle::BlockComment`] when `comment` starts with `/*` and
+    /// the closing `*/` does not appear before the first `\n` (i.e. the block
+    /// spans multiple lines). Everything else — `//` comments, single-line
+    /// `/* */`, or bare annotations — is [`AnnotationStyle::LineComment`].
+    fn new(comment: &str) -> Self {
+        let trimmed = comment.trim_start();
+        if trimmed.starts_with("/*") {
+            let first_newline = trimmed.find('\n').unwrap_or(trimmed.len());
+            if !trimmed[..first_newline].contains("*/") {
+                return AnnotationStyle::BlockComment;
+            }
+        }
+        AnnotationStyle::LineComment
+    }
+
+    fn is_line(&self) -> bool {
+        matches!(self, AnnotationStyle::LineComment)
+    }
+
+    fn is_block(&self) -> bool {
+        matches!(self, AnnotationStyle::BlockComment)
+    }
+}
+
 /// How two adjacent segments should be joined when reconstructing the args string.
 #[derive(Clone, Copy)]
 pub(crate) enum SegSep {
@@ -572,12 +612,13 @@ pub(crate) struct CommentVisitor<'a> {
     in_quotes: bool,
     brace_depth: usize,
     comment_tracker: CommentType,
+    annotation_style: AnnotationStyle,
 }
 
 impl<'a> CommentVisitor<'a> {
-    pub(crate) fn new(s: &'a str) -> Self {
+    pub(crate) fn new(full_comment: &'a str, start: usize, end: usize) -> Self {
         Self {
-            raw: s,
+            raw: &full_comment[start..end],
             pos: 0,
             segments: Vec::new(),
             seg_start: 0,
@@ -586,6 +627,7 @@ impl<'a> CommentVisitor<'a> {
             newline: true,
             brace_depth: 0,
             comment_tracker: CommentType::default(),
+            annotation_style: AnnotationStyle::new(full_comment),
         }
     }
 
@@ -628,13 +670,21 @@ impl<'a> CommentVisitor<'a> {
                 _ => 1,
             },
             // Annotation block-comment continuation prefix `* ` or bare `*` at line start.
-            b'*' if self.newline && !self.comment_tracker.is_multiline() => {
+            // Inside a quoted value, only consume as a prefix unit when the annotation uses
+            // block-comment style; in a line-comment annotation a `*` here is Solidity content.
+            b'*' if self.newline
+                && !self.comment_tracker.is_multiline()
+                && (!self.in_quotes || self.annotation_style.is_block()) =>
+            {
                 match self.raw.as_bytes().get(pos + 1) {
                     Some(&b' ') => 2,
                     _ => 1,
                 }
             }
-            b'/' if (!self.in_quotes || self.newline)
+            // Annotation line-comment prefix `//` / `///` at line-start, or outside quotes.
+            // Inside a quoted value, only consume as a prefix unit when the annotation uses
+            // line-comment style; in a block-comment annotation a `//` here is a Solidity comment.
+            b'/' if (!self.in_quotes || (self.newline && self.annotation_style.is_line()))
                 && self.raw.as_bytes().get(pos + 1) == Some(&b'/') =>
             {
                 if self.raw.as_bytes().get(pos + 2) == Some(&b'/') {
@@ -723,7 +773,11 @@ impl<'a> CommentVisitor<'a> {
     fn mark_segment(&mut self, pos: usize, advance_by: usize) {
         match self.raw.as_bytes()[pos] {
             // `* ` or `*` block-comment continuation prefix at start of line.
-            b'*' if self.newline => self.push_segment(pos, advance_by),
+            // Inside a quoted value, only strip when the annotation uses block-comment style;
+            // in a line-comment annotation a `*` at line-start is Solidity content.
+            b'*' if self.newline && (!self.in_quotes || self.annotation_style.is_block()) => {
+                self.push_segment(pos, advance_by)
+            }
             b'\n' => {
                 // Skip the newline itself so it doesn't appear at the head of the next segment.
                 self.push_segment(pos, 1);
@@ -737,7 +791,9 @@ impl<'a> CommentVisitor<'a> {
                 };
             }
             // `//` or `///` annotation comment prefix: strip the leading slashes.
-            b'/' if (!self.in_quotes || self.newline)
+            // Inside a quoted value, only strip when the annotation uses line-comment style;
+            // in a block-comment annotation a `//` at line-start is a Solidity comment.
+            b'/' if (!self.in_quotes || (self.newline && self.annotation_style.is_line()))
                 && self.raw.as_bytes().get(pos + 1) == Some(&b'/') =>
             {
                 self.push_segment(pos, advance_by);

@@ -187,7 +187,7 @@ pub(crate) fn parse_comment(
         ));
     };
     let args_end = args_start + closing;
-    let args_segments = CommentVisitor::new(&comment[args_start..args_end]).parse();
+    let args_segments = CommentVisitor::new(comment, args_start, args_end).parse();
     let args_str = join_segments(&args_segments);
 
     let mut contract = None;
@@ -262,8 +262,8 @@ fn parse_field_args(
             "#[pack(...)] annotation on field of `{item_name}` has an unclosed `(`"
         ));
     };
-    let raw_args = comment[args_start..args_start + args_end_rel].trim();
-    let args_segments = CommentVisitor::new(raw_args).parse();
+    let args_end = args_start + args_end_rel;
+    let args_segments = CommentVisitor::new(comment, args_start, args_end).parse();
     let args_str = join_segments(&args_segments);
 
     let mut method = None;
@@ -644,6 +644,80 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(raw.assert[0].expr, "b.length > 0");
+
+        // `/* */` outer with `* ` prefixes + `//` inner comment: `//` must be preserved,
+        // not stripped as an annotation prefix.
+        let raw = parse_comment(
+            "/**\n * #[pack(assert = \"|b| {\n *    // length check\n *    b.length > 0\n * }\")]\n */",
+            &vec![None; 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { // length check\nb.length > 0 }",
+                "// length check",
+                "b.length > 0",
+            )]
+        );
+
+        // Star-less `/* */` outer + `//` inner: the `//` must be treated as a Solidity
+        // comment, not stripped as an annotation prefix.
+        let raw = parse_comment(
+            "/* #[pack(assert = \"|b| {\n   // length check\n   b.length > 0\n}\")]",
+            &vec![None; 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { // length check\nb.length > 0 }",
+                "// length check",
+                "b.length > 0",
+            )]
+        );
+
+        // `/* */` outer with `* ` prefixes + inline `/* */` inner on a continuation line.
+        let raw = parse_comment(
+            "/**\n * #[pack(assert = \"|b| {\n *    /* non-empty */ b.length > 0\n * }\")]\n */",
+            &vec![None; 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { /* non-empty */ b.length > 0 }",
+                "/* non-empty */",
+                "b.length > 0",
+            )]
+        );
+
+        // Star-less `/* */` outer + inline `/* */` inner on a continuation line.
+        let raw = parse_comment(
+            "/* #[pack(assert = \"|b| {\n   /* non-empty */ b.length > 0\n}\")]",
+            &vec![None; 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { /* non-empty */ b.length > 0 }",
+                "/* non-empty */",
+                "b.length > 0",
+            )]
+        );
     }
 
     #[test]
