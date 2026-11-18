@@ -383,7 +383,7 @@ fn parse_field_args(
 mod tests {
     use super::*;
     use crate::common::tests::assert_def;
-    use crate::common::{AssertDef, CaptureType, LengthType};
+    use crate::common::{CaptureType, LengthType};
 
     #[test]
     fn test_basic() {
@@ -1064,6 +1064,31 @@ mod tests {
                 default: false,
                 memory: true,
                 length: Some("(2 * 16)".to_string()),
+                assert: vec![],
+            }
+        );
+
+        // A function call with multiple arguments must not be split on the inner comma.
+        let raw = parse_comment(
+            "#[unpack()]",
+            &vec![
+                (
+                    Some("#[unpack(length = Lib.f(a, b) * 2, method = \"g\")]".to_string()),
+                    true,
+                    String::new(),
+                ),
+            ],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.fields[0],
+            FieldArgs {
+                method: Some("g".to_string()),
+                default: false,
+                memory: true,
+                length: Some("Lib.f(a, b) * 2".to_string()),
                 assert: vec![],
             }
         );

@@ -314,7 +314,7 @@ fn parse_field_args(
 mod tests {
     use super::*;
     use crate::common::tests::assert_def;
-    use crate::common::{AssertDef, CaptureType, LengthType};
+    use crate::common::{CaptureType, LengthType};
 
     #[test]
     fn test_basic() {
@@ -532,7 +532,7 @@ mod tests {
         // type-level assert
         let raw = parse_comment(
             r#"#[pack(assert = "|b| { b.length > 0 }")]"#,
-            &vec![(None); 1],
+            &vec![None; 1],
             "",
         )
         .unwrap()
