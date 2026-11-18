@@ -348,13 +348,40 @@ impl<'a> ClosureVisitor<'a> {
         Ok(inner[..brace_end].trim())
     }
 
+    /// Strips a trailing `//`-style line comment, returning only the code that
+    /// precedes it. `//` inside a Solidity string literal (`"..."` or `'...'`,
+    /// with `\` escape handling) is not treated as a comment start.
+    fn strip_line_comment(l: &'a str) -> &'a str {
+        let mut quote: Option<char> = None;
+        let mut escaped = false;
+        for (i, c) in l.char_indices() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match quote {
+                None => match c {
+                    '"' | '\'' => quote = Some(c),
+                    '/' if l.as_bytes().get(i + 1) == Some(&b'/') => {
+                        return l[..i].trim_end();
+                    }
+                    _ => {}
+                },
+                Some(q) if c == q => quote = None,
+                Some(_) if c == '\\' => escaped = true,
+                _ => {}
+            }
+        }
+        l
+    }
+
     /// Handles one line while already inside a `/* ... */` block comment.
     /// Exits the block on `*/`, and captures any expression text that follows on the same line.
     fn mark_in_block_comment(&mut self, l: &'a str) {
         if let Some(close) = l.find("*/") {
             self.comment_lines.push(&l[..close + 2]);
             self.comment_tracker.exit_comment();
-            let after = l[close + 2..].trim();
+            let after = Self::strip_line_comment(l[close + 2..].trim());
             if !after.is_empty() {
                 self.push_line(after);
             }
@@ -364,17 +391,34 @@ impl<'a> ClosureVisitor<'a> {
     }
 
     /// Classifies a single trimmed, non-empty line into `comment_lines` or `expr_lines`.
+    /// Leading `//` and `/* */` lines before the first expression become `comment_lines`.
+    /// Once expression lines have started, standalone `//` and `/* */` comment lines are
+    /// silently dropped; inline `//` comments are stripped from expression lines.
     fn handle_line(&mut self, l: &'a str) {
         if self.comment_tracker.is_multiline() {
             self.mark_in_block_comment(l);
         } else if !self.expr_lines.is_empty() {
-            self.push_line(l);
+            if l.starts_with("//") {
+                // trailing standalone line comment — drop it
+            } else if l.starts_with("/*") {
+                if let Some(close) = l.find("*/") {
+                    // inline block comment on its own line; grab any code after `*/`
+                    let after = Self::strip_line_comment(l[close + 2..].trim());
+                    if !after.is_empty() {
+                        self.push_line(after);
+                    }
+                } else {
+                    self.comment_tracker.set_multiline();
+                }
+            } else {
+                self.push_line(Self::strip_line_comment(l));
+            }
         } else if l.starts_with("//") {
             self.comment_lines.push(l);
         } else if l.starts_with("/*") {
             if let Some(close) = l.find("*/") {
                 self.comment_lines.push(&l[..close + 2]);
-                let after = l[close + 2..].trim();
+                let after = Self::strip_line_comment(l[close + 2..].trim());
                 if !after.is_empty() {
                     self.push_line(after);
                 }
@@ -383,7 +427,7 @@ impl<'a> ClosureVisitor<'a> {
                 self.comment_tracker.set_multiline();
             }
         } else {
-            self.push_line(l);
+            self.push_line(Self::strip_line_comment(l));
         }
     }
 
@@ -943,6 +987,35 @@ pub mod tests {
             def.var_spans
         );
         assert_eq!(&def.expr[def.var_spans[0].clone()], "s");
+    }
+
+    #[test]
+    fn test_assert_trailing_line_comments() {
+        // Inline `//` comment at the end of the expression line must be stripped so
+        // that the closing `);` of the generated `require()` is not swallowed.
+        let defs = parse_closure("|b| { b.length > 0 // non-empty }")
+            .unwrap()
+            .unwrap();
+        assert_eq!(defs[0].expr, "b.length > 0");
+
+        // Standalone `//` comment line after the expression must be dropped.
+        let defs = parse_closure("|b| {\n    b.length > 0\n    // trailing comment\n}")
+            .unwrap()
+            .unwrap();
+        assert_eq!(defs[0].expr, "b.length > 0");
+
+        // Continuation lines after a trailing `//` are still captured.
+        let defs =
+            parse_closure("|b| {\n    b.length > 0\n    // mid comment\n    && b.length < 100\n}")
+                .unwrap()
+                .unwrap();
+        assert_eq!(defs[0].expr, "b.length > 0 && b.length < 100");
+
+        // `//` inside a string literal must not be treated as a comment start.
+        let defs = parse_closure(r#"|b| { b == "http://x" // trailing }"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(defs[0].expr, r#"b == "http://x""#);
     }
 
     #[test]

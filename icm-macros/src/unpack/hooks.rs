@@ -1071,13 +1071,11 @@ mod tests {
         // A function call with multiple arguments must not be split on the inner comma.
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![
-                (
-                    Some("#[unpack(length = Lib.f(a, b) * 2, method = \"g\")]".to_string()),
-                    true,
-                    String::new(),
-                ),
-            ],
+            &vec![(
+                Some("#[unpack(length = Lib.f(a, b) * 2, method = \"g\")]".to_string()),
+                true,
+                String::new(),
+            )],
             "",
         )
         .unwrap()
