@@ -8,8 +8,8 @@ use solar::ast::{ElementaryType, StateMutability};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, Enum, ExprKind, ItemId, Struct, TypeKind};
 
-use crate::common::LengthSpec;
-use crate::unpack::hooks::{AssertDef, CaptureType, UnpackArgs};
+use crate::common::{AssertDef, CaptureType, LengthSpec};
+use crate::unpack::hooks::UnpackArgs;
 
 /// Generates the code to unpack an elementary Solidity type from the front of `data`.
 /// The result is stored in a freshly declared local named `output`.

@@ -27,11 +27,8 @@
 //! is `public`.
 //!
 //! `assert`: Provide a closure of the form `|b| {...} -> bool` to assert some post-condition on the
-//! serialized data.
-//!
-//! `solhint-disable` (flag): Wrap the generated function with
-//! `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly` comments.
-//! Use this when the project enforces the solhint `no-inline-assembly` rule.
+//! serialized data. The pack macro generates no inline assembly, so no solhint-disable annotation
+//! is needed.
 //!
 //! _Fields_
 //! As mentioned above, each non-primitive field is assumed to also possess a pack method. This is
@@ -227,7 +224,8 @@ pub fn derive_pack(
 
         let type_name =
             qualified_type_name(ctx, enum_def.name.as_str(), enum_def.contract, arg.contract);
-        let code = pack_enum(enum_def, arg, &type_name);
+        let code = pack_enum(enum_def, arg, &type_name)
+            .map_err(foundry_compilers::error::SolcError::msg)?;
 
         let path = ctx
             .sources

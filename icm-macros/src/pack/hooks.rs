@@ -7,13 +7,17 @@ use solar::ast::Span;
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, SourceId, Struct};
 
-use crate::common::{LengthSpec, Unvalidated, Validated, ValidationState, annotation_args};
+use crate::common::{
+    AssertDef, CommentVisitor, LengthSpec, Unvalidated, Validated, ValidationState,
+    annotation_args, find_closing_paren, join_segments, parse_closure, split_args,
+};
 
 pub struct PackArgs {
     pub contract: Option<ContractId>,
     pub name: Option<String>,
     pub fields: Vec<FieldArgs<Validated>>,
     pub visibility: String,
+    pub assert: Vec<AssertDef>,
 }
 
 /// Per-field pack annotations, generic over their validation state.
@@ -55,6 +59,7 @@ pub(crate) struct RawPackArgs {
     pub name: Option<String>,
     pub fields: Vec<FieldArgs<Unvalidated>>,
     pub visibility: String,
+    pub assert: Vec<AssertDef>,
 }
 
 impl RawPackArgs {
@@ -98,6 +103,15 @@ pub fn parse_args(
 ) -> Option<eyre::Result<PackArgs>> {
     let doc_comment = reforge::get_comment(ctx, source_id, span, data)?;
     let struct_def = ctx.hir.structs().find(|s| s.span == span);
+    let item_name = struct_def
+        .map(|s| s.name.as_str())
+        .or_else(|| {
+            ctx.hir
+                .enums()
+                .find(|e| e.span == span)
+                .map(|e| e.name.as_str())
+        })
+        .unwrap_or("");
 
     let field_comments: Vec<Option<String>> = struct_def
         .map(|s| {
@@ -110,7 +124,7 @@ pub fn parse_args(
         })
         .unwrap_or_default();
 
-    let mut raw = match parse_comment(&doc_comment, &field_comments) {
+    let mut raw = match parse_comment(&doc_comment, &field_comments, item_name) {
         Ok(Some(raw)) => raw,
         Ok(None) => return None,
         Err(e) => return Some(Err(e)),
@@ -133,6 +147,8 @@ pub fn parse_args(
         },
     };
 
+    let assert = std::mem::take(&mut raw.assert);
+
     let fields = match raw.validate_fields(ctx, struct_def) {
         Ok(f) => f,
         Err(e) => return Some(Err(e)),
@@ -143,6 +159,7 @@ pub fn parse_args(
         name: raw.name,
         fields,
         visibility: raw.visibility,
+        assert,
     }))
 }
 
@@ -153,30 +170,68 @@ pub fn parse_args(
 pub(crate) fn parse_comment(
     comment: &str,
     field_comments: &[Option<String>],
+    item_name: &str,
 ) -> eyre::Result<Option<RawPackArgs>> {
-    let Some(args) = annotation_args(comment, "#[pack(")? else {
+    // annotation_args handles error detection for malformed annotations (unterminated
+    // strings, unbalanced parens) and tells us whether the annotation is present.
+    // CommentVisitor is then used for the actual content extraction, since annotation_args
+    // does not strip the `//` / `* ` comment-line prefixes needed for multi-line annotations.
+    let Some(_) = annotation_args(comment, "#[pack(")? else {
         return Ok(None);
     };
+    let pack_start = comment.find("#[pack(").unwrap(); // safe: annotation_args confirmed it
+    let args_start = pack_start + "#[pack(".len();
+    let Some(closing) = find_closing_paren(&comment[args_start..]) else {
+        return Err(eyre::eyre!(
+            "#[pack(...)] annotation on `{item_name}` has an unclosed `(`"
+        ));
+    };
+    let args_end = args_start + closing;
+    let args_segments = CommentVisitor::new(&comment[args_start..args_end]).parse();
+    let args_str = join_segments(&args_segments);
 
     let mut contract = None;
     let mut name = None;
     let mut visibility = "public".to_string();
+    let mut asserts: Vec<AssertDef> = Vec::new();
 
-    for arg in args {
+    for arg in split_args(&args_str) {
+        let arg = arg.trim();
+        if arg.is_empty() {
+            continue;
+        }
         if let Some((key, val)) = arg.split_once('=') {
             let val = val.trim().trim_matches('"');
             match key.trim() {
                 "contract" => contract = Some(val.to_string()),
                 "name" => name = Some(val.to_string()),
                 "visibility" => visibility = val.to_string(),
-                _ => {}
+                "assert" => match parse_closure(val) {
+                    Some(Ok(defs)) => asserts.extend(defs),
+                    Some(Err(e)) => return Err(e),
+                    None => {
+                        return Err(eyre::eyre!(
+                            "assert value {val:?} on `{item_name}` is not a valid closure; \
+                             expected `|name| {{ expr }}` or `|each name| {{ expr }}`"
+                        ));
+                    }
+                },
+                key => {
+                    return Err(eyre::eyre!(
+                        "unknown key `{key}` in #[pack(...)] on `{item_name}`"
+                    ));
+                }
             }
+        } else {
+            return Err(eyre::eyre!(
+                "unknown flag `{arg}` in #[pack(...)] on `{item_name}`"
+            ));
         }
     }
 
     let fields = field_comments
         .iter()
-        .map(|c| parse_field_args(c.as_deref()))
+        .map(|c| parse_field_args(c.as_deref(), item_name))
         .collect::<eyre::Result<_>>()?;
 
     Ok(Some(RawPackArgs {
@@ -184,30 +239,60 @@ pub(crate) fn parse_comment(
         name,
         fields,
         visibility,
+        assert: asserts,
     }))
 }
 
-fn parse_field_args(comment: Option<&str>) -> eyre::Result<FieldArgs<Unvalidated>> {
+fn parse_field_args(
+    comment: Option<&str>,
+    item_name: &str,
+) -> eyre::Result<FieldArgs<Unvalidated>> {
     let annotation = comment
         .map(|c| annotation_args(c, "#[pack("))
         .transpose()?
         .flatten();
-    let Some(args) = annotation else {
+    let Some(_) = annotation else {
         return Ok(FieldArgs::default());
     };
+    let comment = comment.unwrap(); // safe: annotation_args confirmed the annotation is present
+    let pack_start = comment.find("#[pack(").unwrap();
+    let args_start = pack_start + "#[pack(".len();
+    let Some(args_end_rel) = find_closing_paren(&comment[args_start..]) else {
+        return Err(eyre::eyre!(
+            "#[pack(...)] annotation on field of `{item_name}` has an unclosed `(`"
+        ));
+    };
+    let raw_args = comment[args_start..args_start + args_end_rel].trim();
+    let args_segments = CommentVisitor::new(raw_args).parse();
+    let args_str = join_segments(&args_segments);
 
     let mut method = None;
     let mut ignore = false;
     let mut length = None;
-    for arg in args {
+    for arg in split_args(&args_str) {
+        let arg = arg.trim();
+        if arg.is_empty() {
+            continue;
+        }
         if let Some((key, val)) = arg.split_once('=') {
             match key.trim() {
                 "method" => method = Some(val.trim().trim_matches('"').to_string()),
                 "length" => length = Some(val.trim().trim_matches('"').to_string()),
-                _ => {}
+                key => {
+                    return Err(eyre::eyre!(
+                        "unknown key `{key}` in #[pack(...)] field annotation on `{item_name}`"
+                    ));
+                }
             }
-        } else if arg == "ignore" {
-            ignore = true;
+        } else {
+            match arg {
+                "ignore" => ignore = true,
+                _ => {
+                    return Err(eyre::eyre!(
+                        "unknown flag `{arg}` in #[pack(...)] field annotation on `{item_name}`"
+                    ));
+                }
+            }
         }
     }
     Ok(if ignore {
@@ -228,18 +313,20 @@ fn parse_field_args(comment: Option<&str>) -> eyre::Result<FieldArgs<Unvalidated
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::LengthType;
+    use crate::common::tests::assert_def;
+    use crate::common::{AssertDef, CaptureType, LengthType};
 
     #[test]
     fn test_basic() {
-        let raw = parse_comment("#[pack]", &vec![None, None, None, None]).unwrap();
+        let raw = parse_comment("#[pack]", &vec![None, None, None, None], "").unwrap();
         assert!(raw.is_none());
-        let raw = parse_comment("#[pack()]", &vec![None, None, None, None])
+        let raw = parse_comment("#[pack()]", &vec![None, None, None, None], "")
             .unwrap()
             .expect("Test failed");
         assert_eq!(raw.contract, None);
         assert_eq!(raw.name, None);
         assert_eq!(raw.visibility, "public".to_string());
+        assert!(raw.assert.is_empty());
         let expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         assert_eq!(raw.fields, expected);
     }
@@ -249,12 +336,14 @@ mod tests {
         let raw = parse_comment(
             "#[pack(contract=\"Foo\", name=\"Bar\", visibility=\"private\")]",
             &vec![None, None, None, None],
+            "",
         )
         .unwrap()
         .unwrap();
         assert_eq!(raw.contract, Some("Foo".to_string()));
         assert_eq!(raw.name, Some("Bar".to_string()));
         assert_eq!(raw.visibility, "private".to_string());
+        assert!(raw.assert.is_empty());
         let expected = vec![FieldArgs::<Unvalidated>::default(); 4];
         assert_eq!(raw.fields, expected);
     }
@@ -268,6 +357,7 @@ mod tests {
                 Some("#[pack(length = \"uint32\")]".to_string()),
                 Some("#[pack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -301,6 +391,7 @@ mod tests {
                 Some("#[pack(method=\"Foo.bar\", length = uint64)]".to_string()),
                 Some("#[pack(length = 32)]".to_string()),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -366,6 +457,7 @@ mod tests {
                 Some("#[pack(length = type(uint16).max)]".to_string()),
                 Some("#[pack(length = Lib.f(a, b) * 2, method = \"g\")]".to_string()),
             ],
+            "",
         )
         .unwrap()
         .unwrap();
@@ -390,19 +482,124 @@ mod tests {
     #[test]
     fn test_malformed_annotation() {
         // a malformed annotation is an error, not an absent annotation
-        let err = parse_comment("#[pack(name = \"Foo)]", &[])
+        let err = parse_comment("#[pack(name = \"Foo)]", &[], "")
             .unwrap_err()
             .to_string();
         assert!(
             err.contains("unterminated string in annotation `#[pack(name = \"Foo)]`"),
             "{err}"
         );
-        let err = parse_comment("#[pack()]", &[Some("#[pack(length = (1 + 2]".to_string())])
-            .unwrap_err()
-            .to_string();
+        let err = parse_comment(
+            "#[pack()]",
+            &[Some("#[pack(length = (1 + 2]".to_string())],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             err.contains("unbalanced parentheses in annotation `#[pack(length = (1 + 2]`"),
             "{err}"
+        );
+        let err = parse_comment("#[pack(bogus = \"x\")]", &[], "MyStruct")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("unknown key `bogus` in #[pack(...)] on `MyStruct`"),
+            "{err}"
+        );
+        let err = parse_comment("#[pack(bogus)]", &[], "MyStruct")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("unknown flag `bogus` in #[pack(...)] on `MyStruct`"),
+            "{err}"
+        );
+        let err = parse_comment(
+            "#[pack()]",
+            &[Some("#[pack(bogus)]".to_string())],
+            "MyStruct",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("unknown flag `bogus` in #[pack(...)] field annotation on `MyStruct`"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn test_assert() {
+        // type-level assert
+        let raw = parse_comment(
+            r#"#[pack(assert = "|b| { b.length > 0 }")]"#,
+            &vec![(None); 1],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { b.length > 0 }",
+                "",
+                "b.length > 0"
+            )]
+        );
+
+        // multiple asserts
+        let raw = parse_comment(
+            r#"#[pack(assert = "|b| { b.length > 0 }", assert = "|b| { b.length % 2 == 0 }")]"#,
+            &[],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            raw.assert,
+            vec![
+                assert_def(
+                    CaptureType::Field,
+                    "|b| { b.length > 0 }",
+                    "",
+                    "b.length > 0"
+                ),
+                assert_def(
+                    CaptureType::Field,
+                    "|b| { b.length % 2 == 0 }",
+                    "",
+                    "b.length % 2 == 0"
+                ),
+            ]
+        );
+
+        // assert with other args
+        let raw = parse_comment(
+            r#"#[pack(assert = "|b| { b.length == 48 }", name = "serialize")]"#,
+            &[],
+            "",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(raw.name, Some("serialize".to_string()));
+        assert_eq!(
+            raw.assert,
+            vec![assert_def(
+                CaptureType::Field,
+                "|b| { b.length == 48 }",
+                "",
+                "b.length == 48"
+            )]
+        );
+
+        // malformed assert
+        let err = parse_comment(r#"#[pack(assert = "x > 0")]"#, &[], "MyStruct")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not a valid closure"), "wrong error: {err}");
+        assert!(
+            err.contains("MyStruct"),
+            "error should name the type: {err}"
         );
     }
 

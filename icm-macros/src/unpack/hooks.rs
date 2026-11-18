@@ -15,17 +15,15 @@
 //! - **Multi-line expressions** are supported: text lines are flattened with spaces,
 //!   so line breaks are purely cosmetic.
 
-mod visitor;
-use visitor::{ClosureVisitor, CommentVisitor, join_segments};
-
-use std::ops::Range;
-
 use reforge::PreprocessingData;
 use solar::ast::{ElementaryType, Span};
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, ItemId, SourceId, Struct, Type, TypeKind};
 
-use crate::common::{LengthSpec, Unvalidated, Validated, ValidationState, annotation_args};
+use crate::common::{
+    AssertDef, CommentVisitor, LengthSpec, Unvalidated, Validated, ValidationState,
+    annotation_args, find_closing_paren, join_segments, parse_closure, split_args,
+};
 
 pub struct UnpackArgs {
     pub contract: Option<ContractId>,
@@ -37,27 +35,6 @@ pub struct UnpackArgs {
     /// Type-level post-condition. The capture name is replaced with `result`
     /// (the decoded struct) in the assertion body.
     pub assert: Vec<AssertDef>,
-}
-
-/// Whether the closure variable captures a container element or the whole decoded value.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub enum CaptureType {
-    /// `|each var|` — variable is bound to each element inside the decode loop.
-    Element,
-    /// `|var|` — variable is bound to the whole field or decoded struct.
-    #[default]
-    Field,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AssertDef {
-    pub captured: CaptureType,
-    /// Byte ranges within `expr` where the capture variable should be substituted.
-    pub var_spans: Vec<Range<usize>>,
-    /// Inline comment lines that precede this assertion's expression in the
-    /// closure body. Empty when there is no leading comment.
-    pub comment: String,
-    pub expr: String,
 }
 
 /// Per-field unpack annotations, generic over their validation state.
@@ -402,119 +379,11 @@ fn parse_field_args(
     })
 }
 
-/// Finds the index of the `)` that closes the current paren level, skipping
-/// over any nested `(...)` pairs and `"..."` quoted strings.
-/// Returns `None` if no such `)` exists.
-fn find_closing_paren(s: &str) -> Option<usize> {
-    let mut depth = 0usize;
-    let mut in_quotes = false;
-    let mut brace_depth = 0usize;
-    for (i, c) in s.char_indices() {
-        match c {
-            '"' if brace_depth == 0 => in_quotes = !in_quotes,
-            '{' if in_quotes => brace_depth += 1,
-            '}' if in_quotes && brace_depth > 0 => brace_depth -= 1,
-            '(' if !in_quotes => depth += 1,
-            ')' if !in_quotes => {
-                if depth == 0 {
-                    return Some(i);
-                }
-                depth -= 1;
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Splits `s` on commas that are outside of `"..."` quoted strings.
-fn split_args(s: &str) -> Vec<&str> {
-    let mut result = Vec::new();
-    let mut start = 0;
-    let mut in_quotes = false;
-    let mut brace_depth = 0usize;
-    for (i, c) in s.char_indices() {
-        match c {
-            '"' if brace_depth == 0 => in_quotes = !in_quotes,
-            '{' if in_quotes => brace_depth += 1,
-            '}' if in_quotes && brace_depth > 0 => brace_depth -= 1,
-            ',' if !in_quotes => {
-                result.push(&s[start..i]);
-                start = i + 1;
-            }
-            _ => {}
-        }
-    }
-    result.push(&s[start..]);
-    result
-}
-
-/// Parses a closure of the form `|[each] capture| { body }` and returns a single
-/// `AssertDef` for the body expression. Any leading `//` or `/* */` Solidity comment
-/// lines are extracted into `AssertDef::comment`; everything else is the expression.
-///
-/// Each `assert = "..."` annotation key produces exactly one `AssertDef`. Use multiple
-/// `assert = ...` attributes for multiple postconditions.
-///
-/// - Returns `None` if the string doesn't look like a closure (no leading `|` or no body).
-/// - Returns `Some(Err(...))` if the capture name is invalid or the body is empty.
-/// - Returns `Some(Ok(...))` with a single-element vec on success.
-fn parse_closure(s: &str) -> Option<eyre::Result<Vec<AssertDef>>> {
-    let mut visitor = ClosureVisitor::new(s.trim());
-    let (captured, var) = match visitor.parse_capture() {
-        Some(Ok(t)) => t,
-        Some(Err(e)) => return Some(Err(e)),
-        None => return None,
-    };
-    let body = match visitor.extract_body() {
-        Ok(b) => b,
-        Err(e) => return Some(Err(e)),
-    };
-    let tail = visitor.remaining().trim();
-    if !tail.is_empty() {
-        return Some(Err(eyre::eyre!(
-            "unexpected text after closure body `}}`; \
-             expected `|name| {{ expr }}`, found `{tail}`"
-        )));
-    }
-    visitor.classify_lines(body);
-    let expr = visitor.expr_lines.join(" ");
-    if expr.is_empty() {
-        return Some(Err(eyre::eyre!(
-            "assert closure body for `{var}` contains no boolean expressions"
-        )));
-    }
-    Some(Ok(vec![AssertDef {
-        captured,
-        comment: visitor.comment_lines.join("\n"),
-        var_spans: visitor.var_spans,
-        expr,
-    }]))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::LengthType;
-
-    /// Convenience constructor: builds an `AssertDef` with `var_spans` derived from
-    /// parsing `closure_src` through the visitor, so tests don't hardcode byte offsets.
-    fn assert_def(
-        captured: CaptureType,
-        closure_src: &str,
-        comment: &str,
-        expr: &str,
-    ) -> AssertDef {
-        let defs = parse_closure(closure_src)
-            .expect("closure present")
-            .expect("closure valid");
-        assert_eq!(defs.len(), 1);
-        let d = defs.into_iter().next().unwrap();
-        assert_eq!(d.captured, captured);
-        assert_eq!(d.comment, comment);
-        assert_eq!(d.expr, expr);
-        d
-    }
+    use crate::common::tests::assert_def;
+    use crate::common::{AssertDef, CaptureType, LengthType};
 
     #[test]
     fn test_basic() {
@@ -858,38 +727,6 @@ mod tests {
                 r#"c != ",""#
             )]
         );
-
-        // Collision: var name appears both as a real reference and inside a string
-        // literal. Only the real reference should become a span.
-        let defs = parse_closure(r#"|s| { keccak256(bytes(s.name)) != keccak256("s") }"#)
-            .unwrap()
-            .unwrap();
-        let def = &defs[0];
-        assert_eq!(def.expr, r#"keccak256(bytes(s.name)) != keccak256("s")"#);
-        // Only the standalone `s` before `.name` should be a span; the `s` inside
-        // the string literal must not appear.
-        assert_eq!(
-            def.var_spans.len(),
-            1,
-            "expected exactly one span, got {:?}",
-            def.var_spans
-        );
-        assert_eq!(&def.expr[def.var_spans[0].clone()], "s");
-
-        // Escaped quote: `"\""` must not close the string early, so the `s` inside
-        // `"\"s\""` is still inside a literal and must not become a span.
-        let defs = parse_closure(r#"|s| { s.ok && keccak256("\"s\"") == h }"#)
-            .unwrap()
-            .unwrap();
-        let def = &defs[0];
-        // Only the leading standalone `s` reference should be a span.
-        assert_eq!(
-            def.var_spans.len(),
-            1,
-            "expected exactly one span, got {:?}",
-            def.var_spans
-        );
-        assert_eq!(&def.expr[def.var_spans[0].clone()], "s");
     }
 
     #[test]
@@ -1024,137 +861,6 @@ mod tests {
                 "// this comment",
                 "r.value == 0",
             )]
-        );
-    }
-
-    #[test]
-    fn test_assert_empty_body() {
-        // An empty closure body must be an error, not a silent no-op.
-        let err = parse_comment(
-            r#"#[unpack(assert = "|r| { }")]"#,
-            &vec![(None, false, String::new())],
-            "",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("no boolean expressions"), "wrong error: {err}");
-
-        // A body containing only a comment must also be an error.
-        let err = parse_comment(
-            r#"#[unpack(assert = "|r| { // just a comment }")]"#,
-            &vec![(None, false, String::new())],
-            "",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("no boolean expressions"), "wrong error: {err}");
-    }
-
-    #[test]
-    fn test_assert_capture_errors() {
-        // empty capture in a type-level assert
-        let err = parse_comment(
-            r#"#[unpack(assert = "|| { true }")]"#,
-            &vec![(None, false, String::new()); 1],
-            "MyStruct",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("empty capture name"), "wrong error: {err}");
-
-        // empty capture in a field-level assert
-        let err = parse_comment(
-            "#[unpack()]",
-            &vec![(
-                Some(r#"#[unpack(assert = "|| { true }")]"#.to_string()),
-                false,
-                "myField".to_string(),
-            )],
-            "",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("empty capture name"), "wrong error: {err}");
-
-        // non-identifier capture name
-        let err = parse_comment(
-            r#"#[unpack(assert = "|2bad| { true }")]"#,
-            &vec![(None, false, String::new()); 1],
-            "MyStruct",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("not a valid identifier"), "wrong error: {err}");
-
-        // empty capture after `each`
-        let err = parse_comment(
-            "#[unpack()]",
-            &vec![(
-                Some(r#"#[unpack(assert = "|each | { true }")]"#.to_string()),
-                false,
-                "myField".to_string(),
-            )],
-            "",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("empty capture name"), "wrong error: {err}");
-
-        // malformed assert (missing pipe) on a type-level assert — None path
-        let err = parse_comment(
-            r#"#[unpack(assert = "x > 0")]"#,
-            &vec![(None, false, String::new()); 1],
-            "MyStruct",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("not a valid closure"), "wrong error: {err}");
-        assert!(
-            err.contains("MyStruct"),
-            "error should name the struct: {err}"
-        );
-
-        // missing braces: body text with no `{` triggers a specific error from extract_body
-        let err = parse_comment(
-            "#[unpack()]",
-            &vec![(
-                Some(r#"#[unpack(assert = "|x| x > 0")]"#.to_string()),
-                false,
-                "myField".to_string(),
-            )],
-            "",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(
-            err.contains("unexpected text before closure body"),
-            "wrong error: {err}"
-        );
-
-        // non-whitespace between capture and `{` is rejected
-        let err = parse_comment(
-            r#"#[unpack(assert = "|r| something { r.a > 0 }")]"#,
-            &vec![(None, false, String::new()); 1],
-            "MyStruct",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(
-            err.contains("unexpected text before closure body"),
-            "wrong error: {err}"
-        );
-
-        // non-whitespace after closing `}` is rejected
-        let err = parse_comment(
-            r#"#[unpack(assert = "|r| { r.a > 0 } && r.b > 0")]"#,
-            &vec![(None, false, String::new()); 1],
-            "MyStruct",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(
-            err.contains("unexpected text after closure body"),
-            "wrong error: {err}"
         );
     }
 

@@ -37,11 +37,47 @@ struct MyStruct {
 | `contract` | Name of the contract/library to inject the generated function into. Required for free-standing types; otherwise defaults to the type's own contract. | *(none — free-standing)* |
 | `name` | Override the generated function name. | `pack{TypeName}` |
 | `visibility` | Visibility of the generated function. | `public` |
+| `assert = "\|var\| { body }"` | Emit a post-condition `require()` before the function returns. `var` is replaced by `result` (the serialised `bytes`). May appear multiple times. See [Assert closure bodies (pack)](#assert-closure-bodies-pack). Not valid with `each` captures. | *(none)* |
+
+The `assert` value must be a quoted string so that commas and `=` signs inside the expression are not misinterpreted as argument separators. Example:
+
+```solidity
+// #[pack(
+//   assert = "|b| { b.length == 20 }",
+//   assert = "|b| { b.length % 2 == 0 }",
+// )]
+struct MyStruct { ... }
+```
 
 ```solidity
 /// #[pack(contract = "MyLibrary", name = "serialize", visibility = "internal")]
 struct MyStruct { ... }
 ```
+
+#### Assert closure bodies (pack)
+
+Each `assert = "..."` key produces one `require()` on the serialised `bytes` returned by the function. The closure variable is replaced by `result`. A leading `//` or `/* */` comment inside the body is emitted before the `require()`.
+
+```solidity
+// #[pack(
+//   assert = "|b| {
+//       // must be non-empty
+//       b.length > 0
+//   }",
+// )]
+struct MyStruct { ... }
+```
+
+Generated:
+
+```solidity
+{
+    // must be non-empty
+    require(result.length > 0);
+}
+```
+
+The same restrictions as unpack apply: single boolean expression only; no variable declarations, assignments, or nested control flow.
 
 #### Field-level annotations
 
