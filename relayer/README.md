@@ -114,57 +114,36 @@ Build a Docker image by running the script:
 
 ### Configuration
 
-The relayer is configured via a JSON file, the path to which is passed in via the `--config-file` command line argument. Top level configuration options are also able to be set via environment variable. To get the environment variable corresponding to a key, upper case the key and change the delimiter from "-" to "_". For example, `LOG_LEVEL` sets the `"log-level"` JSON key. The following configuration options are available:
+The relayer is configured via a JSON file. Its path is passed in via the `--config-file` command line argument or the `CONFIG_FILE` environment variable, which takes precedence if both are set. See [`sample-relayer-config.json`](../sample-relayer-config.json) for a minimal example.
 
-`"log-level": "verbo" | "debug" | "info" | "warn" | "error" | "fatal" | "panic"`
+The relayer rejects unknown keys: it exits at startup if the file contains a key that is not listed in this section.
 
-- The log level for the relayer. Defaults to `info`.
+Top-level options that hold a single value can also be set via environment variable, which takes precedence over the value in the file. To get the environment variable corresponding to a key, upper case the key and change the delimiter from "-" to "_". For example, `LOG_LEVEL` sets the `"log-level"` JSON key. There are two limitations:
 
-`"p-chain-api": APIConfig`
+- Options nested inside an object or a list (for example, anything under `"p-chain-api"` or `"source-blockchains"`) can only be set in the file. The exception is the private keys of a destination blockchain, which have their own environment variables described under [Destination blockchains](#destination-blockchains).
+- `REDIS_URL` and `ALLOW_PRIVATE_IPS` are only read if the `"redis-url"` or `"allow-private-ips"` key is also present in the file.
 
-- The configuration for the Avalanche P-Chain API node. The `PChainAPI` object has the following configuration:
+Blockchain IDs and Subnet IDs are cb58-encoded. Addresses are hex-encoded. An option is optional unless it is marked as required.
 
-  `"base-url": string`
+The configuration options are grouped as follows:
 
-  - The URL of the Avalanche P-Chain API node to which the relayer will connect. This API node needs to have the following methods enabled:
-    - platform.getHeight
-    - platform.validatedBy
-    - platform.getValidatorsAt OR platform.getCurrentValidators
+- [General](#general)
+- [Avalanche API nodes](#avalanche-api-nodes)
+- [Peer-to-peer network](#peer-to-peer-network)
+- [Source blockchains](#source-blockchains)
+- [Message protocols](#message-protocols)
+- [Destination blockchains](#destination-blockchains)
+- [External EVM destinations](#external-evm-destinations)
 
-  `"query-parameters": map[string]string`
+#### General
 
-  - Additional query parameters to include in the API requests.
+`"log-level": "verbo" | "debug" | "trace" | "info" | "warn" | "error" | "fatal" | "off"`
 
-  `"http-headers": map[string]string`
-
-  - Additional HTTP headers to include in the API requests.
-
-`"info-api": APIConfig`
-
-- The configuration for the Avalanche Info API node. The `InfoAPI` object has the following configuration:
-
-  `"base-url": string`
-
-  - The URL of the Avalanche Info API node to which the relayer will connect. This API node needs to have the following methods enabled:
-
-    - info.peers
-    - info.getNetworkID
-
-  - Additionally, if the Info API node is also a validator, it must have enabled:
-    - info.getNodeID
-    - info.getNodeIP
-
-  `"query-parameters": map[string]string`
-
-  - Additional query parameters to include in the API requests.
-
-  `"http-headers": map[string]string`
-
-  - Additional HTTP headers to include in the API requests.
+- The log level for the relayer. Defaults to `info`. Logs from the peer-to-peer network are only emitted at the `error` level, unless the log level is `debug` or `verbo`.
 
 `"storage-location": string`
 
-- The path to the directory in which the relayer will store its state. Defaults to `./icm-relayer-storage`.
+- The path to the directory in which the relayer will store its state as JSON files. Defaults to `./.icm-relayer-storage`. Not used if `redis-url` is set.
 
 `"redis-url": string`
 
@@ -172,152 +151,223 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
 `"process-missed-blocks": boolean`
 
-- Whether or not to process missed blocks after restarting. Defaults to `true`. If set to false, the relayer will start processing blocks from the chain head.
-
-`"api-port"`: unsigned integer
-
-- The port on which the relayer will listen for API requests. Defaults to `8080`.
-
-`"metrics-port"`: unsigned integer
-
-- The port on which the relayer will expose Prometheus metrics. Defaults to `9090`.
+- Whether or not to process missed blocks after restarting. Defaults to `true`. If set to false, the relayer will start processing blocks from the chain head. See [Processing Missed Blocks](#processing-missed-blocks).
 
 `"db-write-interval-seconds": unsigned integer`
 
-- The interval at which the relayer will write to the database. Defaults to `10`.
+- The interval in seconds at which the relayer will write the latest processed block heights to storage. Must be between `1` and `600`. Defaults to `10`.
+
+`"api-port": unsigned integer`
+
+- The port on which the relayer will listen for [API](#api) requests. Defaults to `8080`.
+
+`"metrics-port": unsigned integer`
+
+- The port on which the relayer will expose Prometheus metrics. Defaults to `9090`.
+
+`"max-concurrent-messages": unsigned integer`
+
+- The maximum number of messages the application will attempt to process concurrently. Processing messages involves making potentially multiple RPC requests, and issuing too many requests at once may cause failures. Must be greater than 0. Defaults to `250`.
+
+`"signature-cache-size": unsigned integer`
+
+- The maximum number of Warp messages for which the relayer caches the validator signatures it has collected. Once the cache is full, the least recently used message is evicted. Defaults to `1048576`.
+
+#### Avalanche API nodes
+
+`"p-chain-api": APIConfig`
+
+- Required. The configuration for the Avalanche P-Chain API node. This API node needs to have the following methods enabled:
+  - platform.getHeight
+  - platform.validatedBy
+  - platform.getValidatorsAt OR platform.getCurrentValidators
+
+`"info-api": APIConfig`
+
+- Required. The configuration for the Avalanche Info API node. This API node needs to have the following methods enabled:
+
+  - info.peers
+  - info.getNetworkID
+
+- Additionally, if the Info API node is also a validator, it must have enabled:
+  - info.getNodeID
+  - info.getNodeIP
+
+An `APIConfig` describes how to reach an API. It is used for the two API nodes above, and for the RPC and WebSocket endpoints of the source and destination blockchains. It has the following fields:
+
+`"base-url": string`
+
+- Required. The URL of the API. For `p-chain-api` and `info-api`, this is the URL of the node without a path, for example `https://api.avax.network`. For a blockchain's `rpc-endpoint` and `ws-endpoint`, this is the full URL of the endpoint, for example `https://api.avax.network/ext/bc/C/rpc`.
+
+`"query-parameters": map[string]string`
+
+- A map of query parameters to values that will be added to the URL of each request.
+
+`"http-headers": map[string]string`
+
+- A map of HTTP headers to include in each request.
+
+#### Peer-to-peer network
+
+`"manually-tracked-peers": []PeerConfig`
+
+- A list of peers that the relayer will always connect to, in addition to the peers it discovers on its own. This is useful if the relayer cannot discover the validators of a source blockchain on its own, for example on a private network. Each `PeerConfig` has the following configuration:
+
+  `"id": string`
+
+  - The node ID of the peer, for example `NodeID-7Xhw2mDxuDS44j42TCB6U5579esbSt3Lg`.
+
+  `"ip": string`
+
+  - The IP address and P2P port of the peer, for example `203.0.113.10:9651`. Host names are not supported.
+
+`"allow-private-ips": boolean`
+
+- Whether or not the relayer is allowed to connect to peers that have private IP addresses. This is needed to connect to a local or private network. Defaults to `false`.
 
 `"tls-cert-path": string`
 
-- The path to a TLS cert file. Should only be set if a static NodeID is required for connecting to private networks.
+- The path to a TLS cert file. Should only be set if a static NodeID is required for connecting to private networks. The relayer's NodeID is derived from this cert. If not set, the relayer generates a new cert, and therefore a new NodeID, each time it starts.
 
 `"tls-key-path": string`
 
 - The path to a TLS key file. Should only be set if a static NodeID is required for connecting to private networks.
 
+- `tls-cert-path` and `tls-key-path` must be set together. If neither file exists yet, the relayer generates a cert and key and writes them to these paths. If only one of the files exists, the relayer exits. Environment variables in the paths are expanded, for example `$HOME/relayer.crt`.
+
 `"initial-connection-timeout-seconds": unsigned integer`
 
-- The maximum number of seconds to wait during start up to connect to sufficient stake weight of each supported chain.
+- The maximum number of seconds to wait during start up to connect to sufficient stake weight of each supported chain. The relayer exits if it does not reach sufficient stake weight in that time. Must be greater than 0. Defaults to `300`.
 
-`"max-concurrent-messages": unsigned integer`
+`"validator-refresh-period-seconds": unsigned integer`
 
-- The maximum number of messages the application will attempt to process concurrently. Processing messages involves making potentially multiple RPC requests, and issuing too many requests at once may cause failures.
+- The interval in seconds at which the relayer refreshes the validator sets of the Subnets it tracks. Must be greater than 0. Defaults to `60`.
 
-`"manual-warp-messages": []ManualWarpMessage`
+#### Source blockchains
 
-- The list of Warp messages to relay on startup, independent of the catch-up mechanism or normal operation. Each `ManualWarpMessage` has the following configuration:
+`"source-blockchains": []SourceBlockchain`
 
-  `"unsigned-message-bytes": string`
-
-  - The hex-encoded bytes of the unsigned Warp message to relay.
-
-  `"source-blockchain-id": string`
-
-  - cb58-encoded or "0x" prefixed hex-encoded blockchain ID of the source blockchain.
-
-  `"destination-blockchain-id": string`
-
-  - cb58-encoded or "0x" prefixed hex-encoded blockchain ID of the destination blockchain.
-
-  `"source-address": string`
-
-  - The address of the source account that sent the Warp message.
-
-  `"destination-address": string`
-
-  - The address of the destination account that will receive the Warp message.
-
-`"source-blockchains": []SourceBlockchains`
-
-- The list of source blockchains to support. Each `SourceBlockchain` has the following configuration:
+- Required. The list of source blockchains to support. At least one is required, each must have a unique `blockchain-id`, and together they can belong to at most 16 Subnets. Each `SourceBlockchain` has the following configuration:
 
   `"subnet-id": string`
 
-  - cb58-encoded or "0x" prefixed hex-encoded Subnet ID.
+  - Required. The ID of the Subnet that validates the source blockchain. The Subnet ID of the Primary Network is `11111111111111111111111111111111LpoYY`.
 
   `"blockchain-id": string`
 
-  - cb58-encoded or "0x" prefixed hex-encoded blockchain ID.
+  - Required. The ID of the source blockchain.
 
   `"rpc-endpoint": APIConfig`
 
-  - The RPC endpoint configuration of the source blockchain's API node. An `APIConfig` has the following fields:
-
-    `"base-url": string`
-
-    - The URL that will be queried. The API node is expected to have all standard ETH endpoints enabled.
-
-    `"query-params": map[string]string`
-
-    - A map of query parameters to values that will be added to the base URL
-
-    `"http-headers": map[string]string`
-
-    - A map of HTTP headers to include in the requests to this API
+  - Required. The RPC endpoint configuration of the source blockchain's API node. The API node is expected to have all standard ETH endpoints enabled.
 
   `"ws-endpoint": APIConfig`
 
-  - The WebSocket endpoint configuration of the source blockchain's API node. An `APIConfig` has the following fields:
-
-    `"base-url": string`
-
-    - The URL that will be queried. The API node is expected to accept eth_subscribe connections.
-
-    `"query-params": map[string]string`
-
-    - A map of query parameters to values that will be added to the base URL
-
-    `"http-headers": map[string]string`
-
-    - A map of HTTP headers to include in the requests to this API
+  - Required. The WebSocket endpoint configuration of the source blockchain's API node. The API node is expected to accept eth_subscribe connections.
 
   `"message-contracts": map[string]MessageProtocolConfig`
 
-  - Map of contract addresses to the config options of the protocol at that address. Each `MessageProtocolConfig` consists of a unique `message-format` name, and the raw JSON `settings`.
+  - Map of contract addresses to the config options of the protocol at that address. Which contract address to use depends on the protocol, see [Message protocols](#message-protocols). Each `MessageProtocolConfig` has the following configuration:
+
+    `"message-format": "teleporter" | "teleporter-v2" | "off-chain-registry"`
+
+    - Required. The message protocol of the contract.
+
+    `"settings": object`
+
+    - The settings of the message protocol, see [Message protocols](#message-protocols).
 
   `"supported-destinations": []SupportedDestination`
 
-  - List of destinations that the source blockchain supports. Each `SupportedDestination` consists of a cb58-encoded destination blockchain ID (`"blockchain-id"`), and a list of hex-encoded addresses (`"addresses"`) on that destination blockchain that the relayer supports delivering Warp messages to. The destination address is defined by the message protocol. For example, it could be the address called from the message protocol contract. If no supported addresses are provided, all addresses are allowed on that blockchain. If `supported-destinations` is empty, then all destination blockchains (and therefore all addresses on those destination blockchains) are supported.
+  - List of destinations that the source blockchain supports. If `supported-destinations` is empty, then all destination blockchains (and therefore all addresses on those destination blockchains) are supported. Each `SupportedDestination` has the following configuration:
+
+    `"blockchain-id": string`
+
+    - Required. The ID of the destination blockchain. It must be the `blockchain-id` of one of the `destination-blockchains`, or the `destination-blockchain-id` of one of the `external-evm-destinations`.
+
+    `"addresses": []string`
+
+    - List of addresses on that destination blockchain that the relayer supports delivering Warp messages to. The destination address is defined by the message protocol. For example, it could be the address called from the message protocol contract. If no supported addresses are provided, all addresses are allowed on that blockchain. The zero address is not allowed.
 
   `"process-historical-blocks-from-height": unsigned integer`
 
-  - The block height at which to back-process transactions from the source blockchain. If the database already contains a later block height for the source blockchain, then that will be used instead. Must be non-zero. Will only be used if `process-missed-blocks` is set to `true`.
+  - The block height at which to back-process transactions from the source blockchain. If the database already contains a later block height for the source blockchain, then that will be used instead. If zero or left unset, and the database does not contain a block height for the source blockchain, the relayer starts from the chain head. Will only be used if `process-missed-blocks` is set to `true`.
 
   `"allowed-origin-sender-addresses": []string`
 
-  - List of addresses on this source blockchain to relay Warp messages from. The sending address is defined by the message protocol. For example, it could be defined as the EOA that initiates the transaction, or the address that calls the message protocol contract. If empty, then all addresses are allowed.
+  - List of addresses on this source blockchain to relay Warp messages from. The sending address is defined by the message protocol. For example, it could be defined as the EOA that initiates the transaction, or the address that calls the message protocol contract. If empty, then all addresses are allowed. The zero address is not allowed.
 
-`"destination-blockchains": []DestinationBlockchains`
+#### Message protocols
 
-- The list of destination blockchains to support. Each `DestinationBlockchain` has the following configuration:
+Each entry of a source blockchain's `message-contracts` selects a message protocol with `message-format`, and configures it with `settings`. The supported protocols are:
+
+`"message-format": "teleporter"`
+
+- Relays [Teleporter](../icm-contracts/avalanche/teleporter/README.md) messages. The contract address of the entry is the address of the `TeleporterMessenger` contract on the source blockchain. It has the following `settings`:
+
+  `"reward-address": string`
+
+  - Required. The address that will receive the rewards for the messages delivered by the relayer.
+
+`"message-format": "teleporter-v2"`
+
+- Relays TeleporterV2 messages. `TeleporterMessengerV2` verifies messages through an adapter contract, and the contract address of the entry is the address of that adapter on the source blockchain: the `WarpAdapter` for the `warp` verifier type, or the `MerkleValidatorSetRegistry` for the `merkle` verifier type. It has the following `settings`:
+
+  `"reward-address": string`
+
+  - Required. The address that will receive the rewards for the messages delivered by the relayer.
+
+  `"teleporter-address": string`
+
+  - Required. The address of the `TeleporterMessengerV2` contract on the destination blockchain.
+
+  `"verifier-type": "merkle" | "warp"`
+
+  - How messages are verified on the destination blockchain. It must match the adapter that the destination `TeleporterMessengerV2` was deployed with. Defaults to `merkle`.
+    - `merkle`: messages are verified by a `MerkleValidatorSetRegistry`. This is the verifier type for [external EVM destinations](#external-evm-destinations).
+    - `warp`: messages are verified by the `WarpAdapter`, through the Warp precompile.
+
+  `"registry-address": string`
+
+  - The address of the `MerkleValidatorSetRegistry` contract on the destination blockchain. Required for the `merkle` verifier type, and not used for the `warp` verifier type.
+
+`"message-format": "off-chain-registry"`
+
+- Relays off-chain Warp messages to a `TeleporterRegistry` contract, which are used to [register a new Teleporter version](../icm-contracts/avalanche/teleporter/registry/UPGRADING.md). These messages are not sent on the source blockchain, so the relayer does not listen for them. They are submitted through the [`/relay/message`](#relaymessage) API instead. The contract address of the entry is the zero address, `0x0000000000000000000000000000000000000000`. It has the following `settings`:
+
+  `"teleporter-registry-address": string`
+
+  - Required. The address of the `TeleporterRegistry` contract that the messages are delivered to.
+
+#### Destination blockchains
+
+`"destination-blockchains": []DestinationBlockchain`
+
+- Required. The list of destination blockchains to support. At least one is required, and each must have a unique `blockchain-id`. Each `DestinationBlockchain` has the following configuration:
 
   `"subnet-id": string`
 
-  - cb58-encoded or "0x" prefixed hex-encoded Subnet ID.
+  - Required. The ID of the Subnet that validates the destination blockchain.
 
   `"blockchain-id": string`
 
-  - cb58-encoded or "0x" prefixed hex-encoded blockchain ID.
+  - Required. The ID of the destination blockchain.
 
   `"rpc-endpoint": APIConfig`
 
-  - The RPC endpoint configuration of the destination blockchains's API node. An `APIConfig` has the following fields:
+  - Required. The RPC endpoint configuration of the destination blockchain's API node.
 
-    `"base-url": string`
-
-    - The URL that will be queried
-
-    `"query-params": map[string]string`
-
-    - A map of query parameters to values that will be added to the base URL
-
-    `"http-headers": map[string]string`
-
-    - A map of HTTP headers to include in the requests to this API
+  Each destination blockchain requires at least one key to sign transactions with. Keys can be provided through any combination of the private key and KMS options below, and of the environment variables described after them. If more than one key is provided, the relayer spreads its transactions across all of the accounts, which increases the number of transactions it can have pending at once.
 
   `"account-private-key": string`
 
-  - The hex-encoded private key to use for signing transactions on the destination blockchain. May be provided by the environment variable `ACCOUNT_PRIVATE_KEY`. Each `destination-subnet` may use a separate private key by appending the cb58 encoded blockchain ID to the private key environment variable name, for example `ACCOUNT_PRIVATE_KEY_11111111111111111111111111111111LpoYY`
+  - The hex-encoded private key to use for signing transactions on the destination blockchain.
   - Please note that the private key should be exclusive to the relayer, see [Private Key Management](#private-key-management).
+
+  `"account-private-keys-list": []string`
+
+  - A list of hex-encoded private keys for signing transactions on the destination blockchain.
+  - Please note that all private keys should be exclusive to the relayer, see [Private Key Management](#private-key-management).
 
   `"kms-key-id": string`
 
@@ -328,42 +378,109 @@ The relayer is configured via a JSON file, the path to which is passed in via th
 
   - The AWS region in which the KMS key is located. Required if `kms-key-id` is provided.
 
-  `"account-private-keys-list": []string`
-
-  - A list of hex-encoded private keys for signing transactions on the destination blockchain. May also be provided as a space-delimited list by the environment variable `ACCOUNT_PRIVATE_KEYS_LIST`. Each `destination-subnet` may use a separate list of private keys by appending the cb58 encoded blockchain ID to the private keys environment variable name, for example `ACCOUNT_PRIVATE_KEYS_LIST_11111111111111111111111111111111LpoYY`
-  - Please note that all private keys should be exclusive to the relayer, see [Private Key Management](#private-key-management).
-
   `"kms-keys": []KMSKey`
 
   - A list of KMS Keys that may be used for signing transactions on the destination blockchain. A `KMSKey` has the following fields:
 
     `"key-id": string`
 
-    - The ID of the KMS key to use for signing transactions on the destination blockchain.
+    - Required. The ID of the KMS key to use for signing transactions on the destination blockchain.
 
     `"aws-region": string`
 
-    - The AWS region in which the KMS key is located.
+    - Required. The AWS region in which the KMS key is located.
+
+  Private keys may also be provided by the following environment variables. They are used in addition to any keys in the file.
+
+  - `ACCOUNT_PRIVATE_KEY`: a hex-encoded private key that is used for every destination blockchain.
+  - `ACCOUNT_PRIVATE_KEYS_LIST`: a space-delimited list of hex-encoded private keys that are used for every destination blockchain.
+  - `ACCOUNT_PRIVATE_KEY_<blockchain-id>` and `ACCOUNT_PRIVATE_KEYS_LIST_<blockchain-id>`: the same, but only used for the destination blockchain with that `blockchain-id`. For example, `ACCOUNT_PRIVATE_KEY_2D8RG4UpSXbPbvPCAWppNJyqTG2i2CAXSkTgmTBBvs7GKNZjsY`.
 
   `"block-gas-limit": unsigned integer`
 
-  - The maximum amount of gas that can be used in a single block on this blockchain. The relayer will not attempt to deliver messages that require more gas than this limit to the given chain. Defaults to 12,000,000 if not set for a given chain.
+  - The maximum amount of gas that can be used in a single block on this blockchain. The relayer will not attempt to deliver messages that require more gas than this limit to the given chain. Defaults to `12000000`. Cannot be set higher than `12000000` for a blockchain on the Primary Network.
 
   `"max-base-fee": unsigned integer`
 
-  - The maximum base fee gas price (in WEI) the relayer is willing to pay on this blockchain. If zero or left unset, the relayer will use a multiple of the current base fee estimation, and not have an explicit maximum.
+  - The maximum base fee gas price (in WEI) the relayer is willing to pay on this blockchain. If zero or left unset, the relayer will use three times the current base fee estimation, and not have an explicit maximum.
 
   `"suggested-priority-fee-buffer": unsigned integer`
 
-  - The fee per gas (in WEI) that will be added to the priority fee rate on top of the suggested priority fee fetched via RPC. A higher suggested priority fee buffer will make transaction inclusion more likely in cases where a chain's capacity is being exhausted, but also results in higher effective gas prices for transactions when potentially not necessary. The maximum priority fee per gas is also capped by `max-priority-fee-per-gas`, as described below.
+  - The fee per gas (in WEI) that will be added to the priority fee rate on top of the suggested priority fee fetched via RPC. A higher suggested priority fee buffer will make transaction inclusion more likely in cases where a chain's capacity is being exhausted, but also results in higher effective gas prices for transactions when potentially not necessary. The maximum priority fee per gas is also capped by `max-priority-fee-per-gas`, as described below. Defaults to `0`.
 
   `"max-priority-fee-per-gas": unsigned integer`
 
-  - The maximum priority fee per gas (in WEI) that the relayer is willing to pay to incentivize transactions being included on this blockchain. The relayer will use the current estimation of the required gas tip cap for this blockchain plus the `suggested-priority-fee-buffer`, up to a maximum of this configured value. Defaults to 2.5 GWEI.
+  - The maximum priority fee per gas (in WEI) that the relayer is willing to pay to incentivize transactions being included on this blockchain. The relayer will use the current estimation of the required gas tip cap for this blockchain plus the `suggested-priority-fee-buffer`, up to a maximum of this configured value. Defaults to `2500000000` (2.5 GWEI).
 
-  `"tx-inclusion-timeout-seconds": unisgned integer`
+  `"tx-inclusion-timeout-seconds": unsigned integer`
 
-  - The time in seconds to wait for a sent transaction to be included in a block when verifying transaction receipts before erroring out. If omitted, defaults to 30 seconds.
+  - The time in seconds to wait for a sent transaction to be included in a block when verifying transaction receipts before erroring out. Defaults to `30`.
+
+#### External EVM destinations
+
+`"external-evm-destinations": []ExternalEVMDestination`
+
+- The list of EVM chains outside of Avalanche, such as Ethereum, to support. For each entry, the relayer keeps the validator set of one Avalanche blockchain up to date in a `MerkleValidatorSetRegistry` contract on the external chain. If `destination-blockchain-id` is set, the relayer also delivers TeleporterV2 messages from that Avalanche blockchain to the external chain. See [Relayer changes](../docs/external-interop/origin_avalanche/relayer_changes.md) for how this works. Each `ExternalEVMDestination` has the following configuration:
+
+  `"rpc-endpoint": string`
+
+  - Required. The URL of the RPC endpoint of the external chain's API node. Unlike the other endpoints, this is a string and not an `APIConfig`.
+
+  `"contract-address": string`
+
+  - Required. The address of the `MerkleValidatorSetRegistry` contract on the external chain.
+
+  `"blockchain-id": string`
+
+  - Required. The ID of the Avalanche blockchain whose validator set the relayer registers on the external chain. If message delivery is enabled, this is also the source blockchain of the delivered messages.
+
+  `"subnet-id": string`
+
+  - Required. The ID of the Subnet that validates that blockchain.
+
+  `"private-key": string`
+
+  - Required. The hex-encoded private key to use for signing the transactions that update the validator set on the external chain. It must not have a "0x" prefix.
+  - Please note that the private key should be exclusive to the relayer, see [Private Key Management](#private-key-management).
+
+  `"poll-interval-seconds": unsigned integer`
+
+  - The interval in seconds at which the relayer checks whether the validator set has changed. Defaults to `10`.
+
+  `"max-update-interval-seconds": unsigned integer`
+
+  - The maximum time in seconds between two updates of the validator set on the external chain. Once it has elapsed, the relayer sends an update even if the validator set has not changed. If zero or left unset, the relayer only sends an update when the validator set changes.
+
+  `"max-gas-price-gwei": unsigned integer`
+
+  - The maximum gas price (in GWEI) at which the relayer will send a validator set update. If the gas price suggested by the external chain is higher, the update is deferred to the next poll. If zero or left unset, there is no maximum.
+
+  The remaining options configure message delivery, and are only used if `destination-blockchain-id` is set. To deliver messages, the source blockchain also needs a [`teleporter-v2`](#message-protocols) entry in its `message-contracts` that uses the `merkle` verifier type.
+
+  `"destination-blockchain-id": string`
+
+  - The blockchain ID that TeleporterV2 messages use to address the external chain. Setting it enables message delivery to the external chain. If left unset, the relayer only updates the validator set.
+
+  `"delivery-private-key": string`
+
+  - The hex-encoded private key to use for signing the transactions that deliver messages. Required if `destination-blockchain-id` is set. It must be different from `private-key`, because the validator set updates and the message deliveries would otherwise conflict on the nonce of a shared account.
+  - Please note that the private key should be exclusive to the relayer, see [Private Key Management](#private-key-management).
+
+  `"teleporter-address": string`
+
+  - The address of the `TeleporterMessengerV2` contract on the external chain. Required if `destination-blockchain-id` is set. Messages are delivered to the `teleporter-address` in the `settings` of the source blockchain's `teleporter-v2` message contract, so the two should be the same.
+
+  `"quorum-numerator": unsigned integer`
+
+  - The percentage of stake weight that must sign a message delivered to the external chain. Defaults to `67`, which is the quorum that the `MerkleValidatorSetRegistry` contract requires. The contract rejects messages signed by a smaller quorum.
+
+  `"block-gas-limit": unsigned integer`
+
+  - The maximum amount of gas that a transaction delivering a message can use. The relayer will not attempt to deliver messages that require more gas than this limit. Defaults to `12000000`.
+
+  `"tx-inclusion-timeout-seconds": unsigned integer`
+
+  - The time in seconds to wait for a transaction delivering a message to be included in a block. Defaults to `30`.
 
 ## Architecture
 
