@@ -68,6 +68,10 @@ type messageHandler struct {
 	// sourceMessage contains the protocol address (the adapter).
 	sourceMessage     messages.SourceMessage
 	teleporterMessage *teleportermessengerv2.TeleporterMessageV2
+
+	// The fields below are set by locateSource on each delivery attempt, not at construction:
+	// they need source chain RPCs, and a failure there must fail the attempt (which is retried
+	// and blocks the checkpoint) rather than handler creation (which is skipped).
 	sourceBlockNumber uint64
 	sourceLogIndex    uint
 	// sourceReceiptsRoot is the receipts root of the message's source block, which the execution
@@ -108,8 +112,10 @@ func (f *factory) GetMessageRoutingInfo(
 	}, nil
 }
 
-// NewMessageHandler locates the message's log on the source chain and returns
-// the handler that will prove and deliver it. The signature aggregator,
+// NewMessageHandler returns the handler that will prove and deliver the message. It makes no
+// network calls: the relayer skips messages whose handler cannot be built and still checkpoints
+// their block, so a transient RPC failure here would drop the message. The source chain lookups
+// happen in ProcessMessage instead. The signature aggregator,
 // signing subnet, and quorum numerator are unused as the attestation is a Boundless
 // consensus proof verified on-chain. Issue: https://github.com/ava-labs/icm-services/issues/1462
 func (f *factory) NewMessageHandler(
@@ -134,44 +140,51 @@ func (f *factory) NewMessageHandler(
 		return nil, fmt.Errorf("failed to parse teleporter v2 message: %w", err)
 	}
 
+	return &messageHandler{
+		logger:            logger.With(zap.String("sourceTxHash", message.SourceTxID.Hex())),
+		sourceClient:      f.sourceClient,
+		destinationClient: destinationClient,
+		metrics:           metrics,
+		messageConfig:     f.messageConfig,
+		proofBuilder:      f.proofBuilder,
+		sourceMessage:     *message,
+		teleporterMessage: teleporterMessage,
+	}, nil
+}
+
+// locateSource fetches the message's receipt and block header from the source chain and sets
+// the source block number, log index, receipts root, and beacon slot on the handler. It runs on
+// every attempt, so a retry after a reorg sees the transaction's current block.
+func (m *messageHandler) locateSource(ctx context.Context) error {
 	// From the source message transaction id, derive the transaction receipt and
 	// match the TeleporterV2MessageSent event log by emitter, topic, and payload.
-	receipt, err := f.sourceClient.TransactionReceipt(context.Background(), message.SourceTxID)
+	receipt, err := m.sourceClient.TransactionReceipt(ctx, m.sourceMessage.SourceTxID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch source receipt %s: %w", message.SourceTxID.Hex(), err)
+		return fmt.Errorf("failed to fetch source receipt %s: %w", m.sourceMessage.SourceTxID.Hex(), err)
 	}
 
-	logIndex, err := findMessageLog(receipt, message.ProtocolAddress, message.Payload)
+	logIndex, err := findMessageLog(receipt, m.sourceMessage.ProtocolAddress, m.sourceMessage.Payload)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	blockNumber := receipt.BlockNumber.Uint64()
-	header, err := f.sourceClient.HeaderByNumber(context.Background(), receipt.BlockNumber)
+	header, err := m.sourceClient.HeaderByNumber(ctx, receipt.BlockNumber)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch source header %d: %w", blockNumber, err)
+		return fmt.Errorf("failed to fetch source header %d: %w", blockNumber, err)
 	}
 
-	slot := (header.Time - f.messageConfig.BeaconGenesisTime) / f.messageConfig.SecondsPerSlot // the floor
+	slot := (header.Time - m.messageConfig.BeaconGenesisTime) / m.messageConfig.SecondsPerSlot // the floor
 
-	return &messageHandler{
-		logger: logger.With(
-			zap.String("sourceTxHash", message.SourceTxID.Hex()),
-			zap.Uint64("blockNumber", blockNumber),
-			zap.Uint64("slot", slot),
-		),
-		sourceClient:       f.sourceClient,
-		destinationClient:  destinationClient,
-		metrics:            metrics,
-		messageConfig:      f.messageConfig,
-		proofBuilder:       f.proofBuilder,
-		sourceMessage:      *message,
-		teleporterMessage:  teleporterMessage,
-		sourceBlockNumber:  blockNumber,
-		sourceLogIndex:     logIndex,
-		sourceReceiptsRoot: header.ReceiptHash,
-		slot:               slot,
-	}, nil
+	m.sourceBlockNumber = blockNumber
+	m.sourceLogIndex = logIndex
+	m.sourceReceiptsRoot = header.ReceiptHash
+	m.slot = slot
+	m.logger.Info("Located source message",
+		zap.Uint64("blockNumber", blockNumber),
+		zap.Uint64("slot", slot),
+	)
+	return nil
 }
 
 // ProcessMessage delivers the message to the destination via the TeleporterV2 messenger,
@@ -237,6 +250,14 @@ func (m *messageHandler) ProcessMessage() (common.Hash, error) {
 	if delivered {
 		logger.Info("Message already delivered to destination")
 		return common.Hash{}, nil
+	}
+
+	// Locate the message on the source chain here rather than in NewMessageHandler, so an RPC
+	// failure fails this attempt (retried, and blocking the checkpoint) instead of dropping the
+	// message.
+	if err := m.locateSource(ctx); err != nil {
+		m.metrics.IncFailedRelayMessageCount("failed to locate source message")
+		return common.Hash{}, err
 	}
 
 	anchor, err := m.awaitAnchor(ctx, adapter)

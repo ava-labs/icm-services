@@ -50,6 +50,7 @@ func (m *messageHandler) awaitAnchor(ctx context.Context, adapter *zkadapter.ZKA
 			return a, err
 		}
 		m.logger.Info("No confirmed anchor covers the message slot yet, waiting",
+			zap.Uint64("slot", m.slot),
 			zap.Duration("pollInterval", anchorPollInterval),
 		)
 		select {
