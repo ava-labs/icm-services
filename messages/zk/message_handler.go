@@ -31,6 +31,7 @@ import (
 	"github.com/ava-labs/icm-services/vms"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
@@ -48,6 +49,14 @@ const (
 	// covers the message's slot yet. New anchors land at the consensus proof cadence, so the
 	// handler waits for the next transition instead of failing the attempt.
 	anchorPollInterval = 30 * time.Second
+
+	// sourceLookupTimeout bounds how long the handler retries the source receipt and header
+	// fetches. The relayer retries a failed attempt immediately and exits after a few, so a
+	// brief source RPC outage is waited out here instead of ending the relayer.
+	sourceLookupTimeout = time.Minute
+
+	// sourceLookupRetryInterval is how long the handler waits between source fetch attempts.
+	sourceLookupRetryInterval = time.Second
 )
 
 // Reasons shouldDeliverMessage gives for skipping a message. Each is reported as the
@@ -163,20 +172,34 @@ func (f *factory) NewMessageHandler(
 // the source block number, log index, receipts root, and beacon slot on the handler. It runs on
 // every attempt, so a retry after a reorg sees the transaction's current block.
 func (m *messageHandler) locateSource(ctx context.Context) error {
+	lookupCtx, cancel := context.WithTimeout(ctx, sourceLookupTimeout)
+	defer cancel()
+
 	// From the source message transaction id, derive the transaction receipt and
 	// match the TeleporterV2MessageSent event log by emitter, topic, and payload.
-	receipt, err := m.sourceClient.TransactionReceipt(ctx, m.sourceMessage.SourceTxID)
+	var receipt *types.Receipt
+	err := m.retrySourceFetch(lookupCtx, "receipt", func() error {
+		var err error
+		receipt, err = m.sourceClient.TransactionReceipt(lookupCtx, m.sourceMessage.SourceTxID)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to fetch source receipt %s: %w", m.sourceMessage.SourceTxID.Hex(), err)
 	}
 
+	// A receipt without the log will not gain it on a retry, so this is not retried.
 	logIndex, err := findMessageLog(receipt, m.sourceMessage.ProtocolAddress, m.sourceMessage.Payload)
 	if err != nil {
 		return err
 	}
 
 	blockNumber := receipt.BlockNumber.Uint64()
-	header, err := m.sourceClient.HeaderByNumber(ctx, receipt.BlockNumber)
+	var header *types.Header
+	err = m.retrySourceFetch(lookupCtx, "header", func() error {
+		var err error
+		header, err = m.sourceClient.HeaderByNumber(lookupCtx, receipt.BlockNumber)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to fetch source header %d: %w", blockNumber, err)
 	}
@@ -192,6 +215,28 @@ func (m *messageHandler) locateSource(ctx context.Context) error {
 		zap.Uint64("slot", slot),
 	)
 	return nil
+}
+
+// retrySourceFetch calls fetch until it succeeds, waiting sourceLookupRetryInterval between
+// attempts, and returns its last error once ctx ends. A source RPC that is briefly unavailable,
+// or a node that has not yet indexed the transaction, is waited out rather than failing the
+// delivery attempt.
+func (m *messageHandler) retrySourceFetch(ctx context.Context, what string, fetch func() error) error {
+	for {
+		err := fetch()
+		if err == nil {
+			return nil
+		}
+		m.logger.Warn("Failed to fetch source "+what+", retrying",
+			zap.Duration("retryInterval", sourceLookupRetryInterval),
+			zap.Error(err),
+		)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%w: %w", err, ctx.Err())
+		case <-time.After(sourceLookupRetryInterval):
+		}
+	}
 }
 
 // ProcessMessage delivers the message to the destination via the TeleporterV2 messenger,
