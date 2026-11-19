@@ -8,11 +8,13 @@ package proofs
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/ava-labs/avalanchego/cache/lru"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/messages/zk/proofs/beacon"
 	"github.com/ava-labs/libevm/common"
+	"golang.org/x/sync/singleflight"
 )
 
 // Overview: orchestrator.go connects the three main individual components of the proofs package.
@@ -34,17 +36,28 @@ type beaconClient interface {
 // anchor state's state_roots vector, so caching avoids refetching ~200MB state.
 const liteStateCacheSize = 16
 
+// maxConcurrentStateFetches bounds how many beacon states are fetched and parsed at once. Each
+// is ~100-200MB of SSZ held in memory until parsed, so without a bound a batch of messages could
+// exhaust memory and overload the beacon node.
+const maxConcurrentStateFetches = 2
+
 // ProofBuilder builds execution proofs from beacon data fetched via the beaconClient and
 // cached parsed lite beacon states by slot.
 type ProofBuilder struct {
 	client     beaconClient
 	liteStates *lru.Cache[uint64, *beacon.LiteBeaconState]
+	// stateFetches deduplicates concurrent fetches of the same slot's state, so messages that
+	// share an anchor or target slot and miss the cache together download it once.
+	stateFetches singleflight.Group
+	// fetchSlots is a semaphore bounding concurrent state fetches to maxConcurrentStateFetches.
+	fetchSlots chan struct{}
 }
 
 func NewProofBuilder(client beaconClient) *ProofBuilder {
 	return &ProofBuilder{
 		client:     client,
 		liteStates: lru.NewCache[uint64, *beacon.LiteBeaconState](liteStateCacheSize),
+		fetchSlots: make(chan struct{}, maxConcurrentStateFetches),
 	}
 }
 
@@ -130,20 +143,48 @@ func (b *ProofBuilder) BuildExecutionProofForSlots(
 	)
 }
 
-// liteState returns the parsed lite beacon state at the given slot, fetching the SSZ-encoded
-// beacon state from the beaconClient and parsing it on a cache miss.
+// getLiteState returns the parsed lite beacon state at the given slot, fetching the SSZ-encoded
+// beacon state from the beaconClient and parsing it on a cache miss. Concurrent misses for the
+// same slot share one fetch, and at most maxConcurrentStateFetches fetches run at once.
+//
+// A shared fetch runs under the context of the caller that started it, so if that caller is
+// cancelled, the others waiting on the same slot receive its error and retry on their next
+// attempt. Each caller stops waiting when its own context ends.
 func (b *ProofBuilder) getLiteState(ctx context.Context, slot uint64) (*beacon.LiteBeaconState, error) {
 	if lite, ok := b.liteStates.Get(slot); ok {
 		return lite, nil
 	}
-	stateSSZ, err := b.client.State(ctx, slot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch beacon state at slot %d: %w", slot, err)
+	resultChan := b.stateFetches.DoChan(strconv.FormatUint(slot, 10), func() (any, error) {
+		// A fetch for this slot may have completed between the cache check above and this one
+		// starting.
+		if lite, ok := b.liteStates.Get(slot); ok {
+			return lite, nil
+		}
+		select {
+		case b.fetchSlots <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		defer func() { <-b.fetchSlots }()
+
+		stateSSZ, err := b.client.State(ctx, slot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch beacon state at slot %d: %w", slot, err)
+		}
+		lite, err := beacon.ParseLiteBeaconState(stateSSZ)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse beacon state at slot %d: %w", slot, err)
+		}
+		b.liteStates.Put(slot, lite)
+		return lite, nil
+	})
+	select {
+	case result := <-resultChan:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		return result.Val.(*beacon.LiteBeaconState), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	lite, err := beacon.ParseLiteBeaconState(stateSSZ)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse beacon state at slot %d: %w", slot, err)
-	}
-	b.liteStates.Put(slot, lite)
-	return lite, nil
 }
