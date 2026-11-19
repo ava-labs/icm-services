@@ -23,15 +23,29 @@ import (
 	"go.uber.org/zap"
 )
 
-// abandonedRelayMessageMetric is the relayer's abandoned-message counter as served on its metrics
-// endpoint: the application relayer registry's "app" prefix followed by the counter's name.
-const abandonedRelayMessageMetric = "app_abandoned_relay_message_count"
+// The relayer's abandoned-message and failed-message counters as served on its metrics endpoint:
+// the application relayer registry's "app" prefix followed by the counter's name.
+const (
+	abandonedRelayMessageMetric = "app_abandoned_relay_message_count"
+	failedRelayMessageMetric    = "app_failed_relay_message_count"
+)
 
 // AbandonedRelayMessageCount scrapes the relayer's metrics endpoint and returns the number of
 // messages it has abandoned for [failureReason], summed over every route it serves.
-func AbandonedRelayMessageCount(
+func AbandonedRelayMessageCount(ctx context.Context, metricsPort uint16, failureReason string) (float64, error) {
+	return relayMessageCount(ctx, metricsPort, abandonedRelayMessageMetric, failureReason)
+}
+
+// FailedRelayMessageCount scrapes the relayer's metrics endpoint and returns the number of
+// messages it has counted as failed for [failureReason], summed over every route it serves.
+func FailedRelayMessageCount(ctx context.Context, metricsPort uint16, failureReason string) (float64, error) {
+	return relayMessageCount(ctx, metricsPort, failedRelayMessageMetric, failureReason)
+}
+
+func relayMessageCount(
 	ctx context.Context,
 	metricsPort uint16,
+	metricName string,
 	failureReason string,
 ) (float64, error) {
 	url := fmt.Sprintf("http://localhost:%d%s", metricsPort, metrics.MetricsPath)
@@ -53,9 +67,9 @@ func AbandonedRelayMessageCount(
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse relayer metrics: %w", err)
 	}
-	family, ok := families[abandonedRelayMessageMetric]
+	family, ok := families[metricName]
 	if !ok {
-		// The counter is only exported once a message has been abandoned.
+		// A counter is only exported once it has been incremented.
 		return 0, nil
 	}
 
