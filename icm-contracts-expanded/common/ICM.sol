@@ -33,19 +33,16 @@ struct ICMMessage {
  */
 library ICM {
     function serializeICMMessage(ICMMessage memory obj) public pure returns (bytes memory) {
-        /* solhint-disable */
-
         return abi.encodePacked(
             abi.encodePacked(obj.rawMessage.length, obj.rawMessage),
             abi.encodePacked(obj.sourceNetworkID),
             abi.encodePacked(obj.sourceBlockchainID),
             abi.encodePacked(obj.attestation.length, obj.attestation)
         );
-        /* solhint-enable */
     }
 
     function parseICMMessage(bytes calldata data) public pure returns (uint256, ICMMessage memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         ICMMessage memory result;
 
@@ -71,7 +68,7 @@ library ICM {
         result.attestation = attestation;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 }
 

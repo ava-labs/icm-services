@@ -786,22 +786,23 @@ library ValidatorSets {
     }
 
     function packValidator(Validator memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
-
         return abi.encodePacked(BLST.unPadUncompressedBlsPublicKey(obj.blsPublicKey), abi.encodePacked(obj.weight));
-        /* solhint-enable */
     }
 
     function packValidatorSetMetadata(ValidatorSetMetadata memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
+
         bytes memory shardHashes_bytes;
-        shardHashes_bytes = abi.encodePacked(uint32(obj.shardHashes.length));
-        for (uint256 i_0 = 0; i_0 < obj.shardHashes.length;) {
-            bytes memory shardHashes_1_bytes;
-            shardHashes_1_bytes = abi.encodePacked(obj.shardHashes[i_0]);
-            shardHashes_bytes = abi.encodePacked(shardHashes_bytes, shardHashes_1_bytes);
-            unchecked {
-                ++i_0;
+        {
+            uint256 shardHashes_0_count = obj.shardHashes.length;
+            shardHashes_bytes = abi.encodePacked(uint32(shardHashes_0_count));
+            for (uint256 i_0 = 0; i_0 < shardHashes_0_count;) {
+                bytes memory shardHashes_1_bytes;
+                shardHashes_1_bytes = abi.encodePacked(obj.shardHashes[i_0]);
+                shardHashes_bytes = abi.encodePacked(shardHashes_bytes, shardHashes_1_bytes);
+                unchecked {
+                    ++i_0;
+                }
             }
         }
         return abi.encodePacked(
@@ -810,40 +811,37 @@ library ValidatorSets {
             abi.encodePacked(obj.pChainTimestamp),
             shardHashes_bytes
         );
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function serializeValidatorSetShard(ValidatorSetShard memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
-
         return abi.encodePacked(abi.encodePacked(obj.shardNumber), abi.encodePacked(obj.avalancheBlockchainID));
-        /* solhint-enable */
     }
 
     function serializeValidatorSetSignature(ValidatorSetSignature memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
-
+        require(obj.signers.length == (drop), "serializeValidatorSetSignature: invalid signers length");
+        require(obj.signature.length == (drop), "serializeValidatorSetSignature: invalid signature length");
         return abi.encodePacked(abi.encodePacked(obj.signers), abi.encodePacked(obj.signature));
-        /* solhint-enable */
     }
 
     function packValidatorChange(ValidatorChange memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
-
         return abi.encodePacked(BLST.unPadUncompressedBlsPublicKey(obj.blsPublicKey), abi.encodePacked(obj.weight));
-        /* solhint-enable */
     }
 
     function packValidatorSetDiff(ValidatorSetDiff memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
+
         bytes memory changes_bytes;
-        changes_bytes = abi.encodePacked(uint32(obj.changes.length));
-        for (uint256 i_0 = 0; i_0 < obj.changes.length;) {
-            bytes memory changes_1_bytes;
-            changes_1_bytes = packValidatorChange(obj.changes[i_0]);
-            changes_bytes = abi.encodePacked(changes_bytes, changes_1_bytes);
-            unchecked {
-                ++i_0;
+        {
+            uint256 changes_0_count = obj.changes.length;
+            changes_bytes = abi.encodePacked(uint32(changes_0_count));
+            for (uint256 i_0 = 0; i_0 < changes_0_count;) {
+                bytes memory changes_1_bytes;
+                changes_1_bytes = packValidatorChange(obj.changes[i_0]);
+                changes_bytes = abi.encodePacked(changes_bytes, changes_1_bytes);
+                unchecked {
+                    ++i_0;
+                }
             }
         }
         return abi.encodePacked(
@@ -855,7 +853,7 @@ library ValidatorSets {
             changes_bytes,
             abi.encodePacked(obj.numAdded)
         );
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function packValidatorSetMerkleCommitment(ValidatorSetMerkleCommitment memory obj)
@@ -863,8 +861,6 @@ library ValidatorSets {
         pure
         returns (bytes memory)
     {
-        /* solhint-disable */
-
         return abi.encodePacked(
             abi.encodePacked(obj.avalancheBlockchainID),
             abi.encodePacked(obj.root),
@@ -872,7 +868,6 @@ library ValidatorSets {
             abi.encodePacked(obj.pChainHeight),
             abi.encodePacked(obj.pChainTimestamp)
         );
-        /* solhint-enable */
     }
 
     function packValidatorSetMerkleAttestation(ValidatorSetMerkleAttestation memory obj)
@@ -880,42 +875,50 @@ library ValidatorSets {
         pure
         returns (bytes memory)
     {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
+
         bytes memory signers_bytes;
         bytes memory proof_bytes;
-        signers_bytes = abi.encodePacked(uint32(obj.signers.length));
-        for (uint256 i_0 = 0; i_0 < obj.signers.length;) {
-            bytes memory signers_1_bytes;
-            signers_1_bytes = packValidator(obj.signers[i_0]);
-            signers_bytes = abi.encodePacked(signers_bytes, signers_1_bytes);
-            unchecked {
-                ++i_0;
+        {
+            uint256 signers_0_count = obj.signers.length;
+            signers_bytes = abi.encodePacked(uint32(signers_0_count));
+            for (uint256 i_0 = 0; i_0 < signers_0_count;) {
+                bytes memory signers_1_bytes;
+                signers_1_bytes = packValidator(obj.signers[i_0]);
+                signers_bytes = abi.encodePacked(signers_bytes, signers_1_bytes);
+                unchecked {
+                    ++i_0;
+                }
             }
         }
-        proof_bytes = abi.encodePacked(uint32(obj.proof.length));
-        for (uint256 i_0 = 0; i_0 < obj.proof.length;) {
-            bytes memory proof_1_bytes;
-            proof_1_bytes = abi.encodePacked(obj.proof[i_0]);
-            proof_bytes = abi.encodePacked(proof_bytes, proof_1_bytes);
-            unchecked {
-                ++i_0;
+        {
+            uint256 proof_0_count = obj.proof.length;
+            proof_bytes = abi.encodePacked(uint32(proof_0_count));
+            for (uint256 i_0 = 0; i_0 < proof_0_count;) {
+                bytes memory proof_1_bytes;
+                proof_1_bytes = abi.encodePacked(obj.proof[i_0]);
+                proof_bytes = abi.encodePacked(proof_bytes, proof_1_bytes);
+                unchecked {
+                    ++i_0;
+                }
             }
         }
         return abi.encodePacked(
             signers_bytes, proof_bytes, packProofFlags(obj.proofFlags), abi.encodePacked(obj.aggregateBlsSig)
         );
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackValidator(bytes calldata data) internal pure returns (uint256, Validator memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         Validator memory result;
 
         bytes memory blsPublicKey;
         {
-            blsPublicKey = BLST.padUncompressedBLSPublicKey(data[0:BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH]);
-            data = data[BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:];
+            uint256 length = BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH;
+            blsPublicKey = BLST.padUncompressedBLSPublicKey(data[0:length]);
+            data = data[length:];
         }
         result.blsPublicKey = blsPublicKey;
         uint64 weight = uint64(bytes8(data[0:8]));
@@ -923,7 +926,7 @@ library ValidatorSets {
         result.weight = weight;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackValidatorSetMetadata(bytes calldata data)
@@ -931,7 +934,7 @@ library ValidatorSets {
         pure
         returns (uint256, ValidatorSetMetadata memory)
     {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         ValidatorSetMetadata memory result;
 
@@ -961,11 +964,11 @@ library ValidatorSets {
         result.shardHashes = shardHashes;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function parseValidatorSetShard(bytes calldata data) internal pure returns (uint256, ValidatorSetShard memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         ValidatorSetShard memory result;
 
@@ -977,18 +980,19 @@ library ValidatorSets {
         result.avalancheBlockchainID = avalancheBlockchainID;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackValidatorChange(bytes calldata data) internal pure returns (uint256, ValidatorChange memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         ValidatorChange memory result;
 
         bytes memory blsPublicKey;
         {
-            blsPublicKey = BLST.padUncompressedBLSPublicKey(data[0:96]);
-            data = data[96:];
+            uint256 length = 96;
+            blsPublicKey = BLST.padUncompressedBLSPublicKey(data[0:length]);
+            data = data[length:];
         }
         result.blsPublicKey = blsPublicKey;
         uint64 weight = uint64(bytes8(data[0:8]));
@@ -996,7 +1000,7 @@ library ValidatorSets {
         result.weight = weight;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackValidatorSetMerkleCommitment(bytes calldata data)
@@ -1004,7 +1008,7 @@ library ValidatorSets {
         pure
         returns (uint256, ValidatorSetMerkleCommitment memory)
     {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         ValidatorSetMerkleCommitment memory result;
 
@@ -1025,7 +1029,7 @@ library ValidatorSets {
         result.pChainTimestamp = pChainTimestamp;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackValidatorSetMerkleAttestation(bytes calldata data)
@@ -1033,7 +1037,7 @@ library ValidatorSets {
         pure
         returns (uint256, ValidatorSetMerkleAttestation memory)
     {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         ValidatorSetMerkleAttestation memory result;
 
@@ -1080,7 +1084,7 @@ library ValidatorSets {
         result.proofFlags = proofFlags;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 }
 
