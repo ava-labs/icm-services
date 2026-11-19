@@ -210,6 +210,9 @@ jobs:
         if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: ./scripts/install_foundry.sh
 
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
+
       - name: Install solc
         run: |
           source ./scripts/versions.sh
