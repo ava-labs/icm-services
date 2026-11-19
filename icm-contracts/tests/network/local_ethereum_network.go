@@ -36,6 +36,10 @@ type LocalEthereumNetwork struct {
 	// eth, net and web3 namespaces. Out-of-process consumers (e.g. the relayer under test) are
 	// configured with it.
 	BaseURL string
+	// WSURL is the node's WebSocket JSON-RPC endpoint, bound to loopback with the same namespaces
+	// as BaseURL. A relayer that uses this network as a message source subscribes to new blocks
+	// through it.
+	WSURL string
 	// EthClient is connected to the node's IPC socket rather than to BaseURL. The socket is only
 	// accessible to the user running the tests and serves every namespace, so the harness can
 	// call debug_traceTransaction (see utils.TraceTransaction) without the debug namespace being
@@ -48,6 +52,9 @@ type LocalEthereumNetwork struct {
 
 const (
 	localEthereumNetworkBaseURL = "http://127.0.0.1:5050"
+	// localEthereumNetworkWSURL must match the --ws.addr and --ws.port that
+	// ethereum/run_ethereum_network.sh passes to geth.
+	localEthereumNetworkWSURL = "ws://127.0.0.1:5051"
 	// localEthereumNetworkIPCPath is the node's IPC socket, relative to the home directory. It
 	// must match the --ipcpath that ethereum/run_ethereum_network.sh passes to geth.
 	localEthereumNetworkIPCPath   = ".local_geth_network/geth.ipc"
@@ -103,6 +110,7 @@ func StartLocalEthereumNetwork(ctx context.Context) *LocalEthereumNetwork {
 
 	return &LocalEthereumNetwork{
 		BaseURL:         localEthereumNetworkBaseURL,
+		WSURL:           localEthereumNetworkWSURL,
 		EthClient:       client,
 		ChainID:         chainID,
 		globalFundedKey: globalFundedKey,

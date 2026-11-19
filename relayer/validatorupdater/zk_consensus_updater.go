@@ -16,13 +16,25 @@ import (
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
+	"github.com/ava-labs/libevm/crypto"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
 )
 
-// maxTransitionsPerTick caps consensus transitions on destination
-// chain applied per poll interval
-const maxTransitionsPerTick = 4
+const (
+	// maxTransitionsPerTick caps consensus transitions on destination
+	// chain applied per poll interval
+	maxTransitionsPerTick = 4
+
+	// subgraphPageSize is how many proofs one subgraph query fetches. It exceeds
+	// maxTransitionsPerTick because the subgraph may index several proofs over the same slots
+	// (e.g. from other provers, or extending other states), of which only the one whose
+	// preState matches the contract's current state can be applied.
+	subgraphPageSize = 100
+
+	// slotsPerEpoch matches ZKStateManager's SLOT_PER_EPOCH.
+	slotsPerEpoch = 32
+)
 
 // ConsensusUpdater keeps the destination ZKAdapter's view of Ethereum
 // consensus up to sync by applying Boundless proofs of beacon chain
@@ -31,8 +43,11 @@ const maxTransitionsPerTick = 4
 // The ZKStateManager imposes two properties this updater is built around:
 //
 //  1. Transitions are sequential: each proof's journal preState must match
-//     the contract's stored state, so proofs are applied in ascending
-//     finalizedSlot order from the contract's current position.
+//     the contract's stored state. The updater therefore selects proofs by
+//     state, not by slot alone: it applies the proof whose preState equals the
+//     contract's current state, then the one extending that proof's postState,
+//     and so on. Slot order alone is not enough, as lastConfirmedSlot is zero on
+//     a fresh deployment and the subgraph may index proofs of other states.
 //
 //  2. Transitions are time-bounded: a single transition may span at most
 //     permissibleTimespan of chain time, so this updater must run
@@ -53,15 +68,22 @@ type ConsensusUpdater struct {
 	// suggested gas price exceeds this value, transitions are deferred until
 	// the next poll. A zero value disables gas gating.
 	maxGasPriceWei *big.Int
-	// lastAppliedSlot is the highest finalizedSlot this updater has successfully
-	// transitioned the contract to. It is also used as the subgraph query lower
-	// bound.
+	// lastAppliedSlot is the contract's lastConfirmedSlot. It is read from the contract at the
+	// start of each tick and advances with each transition this updater applies. It is also
+	// used as the subgraph query lower bound.
 	lastAppliedSlot uint64
-	// synced reports whether the contract's latest applied slot has been read
-	// into lastAppliedSlot. Set false on boot and after a transition revert;
-	// while false, the next tick reads it from the contract before applying
-	// proofs.
-	synced bool
+	// currentState is the contract's consensus state: the preState the next applied proof must
+	// carry. It is read from the contract at the start of each tick, so a change made outside
+	// this updater (another submitter, or an admin manualTransition) is picked up, and advances
+	// to each applied proof's postState.
+	currentState zkadapter.ConsensusState
+	// failedProofs holds the proofs, keyed by proofKey, whose transition failed from
+	// failedProofsState. nextProof skips them, so a proof the contract rejects cannot block a
+	// valid proof indexed after it. It is cleared when the contract's state moves away from
+	// failedProofsState, and when every matching proof has failed, so a proof that failed for a
+	// transient reason is retried rather than skipped for good.
+	failedProofs      map[common.Hash]struct{}
+	failedProofsState zkadapter.ConsensusState
 }
 
 func NewConsensusUpdater(
@@ -105,7 +127,9 @@ func (u *ConsensusUpdater) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			u.logger.Info("ConsensusUpdater stopping")
-			return ctx.Err()
+			// Being asked to stop is a clean exit, not a failure: returning ctx.Err() would make
+			// the relayer's errgroup treat every graceful shutdown as an error.
+			return nil
 		case <-ticker.C:
 			if err := u.checkAndUpdate(ctx); err != nil {
 				u.logger.Error("Update check failed", zap.Error(err))
@@ -115,20 +139,37 @@ func (u *ConsensusUpdater) Start(ctx context.Context) error {
 }
 
 func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
-	if !u.synced {
-		if err := u.initializeLocalState(ctx); err != nil {
-			return err
-		}
+	// Re-read the contract's position every tick rather than trusting the cached one. Both are
+	// view calls, and without this a state change made outside this updater would leave no
+	// proof matching the cached state, stalling the updater for good.
+	if err := u.syncLocalState(ctx); err != nil {
+		return err
 	}
 
-	// Fetch new consensus proofs from subgraph tool after the last applied slot.
-	proofs, err := u.subgraphClient.ConsensusProofsAfterSlot(ctx, u.lastAppliedSlot, maxTransitionsPerTick)
+	// Fetch the indexed proofs that may extend the contract's current state.
+	proofs, err := u.subgraphClient.ConsensusProofsAfterSlot(ctx, u.queryLowerBound(), subgraphPageSize)
 	if err != nil {
 		return fmt.Errorf("failed to query subgraph: %w", err)
 	}
-	if len(proofs) == 0 {
-		u.logger.Debug("No new consensus proofs",
+
+	proof, journal := u.nextProof(proofs)
+	if proof == nil && len(u.failedProofs) > 0 {
+		// Every proof extending the current state has failed. Retry them from the first, as
+		// their failures may have been transient.
+		u.failedProofs = nil
+		proof, journal = u.nextProof(proofs)
+	}
+	if proof == nil {
+		logFn := u.logger.Debug
+		if len(proofs) > 0 {
+			// Proofs exist past the contract's position, yet none extends its state: the subgraph
+			// is missing the next link of the chain.
+			logFn = u.logger.Warn
+		}
+		logFn("No indexed consensus proof extends the contract's current state",
 			zap.Uint64("lastAppliedSlot", u.lastAppliedSlot),
+			zap.Uint64("finalizedEpoch", u.currentState.FinalizedCheckpoint.Epoch),
+			zap.Int("candidates", len(proofs)),
 		)
 		return nil
 	}
@@ -141,24 +182,76 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 		return nil
 	}
 
-	for _, proof := range proofs {
+	for applied := 0; proof != nil && applied < maxTransitionsPerTick; applied++ {
 		if err := u.applyTransition(ctx, proof); err != nil {
-			// This means the relayer's lastAppliedSlot has diverged from
-			// the contract. In this case, we re-sync the contract and retry on the
-			// next tick.
-			u.logger.Warn("Transition failed, resyncing local state from contract",
+			// The next tick re-reads the contract's state. If it moved (e.g. another party
+			// applied a proof first), the updater continues from there.
+			u.logger.Warn("Transition failed, retrying on the next tick",
 				zap.Uint64("finalizedSlot", proof.FinalizedSlot),
 				zap.Error(err),
 			)
-			// We set this to false because the transition fails if the contract's state is ahead
-			// of the lastAppliedSlot. This can happen if another party has updated the contract
-			// with a proof before the relayer did. Thus, we set the synced flag to false and read
-			// the contract's current state so on the next tick we are back in sync with the contract.
-			u.synced = false
+			// The contract may also have rejected the proof itself, in which case the next tick
+			// finds the state unchanged and must try another proof instead of this one again.
+			u.markProofFailed(proof)
 			return nil
 		}
+		u.currentState = journal.PostState
+		proof, journal = u.nextProof(proofs)
 	}
 	return nil
+}
+
+// queryLowerBound returns the slot after which the subgraph is queried for proofs extending
+// currentState. Such a proof finalizes a slot after lastAppliedSlot and after the state's own
+// finalized checkpoint. The checkpoint bound is what matters on a fresh deployment, where
+// lastAppliedSlot is still zero and querying from it would return the oldest indexed proofs.
+// It is taken one epoch early, as a checkpoint's block may precede its epoch's first slot when
+// slots were skipped.
+func (u *ConsensusUpdater) queryLowerBound() uint64 {
+	bound := u.lastAppliedSlot
+	if epoch := u.currentState.FinalizedCheckpoint.Epoch; epoch > 1 {
+		bound = max(bound, (epoch-1)*slotsPerEpoch)
+	}
+	return bound
+}
+
+// nextProof returns the first of proofs, with its decoded journal, that extends currentState
+// and finalizes a slot after lastAppliedSlot, or nil if none does. The contract rejects any
+// other proof, so the rest are not applied. Proofs whose journal cannot be decoded, and proofs
+// that already failed from currentState, are skipped.
+func (u *ConsensusUpdater) nextProof(proofs []*ConsensusProof) (*ConsensusProof, *consensusJournal) {
+	for _, proof := range proofs {
+		if _, failed := u.failedProofs[proofKey(proof)]; failed {
+			continue
+		}
+		journal, err := decodeJournal(proof.JournalData)
+		if err != nil {
+			u.logger.Warn("Skipping consensus proof with undecodable journal",
+				zap.Uint64("finalizedSlot", proof.FinalizedSlot),
+				zap.Error(err),
+			)
+			continue
+		}
+		if journal.PreState == u.currentState && journal.FinalizedSlot > u.lastAppliedSlot {
+			return proof, journal
+		}
+	}
+	return nil, nil
+}
+
+// markProofFailed records that proof failed to transition the contract from currentState.
+func (u *ConsensusUpdater) markProofFailed(proof *ConsensusProof) {
+	if u.failedProofs == nil || u.failedProofsState != u.currentState {
+		u.failedProofs = make(map[common.Hash]struct{})
+		u.failedProofsState = u.currentState
+	}
+	u.failedProofs[proofKey(proof)] = struct{}{}
+}
+
+// proofKey identifies a proof by its journal and seal, which together are what the contract
+// verifies.
+func proofKey(proof *ConsensusProof) common.Hash {
+	return crypto.Keccak256Hash(proof.JournalData, proof.Seal)
 }
 
 // applyTransition submits one consensus transition and waits for it to mine.
@@ -186,45 +279,45 @@ func (u *ConsensusUpdater) applyTransition(ctx context.Context, proof *Consensus
 	return nil
 }
 
-// initializeLocalState reconstructs the contract's current consensus position.
-// The contract itself is the checkpoint so no local persistence is needed.
-func (u *ConsensusUpdater) initializeLocalState(ctx context.Context) error {
+// syncLocalState reads the contract's current consensus position into lastAppliedSlot and
+// currentState. The contract itself is the checkpoint so no local persistence is needed.
+func (u *ConsensusUpdater) syncLocalState(ctx context.Context) error {
 	slot, err := u.latestConfirmedSlot(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to read contract consensus position: %w", err)
 	}
+	state, err := u.contract.GetCurrentState(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to read contract consensus state: %w", err)
+	}
 
+	// Log only a change from the cached position, as this runs every tick. On boot the cache is
+	// empty, so the first read is always logged.
+	if slot != u.lastAppliedSlot || state != u.currentState {
+		u.logger.Info("Synced the consensus state from contract",
+			zap.Uint64("lastAppliedSlot", slot),
+			zap.Uint64("finalizedEpoch", state.FinalizedCheckpoint.Epoch),
+		)
+	}
 	u.lastAppliedSlot = slot
-	u.synced = true
-	u.logger.Info("Synced the consensus state from contract",
-		zap.Uint64("lastAppliedSlot", slot),
-	)
+	u.currentState = state
+	// Failures from a state the contract has since left say nothing about the proofs that
+	// extend its new state.
+	if state != u.failedProofsState {
+		u.failedProofs = nil
+	}
 	return nil
 }
 
-// latestConfirmedSlot returns the highest beacon slot the contract has
-// confirmed by scanning its ConfirmedBeaconBlock events for the most recent one.
+// latestConfirmedSlot returns the contract's lastConfirmedSlot. It is read from storage rather
+// than from ConfirmedBeaconBlock events, so it needs no unbounded eth_getLogs query and reflects
+// a manualTransition that rewinds the slot.
 func (u *ConsensusUpdater) latestConfirmedSlot(ctx context.Context) (uint64, error) {
-	iter, err := u.contract.FilterConfirmedBeaconBlock(
-		&bind.FilterOpts{Context: ctx},
-		nil,
-		nil,
-	)
+	slot, err := u.contract.LastConfirmedSlot(&bind.CallOpts{Context: ctx})
 	if err != nil {
-		return 0, fmt.Errorf("failed to filter ConfirmedBeaconBlock events: %w", err)
+		return 0, fmt.Errorf("failed to read lastConfirmedSlot: %w", err)
 	}
-	defer iter.Close()
-
-	var latest uint64
-	for iter.Next() {
-		if slot := iter.Event.Slot; slot > latest {
-			latest = slot
-		}
-	}
-	if err := iter.Error(); err != nil {
-		return 0, err
-	}
-	return latest, nil
+	return slot, nil
 }
 
 // gasPriceWithinBounds reports whether the destination's suggested gas price

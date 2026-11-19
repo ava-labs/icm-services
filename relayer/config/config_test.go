@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,6 +24,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	basecfg "github.com/ava-labs/icm-services/config"
 	"github.com/ava-labs/icm-services/utils"
+	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -849,6 +851,63 @@ func TestInitializeTrackedSubnets(t *testing.T) {
 	require.True(t, expectedSubnets.Equals(cfg.GetTrackedSubnets()))
 }
 
+// A ZK-only source (e.g. Ethereum) is not an Avalanche chain: its configured subnet ID names no
+// real subnet, so it must not be tracked. A source with any non-ZK protocol still is.
+func TestInitializeTrackedSubnetsSkipsZKOnlySources(t *testing.T) {
+	zkSubnetID := ids.GenerateTestID()
+	mixedSubnetID := ids.GenerateTestID()
+	teleporterSubnetID := ids.GenerateTestID()
+	destSubnetID := ids.GenerateTestID()
+
+	zk := Protocol{Address: common.HexToAddress("0x01"), Type: ZK}
+	teleporter := Protocol{Address: common.HexToAddress("0x02"), Type: TELEPORTER}
+
+	zkSource := &SourceBlockchain{subnetID: zkSubnetID, protocols: []Protocol{zk}}
+	mixedSource := &SourceBlockchain{subnetID: mixedSubnetID, protocols: []Protocol{zk, teleporter}}
+	teleporterSource := &SourceBlockchain{subnetID: teleporterSubnetID, protocols: []Protocol{teleporter}}
+
+	require.True(t, zkSource.IsZKOnly())
+	require.False(t, mixedSource.IsZKOnly())
+	require.False(t, teleporterSource.IsZKOnly())
+	require.False(t, (&SourceBlockchain{}).IsZKOnly(), "a source with no protocols is not ZK-only")
+
+	cfg := &Config{
+		SourceBlockchains: []*SourceBlockchain{zkSource, mixedSource, teleporterSource},
+		DestinationBlockchains: []*DestinationBlockchain{
+			{subnetID: destSubnetID, blockchainID: ids.GenerateTestID()},
+		},
+	}
+	require.NoError(t, cfg.initializeTrackedSubnets())
+
+	expectedSubnets := set.Of(mixedSubnetID, teleporterSubnetID, destSubnetID)
+	require.True(t, expectedSubnets.Equals(cfg.GetTrackedSubnets()))
+}
+
+// Validate fills the tracked subnets itself, before initializeTrackedSubnets runs, so it must
+// also leave out ZK-only sources. Otherwise their bogus subnet ID fails network health forever.
+func TestValidateDoesNotTrackZKOnlySourceSubnets(t *testing.T) {
+	zkSubnetID := ids.GenerateTestID()
+	zkSource := TestValidSourceBlockchainConfig
+	zkSource.BlockchainID = ids.GenerateTestID().String()
+	zkSource.SubnetID = zkSubnetID.String()
+	zkSource.MessageContracts = map[string]MessageProtocolConfig{
+		"0x0000000000000000000000000000000000000001": {MessageFormat: ZK.String()},
+	}
+	teleporterSource := TestValidSourceBlockchainConfig
+	destination := TestValidDestinationBlockchainConfig
+
+	cfg := TestValidConfig
+	cfg.trackedSubnets = set.Set[ids.ID]{}
+	cfg.SourceBlockchains = []*SourceBlockchain{&teleporterSource, &zkSource}
+	cfg.DestinationBlockchains = []*DestinationBlockchain{&destination}
+	require.NoError(t, cfg.Validate())
+
+	tracked := cfg.GetTrackedSubnets()
+	require.False(t, tracked.Contains(zkSubnetID), "ZK-only source subnet must not be tracked")
+	require.True(t, tracked.Contains(teleporterSource.GetSubnetID()))
+	require.True(t, tracked.Contains(destination.GetSubnetID()))
+}
+
 func TestConfigSanitization(t *testing.T) {
 	testCases := []struct {
 		name           string
@@ -1051,9 +1110,32 @@ func TestRedactURLCredentials(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, redactURLCredentials(tc.input))
+			require.Equal(t, tc.expected, RedactURLCredentials(tc.input))
 		})
 	}
+}
+
+// HTTP clients wrap request failures in a *url.Error whose message includes the full URL.
+// RedactURLError must strip credentials from it wherever it sits in the chain, and leave
+// errors without one untouched.
+func TestRedactURLError(t *testing.T) {
+	// The error http.Client.Do returns when the endpoint is unreachable.
+	requestErr := &url.Error{
+		Op:  "Post",
+		URL: "https://rpc.example.com/v2/SECRETKEY?key=SECRETKEY",
+		Err: fmt.Errorf("dial tcp: connection refused"),
+	}
+	wrapped := fmt.Errorf("failed to get chain ID: %w", requestErr)
+	require.ErrorContains(t, wrapped, "SECRETKEY") // the unredacted error leaks the key
+
+	redacted := RedactURLError(wrapped)
+	require.NotContains(t, redacted.Error(), "SECRETKEY")
+	require.ErrorContains(t, redacted, "https://rpc.example.com/"+redactedValue)
+	require.ErrorContains(t, redacted, "connection refused")
+
+	plain := fmt.Errorf("no URL here")
+	require.Equal(t, plain, RedactURLError(plain))
+	require.NoError(t, RedactURLError(nil))
 }
 
 // End-to-end check of the startup config log: endpoint URLs carrying credentials in the path,
