@@ -21,14 +21,20 @@ import (
 )
 
 // ErrTxUnconfirmed is returned by [TxTracker.WaitMined] when a transaction was broadcast but not
-// mined within the inclusion timeout. The transaction neither succeeded nor failed: the tracker
-// keeps it and [TxTracker.Resolve] follows it up.
-var ErrTxUnconfirmed = errors.New("transaction not mined within the inclusion timeout")
+// seen mined, which in practice means not within the inclusion timeout. The transaction neither
+// succeeded nor failed: the tracker keeps it and [TxTracker.Resolve] follows it up.
+var ErrTxUnconfirmed = errors.New("transaction broadcast but not seen mined")
 
 // replacementFeeBumpPercent is how much more a transaction must offer than the pending one it
 // replaces at the same nonce, in both its fee cap and its tip, for a node to accept it. This is
 // the default of geth and of the clients that follow it.
 const replacementFeeBumpPercent = 10
+
+// maxInconclusiveLookups is how many calls of [TxTracker.Resolve] in a row may find a transaction
+// neither mined nor pending before it is given up as settled. One such answer is not proof. An
+// RPC endpoint that fronts several nodes can be answered by one that has not seen a transaction
+// the others hold, and a node can report a transaction as mined before it serves the receipt.
+const maxInconclusiveLookups = 3
 
 // TxTrackerClient is the subset of an EVM chain's RPC client a [TxTracker] uses to follow, price
 // and replace transactions.
@@ -69,6 +75,14 @@ type TxTracker struct {
 	// is unknown: it may yet be mined, still be waiting in the transaction pool, or have been
 	// dropped.
 	unconfirmed *types.Transaction
+	// inconclusiveLookups counts the calls of Resolve in a row that found unconfirmed neither
+	// mined nor pending. See maxInconclusiveLookups.
+	inconclusiveLookups int
+	// unacknowledged is the last replacement of unconfirmed whose send failed. A send can fail
+	// after the node has accepted the transaction, for example when the answer is lost or comes
+	// too late. The replacement then holds the nonce, and it is unconfirmed that the node no
+	// longer knows.
+	unacknowledged *types.Transaction
 }
 
 // NewTxTracker returns a tracker for the transactions [from] sends through [client]. [signer]
@@ -93,7 +107,8 @@ func NewTxTracker(
 // WaitMined waits for the broadcast transaction [tx] to be mined, for at most the inclusion
 // timeout, and returns its receipt. A mined transaction may still have reverted, which the
 // receipt's status tells. If the transaction is not mined in time, it becomes the unconfirmed
-// transaction and the error wraps [ErrTxUnconfirmed]. If [ctx] ends first, its error is returned
+// transaction and the error wraps [ErrTxUnconfirmed]. So it does if the wait fails in any other
+// way, in which case the error wraps the cause too. If [ctx] ends first, its error is returned
 // and the transaction is not kept.
 func (t *TxTracker) WaitMined(ctx context.Context, tx *types.Transaction) (*types.Receipt, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, t.inclusionTimeout)
@@ -106,13 +121,24 @@ func (t *TxTracker) WaitMined(ctx context.Context, tx *types.Transaction) (*type
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	t.unconfirmed = tx
-	t.logger.Warn("Transaction not mined within the inclusion timeout",
+	// The transaction is broadcast and was not seen mined. Whatever ended the wait, its outcome
+	// is unknown, so it is kept to be followed up.
+	t.follow(tx)
+	log := t.logger.With(
 		zap.Stringer("txHash", tx.Hash()),
 		zap.Uint64("nonce", tx.Nonce()),
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		// bind.WaitMined gives up only when its context ends, which with [ctx] still live leaves
+		// the inclusion timeout. Should it ever fail for another reason, that reason is reported
+		// instead of a timeout that did not happen.
+		log.Warn("Wait for transaction to be mined failed", zap.Error(err))
+		return nil, fmt.Errorf("%w: %s: %w", ErrTxUnconfirmed, tx.Hash(), err)
+	}
+	log.Warn("Transaction not mined within the inclusion timeout",
 		zap.Duration("inclusionTimeout", t.inclusionTimeout),
 	)
-	return nil, fmt.Errorf("%w: %s", ErrTxUnconfirmed, tx.Hash())
+	return nil, fmt.Errorf("%w: %s not mined within %s", ErrTxUnconfirmed, tx.Hash(), t.inclusionTimeout)
 }
 
 // Unconfirmed returns the transaction whose outcome is still unknown, or nil if there is none.
@@ -120,22 +146,33 @@ func (t *TxTracker) Unconfirmed() *types.Transaction {
 	return t.unconfirmed
 }
 
+// follow makes [tx] the unconfirmed transaction. With nil there is none.
+func (t *TxTracker) follow(tx *types.Transaction) {
+	t.unconfirmed = tx
+	t.inconclusiveLookups = 0
+	t.unacknowledged = nil
+}
+
 // Resolve finds out what became of the unconfirmed transaction and reports whether it is
 // settled, meaning that it can no longer take effect and no longer holds its nonce. With no
 // unconfirmed transaction there is nothing to settle and it returns true.
 //
 //   - Mined, successfully or not: settled.
-//   - Unknown to the node, so neither mined nor pending: settled. It was dropped from the pool,
-//     or another transaction took its nonce.
-//   - Still pending: not settled. It is left alone while the fees it offers are at least the
-//     ones the node suggests now, and replaced once they are not.
+//   - Still pending: not settled. It is left alone while it still pays the tip the node suggests
+//     now, and replaced once it does not.
+//   - Neither, because the node does not know the transaction, or reports it as mined and serves
+//     no receipt for it: not settled at first, since one such answer is not proof. It is settled
+//     once [maxInconclusiveLookups] calls in a row have found nothing else. By then it was
+//     dropped from the pool, or another transaction took its nonce, or it is mined and only its
+//     receipt is missing.
 //
 // A replacement is the same call from the same account at the same nonce, priced the way bind
 // prices a new transaction and raised to the minimum a node accepts for a replacement. It becomes
-// the unconfirmed transaction. It is only ever made when the node's suggestion exceeds what the
-// pending transaction offers, so the fees paid follow the suggestion instead of compounding on
-// every call. [allowReplacement], if not nil, is asked first and can defer it, for example while
-// gas is above what the sender is willing to pay.
+// the unconfirmed transaction. It is only made for a transaction that no longer pays the
+// suggested tip, never because a freshly priced one would merely carry a higher fee cap, so the
+// fees paid follow the market instead of compounding on every call. [allowReplacement], if not
+// nil, is asked first and can defer it, for example while gas is above what the sender is
+// willing to pay.
 //
 // The tracker forgets a settled transaction. Whatever it changed, the caller has not observed, so
 // a caller that mirrors on-chain state should re-read it before sending again.
@@ -164,7 +201,7 @@ func (t *TxTracker) Resolve(
 			zap.Uint64("status", receipt.Status),
 			zap.Stringer("blockNumber", receipt.BlockNumber),
 		)
-		t.unconfirmed = nil
+		t.follow(nil)
 		return true, nil
 	case !errors.Is(err, ethereum.NotFound):
 		return false, fmt.Errorf("failed to get receipt of unconfirmed transaction %s: %w", tx.Hash(), err)
@@ -173,33 +210,81 @@ func (t *TxTracker) Resolve(
 	_, isPending, err := t.client.TransactionByHash(ctx, tx.Hash())
 	switch {
 	case errors.Is(err, ethereum.NotFound):
-		log.Warn("Unconfirmed transaction is neither mined nor pending")
-		t.unconfirmed = nil
-		return true, nil
+		// A replacement the node accepted without the tracker learning of it would have pushed
+		// the transaction out of the pool, so that is ruled out before it counts as missing.
+		adopted, err := t.adoptUnacknowledged(ctx, log)
+		if err != nil || adopted {
+			return false, err
+		}
+		return t.inconclusiveLookup(log, "Unconfirmed transaction is neither mined nor pending"), nil
 	case err != nil:
 		return false, fmt.Errorf("failed to look up unconfirmed transaction %s: %w", tx.Hash(), err)
 	case !isPending:
-		// Mined, but the receipt is not being served yet. The next call will find it.
-		return false, nil
+		return t.inconclusiveLookup(log, "Unconfirmed transaction is reported mined, but has no receipt"), nil
 	}
 
+	t.inconclusiveLookups = 0
 	return false, t.replaceIfUnderpriced(ctx, log, tx, allowReplacement)
 }
 
-// replaceIfUnderpriced replaces the pending transaction [tx] if the fees the node suggests now
-// exceed the ones it offers. Otherwise there is nothing better to offer and it is left to be
-// mined.
+// inconclusiveLookup records that a call of Resolve found the unconfirmed transaction neither
+// mined nor pending, which [msg] describes, and reports whether that settles it: it does once
+// maxInconclusiveLookups calls in a row have found the same.
+func (t *TxTracker) inconclusiveLookup(log logging.Logger, msg string) bool {
+	t.inconclusiveLookups++
+	settled := t.inconclusiveLookups >= maxInconclusiveLookups
+	log.Warn(msg,
+		zap.Int("lookups", t.inconclusiveLookups),
+		zap.Int("settledAfter", maxInconclusiveLookups),
+		zap.Bool("settled", settled),
+	)
+	if settled {
+		t.follow(nil)
+	}
+	return settled
+}
+
+// adoptUnacknowledged makes the replacement whose send failed the unconfirmed transaction if the
+// node knows it after all, and reports whether it did. A replacement the node does not know is
+// kept: the node that answers next may.
+func (t *TxTracker) adoptUnacknowledged(ctx context.Context, log logging.Logger) (bool, error) {
+	replacement := t.unacknowledged
+	if replacement == nil {
+		return false, nil
+	}
+	_, _, err := t.client.TransactionByHash(ctx, replacement.Hash())
+	switch {
+	case errors.Is(err, ethereum.NotFound):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("failed to look up replacement transaction %s: %w", replacement.Hash(), err)
+	}
+	t.follow(replacement)
+	log.Warn("Node accepted a replacement whose send failed, following it instead",
+		zap.Stringer("replacementTxHash", replacement.Hash()),
+	)
+	return true, nil
+}
+
+// replaceIfUnderpriced replaces the pending transaction [tx] if it is underpriced: its tip is
+// below the one the node suggests now, or its fee cap no longer pays that tip at the current base
+// fee. Otherwise it is left to be mined. A base fee that has risen but is still covered by the
+// fee cap is no reason to replace it.
+//
+// [allowReplacement], if not nil, is asked once [tx] is found underpriced, before anything is
+// signed or sent. The replacement goes ahead only if it returns true. If it returns false or an
+// error, [tx] is left as it is and the error, if any, is returned.
 func (t *TxTracker) replaceIfUnderpriced(
 	ctx context.Context,
 	log logging.Logger,
 	tx *types.Transaction,
 	allowReplacement func(context.Context) (bool, error),
 ) error {
-	tipCap, feeCap, err := t.suggestFees(ctx)
+	tipCap, minFeeCap, feeCap, err := t.suggestFees(ctx)
 	if err != nil {
 		return err
 	}
-	if tipCap.Cmp(tx.GasTipCap()) <= 0 && feeCap.Cmp(tx.GasFeeCap()) <= 0 {
+	if tx.GasTipCap().Cmp(tipCap) >= 0 && tx.GasFeeCap().Cmp(minFeeCap) >= 0 {
 		log.Info("Unconfirmed transaction is still pending at current fees, waiting",
 			zap.Stringer("gasTipCap", tx.GasTipCap()),
 			zap.Stringer("gasFeeCap", tx.GasFeeCap()),
@@ -244,10 +329,14 @@ func (t *TxTracker) replaceIfUnderpriced(
 		return fmt.Errorf("failed to sign replacement for transaction %s: %w", tx.Hash(), err)
 	}
 	if err := t.client.SendTransaction(ctx, replacement); err != nil {
-		return fmt.Errorf("failed to replace underpriced transaction %s: %w", tx.Hash(), err)
+		// The node may hold the replacement all the same, so it is kept to be looked for if
+		// [tx] goes missing.
+		t.unacknowledged = replacement
+		return fmt.Errorf("failed to replace underpriced transaction %s with %s: %w",
+			tx.Hash(), replacement.Hash(), err)
 	}
 
-	t.unconfirmed = replacement
+	t.follow(replacement)
 	log.Warn("Replaced underpriced transaction",
 		zap.Stringer("replacementTxHash", replacement.Hash()),
 		zap.Stringer("gasTipCap", tipCap),
@@ -256,28 +345,34 @@ func (t *TxTracker) replaceIfUnderpriced(
 	return nil
 }
 
-// suggestFees returns the tip and fee caps a transaction sent now would carry, priced the way
-// bind prices one when the caller sets neither: the node's suggested tip, and a fee cap of that
-// tip plus twice the current base fee. On a chain without a base fee both are the node's
-// suggested gas price.
-func (t *TxTracker) suggestFees(ctx context.Context) (*big.Int, *big.Int, error) {
+// suggestFees returns what the node suggests a transaction pay now:
+//   - tipCap, the suggested tip;
+//   - minFeeCap, the lowest fee cap that pays that tip at the current base fee, which is their
+//     sum. A pending transaction offering less is underpriced;
+//   - feeCap, the fee cap bind gives a new transaction when the caller sets none: the tip plus
+//     twice the current base fee, which leaves room for the base fee to rise before the
+//     transaction is mined.
+//
+// On a chain without a base fee all three are the node's suggested gas price.
+func (t *TxTracker) suggestFees(ctx context.Context) (tipCap, minFeeCap, feeCap *big.Int, err error) {
 	head, err := t.client.HeaderByNumber(ctx, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get latest header: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get latest header: %w", err)
 	}
 	if head.BaseFee == nil {
-		gasPrice, err := t.client.SuggestGasPrice(ctx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get suggested gas price: %w", err)
+		gasPrice, gasPriceErr := t.client.SuggestGasPrice(ctx)
+		if gasPriceErr != nil {
+			return nil, nil, nil, fmt.Errorf("failed to get suggested gas price: %w", gasPriceErr)
 		}
-		return gasPrice, gasPrice, nil
+		return gasPrice, gasPrice, gasPrice, nil
 	}
-	tipCap, err := t.client.SuggestGasTipCap(ctx)
+	tipCap, err = t.client.SuggestGasTipCap(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get suggested gas tip cap: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get suggested gas tip cap: %w", err)
 	}
-	feeCap := new(big.Int).Mul(head.BaseFee, big.NewInt(2))
-	return tipCap, feeCap.Add(feeCap, tipCap), nil
+	minFeeCap = new(big.Int).Add(head.BaseFee, tipCap)
+	feeCap = new(big.Int).Add(minFeeCap, head.BaseFee)
+	return tipCap, minFeeCap, feeCap, nil
 }
 
 // replacementFee returns the lowest fee a node accepts from a transaction that replaces one

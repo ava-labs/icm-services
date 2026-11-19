@@ -24,6 +24,9 @@ import (
 type fakeTxTrackerClient struct {
 	receipts map[common.Hash]*types.Receipt
 	pending  map[common.Hash]bool
+	// minedWithoutReceipt holds the transactions the node reports as mined while it serves no
+	// receipt for them.
+	minedWithoutReceipt map[common.Hash]bool
 	// receiptErr fails receipt lookups, like a node that is down.
 	receiptErr error
 	// hang makes receipt lookups block until the caller gives up, like a node that accepts
@@ -34,7 +37,11 @@ type fakeTxTrackerClient struct {
 	tipCap   *big.Int
 	gasPrice *big.Int
 
+	// sent holds every transaction handed to SendTransaction, whether or not the send failed.
 	sent []*types.Transaction
+	// sendErr fails sends. Whether the node took the transaction anyway is up to the test, which
+	// says so through pending.
+	sendErr error
 }
 
 func (c *fakeTxTrackerClient) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
@@ -62,6 +69,9 @@ func (c *fakeTxTrackerClient) TransactionByHash(
 	if c.pending[txHash] {
 		return nil, true, nil
 	}
+	if c.minedWithoutReceipt[txHash] {
+		return nil, false, nil
+	}
 	return nil, false, ethereum.NotFound
 }
 
@@ -79,7 +89,7 @@ func (c *fakeTxTrackerClient) SuggestGasTipCap(context.Context) (*big.Int, error
 
 func (c *fakeTxTrackerClient) SendTransaction(_ context.Context, tx *types.Transaction) error {
 	c.sent = append(c.sent, tx)
-	return nil
+	return c.sendErr
 }
 
 const txTrackerTestInclusionTimeout = 50 * time.Millisecond
@@ -196,17 +206,15 @@ func TestTxTrackerResolveWithNothingUnconfirmed(t *testing.T) {
 	require.True(t, settled)
 }
 
-// A transaction that was mined after the wait gave up, or that the node no longer knows, is
-// settled: the tracker forgets it and sends nothing.
-func TestTxTrackerResolveSettles(t *testing.T) {
-	for _, mined := range []bool{true, false} {
+// A transaction that was mined after the wait gave up is settled: the tracker forgets it and
+// sends nothing.
+func TestTxTrackerResolveSettlesMinedTx(t *testing.T) {
+	for _, status := range []uint64{types.ReceiptStatusSuccessful, types.ReceiptStatusFailed} {
 		client := &fakeTxTrackerClient{}
 		tracker := newTestTxTracker(t, client)
 		tx := newTrackedTx(t, tracker, 2, 82)
-		if mined {
-			client.receipts = map[common.Hash]*types.Receipt{
-				tx.Hash(): {Status: types.ReceiptStatusSuccessful, BlockNumber: big.NewInt(5)},
-			}
+		client.receipts = map[common.Hash]*types.Receipt{
+			tx.Hash(): {Status: status, BlockNumber: big.NewInt(5)},
 		}
 		tracker.unconfirmed = tx
 
@@ -215,6 +223,53 @@ func TestTxTrackerResolveSettles(t *testing.T) {
 		require.True(t, settled)
 		require.Nil(t, tracker.Unconfirmed())
 		require.Empty(t, client.sent)
+	}
+}
+
+// A node that knows nothing of a transaction, or that reports it as mined and serves no receipt
+// for it, has not shown what became of it: behind a load balancer the next answer may come from a
+// node that holds it. Such a transaction is kept until maxInconclusiveLookups calls in a row have
+// found it so, and only then settled, so that the caller is not held up for good.
+func TestTxTrackerResolveSettlesAfterRepeatedInconclusiveLookups(t *testing.T) {
+	tests := map[string]func(*fakeTxTrackerClient, common.Hash){
+		"unknown to the node": func(*fakeTxTrackerClient, common.Hash) {},
+		"reported mined without a receipt": func(client *fakeTxTrackerClient, txHash common.Hash) {
+			client.minedWithoutReceipt = map[common.Hash]bool{txHash: true}
+		},
+	}
+	for name, setInconclusive := range tests {
+		t.Run(name, func(t *testing.T) {
+			client := &fakeTxTrackerClient{baseFee: big.NewInt(40), tipCap: big.NewInt(2)}
+			tracker := newTestTxTracker(t, client)
+			tx := newTrackedTx(t, tracker, 2, 82)
+			tracker.unconfirmed = tx
+			resolve := func() bool {
+				t.Helper()
+				settled, err := tracker.Resolve(context.Background(), nil)
+				require.NoError(t, err)
+				return settled
+			}
+
+			setInconclusive(client, tx.Hash())
+			for range maxInconclusiveLookups - 1 {
+				require.False(t, resolve())
+				require.Same(t, tx, tracker.Unconfirmed())
+			}
+
+			// Seen pending once, the transaction is back to being followed and the count
+			// starts over.
+			client.pending = map[common.Hash]bool{tx.Hash(): true}
+			require.False(t, resolve())
+			client.pending = nil
+
+			for range maxInconclusiveLookups - 1 {
+				require.False(t, resolve())
+				require.Same(t, tx, tracker.Unconfirmed())
+			}
+			require.True(t, resolve())
+			require.Nil(t, tracker.Unconfirmed())
+			require.Empty(t, client.sent)
+		})
 	}
 }
 
@@ -231,20 +286,32 @@ func TestTxTrackerResolveKeepsTxOnRPCFailure(t *testing.T) {
 	require.Same(t, tx, tracker.Unconfirmed())
 }
 
-// A transaction that is still pending at the fees the node suggests now is left to be mined.
+// A transaction that is still pending and still pays the tip the node suggests now is left to be
+// mined. The transaction here was sent at a base fee of 40 with a tip of 2, which bind gave a fee
+// cap of 2 + 2*40 = 82.
 func TestTxTrackerResolveWaitsForPendingTx(t *testing.T) {
-	// The node suggests a tip of 2 and, with it, a fee cap of 2 + 2*40 = 82.
-	client := &fakeTxTrackerClient{baseFee: big.NewInt(40), tipCap: big.NewInt(2)}
-	tracker := newTestTxTracker(t, client)
-	tx := newTrackedTx(t, tracker, 2, 82)
-	client.pending = map[common.Hash]bool{tx.Hash(): true}
-	tracker.unconfirmed = tx
+	baseFees := map[string]int64{
+		"fees unchanged": 40,
+		// A transaction sent now would get a fee cap of 2 + 2*80 = 182, well above this one's.
+		// But this one's still covers the base fee and the tip, so it can be mined as it is,
+		// and replacing it would only pay a higher tip for nothing.
+		"base fee rose within the fee cap": 80,
+	}
+	for name, baseFee := range baseFees {
+		t.Run(name, func(t *testing.T) {
+			client := &fakeTxTrackerClient{baseFee: big.NewInt(baseFee), tipCap: big.NewInt(2)}
+			tracker := newTestTxTracker(t, client)
+			tx := newTrackedTx(t, tracker, 2, 82)
+			client.pending = map[common.Hash]bool{tx.Hash(): true}
+			tracker.unconfirmed = tx
 
-	settled, err := tracker.Resolve(context.Background(), nil)
-	require.NoError(t, err)
-	require.False(t, settled)
-	require.Same(t, tx, tracker.Unconfirmed())
-	require.Empty(t, client.sent)
+			settled, err := tracker.Resolve(context.Background(), nil)
+			require.NoError(t, err)
+			require.False(t, settled)
+			require.Same(t, tx, tracker.Unconfirmed())
+			require.Empty(t, client.sent)
+		})
+	}
 }
 
 // A pending transaction that the node's suggested fees have left behind is replaced by the same
@@ -258,10 +325,17 @@ func TestTxTrackerResolveReplacesUnderpricedTx(t *testing.T) {
 	}{
 		// The base fee rose from 40 to 100, past the old fee cap. The suggested fee cap is
 		// 2 + 2*100; the suggested tip is unchanged, so it gets the minimum bump.
-		"base fee rose": {
+		"base fee rose past the fee cap": {
 			baseFee: 100, suggestedTip: 2,
 			oldTip: 2, oldFeeCap: 82,
 			newTip: 3, newFeeCap: 202,
+		},
+		// The base fee rose from 40 to 81. The old fee cap still covers it, but leaves a tip
+		// of 1 where the node suggests 2.
+		"base fee rose into the tip": {
+			baseFee: 81, suggestedTip: 2,
+			oldTip: 2, oldFeeCap: 82,
+			newTip: 3, newFeeCap: 164,
 		},
 		// The suggested tip rose from 2 to 5, while the suggested fee cap of 5 + 2*90 is below
 		// the old one, which gets the minimum bump.
@@ -319,6 +393,52 @@ func TestTxTrackerResolveReplacesUnderpricedLegacyTx(t *testing.T) {
 	replacement := client.sent[0]
 	requireReplaces(t, tracker, tx, replacement)
 	require.Equal(t, int64(50), replacement.GasPrice().Int64())
+}
+
+// A send can fail after the node has accepted the transaction, for example when its answer comes
+// too late. The replacement then holds the nonce and has pushed the original out of the pool, so
+// the tracker must not take the original's absence for a dropped transaction and forget the
+// nonce. It follows the replacement instead. If the node did turn the replacement down, the
+// original is still pending and is replaced again.
+func TestTxTrackerResolveAfterFailedReplacementSend(t *testing.T) {
+	sendErr := errors.New("timed out awaiting response")
+	for _, accepted := range []bool{true, false} {
+		name := "node turned the replacement down"
+		if accepted {
+			name = "node accepted the replacement"
+		}
+		t.Run(name, func(t *testing.T) {
+			client := &fakeTxTrackerClient{baseFee: big.NewInt(100), tipCap: big.NewInt(2), sendErr: sendErr}
+			tracker := newTestTxTracker(t, client)
+			tx := newTrackedTx(t, tracker, 2, 82)
+			client.pending = map[common.Hash]bool{tx.Hash(): true}
+			tracker.unconfirmed = tx
+
+			settled, err := tracker.Resolve(context.Background(), nil)
+			require.ErrorIs(t, err, sendErr)
+			require.False(t, settled)
+			require.Len(t, client.sent, 1)
+			replacement := client.sent[0]
+			// Without the node's word for it, the original is still the one followed.
+			require.Same(t, tx, tracker.Unconfirmed())
+
+			client.sendErr = nil
+			if accepted {
+				client.pending = map[common.Hash]bool{replacement.Hash(): true}
+			}
+			settled, err = tracker.Resolve(context.Background(), nil)
+			require.NoError(t, err)
+			require.False(t, settled)
+
+			if accepted {
+				requireReplaces(t, tracker, tx, replacement)
+				require.Len(t, client.sent, 1)
+				return
+			}
+			require.Len(t, client.sent, 2)
+			requireReplaces(t, tracker, tx, client.sent[1])
+		})
+	}
 }
 
 // The caller decides whether an outbid transaction may be replaced right now. It is asked only
