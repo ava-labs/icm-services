@@ -122,16 +122,20 @@ library TeleporterV2Parsing {
     }
 
     function packTeleporterMessageV2(TeleporterMessageV2 memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
+
         bytes memory allowedRelayerAddresses_bytes;
-        allowedRelayerAddresses_bytes = abi.encodePacked(obj.allowedRelayerAddresses.length);
-        for (uint256 i_0 = 0; i_0 < obj.allowedRelayerAddresses.length;) {
-            bytes memory allowedRelayerAddresses_1_bytes;
-            allowedRelayerAddresses_1_bytes = abi.encodePacked(obj.allowedRelayerAddresses[i_0]);
-            allowedRelayerAddresses_bytes =
-                abi.encodePacked(allowedRelayerAddresses_bytes, allowedRelayerAddresses_1_bytes);
-            unchecked {
-                ++i_0;
+        {
+            uint256 allowedRelayerAddresses_0_count = obj.allowedRelayerAddresses.length;
+            allowedRelayerAddresses_bytes = abi.encodePacked(allowedRelayerAddresses_0_count);
+            for (uint256 i_0 = 0; i_0 < allowedRelayerAddresses_0_count;) {
+                bytes memory allowedRelayerAddresses_1_bytes;
+                allowedRelayerAddresses_1_bytes = abi.encodePacked(obj.allowedRelayerAddresses[i_0]);
+                allowedRelayerAddresses_bytes =
+                    abi.encodePacked(allowedRelayerAddresses_bytes, allowedRelayerAddresses_1_bytes);
+                unchecked {
+                    ++i_0;
+                }
             }
         }
         return abi.encodePacked(
@@ -145,19 +149,16 @@ library TeleporterV2Parsing {
             serializeTeleporterReceipts(obj.receipts),
             abi.encodePacked(obj.message.length, obj.message)
         );
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function packTeleporterICMMessage(TeleporterICMMessage memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable */
-
         return abi.encodePacked(
             packTeleporterMessageV2(obj.message),
             abi.encodePacked(obj.sourceNetworkID),
             abi.encodePacked(obj.sourceBlockchainID),
             abi.encodePacked(obj.attestation.length, obj.attestation)
         );
-        /* solhint-enable */
     }
 
     function unpackTeleporterMessageV2(bytes calldata data)
@@ -165,7 +166,7 @@ library TeleporterV2Parsing {
         pure
         returns (uint256, TeleporterMessageV2 memory)
     {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         TeleporterMessageV2 memory result;
 
@@ -218,7 +219,7 @@ library TeleporterV2Parsing {
         result.message = message;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 
     function unpackTeleporterICMMessage(bytes calldata data)
@@ -226,7 +227,7 @@ library TeleporterV2Parsing {
         pure
         returns (uint256, TeleporterICMMessage memory)
     {
-        /* solhint-disable */
+        /* solhint-disable var-name-mixedcase */
         uint256 _initial_length = data.length;
         TeleporterICMMessage memory result;
 
@@ -252,7 +253,7 @@ library TeleporterV2Parsing {
         result.attestation = attestation;
 
         return (_initial_length - data.length, result);
-        /* solhint-enable */
+        /* solhint-enable var-name-mixedcase */
     }
 }
 
