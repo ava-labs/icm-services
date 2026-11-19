@@ -5,7 +5,7 @@ use solar::ast::ElementaryType;
 use solar::sema::Gcx;
 use solar::sema::hir::{Enum, ItemId, Struct, TypeKind};
 
-use crate::common::{LengthSpec, LengthType};
+use crate::common::{CaptureType, LengthSpec, LengthType};
 use crate::pack::hooks::PackArgs;
 
 /// Returns the expression that packs the elementary value `var`. Dynamically sized values are
@@ -55,14 +55,41 @@ fn length_guard(fn_name: &str, field_name: &str, len_expr: &str, expr: &str) -> 
 
 /// Generates a Solidity `pack` function for an enum type.
 /// Enums are value types that are encoded directly via abi.encodePacked.
-pub fn pack_enum(enum_def: &Enum, args: PackArgs, type_name: &str) -> String {
+pub fn pack_enum(enum_def: &Enum, args: PackArgs, type_name: &str) -> eyre::Result<String> {
+    if args
+        .assert
+        .iter()
+        .any(|a| a.captured == CaptureType::Element)
+    {
+        eyre::bail!(
+            "`each` assert on `{}` is not valid: enums are not container types",
+            enum_def.name,
+        );
+    }
     let fn_name = args
         .name
         .unwrap_or_else(|| format!("pack{}", enum_def.name));
     let vis = vis_prefix(&args.visibility);
-    format!(
-        "function {fn_name}({type_name} obj) {vis}pure returns (bytes memory) {{\n    return abi.encodePacked(obj);\n}}"
-    )
+    let assert_lines: String = args
+        .assert
+        .iter()
+        .map(|a| {
+            let expr = render_expr(&a.expr, &a.var_spans, "result");
+            format!("\n{}", emit_assert(&a.comment, &expr))
+        })
+        .collect();
+    Ok(if assert_lines.is_empty() {
+        format!(
+            "function {fn_name}({type_name} obj) {vis}pure returns (bytes memory) {{\n    return abi.encodePacked(obj);\n}}"
+        )
+    } else {
+        format!(
+            "function {fn_name}({type_name} obj) {vis}pure returns (bytes memory) {{\
+            \n    bytes memory result = abi.encodePacked(obj);{assert_lines}\
+            \n    return result;\
+            \n}}"
+        )
+    })
 }
 
 pub fn pack_struct(
@@ -71,6 +98,16 @@ pub fn pack_struct(
     args: PackArgs,
     type_name: &str,
 ) -> eyre::Result<String> {
+    if args
+        .assert
+        .iter()
+        .any(|a| a.captured == CaptureType::Element)
+    {
+        eyre::bail!(
+            "`each` assert on `{}` is not valid at the type level: structs are not container types",
+            struct_def.name,
+        );
+    }
     let fn_name = args
         .name
         .unwrap_or_else(|| format!("pack{}", struct_def.name));
@@ -173,10 +210,25 @@ pub fn pack_struct(
         body.push_str(&format!("\n{{{expansion}\n}}"));
     }
     let vis = vis_prefix(&args.visibility);
-    Ok(format!(
-        "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
-        {{\n    {body}\n    return abi.encodePacked({encode_packed_args});\n}}"
-    ))
+    let assert_lines: String = args
+        .assert
+        .iter()
+        .map(|a| {
+            let expr = render_expr(&a.expr, &a.var_spans, "result");
+            format!("\n{}", emit_assert(&a.comment, &expr))
+        })
+        .collect();
+    Ok(if assert_lines.is_empty() {
+        format!(
+            "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
+            {{\n    {body}\n    return abi.encodePacked({encode_packed_args});\n}}"
+        )
+    } else {
+        format!(
+            "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
+            {{\n    {body}\n    bytes memory result = abi.encodePacked({encode_packed_args});{assert_lines}\n    return result;\n}}"
+        )
+    })
 }
 
 /// A struct that tracks a recursive enumeration through a type to fully
@@ -270,6 +322,29 @@ fn expand_packings_recursively(ctx: &Gcx, node: PackingTreeNode) -> eyre::Result
         }
         TypeKind::Err(_) => unreachable!(),
     })
+}
+
+/// Renders an expression by substituting `replacement` at every pre-computed span.
+fn render_expr(expr: &str, var_spans: &[std::ops::Range<usize>], replacement: &str) -> String {
+    let mut result = String::new();
+    let mut pos = 0;
+    for span in var_spans {
+        result.push_str(&expr[pos..span.start]);
+        result.push_str(replacement);
+        pos = span.end;
+    }
+    result.push_str(&expr[pos..]);
+    result
+}
+
+/// Wraps a single assert expression in an anonymous scope, optionally preceded by a
+/// comment block.
+fn emit_assert(comment: &str, expr: &str) -> String {
+    if comment.is_empty() {
+        format!("{{\nrequire({expr});\n}}")
+    } else {
+        format!("{{\n{comment}\nrequire({expr});\n}}")
+    }
 }
 
 /// Returns the visibility keyword with a trailing space, or an empty string when

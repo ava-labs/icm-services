@@ -37,11 +37,47 @@ struct MyStruct {
 | `contract` | Name of the contract/library to inject the generated function into. Required for free-standing types; otherwise defaults to the type's own contract. | *(none — free-standing)* |
 | `name` | Override the generated function name. | `pack{TypeName}` |
 | `visibility` | Visibility of the generated function. | `public` |
+| `assert = "\|var\| { body }"` | Emit a post-condition `require()` before the function returns. `var` is replaced by `result` (the serialised `bytes`). May appear multiple times. See [Assert closure bodies (pack)](#assert-closure-bodies-pack). Not valid with `each` captures. | *(none)* |
+
+The `assert` value must be a quoted string so that commas and `=` signs inside the expression are not misinterpreted as argument separators. Example:
+
+```solidity
+// #[pack(
+//   assert = "|b| { b.length == 20 }",
+//   assert = "|b| { b.length % 2 == 0 }",
+// )]
+struct MyStruct { ... }
+```
 
 ```solidity
 /// #[pack(contract = "MyLibrary", name = "serialize", visibility = "internal")]
 struct MyStruct { ... }
 ```
+
+#### Assert closure bodies (pack)
+
+Each `assert = "..."` key produces one `require()` on the serialised `bytes` returned by the function. The closure variable is replaced by `result`. A leading `//` or `/* */` comment inside the body is emitted before the `require()`.
+
+```solidity
+// #[pack(
+//   assert = "|b| {
+//       // must be non-empty
+//       b.length > 0
+//   }",
+// )]
+struct MyStruct { ... }
+```
+
+Generated:
+
+```solidity
+{
+    // must be non-empty
+    require(result.length > 0);
+}
+```
+
+The same restrictions as unpack apply: single boolean expression only; no variable declarations, assignments, or nested control flow.
 
 #### Field-level annotations
 
@@ -116,8 +152,57 @@ struct MyStruct {
 | `contract` | key-value | Name of the contract/library to inject the generated function into. | *(none — free-standing)* |
 | `name` | key-value | Override the generated function name. | `unpack{TypeName}` |
 | `visibility` | key-value | Visibility of the generated function. | `public` |
+| `assert = "\|var\| { body }"` | key-value | Emit post-conditions before the function returns. `var` is replaced by `result` (the decoded struct). May appear multiple times. See [Assert closure bodies](#assert-closure-bodies). Not valid on enums. | *(none)* |
 | `calldata` | flag | Accept `bytes calldata data` instead of `bytes memory data`. | *(off)* |
 | `solhint-disable` | flag | Wrap the generated function with `// solhint-disable no-inline-assembly` / `// solhint-enable no-inline-assembly`. | *(off)* |
+
+The closure value must be a quoted string so that commas and `=` signs inside the expression are not misinterpreted as argument separators. Example:
+
+```solidity
+// #[unpack(
+//    calldata,
+//    assert = "|s| { s.length > 0 }",
+//    assert = "|s| { s.field == s.other }",
+//  )]
+struct MyStruct { ... }
+```
+
+#### Assert closure bodies
+
+The closure body is a restricted mini-language — not full Solidity. Each `assert = "..."` key produces exactly one `require()` call. For multiple postconditions, use multiple `assert` attributes. A leading `//` or `/* */` comment inside the body is emitted before the `require()`.
+
+```solidity
+// #[unpack(
+//    assert = "|s| {
+//        // must be non-empty
+//        s.length > 0
+//    }",
+//    assert = "|s| {
+//        // and within the allowed range
+//        s.length <= MAX_SIZE
+//    }",
+//  )]
+struct MyStruct { ... }
+```
+
+Generated:
+
+```solidity
+{
+    // must be non-empty
+    require(result.length > 0);
+}
+{
+    // and within the allowed range
+    require(result.length <= MAX_SIZE);
+}
+```
+
+**Restrictions — only boolean expressions are supported:**
+
+- The body must be a single boolean expression suitable for `require()`. Variable declarations, assignments, and other non-boolean statements are not detected at parse time and will produce a Solidity compiler error.
+- Nested control flow (`if`, `for`, `while`, block scopes) is not supported.
+- An expression that spans multiple text lines is flattened to a single line with spaces, so line breaks inside a boolean expression are fine — they are purely cosmetic.
 
 #### Field-level annotations
 
@@ -128,6 +213,8 @@ struct MyStruct {
 | `#[unpack(length = uintN)]` | Override the length/count prefix type for `bytes`, `string`, or array fields. Must match the type used by the corresponding `#[pack(length = uintN)]`. Defaults to `uint256`. |
 | `#[unpack(length = constant)]` | No prefix is read; instead `constant` is used as the field length/element count. Pairs with `#[pack(length = constant)]`. `constant` can be any Solidity expression (e.g. `32`, `BLST.SIG_LENGTH`, `type(uint16).max`). For `bytes`/`string` fields the generated function reverts if fewer than `constant` bytes remain. |
 | `#[unpack(method = "expr", length = constant)]` | Pass a pre-sliced buffer of exactly `constant` bytes to `expr`, reverting if fewer remain. The method returns just the field value (no bytes-consumed count); the macro advances `data` by `constant` bytes. Use for fixed-size fields decoded by a helper that does not follow the `(uint256, T)` unpack convention. Pairs with `#[pack(method = "expr", length = constant)]`. |
+| `#[unpack(assert = "\|var\| { expr }")]` | Emit `require(expr)` immediately after the field is assigned to `result`, with `var` replaced by the field's local variable name. May appear multiple times. |
+| `#[unpack(assert = "\|each var\| { expr }")]` | Assert a condition on each element of a container field. For **arrays**, `var` is replaced by the per-element local inside the decode loop. For **`bytes`/`string`/`bytesN`**, a post-decode loop iterates the bytes and binds `bytes1 _elem`; `var` is replaced by `_elem`. Not valid on non-container types. |
 
 ```solidity
 /// #[unpack()]

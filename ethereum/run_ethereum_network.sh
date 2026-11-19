@@ -51,12 +51,14 @@ _term() {
 trap '_term INT' INT
 trap '_term TERM' SIGTERM
 
-# Check if port 5050 is already in use and kill the process
-if lsof -Pi :5050 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-    echo "Port 5050 is already in use, killing existing process..."
-    lsof -ti:5050 | xargs kill -9 2>/dev/null || true
-    sleep 2
-fi
+# Check if the HTTP (5050) or WS (5051) port is already in use and kill the process
+for port in 5050 5051; do
+    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+        echo "Port $port is already in use, killing existing process..."
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+        sleep 2
+    fi
+done
 
 # Delete old nodes
 delete_old_files
@@ -73,16 +75,32 @@ fi
 
 # Default dev gas limit (11.5M) is too low for the validator set registry Nick's-method deploy and
 # large updateValidatorSet calldata; raise the block ceiling for integration tests.
+#
+# The unauthenticated HTTP RPC is bound to loopback only (every consumer dials 127.0.0.1:5050),
+# with geth's default localhost vhosts and no CORS origins, so other hosts and browser origins
+# cannot reach the unlocked dev account. The debug namespace is deliberately not enabled on HTTP:
+# it exposes handlers that create or truncate caller-named files (e.g. debug_writeMemProfile).
+#
+# debug_traceTransaction is still available over the IPC socket, which serves every namespace but
+# is only accessible to the user running the node (geth creates it with mode 0600). The e2e
+# harness connects to it; see localEthereumNetworkIPCPath in
+# icm-contracts/tests/network/local_ethereum_network.go, which must match --ipcpath.
+#
+# The WS RPC serves the relayer's subscription to new blocks when Ethereum is a message source. It
+# is bound to loopback and limited to the same namespaces as HTTP.
 geth --dev \
     --dev.gaslimit 30000000 \
     --verbosity 1 \
     --http \
-    --http.addr "0.0.0.0" \
+    --http.addr "127.0.0.1" \
     --http.port "5050" \
-    --http.vhosts "*" \
-    --http.corsdomain "*" \
+    --ws \
+    --ws.addr "127.0.0.1" \
+    --ws.port "5051" \
+    --ws.api "eth,net,web3" \
     --datadir "$data_dir" \
-    --http.api "eth,net,web3,debug" \
+    --ipcpath "$data_dir/geth.ipc" \
+    --http.api "eth,net,web3" \
     --rpc.txfeecap 50 \
     --rpc.allow-unprotected-txs \
     --dev.period 1 &

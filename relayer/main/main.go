@@ -20,6 +20,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	merklevalidatorsetregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
+	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
 	metricsServer "github.com/ava-labs/icm-services/metrics"
@@ -58,6 +59,12 @@ const (
 	validatorSetCacheSize = 100
 
 	apiReadHeaderTimeout = 10 * time.Second
+	// A request body is at most api.MaxRequestBodySize, so a sender that has not delivered a whole
+	// request within apiReadTimeout is dropped rather than holding its connection and buffered
+	// bytes open, as is a keep-alive connection that stays idle for apiIdleTimeout. There is no
+	// write timeout, because relaying a message can take far longer than reading the request.
+	apiReadTimeout = 30 * time.Second
+	apiIdleTimeout = 2 * time.Minute
 )
 
 func main() {
@@ -239,6 +246,7 @@ func main() {
 	messageHandlerFactories, err := createMessageHandlerFactories(
 		logger,
 		cfg,
+		sourceClients,
 	)
 	if err != nil {
 		logger.Fatal("Failed to create message handler factories", zap.Error(err))
@@ -305,6 +313,8 @@ func main() {
 			Addr:              fmt.Sprintf(":%d", cfg.APIPort),
 			Handler:           apiMux,
 			ReadHeaderTimeout: apiReadHeaderTimeout,
+			ReadTimeout:       apiReadTimeout,
+			IdleTimeout:       apiIdleTimeout,
 		}
 		// Handle graceful shutdown
 		go func() {
@@ -349,6 +359,13 @@ func main() {
 	for _, extDest := range cfg.ExternalEVMDestinations {
 		errGroup.Go(func() error {
 			return startMerkleSetUpdater(ctx, logger, extDest, signatureAggregator, cfg)
+		})
+	}
+
+	// Start consensus updaters for configured ZK adapters
+	for _, zkCfg := range cfg.ZKConsensusUpdaters {
+		errGroup.Go(func() error {
+			return startZKConsensusUpdater(ctx, logger, zkCfg)
 		})
 	}
 
@@ -422,6 +439,7 @@ func buildConfig() (*config.Config, error) {
 func createMessageHandlerFactories(
 	logger logging.Logger,
 	globalConfig *config.Config,
+	sourceClients map[ids.ID]*ethclient.Client,
 ) (map[ids.ID]map[common.Address]messages.MessageHandlerFactory, error) {
 	// Shared P-Chain client used by message handlers that need to fetch validator sets
 	// (e.g. the TeleporterV2 Merkle verification path).
@@ -438,6 +456,7 @@ func createMessageHandlerFactories(
 				cfg,
 				pChainClient,
 				sourceBlockchain.GetSubnetID(),
+				sourceClients[sourceBlockchain.GetBlockchainID()],
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create message handler factory: %w", err)
@@ -658,11 +677,14 @@ func startMerkleSetUpdater(
 	}
 	ethClient, err := ethclient.DialContext(ctx, extDest.RPCEndpoint)
 	if err != nil {
-		return fmt.Errorf("failed to connect to external EVM at %s: %w", extDest.RPCEndpoint, err)
+		return fmt.Errorf(
+			"failed to connect to external EVM at %s: %w",
+			config.RedactURLCredentials(extDest.RPCEndpoint), config.RedactURLError(err),
+		)
 	}
 	chainID, err := ethClient.ChainID(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get chain ID: %w", err)
+		return fmt.Errorf("failed to get chain ID: %w", config.RedactURLError(err))
 	}
 
 	privateKey, err := crypto.HexToECDSA(extDest.PrivateKey)
@@ -707,5 +729,51 @@ func startMerkleSetUpdater(
 		extDest.GetTxInclusionTimeout(),
 	)
 
+	return updater.Start(ctx)
+}
+
+func startZKConsensusUpdater(
+	ctx context.Context,
+	logger logging.Logger,
+	zkCfg *config.ZKConsensusUpdater,
+) error {
+	ethClient, err := ethclient.DialContext(ctx, zkCfg.RPCEndpoint)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to connect to destination EVM at %s: %w",
+			config.RedactURLCredentials(zkCfg.RPCEndpoint), config.RedactURLError(err),
+		)
+	}
+	chainID, err := ethClient.ChainID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get chain ID: %w", config.RedactURLError(err))
+	}
+
+	privateKey, err := crypto.HexToECDSA(utils.SanitizeHexString(zkCfg.PrivateKey))
+	if err != nil {
+		return fmt.Errorf("invalid private key: %w", err)
+	}
+	txOpts, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
+	if err != nil {
+		return fmt.Errorf("failed to create transactor: %w", err)
+	}
+
+	contractAddr := common.HexToAddress(zkCfg.AdapterAddress)
+	contract, err := zkadapter.NewZKAdapter(contractAddr, ethClient)
+	if err != nil {
+		return fmt.Errorf("failed to bind ZKAdapter contract: %w", err)
+	}
+
+	updater := validatorupdater.NewConsensusUpdater(
+		logger,
+		validatorupdater.NewSubgraphClient(zkCfg.SubgraphURL),
+		ethClient,
+		contract,
+		contractAddr,
+		txOpts,
+		zkCfg.GetPollInterval(),
+		zkCfg.MaxGasPriceGwei,
+		zkCfg.GetTxInclusionTimeout(),
+	)
 	return updater.Start(ctx)
 }
