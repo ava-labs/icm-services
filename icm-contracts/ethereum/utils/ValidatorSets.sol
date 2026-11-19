@@ -92,9 +92,9 @@ struct PartialValidatorSet {
 //    visibility="internal",
 //  )]
 struct ValidatorSetSignature {
-    // #[pack(length=drop)]
+    // #[pack(method="abi.encodePacked")]
     bytes signers;
-    // #[pack(length=drop)]
+    // #[pack(length=BLST.BLS_SIGNATURE_LENGTH)]
     bytes signature;
 }
 
@@ -806,6 +806,28 @@ library ValidatorSets {
             payload
         );
     }
+
+    /**
+     * @notice Computes the Merkle leaf hash for a validator.
+     * @dev Leaf := sha256(blsPublicKey || weight), matching verifyMerkleAttestation.
+     */
+    function hashValidator(
+        Validator memory v
+    ) internal pure returns (bytes32) {
+        return sha256(abi.encodePacked(v.blsPublicKey, v.weight));
+    }
+
+    /**
+     * @notice Computes a sorted sha256 hash of two Merkle node hashes.
+     * @dev Matches the internal pair hashing used by verifyMerkleAttestation.
+     */
+    function keccakInternalPair(
+        bytes32 a,
+        bytes32 b
+    ) internal pure returns (bytes32) {
+        return _sha256Pair(a, b);
+    }
+
 
     function _sha256Pair(
         bytes32 a,

@@ -96,9 +96,9 @@ struct PartialValidatorSet {
 //    visibility="internal",
 //  )]
 struct ValidatorSetSignature {
-    // #[pack(length=drop)]
+    // #[pack(method="abi.encodePacked")]
     bytes signers;
-    // #[pack(length=drop)]
+    // #[pack(length=BLST.BLS_SIGNATURE_LENGTH)]
     bytes signature;
 }
 
@@ -819,8 +819,10 @@ library ValidatorSets {
     }
 
     function serializeValidatorSetSignature(ValidatorSetSignature memory obj) internal pure returns (bytes memory) {
-        require(obj.signers.length == (drop), "serializeValidatorSetSignature: invalid signers length");
-        require(obj.signature.length == (drop), "serializeValidatorSetSignature: invalid signature length");
+        require(
+            obj.signature.length == (BLST.BLS_SIGNATURE_LENGTH),
+            "serializeValidatorSetSignature: invalid signature length"
+        );
         return abi.encodePacked(abi.encodePacked(obj.signers), abi.encodePacked(obj.signature));
     }
 
