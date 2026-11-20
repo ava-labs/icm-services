@@ -11,12 +11,124 @@ import {MerkleProof} from "@openzeppelin/contracts@5.1.0/utils/cryptography/Merk
  * THIS IS LIBRARY IS UN-AUDITED CODE.
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
+
+// #[pack(contract="ValidatorSets", visibility="internal")]
+// #[unpack(contract="ValidatorSets", visibility="internal", calldata)]
 struct Validator {
+    // #[pack(method="BLST.unPadUncompressedBlsPublicKey")]
+    // #[unpack(
+    //    length=BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH,
+    //    method="BLST.padUncompressedBLSPublicKey",
+    //  )]
     bytes blsPublicKey;
     uint64 weight;
 }
 
+struct ValidatorSet {
+    bytes32 avalancheBlockchainID;
+    Validator[] validators;
+    uint64 totalWeight;
+    uint64 pChainHeight;
+    uint64 pChainTimestamp;
+}
+
+// The payload that initiates registering / updating a
+// Validator set for the chain with ID `avalancheBlockchainID`.
+// #[pack(contract="ValidatorSets", visibility="internal")]
+// #[unpack(contract="ValidatorSets", visibility="internal", calldata)]
+struct ValidatorSetMetadata {
+    bytes32 avalancheBlockchainID;
+    uint64 pChainHeight;
+    uint64 pChainTimestamp;
+    // A list of hashes for each shard. These are expected to arrive
+    // in order
+    // #[pack(length=uint32)]
+    // #[unpack(length=uint32)]
+    bytes32[] shardHashes;
+}
+
+// A shard to add to a validator set for which partial data has already
+// been received. The `avalancheBlockchainID` field will be used to lookup the
+// existing partial data
+// #[pack(
+//    name="serializeValidatorSetShard",
+//    contract="ValidatorSets",
+//    visibility="internal",
+//  )]
+// #[unpack(
+//    name="parseValidatorSetShard",
+//    contract="ValidatorSets",
+//    visibility="internal",
+//    calldata,
+//  )]
+struct ValidatorSetShard {
+    // Which shard this is. These are expected to be processed in order
+    uint64 shardNumber;
+    // The avalanche blockchain ID whose validator set we are updating
+    bytes32 avalancheBlockchainID;
+}
+
+// A partial Validator set which can be constructed from
+//  shards sent across multiple transactions
+struct PartialValidatorSet {
+    uint64 pChainHeight;
+    uint64 pChainTimestamp;
+    // A list of hashes for each shard. These are expected to arrive
+    // in order
+    bytes32[] shardHashes;
+    // The amount of shard already received
+    uint64 shardsReceived;
+    // The validators received so far
+    Validator[] validators;
+    // The weight of the above validators
+    uint64 partialWeight;
+    // A flag to indicate that this is now a complete validator set
+    bool inProgress;
+}
+
+// #[pack(
+//    name="serializeValidatorSetSignature",
+//    contract="ValidatorSets",
+//    visibility="internal",
+//  )]
+struct ValidatorSetSignature {
+    // #[pack(method="abi.encodePacked")]
+    bytes signers;
+    // #[pack(length=BLST.BLS_SIGNATURE_LENGTH)]
+    bytes signature;
+}
+
+// ValidatorChange represents a single validator addition, removal, or modification
+// #[pack(contract="ValidatorSets", visibility="internal")]
+// #[unpack(contract="ValidatorSets", visibility="internal", calldata)]
+struct ValidatorChange {
+    // #[pack(method="BLST.unPadUncompressedBlsPublicKey")]
+    // #[unpack(length=96, method="BLST.padUncompressedBLSPublicKey")]
+    bytes blsPublicKey; // 96 bytes uncompressed
+    uint64 weight; // Weight at current height (0 for removals)
+}
+
+// ValidatorSetDiff contains the diff information from a signed message
+// #[pack(contract="ValidatorSets", visibility="internal")]
+struct ValidatorSetDiff {
+    bytes32 avalancheBlockchainID;
+    // Previous state
+    uint64 previousHeight;
+    uint64 previousTimestamp;
+    // Current state
+    uint64 currentHeight;
+    uint64 currentTimestamp;
+    // Changes sorted by key
+    // #[pack(length=uint32)]
+    ValidatorChange[] changes;
+    uint32 numAdded;
+    // #[pack(ignore)]
+    uint256 newSize;
+}
+
 /// Compact, constant size on-chain commitment to an Avalanche validator set.
+// #[pack(contract="ValidatorSets", visibility="internal")]
+// #[unpack(contract="ValidatorSets", visibility="internal", calldata)]
 struct ValidatorSetMerkleCommitment {
     bytes32 avalancheBlockchainID;
     bytes32 root;
@@ -29,10 +141,20 @@ struct ValidatorSetMerkleCommitment {
 /// signing validators for a specific chain, a Merkle multi-inclusion proof binding
 /// them to the registry's stored root, and the aggregate BLS signature.
 /// @dev The signers must be stored in increasing lexicographic order by their BLS public key.
+// #[pack(contract="ValidatorSets", visibility="internal")]
+// #[unpack(contract="ValidatorSets", visibility="internal", calldata)]
 struct ValidatorSetMerkleAttestation {
+    // #[pack(length=uint32)]
+    // #[unpack(length=uint32)]
     Validator[] signers;
+    // #[pack(length=uint32)]
+    // #[unpack(length=uint32)]
     bytes32[] proof;
+    // #[pack(method="packProofFlags")]
+    // #[unpack(method="unpackProofFlags")]
     bool[] proofFlags;
+    // #[pack(method="abi.encodePacked")]
+    // #[unpack(default)]
     bytes aggregateBlsSig;
 }
 
@@ -67,6 +189,106 @@ library ValidatorSets {
         BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH + VALIDATOR_WEIGHT_LENGTH;
 
     /**
+     * @dev Gas-optimized replacement of a storage array with a memory array.
+     * Overwrites existing slots, then pushes or pops the difference.
+     * @param oldArray The existing array in contract storage.
+     * @param newArray The new array loaded in memory.
+     */
+    function replaceValidators(
+        Validator[] storage oldArray,
+        Validator[] memory newArray
+    ) internal {
+        uint256 oldLen = oldArray.length;
+        uint256 newLen = newArray.length;
+        uint256 minLen = oldLen < newLen ? oldLen : newLen;
+        uint256 i = 0;
+        // Overwrite
+        for (; i < minLen;) {
+            oldArray[i] = newArray[i];
+            unchecked {
+                ++i;
+            }
+        }
+        // Push
+        if (newLen > oldLen) {
+            for (; i < newLen;) {
+                oldArray.push(newArray[i]);
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+        // Pop
+        else if (oldLen > newLen) {
+            uint256 diffLen = oldLen - newLen;
+            for (uint256 j = 0; j < diffLen;) {
+                oldArray.pop();
+                unchecked {
+                    ++j;
+                }
+            }
+        }
+    }
+
+    /*
+     * @notice Verifies that a quorum of the input validator set produced the input signature over the input message
+     */
+    function verifyValidatorSetSignature(
+        ValidatorSetSignature memory signature,
+        bytes memory message,
+        ValidatorSet memory validatorSet
+    ) internal view returns (bool) {
+        (bytes memory aggregateKey, uint64 aggregateWeight) =
+            filterValidators(signature.signers, validatorSet.validators);
+        if (!verifyWeight(aggregateWeight, validatorSet.totalWeight)) {
+            return false;
+        }
+        return BLST.verifySignature(aggregateKey, signature.signature, message);
+    }
+
+    /**
+     * @dev Selects validators by index using the signers bitset, then aggregates their BLS public keys and weights.
+     * The bitset matches Go's big.Int.Bytes() (big-endian): bit i of the integer is
+     * bit (i % 8) of byte signers[signers.length - 1 - i / 8].
+     * @return aggregatePublicKey The aggregate BLS public key of the selected validators
+     * @return aggregateWeight The sum of weights of the selected validators
+     */
+    function filterValidators(
+        bytes memory signers,
+        Validator[] memory validators
+    ) internal view returns (bytes memory, uint64) {
+        bytes memory aggregatePublicKey;
+        uint64 aggregateWeight = 0;
+        if (validators.length == 0) {
+            revert("Cannot validate against an empty list of validators");
+        }
+
+        uint256 validatorsLen = validators.length;
+        uint256 signersLen = signers.length;
+        for (uint256 i = 0; i < validatorsLen;) {
+            uint256 byteOffset = i / 8;
+            if (byteOffset >= signersLen) {
+                break;
+            }
+            uint256 byteIdx = signersLen - 1 - byteOffset;
+            uint8 bitPos = uint8(i % 8);
+            if (uint8(signers[byteIdx]) & (uint8(1) << bitPos) != 0) {
+                Validator memory validator = validators[i];
+                if (aggregateWeight > 0) {
+                    aggregatePublicKey = BLST.addG1(aggregatePublicKey, validator.blsPublicKey);
+                } else {
+                    aggregatePublicKey = validator.blsPublicKey;
+                }
+                aggregateWeight += validator.weight;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+        return (aggregatePublicKey, aggregateWeight);
+    }
+
+    /**
      * @dev ICM message verification scheme using Merkle attestations. Includes the following steps:
      * 1. Reconstruct each signer's leaf
      * 2. Verify all leaves against the stored root via a Merkle multi-inclusion proof
@@ -96,7 +318,7 @@ library ValidatorSets {
         // Perform Merkle multi-inclusion proof verification against the stored root
         // TODO: Switch to multiProofVerifyCalldata once parseMerkleAttestation returns calldata slice offsets instead of a memory struct for additional gas savings
         if (!MerkleProof.multiProofVerify(
-                att.proof, att.proofFlags, comm.root, leaves, keccakInternalPair
+                att.proof, att.proofFlags, comm.root, leaves, _keccakPair
             )) {
             return false;
         }
@@ -118,37 +340,131 @@ library ValidatorSets {
         return BLST.verifySignature(aggregateKey, att.aggregateBlsSig, signedData);
     }
 
+    /**
+     * @notice Parses the validators from a serialized validator set
+     * @param data The serialized validator set. The serialized format is:
+     * - 2 bytes: codec ID (0x0000)
+     * - 4 bytes: number of validators
+     * - 96 bytes per validator: unformatted BLS public key
+     * - 8 bytes per validator: weight
+     * @return validators The parsed validators
+     * @return totalWeight The total weight of all validators
+     */
+    function parseValidators(
+        bytes calldata data
+    ) internal pure returns (Validator[] memory, uint64) {
+        // Check the codec ID is 0
+        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+
+        // Parse the number of validators
+        uint32 numValidators = uint32(bytes4(data[2:2 + NUM_VALIDATOR_LENGTH]));
+
+        // Parse the validators
+        Validator[] memory validators = new Validator[](numValidators);
+        uint64 totalWeight = 0;
+        // The position in the bytes were are currently parsing
+        uint256 currentPosition = 6;
+        // we will require that public keys appear in increasing order,
+        // lexicographically sorted as bytes
+        bytes memory previousPublicKey = new bytes(BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH);
+
+        for (uint32 i = 0; i < numValidators; i++) {
+            bytes memory unformattedPublicKey = data[
+                currentPosition:currentPosition + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH
+            ];
+            require(
+                BLST.comparePublicKeys(unformattedPublicKey, previousPublicKey) > 0,
+                "BLS public key must be greater than the latest public key"
+            );
+            // A serialized validator consists of
+            // VALIDATOR_BYTES = BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH + VALIDATOR_WEIGHT_LENGTH
+            // bytes. To get the the weight, we skip the first  BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH
+            // bytes up to VALIDATOR_BYTES from the current byte position.
+            uint64 weight = uint64(
+                bytes8(
+                    data[currentPosition
+                            + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH:currentPosition
+                                + VALIDATOR_BYTES
+                    ]
+                )
+            );
+            require(weight > 0, "Validator weight must be greater than 0");
+            validators[i] = Validator({
+                blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey), weight: weight
+            });
+            previousPublicKey = unformattedPublicKey;
+            totalWeight += weight;
+            // move the current position past the bytes of this validator
+            currentPosition += VALIDATOR_BYTES;
+        }
+        return (validators, totalWeight);
+    }
+
+    function serializeValidators(
+        Validator[] memory validators
+    ) internal pure returns (bytes memory) {
+        bytes memory serialized = new bytes(2 + 4);
+
+        assembly ("memory-safe") {
+            let validator_length := mload(validators)
+            //encode the number of validators
+            // convert bytes32 to bytes4 and store the length
+            mstore(add(serialized, 0x22), shl(224, validator_length))
+        }
+
+        // encode the validators
+        for (uint256 i = 0; i < validators.length; i++) {
+            serialized = abi.encodePacked(serialized, packValidator(validators[i]));
+        }
+        return serialized;
+    }
+
     /*
     * @dev Serializes a ValidatorSetMerkleAttestation in the format expected by parseMerkleAttestation.
     */
     function serializeMerkleAttestation(
         ValidatorSetMerkleAttestation memory att
     ) internal pure returns (bytes memory) {
-        bytes memory data = abi.encodePacked(CODEC, uint32(att.signers.length));
-        // Encode public keys
-        for (uint256 i = 0; i < att.signers.length; i++) {
-            data = abi.encodePacked(
-                data,
-                BLST.unPadUncompressedBlsPublicKey(att.signers[i].blsPublicKey),
-                att.signers[i].weight
-            );
+        return abi.encodePacked(CODEC, packValidatorSetMerkleAttestation(att));
+    }
+
+    /**
+     * @notice Deserialize a bit set back into an array of bools.
+     * @dev Inverse of packProofFlags. Reads a uint32 count then ceil(count/8) packed bytes.
+     * @return consumed Number of bytes read from data.
+     * @return flags The decoded bool array.
+     */
+    function unpackProofFlags(
+        bytes calldata data
+    ) internal pure returns (uint256, bool[] memory) {
+        uint32 numFlags = uint32(bytes4(data[0:4]));
+        uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
+        bool[] memory flags = new bool[](numFlags);
+        for (uint256 i = 0; i < numFlags;) {
+            uint8 byteVal = uint8(data[4 + (i >> 3)]);
+            flags[i] = (byteVal >> uint8(i & 7)) & 1 == 1;
+            unchecked {
+                ++i;
+            }
         }
-        // Encode proof
-        data = abi.encodePacked(data, uint32(att.proof.length));
-        for (uint256 i = 0; i < att.proof.length; i++) {
-            data = abi.encodePacked(data, att.proof[i]);
-        }
-        // Encode proof flags
-        uint32 numFlags = uint32(att.proofFlags.length);
+        return (4 + flagBytesLen, flags);
+    }
+
+    /**
+     * @notice serialize an array of bools to a bit set
+     */
+    function packProofFlags(
+        bool[] memory flags
+    ) internal pure returns (bytes memory) {
+        uint32 numFlags = uint32(flags.length);
         uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
         bytes memory packedFlags = new bytes(flagBytesLen);
         for (uint256 i = 0; i < numFlags; i++) {
-            if (att.proofFlags[i]) {
+            if (flags[i]) {
                 packedFlags[i >> 3] |= bytes1(uint8(1) << uint8(i & 7));
             }
         }
-        data = abi.encodePacked(data, numFlags, packedFlags);
-        return abi.encodePacked(data, att.aggregateBlsSig);
+        return abi.encodePacked(numFlags, packedFlags);
     }
 
     /**
@@ -158,15 +474,106 @@ library ValidatorSets {
         ValidatorSetMerkleCommitment memory commitment
     ) internal pure returns (bytes memory) {
         bytes4 payloadType = bytes4(0x00000006);
-        return abi.encodePacked(
-            CODEC,
-            payloadType,
-            commitment.avalancheBlockchainID,
-            commitment.root,
-            commitment.totalWeight,
-            commitment.pChainHeight,
-            commitment.pChainTimestamp
+        return abi.encodePacked(CODEC, payloadType, packValidatorSetMerkleCommitment(commitment));
+    }
+
+    /**
+     * @notice Deserializes the validator state payload
+     * @param data The serialized validator state payload. The serialized format is:
+     * - 2 bytes: codec ID (0x0000)
+     * - 4 bytes: payload type id
+     * - 32 bytes: Avalanche blockchain ID
+     * - 8 bytes: Avalanche P-chain height
+     * - 8 bytes: Avalanche P-chain timestamp
+     * - the remainder is an abi-encoded array of hashes
+     * @return ValidatorSetStatePayload instance
+     */
+    function parseValidatorSetMetadata(
+        bytes calldata data
+    ) internal pure returns (ValidatorSetMetadata memory) {
+        // Check the codec ID is 0
+        require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+
+        // Parse the payload type ID, and confirm it is 4 for ValidatorSetState
+        uint32 payloadTypeID = uint32(bytes4(data[2:2 + PAYLOAD_TYPE_ID_LENGTH]));
+        require(
+            payloadTypeID == PAYLOAD_TYPE_ID_LENGTH, "Invalid ValidatorSetState payload type ID"
         );
+        (, ValidatorSetMetadata memory result) =
+            unpackValidatorSetMetadata(data[2 + PAYLOAD_TYPE_ID_LENGTH:]);
+        return result;
+    }
+
+    /**
+     * @notice Parses a ValidatorSetDiff payload from serialized bytes
+     * @dev The payload type ID must be 5 for ValidatorSetDiff
+     * @param data The serialized ValidatorSetDiff payload
+     * @return diff The parsed ValidatorSetDiff
+     */
+    function parseValidatorSetDiff(
+        bytes calldata data,
+        uint256 currentValidatorCount
+    ) internal pure returns (ValidatorSetDiff memory diff) {
+        {
+            require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
+            uint32 payloadTypeID = uint32(bytes4(data[2:6]));
+            require(payloadTypeID == 5, "Invalid ValidatorSetDiff payload type ID");
+        }
+        uint256 offset = 6;
+        diff.avalancheBlockchainID = bytes32(data[offset:offset + 32]);
+        offset += 32;
+        // Previous State
+        {
+            diff.previousHeight = uint64(bytes8(data[offset:offset + 8]));
+            offset += 8;
+            diff.previousTimestamp = uint64(bytes8(data[offset:offset + 8]));
+            offset += 8;
+        }
+
+        // Current State
+        {
+            diff.currentHeight = uint64(bytes8(data[offset:offset + 8]));
+            offset += 8;
+            diff.currentTimestamp = uint64(bytes8(data[offset:offset + 8]));
+            offset += 8;
+        }
+        // Validator Changes
+        {
+            uint32 numChanges = uint32(bytes4(data[offset:offset + 4]));
+            offset += 4;
+            diff.changes = new ValidatorChange[](numChanges);
+            uint256 numRemoved = 0;
+            for (uint32 i = 0; i < numChanges;) {
+                (diff.changes[i], offset) = parseValidatorChange(data, offset);
+                if (diff.changes[i].weight == 0) {
+                    unchecked {
+                        ++numRemoved;
+                    }
+                }
+                unchecked {
+                    ++i;
+                }
+            }
+            diff.numAdded = uint32(bytes4(data[offset:offset + 4]));
+            offset += 4;
+            diff.newSize = currentValidatorCount + diff.numAdded - numRemoved;
+        }
+        return diff;
+    }
+
+    /**
+     * @notice Parses a single ValidatorChange from serialized bytes
+     * @param data The serialized data
+     * @param offset The offset to start parsing from
+     * @return change The parsed ValidatorChange
+     * @return newOffset The new offset after parsing
+     */
+    function parseValidatorChange(
+        bytes calldata data,
+        uint256 offset
+    ) internal pure returns (ValidatorChange memory, uint256) {
+        (uint256 read, ValidatorChange memory change) = unpackValidatorChange(data[offset:]);
+        return (change, offset + read);
     }
 
     /**
@@ -178,60 +585,12 @@ library ValidatorSets {
         bytes calldata data
     ) internal pure returns (ValidatorSetMerkleAttestation memory att) {
         require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
-        uint256 offset = 2;
-
-        // Parse the signers
-        {
-            uint32 numSigners = uint32(bytes4(data[offset:offset + NUM_VALIDATOR_LENGTH]));
-            offset += NUM_VALIDATOR_LENGTH;
-            att.signers = new Validator[](numSigners);
-            for (uint32 i = 0; i < numSigners;) {
-                bytes memory unformattedPublicKey =
-                    data[offset:offset + BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH];
-                offset += BLST.BLS_UNCOMPRESSED_PUBLIC_KEY_INPUT_LENGTH;
-                uint64 weight = uint64(bytes8(data[offset:offset + VALIDATOR_WEIGHT_LENGTH]));
-                offset += VALIDATOR_WEIGHT_LENGTH;
-                att.signers[i] = Validator({
-                    blsPublicKey: BLST.padUncompressedBLSPublicKey(unformattedPublicKey),
-                    weight: weight
-                });
-                unchecked {
-                    ++i;
-                }
-            }
-        }
-        // Parse the proof
-        {
-            uint32 numProofHashes = uint32(bytes4(data[offset:offset + 4]));
-            offset += 4;
-            att.proof = new bytes32[](numProofHashes);
-            for (uint32 i = 0; i < numProofHashes;) {
-                att.proof[i] = bytes32(data[offset:offset + 32]);
-                offset += 32;
-                unchecked {
-                    ++i;
-                }
-            }
-            uint32 numFlags = uint32(bytes4(data[offset:offset + 4]));
-            offset += 4;
-            uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
-
-            // Parse the proof flags
-            att.proofFlags = new bool[](numFlags);
-            for (uint256 i = 0; i < numFlags;) {
-                uint8 byteVal = uint8(data[offset + (i >> 3)]);
-                att.proofFlags[i] = (byteVal >> uint8(i & 7)) & 1 == 1;
-                unchecked {
-                    ++i;
-                }
-            }
-
-            offset += flagBytesLen;
-        }
-        // Parse the signature
-        att.aggregateBlsSig = data[offset:offset + BLST.BLS_SIGNATURE_LENGTH];
-        offset += BLST.BLS_SIGNATURE_LENGTH;
-        require(offset == data.length, "Trailing bytes in attestation");
+        uint256 consumed;
+        (consumed, att) = unpackValidatorSetMerkleAttestation(data[2:]);
+        att.aggregateBlsSig = data[2 + consumed:2 + consumed + BLST.BLS_SIGNATURE_LENGTH];
+        require(
+            2 + consumed + BLST.BLS_SIGNATURE_LENGTH == data.length, "Trailing bytes in attestation"
+        );
         return att;
     }
 
@@ -252,14 +611,120 @@ library ValidatorSets {
         require(data[0] == 0 && data[1] == 0, "Invalid codec ID");
         uint32 payloadTypeID = uint32(bytes4(data[2:6]));
         require(payloadTypeID == 6, "Invalid ValidatorSetMerkleCommitment payload type ID");
+        (, ValidatorSetMerkleCommitment memory result) =
+            unpackValidatorSetMerkleCommitment(data[6:]);
+        return result;
+    }
 
-        return ValidatorSetMerkleCommitment({
-            avalancheBlockchainID: bytes32(data[6:38]),
-            root: bytes32(data[38:70]),
-            totalWeight: uint64(bytes8(data[70:78])),
-            pChainHeight: uint64(bytes8(data[78:86])),
-            pChainTimestamp: uint64(bytes8(data[86:94]))
-        });
+    /**
+     * @notice Applies a presorted diff to a presorted validator array in O(N+M) time.
+     * @param currentValSet The existing validators (must be sorted by BLS public key).
+     * @param diff The diff containing the changes and newSize (must be sorted by BLS public key).
+     * @return modified The updated validator array.
+     * @return newTotalWeight The total weight of the new set.
+     */
+    function applyValidatorSetDiff(
+        Validator[] memory currentValSet,
+        ValidatorSetDiff memory diff
+    ) internal pure returns (Validator[] memory, uint64) {
+        uint64 newTotalWeight = 0;
+        uint256 newSize = diff.newSize;
+        Validator[] memory modified = new Validator[](newSize);
+        uint256 valSetPos = 0;
+        uint256 changePos = 0;
+
+        _verifySortedValidatorChanges(diff.changes);
+
+        for (uint256 i = 0; i < newSize;) {
+            int256 compare;
+            ValidatorChange memory nextChange;
+            Validator memory nextVal;
+
+            // Safety checks
+            if (changePos >= diff.changes.length) {
+                // case 1: we've exhausted the changes, so we just take the remaining validators
+                nextVal = currentValSet[valSetPos];
+                compare = -1;
+            } else if (valSetPos >= currentValSet.length) {
+                // case 2: we've exhausted the current validator set, so we just take the remaining changes (which must all be additions)
+                nextChange = diff.changes[changePos];
+                compare = 1;
+            } else {
+                // case 3: we have both validators and changes left, so we compare the next validator and next change
+                nextVal = currentValSet[valSetPos];
+                nextChange = diff.changes[changePos];
+                compare = BLST.comparePublicKeys(
+                    BLST.unPadUncompressedBlsPublicKey(nextVal.blsPublicKey),
+                    BLST.unPadUncompressedBlsPublicKey(nextChange.blsPublicKey)
+                );
+            }
+
+            // Compare
+            if (compare < 0) {
+                // case 1: the next change occurs after this validator
+                modified[i] = nextVal;
+                newTotalWeight += nextVal.weight;
+                valSetPos++;
+                unchecked {
+                    ++i;
+                }
+            } else if (compare > 0) {
+                // case 2. this is a new validator
+                modified[i] =
+                    Validator({blsPublicKey: nextChange.blsPublicKey, weight: nextChange.weight});
+                newTotalWeight += nextChange.weight;
+                changePos++;
+                unchecked {
+                    ++i;
+                }
+            } else {
+                // case 3. this is a change to an existing validator
+                // If the next weight is zero, skip
+                if (nextChange.weight != 0) {
+                    nextVal.weight = nextChange.weight;
+                    modified[i] = nextVal;
+                    newTotalWeight += nextChange.weight;
+                    unchecked {
+                        ++i;
+                    }
+                }
+                changePos++;
+                valSetPos++;
+            }
+        }
+        require(modified[newSize - 1].weight > 0, "Incorrect size given in diff");
+        return (modified, newTotalWeight);
+    }
+
+    /*
+     * @notice Serialize a ValidatorSetStatePayload
+     */
+    function serializeValidatorSetMetadata(
+        ValidatorSetMetadata memory payload
+    ) internal pure returns (bytes memory) {
+        bytes4 payloadType = bytes4(0x00000004);
+        return abi.encodePacked(CODEC, payloadType, packValidatorSetMetadata(payload));
+    }
+
+    /*
+     * @notice Serialize a ValidatorSetDiff
+     */
+    function serializeValidatorSetDiff(
+        ValidatorSetDiff memory diff
+    ) internal pure returns (bytes memory) {
+        bytes4 payloadType = bytes4(0x00000005);
+        return abi.encodePacked(CODEC, payloadType, packValidatorSetDiff(diff));
+    }
+
+    /*
+     * @notice Deserialize bytes into `ValidatorSetSignature`
+     */
+    function parseValidatorSetSignature(
+        bytes calldata signatureBytes
+    ) internal pure returns (ValidatorSetSignature memory) {
+        bytes memory signers = signatureBytes[0:signatureBytes.length - BLST.BLS_SIGNATURE_LENGTH];
+        bytes memory signature = signatureBytes[signatureBytes.length - BLST.BLS_SIGNATURE_LENGTH:];
+        return ValidatorSetSignature({signers: signers, signature: signature});
     }
 
     /*
@@ -272,6 +737,29 @@ library ValidatorSets {
         uint256 scaledTotalWeight = QUORUM_NUM * uint256(totalWeight);
         uint256 scaledSignatureWeight = QUORUM_DEN * uint256(signatureWeight);
         return scaledTotalWeight <= scaledSignatureWeight;
+    }
+
+    /**
+     * @notice Verifies that the validator changes are sorted by public key in increasing order.
+     * @dev Operates in O(n) time. Reverts if the array is not sorted.
+     * @param changes The array of validator changes to verify.
+     */
+    function _verifySortedValidatorChanges(
+        ValidatorChange[] memory changes
+    ) internal pure {
+        uint256 len = changes.length;
+        if (len < 2) return;
+        for (uint256 i = 0; i < len - 1;) {
+            // Compare
+            int256 compare = BLST.comparePublicKeys(
+                BLST.unPadUncompressedBlsPublicKey(changes[i].blsPublicKey),
+                BLST.unPadUncompressedBlsPublicKey(changes[i + 1].blsPublicKey)
+            );
+            require(compare <= 0, "Validator changes not sorted by public key");
+            unchecked {
+                ++i;
+            }
+        }
     }
 
     /**
@@ -319,23 +807,30 @@ library ValidatorSets {
         );
     }
 
+    /*
+     * @notice Prepends a one to the hash of a validator to avoid second pre-image attacks on
+     * the merkle trees. This is a convenience function that should be used to hash validators
+     * rather than calling keccak256 on them directly
+     */
+    function hashValidator(
+        Validator memory val
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(uint256(1), val.blsPublicKey, val.weight));
+    }
+
     function keccakInternalPair(
+        bytes32 a,
+        bytes32 b
+    ) internal pure returns (bytes32) {
+        return _keccakPair(a, b);
+    }
+
+    function _keccakPair(
         bytes32 a,
         bytes32 b
     ) internal pure returns (bytes32) {
         return a < b
             ? keccak256(abi.encodePacked(uint256(0), a, b))
             : keccak256(abi.encodePacked(uint256(0), b, a));
-    }
-
-    /*
-     * @notice Prepends a one to the hash of a validator to avoid second pre-image attacks on
-     * the merkle trees. This is a convenience function that should be used to hash validators
-     * rather than calling sha256 on them directly
-     */
-    function hashValidator(
-        Validator memory val
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(uint256(1), val.blsPublicKey, val.weight));
     }
 }

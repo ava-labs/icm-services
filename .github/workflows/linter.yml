@@ -42,7 +42,42 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        submodules: recursive
         persist-credentials: false
+
+    # Foundry is pinned in scripts/install_foundry.sh, so the key changes with the pin.
+    - name: Cache Foundry
+      id: foundry-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.foundry
+        key: foundry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install_foundry.sh') }}
+
+    - name: Install Foundry
+      if: steps.foundry-cache.outputs.cache-hit != 'true'
+      run: ./scripts/install_foundry.sh
+
+    - name: Cache reforge binary
+      id: cache-reforge
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/bin/reforge
+        key: ${{ runner.os }}-reforge-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
+
+    - name: Cache Cargo (icm-macros)
+      if: steps.cache-reforge.outputs.cache-hit != 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          icm-macros/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('icm-macros/Cargo.lock', 'icm-macros/Cargo.toml', 'icm-macros/src/**') }}
+        restore-keys: ${{ runner.os }}-cargo-
+
+    - name: Build reforge
+      if: steps.cache-reforge.outputs.cache-hit != 'true'
+      run: ./scripts/build_reforge.sh
 
     - name: Install solhint
       run: |
@@ -50,7 +85,9 @@ jobs:
         solhint --version
 
     - name: Run Lint
-      run: ./scripts/lint.sh --sol-lint
+      run: |
+        export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+        ./scripts/lint.sh --sol-lint
 
   format-solidity:
     runs-on: ubuntu-22.04
@@ -119,6 +156,32 @@ jobs:
       - run: git --no-pager diff -- go.mod go.sum  # This prints the diff
       - run: git --no-pager diff --quiet -- go.mod go.sum  # This errors if there is a diff
 
+  check-expanded-macros:
+    name: Check expanded macros are up to date
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        run: ./scripts/install_foundry.sh
+
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
+
+      - name: Regenerate expanded contracts
+        run: |
+          export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
+          ./scripts/expand_macros.sh
+
+      - name: Fail if expanded contracts are out of date
+        run: |
+          git diff --exit-code icm-contracts-expanded/ || \
+            (echo 'Expanded macro contracts are out of date. Run ./scripts/expand_macros.sh and commit the results.' && exit 1)
+
   abi_binding:
     name: abi_binding
     runs-on: ubuntu-22.04
@@ -146,6 +209,9 @@ jobs:
       - name: Install Foundry
         if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: ./scripts/install_foundry.sh
+
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
 
       - name: Install solc
         run: |

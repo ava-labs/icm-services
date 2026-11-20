@@ -7,6 +7,7 @@ import {Test} from "@forge-std/Test.sol";
 import {
     TeleporterICMMessage,
     TeleporterMessageV2,
+    TeleporterV2Parsing,
     ICMTeleporterV2,
     TeleporterMessageReceipt
 } from "../TeleporterMessageV2.sol";
@@ -44,7 +45,7 @@ contract ICMTest is Test {
             receipts: receipts,
             message: payload
         });
-        bytes memory serialized = ICMTeleporterV2.serializeTeleporterMessageV2(teleporterMessage);
+        bytes memory serialized = TeleporterV2Parsing.packTeleporterMessageV2(teleporterMessage);
         TeleporterMessageV2 memory deserialized =
             ICMTeleporterV2.parseTeleporterMessageV2(serialized);
 
@@ -121,7 +122,7 @@ contract ICMTest is Test {
             attestation: abi.encode(1)
         });
 
-        bytes memory serialized = ICMTeleporterV2.serializeTeleporterICMMessage(icmMessage);
+        bytes memory serialized = TeleporterV2Parsing.packTeleporterICMMessage(icmMessage);
         TeleporterICMMessage memory deserializedICM =
             ICMTeleporterV2.parseTeleporterICMMessage(serialized);
         assertEq(icmMessage.sourceNetworkID, deserializedICM.sourceNetworkID);
