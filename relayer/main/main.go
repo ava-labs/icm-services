@@ -726,6 +726,7 @@ func startMerkleSetUpdater(
 		pollInterval,
 		maxUpdateInterval,
 		extDest.MaxGasPriceGwei,
+		extDest.GetTxInclusionTimeout(),
 	)
 
 	return updater.Start(ctx)
@@ -772,6 +773,7 @@ func startZKConsensusUpdater(
 		txOpts,
 		zkCfg.GetPollInterval(),
 		zkCfg.MaxGasPriceGwei,
+		zkCfg.GetTxInclusionTimeout(),
 	)
 	return updater.Start(ctx)
 }

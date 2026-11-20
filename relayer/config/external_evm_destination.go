@@ -55,6 +55,11 @@ type ExternalEVMDestination struct {
 	// network's suggested gas price exceeds this threshold the update is
 	// deferred and retried on the next poll. 0 disables the check.
 	MaxGasPriceGwei uint64 `mapstructure:"max-gas-price-gwei" json:"max-gas-price-gwei,omitempty"`
+	// TxInclusionTimeoutSeconds bounds how long the relayer waits for a transaction it sent
+	// to this chain to be mined: a validator-set update, or a delivery tx when delivery is
+	// enabled. An update that is not mined in time is followed up on the next poll.
+	// Defaults to 30 when unset.
+	TxInclusionTimeoutSeconds uint64 `mapstructure:"tx-inclusion-timeout-seconds" json:"tx-inclusion-timeout-seconds,omitempty"` //nolint:lll
 
 	// --- Message delivery configuration (only used when DestinationBlockchainID is set) ---
 
@@ -81,9 +86,6 @@ type ExternalEVMDestination struct {
 	// BlockGasLimit caps the gas used for delivery transactions. Defaults to 12,000,000
 	// when unset.
 	BlockGasLimit uint64 `mapstructure:"block-gas-limit" json:"block-gas-limit,omitempty"`
-	// TxInclusionTimeoutSeconds bounds how long the relayer waits for a delivery tx to
-	// be mined. Defaults to 30 when unset.
-	TxInclusionTimeoutSeconds uint64 `mapstructure:"tx-inclusion-timeout-seconds" json:"tx-inclusion-timeout-seconds,omitempty"` //nolint:lll
 }
 
 // GetDestinationBlockchainID parses the configured external destination blockchain ID.
@@ -105,6 +107,15 @@ func (e *ExternalEVMDestination) GetPollInterval() time.Duration {
 		return defaultPollInterval
 	}
 	return time.Duration(e.PollIntervalSeconds) * time.Second
+}
+
+// GetTxInclusionTimeout returns how long the validator-set updater waits for an update
+// transaction to be mined, falling back to the default when TxInclusionTimeoutSeconds is unset.
+func (e *ExternalEVMDestination) GetTxInclusionTimeout() time.Duration {
+	if e.TxInclusionTimeoutSeconds == 0 {
+		return defaultTxInclusionTimeoutSeconds * time.Second
+	}
+	return time.Duration(e.TxInclusionTimeoutSeconds) * time.Second
 }
 
 // GetWarpConfig returns the Warp configuration used when signing messages destined for this
