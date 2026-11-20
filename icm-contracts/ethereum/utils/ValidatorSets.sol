@@ -828,7 +828,6 @@ library ValidatorSets {
         return _sha256Pair(a, b);
     }
 
-
     function _sha256Pair(
         bytes32 a,
         bytes32 b
