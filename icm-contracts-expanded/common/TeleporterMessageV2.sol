@@ -27,6 +27,8 @@ struct TeleporterMessageV2 {
     bytes32 destinationBlockchainID;
     address destinationAddress;
     uint256 requiredGasLimit;
+    // #[pack(length="uint32")]
+    // #[unpack(length="uint32")]
     address[] allowedRelayerAddresses;
     // #[pack(method="serializeTeleporterReceipts")]
     // #[unpack(method="parseTeleporterReceipts")]
@@ -127,7 +129,7 @@ library TeleporterV2Parsing {
         bytes memory allowedRelayerAddresses_bytes;
         {
             uint256 allowedRelayerAddresses_0_count = obj.allowedRelayerAddresses.length;
-            allowedRelayerAddresses_bytes = abi.encodePacked(allowedRelayerAddresses_0_count);
+            allowedRelayerAddresses_bytes = abi.encodePacked(uint32(allowedRelayerAddresses_0_count));
             for (uint256 i_0 = 0; i_0 < allowedRelayerAddresses_0_count;) {
                 bytes memory allowedRelayerAddresses_1_bytes;
                 allowedRelayerAddresses_1_bytes = abi.encodePacked(obj.allowedRelayerAddresses[i_0]);
@@ -190,8 +192,8 @@ library TeleporterV2Parsing {
         result.requiredGasLimit = requiredGasLimit;
         address[] memory allowedRelayerAddresses;
         {
-            uint256 length = uint256(bytes32(data[0:32]));
-            data = data[32:];
+            uint256 length = uint256(uint32(bytes4(data[0:4])));
+            data = data[4:];
             allowedRelayerAddresses = new address[](length);
             for (uint256 i = 0; i < length;) {
                 address allowedRelayerAddresses_1 = address(bytes20(data[0:20]));

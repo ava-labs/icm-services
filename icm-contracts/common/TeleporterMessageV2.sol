@@ -23,6 +23,8 @@ struct TeleporterMessageV2 {
     bytes32 destinationBlockchainID;
     address destinationAddress;
     uint256 requiredGasLimit;
+    // #[pack(length="uint32")]
+    // #[unpack(length="uint32")]
     address[] allowedRelayerAddresses;
     // #[pack(method="serializeTeleporterReceipts")]
     // #[unpack(method="parseTeleporterReceipts")]

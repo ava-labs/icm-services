@@ -31,9 +31,10 @@ const (
 // ParseTeleporterMessageV2 deserializes the packed bytes produced by the Solidity
 // serializeTeleporterMessageV2 into a TeleporterMessageV2 struct.
 func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMessageV2, error) {
-	// Minimum length is the fixed header plus the two count prefixes (relayers, receipts).
-	// readCount bounds-checks each prefix again; this just fails fast with a clearer error.
-	if len(data) < headerLen+countLen+countLen {
+	// Minimum length is the fixed header, the two count prefixes (relayers, receipts), and the
+	// uint256 message-length prefix. readCount bounds-checks each prefix again; this just fails
+	// fast with a clearer error.
+	if len(data) < headerLen+countLen+countLen+nonceLen {
 		return nil, fmt.Errorf("teleporter message v2 too short: %d bytes", len(data))
 	}
 
@@ -66,7 +67,7 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 	}
 
 	// Receipts.
-	numReceipts, err := readCount(data, offset, receiptLen, 0, "receipts")
+	numReceipts, err := readCount(data, offset, receiptLen, nonceLen, "receipts")
 	if err != nil {
 		return nil, err
 	}
@@ -81,10 +82,19 @@ func ParseTeleporterMessageV2(data []byte) (*teleportermessengerv2.TeleporterMes
 		msg.Receipts[i] = receipt
 	}
 
-	// The remainder is the inner application message. Use a non-nil slice so that
-	// serialization round-trips are deterministic for empty messages.
-	msg.Message = make([]byte, len(data)-offset)
-	copy(msg.Message, data[offset:])
+	// Message: uint256 length prefix followed by the payload bytes.
+	msgLenBig := new(big.Int).SetBytes(data[offset : offset+nonceLen])
+	offset += nonceLen
+	if !msgLenBig.IsUint64() || msgLenBig.Uint64() > uint64(len(data)-offset) {
+		return nil, fmt.Errorf(
+			"teleporter message v2 truncated reading message: %s declared, %d bytes remaining",
+			msgLenBig, len(data)-offset,
+		)
+	}
+	msgLen := int(msgLenBig.Uint64())
+	// Use a non-nil slice so that serialization round-trips are deterministic for empty messages.
+	msg.Message = make([]byte, msgLen)
+	copy(msg.Message, data[offset:offset+msgLen])
 
 	return &msg, nil
 }
@@ -126,7 +136,7 @@ func readCount(data []byte, offset, elementLen, trailingLen int, what string) (i
 // round-trips against ParseTeleporterMessageV2.
 func SerializeTeleporterMessageV2(msg *teleportermessengerv2.TeleporterMessageV2) []byte {
 	size := headerLen + countLen + len(msg.AllowedRelayerAddresses)*addressLen +
-		countLen + len(msg.Receipts)*receiptLen + len(msg.Message)
+		countLen + len(msg.Receipts)*receiptLen + nonceLen + len(msg.Message)
 	buf := make([]byte, 0, size)
 
 	buf = appendUint256(buf, msg.MessageNonce)
@@ -147,6 +157,7 @@ func SerializeTeleporterMessageV2(msg *teleportermessengerv2.TeleporterMessageV2
 		buf = append(buf, receipt.RelayerRewardAddress.Bytes()...)
 	}
 
+	buf = appendUint256(buf, new(big.Int).SetInt64(int64(len(msg.Message))))
 	buf = append(buf, msg.Message...)
 	return buf
 }
