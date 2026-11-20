@@ -128,7 +128,9 @@ func (s *MerkleSetUpdater) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			s.logger.Info("MerkleSetUpdater stopping")
-			return ctx.Err()
+			// Being asked to stop is a clean exit, not a failure: returning ctx.Err() would make
+			// the relayer's errgroup treat every graceful shutdown as an error.
+			return nil
 		case <-ticker.C:
 			if err := s.checkAndUpdate(ctx); err != nil {
 				s.logger.Error("Update check failed", zap.Error(err))
