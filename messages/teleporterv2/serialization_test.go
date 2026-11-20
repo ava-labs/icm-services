@@ -187,7 +187,7 @@ func TestParseTeleporterMessageV2RejectsCraftedCounts(t *testing.T) {
 		Receipts:                []teleportermessengerv2.TeleporterMessageReceipt{},
 		Message:                 []byte{},
 	})
-	require.Len(t, base, headerLen+countLen+countLen)
+	require.Len(t, base, headerLen+countLen+countLen+nonceLen)
 	relayerCountOffset := headerLen
 	receiptCountOffset := headerLen + countLen
 
