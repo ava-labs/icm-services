@@ -44,6 +44,10 @@ const (
 
 	// We make at most 3 RPC calls, one app request, and one round of retries to connect to validators.
 	DefaultCreateSignedMessageTimeout = 3*DefaultRPCTimeout + DefaultAppRequestTimeout + ConnectToValidatorsTimeout
+
+	// Before sending a message we create the signed message and then make one more RPC call, to
+	// simulate its delivery.
+	DefaultSignAndSimulateTimeout = DefaultCreateSignedMessageTimeout + DefaultRPCTimeout
 )
 
 //
