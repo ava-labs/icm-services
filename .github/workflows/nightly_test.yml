@@ -17,6 +17,8 @@ jobs:
     name: nightly-zk-test
     runs-on: ubuntu-22.04
     timeout-minutes: 240
+    # The mainnet signing key lives in this environment, which only deploys from main.
+    environment: nightly-zk
 
     steps:
       - name: Checkout repository and submodules
