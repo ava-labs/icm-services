@@ -180,8 +180,15 @@ jobs:
 
       - name: Fail if expanded contracts are out of date
         run: |
-          git diff --exit-code icm-contracts-expanded/ || \
-            (echo 'Expanded macro contracts are out of date. Run ./scripts/expand_macros.sh and commit the results.' && exit 1)
+          # git diff alone ignores untracked files, so a newly annotated contract whose
+          # expansion was never committed would pass. git status covers modified,
+          # deleted and untracked files.
+          if [ -n "$(git status --porcelain -- icm-contracts-expanded/)" ]; then
+            git status --short -- icm-contracts-expanded/
+            git --no-pager diff -- icm-contracts-expanded/
+            echo 'Expanded macro contracts are out of date. Run ./scripts/expand_macros.sh and commit the results.'
+            exit 1
+          fi
 
   abi_binding:
     name: abi_binding
