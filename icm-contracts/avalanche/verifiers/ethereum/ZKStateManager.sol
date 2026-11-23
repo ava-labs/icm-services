@@ -378,9 +378,7 @@ contract ZKStateManager is AccessControl {
 
         Consensus.State memory preState = _currentState;
         Consensus.State memory postState = Consensus.State({
-            head: newHead,
-            header: outputs.newHeader,
-            syncCommitteeHash: syncCommittees[period]
+            head: newHead, header: outputs.newHeader, syncCommitteeHash: syncCommittees[period]
         });
         _currentState = postState;
         emit Transitioned(preState.head, postState.head, preState, postState);

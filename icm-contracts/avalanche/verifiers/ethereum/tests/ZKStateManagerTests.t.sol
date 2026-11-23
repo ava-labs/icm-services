@@ -7,9 +7,7 @@ pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
-import {
-    ZKStateManager, ConsensusData, ProofOutputs, StorageSlot
-} from "../ZKStateManager.sol";
+import {ZKStateManager, ConsensusData, ProofOutputs, StorageSlot} from "../ZKStateManager.sol";
 import {Consensus, Execution} from "../StateManagerLibrary.sol";
 
 /// @dev Accepts every proof unless told to reject, so the tests exercise the contract's own
@@ -162,9 +160,7 @@ contract ZKStateManagerTest is Test {
         uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH + 1;
         vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ZKStateManager.NonCheckpointSlot.selector, newHead)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ZKStateManager.NonCheckpointSlot.selector, newHead));
         _manager.transition(_consensusData(_START_SLOT, newHead));
     }
 

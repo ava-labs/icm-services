@@ -28,8 +28,8 @@ library Consensus {
         State memory a,
         State memory b
     ) internal pure returns (bool) {
-        return a.head == b.head && a.header == b.header
-            && a.syncCommitteeHash == b.syncCommitteeHash;
+        return
+            a.head == b.head && a.header == b.header && a.syncCommitteeHash == b.syncCommitteeHash;
     }
 }
 
