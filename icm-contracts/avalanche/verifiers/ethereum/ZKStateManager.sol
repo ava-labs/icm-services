@@ -6,7 +6,11 @@
 // Based on code from: https://github.com/boundless-xyz/boundless-transceiver/blob/fa9d4c67872ad6ea916e647da3cc971c8eeee209/src/BlockRootOracle.sol
 // Original code licensed under Apache-2.0 (see external/LICENSE)
 // Modified: Added execution layer and receipt proof verification, and replaced the RISC Zero
-// consensus proof with an SP1 Helios light client proof (https://github.com/succinctlabs/sp1-helios)
+// consensus proof with an SP1 Helios light client proof
+//
+// ProofOutputs, StorageSlot, and the light client update logic (sync committee tracking and
+// checkpoint slot checks) are adapted from SP1Helios.sol v1.3.0 by Succinct:
+// https://github.com/succinctlabs/sp1-helios/blob/a773eddf97ad56deee89153d736824a7a930ce54/contracts/src/SP1Helios.sol
 
 pragma solidity ^0.8.30;
 
@@ -45,7 +49,7 @@ struct StorageSlot {
 /**
  * @notice The public values committed by the SP1 Helios light client program.
  * @dev Must match the program's output exactly, as the proof commits to its ABI encoding.
- * See ProofOutputs in https://github.com/succinctlabs/sp1-helios/blob/main/contracts/src/SP1Helios.sol
+ * See ProofOutputs in https://github.com/succinctlabs/sp1-helios/blob/a773eddf97ad56deee89153d736824a7a930ce54/contracts/src/SP1Helios.sol
  */
 struct ProofOutputs {
     /// @dev The previous beacon block header hash (beacon block root)
