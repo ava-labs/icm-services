@@ -103,15 +103,33 @@ function expand_profile_to_dir() {
     local profile="$1"
     local outdir="$2"
     local current_file=""
+    local files_written=0
+    local reforge_out reforge_err
+    reforge_out=$(mktemp)
+    reforge_err=$(mktemp)
+    # Run reforge to a file rather than via process substitution, which would
+    # hide its exit status and silently leave the expanded dir partial.
+    if ! FOUNDRY_PROFILE="$profile" reforge --display '**/*.sol' build >"$reforge_out" 2>"$reforge_err"; then
+        echo "reforge failed to expand macros for profile '$profile':" >&2
+        cat "$reforge_err" >&2
+        rm -f "$reforge_out" "$reforge_err"
+        exit 1
+    fi
     while IFS= read -r line; do
         if [[ "$line" =~ ^===\ (.+)\ ===$ ]]; then
             current_file="$outdir/${BASH_REMATCH[1]}"
             mkdir -p "$(dirname "$current_file")"
             : > "$current_file"
+            files_written=$((files_written + 1))
         elif [[ -n "$current_file" ]]; then
             printf '%s\n' "$line" >> "$current_file"
         fi
-    done < <(FOUNDRY_PROFILE="$profile" reforge --display '**/*.sol' build 2>/dev/null)
+    done <"$reforge_out"
+    rm -f "$reforge_out" "$reforge_err"
+    if [[ "$files_written" -eq 0 ]]; then
+        echo "Macro expansion produced no files for profile '$profile'." >&2
+        exit 1
+    fi
 }
 
 function convertToLower() {
