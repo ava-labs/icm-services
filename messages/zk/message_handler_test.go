@@ -7,8 +7,10 @@ package zk
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -101,6 +103,7 @@ func newTestHandler(t *testing.T, destinationClient vms.DestinationClient) *mess
 	messageConfig, err := ConfigFromMap(messageProtocolConfig.Settings)
 	require.NoError(t, err)
 	return &messageHandler{
+		logger:            logging.NoLog{},
 		messageConfig:     messageConfig,
 		destinationClient: destinationClient,
 		sourceMessage:     *sourceMessage(validEventPayload),
@@ -193,8 +196,8 @@ func TestNewMessageHandlerMakesNoSourceRPCs(t *testing.T) {
 	require.NotNil(t, handler)
 }
 
-// A source RPC failure must surface from locateSource as an error, which fails the delivery
-// attempt so it is retried and the block range is not checkpointed.
+// A source RPC failure that outlasts the lookup must surface from locateSource as an error,
+// which fails the delivery attempt so it is retried and the block range is not checkpointed.
 func TestLocateSourceRPCFailure(t *testing.T) {
 	// An in-process RPC server with no methods registered: every call fails with
 	// "method not found", standing in for an unavailable source node.
@@ -206,10 +209,90 @@ func TestLocateSourceRPCFailure(t *testing.T) {
 	handler := newTestHandler(t, nil)
 	handler.sourceClient = ethclient.NewClient(rpcClient)
 
-	err := handler.locateSource(context.Background())
+	// End the lookup before its first retry rather than waiting out sourceLookupTimeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	err := handler.locateSource(ctx)
 	require.ErrorContains(t, err, "failed to fetch source receipt")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Zero(t, handler.sourceBlockNumber)
 	require.Zero(t, handler.slot)
+}
+
+// flakySourceService serves eth_getTransactionReceipt and eth_getBlockByNumber, failing the
+// first receiptFailures receipt requests as an unavailable source node would.
+type flakySourceService struct {
+	receiptFailures int
+	receiptCalls    int
+	receipt         *types.Receipt
+	header          *types.Header
+}
+
+func (s *flakySourceService) GetTransactionReceipt(common.Hash) (*types.Receipt, error) {
+	s.receiptCalls++
+	if s.receiptCalls <= s.receiptFailures {
+		return nil, errors.New("source node unavailable")
+	}
+	return s.receipt, nil
+}
+
+func (s *flakySourceService) GetBlockByNumber(rpc.BlockNumber, bool) (*types.Header, error) {
+	return s.header, nil
+}
+
+// newFlakySourceHandler returns a handler whose source client is served by service.
+func newFlakySourceHandler(t *testing.T, service *flakySourceService) *messageHandler {
+	t.Helper()
+	server := rpc.NewServer()
+	t.Cleanup(server.Stop)
+	require.NoError(t, server.RegisterName("eth", service))
+	rpcClient := rpc.DialInProc(server)
+	t.Cleanup(rpcClient.Close)
+
+	handler := newTestHandler(t, nil)
+	handler.sourceClient = ethclient.NewClient(rpcClient)
+	return handler
+}
+
+// A source RPC failure that clears within the lookup is retried, so a brief outage does not
+// fail the delivery attempt.
+func TestLocateSourceRetriesRPCFailure(t *testing.T) {
+	header := &types.Header{
+		Number:      big.NewInt(5),
+		Difficulty:  big.NewInt(0),
+		Time:        1606824023 + 120,
+		ReceiptHash: common.HexToHash("0xaa"),
+	}
+	service := &flakySourceService{
+		receiptFailures: 1,
+		receipt: &types.Receipt{
+			BlockNumber: header.Number,
+			Logs: []*types.Log{
+				{Address: messageProtocolAddress, Topics: []common.Hash{messageSentTopic}, Data: validEventPayload},
+			},
+		},
+		header: header,
+	}
+	handler := newFlakySourceHandler(t, service)
+
+	require.NoError(t, handler.locateSource(context.Background()))
+	require.Equal(t, 2, service.receiptCalls)
+	require.Equal(t, uint64(5), handler.sourceBlockNumber)
+	require.Equal(t, header.ReceiptHash, handler.sourceReceiptsRoot)
+	require.Equal(t, uint64(10), handler.slot) // 120s after genesis at 12s per slot
+}
+
+// A receipt without the message's log will not gain it on a retry, so locateSource fails
+// at once instead of retrying until the lookup times out.
+func TestLocateSourceLogNotInReceiptIsNotRetried(t *testing.T) {
+	service := &flakySourceService{
+		receipt: &types.Receipt{BlockNumber: big.NewInt(5), Logs: []*types.Log{}},
+	}
+	handler := newFlakySourceHandler(t, service)
+
+	err := handler.locateSource(context.Background())
+	require.ErrorContains(t, err, "no matching TeleporterV2MessageSent log")
+	require.Equal(t, 1, service.receiptCalls)
 }
 
 // Checks that messages the destination messenger is certain to reject are skipped before
