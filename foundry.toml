@@ -19,6 +19,7 @@ via_ir = true
 src = 'icm-contracts/ethereum/'
 solc_version = '0.8.30'
 evm_version = 'prague'
+via_ir = true
 
 [profile.macros]
 src = 'icm-macros/testing/e2e'
