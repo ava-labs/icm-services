@@ -56,21 +56,37 @@ function flush_expanded_file() {
 function expand_profile() {
     local profile="$1"
     local current_file=""
-    local tmp_file
+    local tmp_file reforge_out reforge_err blocks=0
     tmp_file=$(mktemp)
-    trap 'rm -f "$tmp_file"' RETURN
+    reforge_out=$(mktemp)
+    reforge_err=$(mktemp)
+    trap 'rm -f "$tmp_file" "$reforge_out" "$reforge_err"' RETURN
 
     echo "Expanding profile: $profile"
+
+    # Run reforge to a file rather than via process substitution, which would
+    # hide its exit status and leave partial output with a zero exit code.
+    if ! FOUNDRY_PROFILE="$profile" reforge --display '**/*.sol' build >"$reforge_out" 2>"$reforge_err"; then
+        echo "reforge failed to expand macros for profile '$profile':" >&2
+        cat "$reforge_err" >&2
+        exit 1
+    fi
 
     while IFS= read -r line; do
         if [[ "$line" =~ ^===\ (.+)\ ===$ ]]; then
             flush_expanded_file "$current_file" "$tmp_file"
             current_file="${BASH_REMATCH[1]}"
+            blocks=$((blocks + 1))
             : >"$tmp_file"
         elif [[ -n "$current_file" ]]; then
             printf '%s\n' "$line" >>"$tmp_file"
         fi
-    done < <(FOUNDRY_PROFILE="$profile" reforge --display '**/*.sol' build 2>/dev/null)
+    done <"$reforge_out"
+
+    if [[ "$blocks" -eq 0 ]]; then
+        echo "Macro expansion produced no files for profile '$profile'." >&2
+        exit 1
+    fi
 
     # Flush the final file in the stream.
     flush_expanded_file "$current_file" "$tmp_file"
