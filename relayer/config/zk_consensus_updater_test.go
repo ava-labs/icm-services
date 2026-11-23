@@ -22,7 +22,6 @@ func TestZKConsensusUpdaterValidate(t *testing.T) {
 			RPCEndpoint:    "https://rpc.example.com",
 			PrivateKey:     validKey,
 			AdapterAddress: "0x0000000000000000000000000000000000000001",
-			SubgraphURL:    "https://subgraph.example.com",
 		}
 	}
 
@@ -64,11 +63,6 @@ func TestZKConsensusUpdaterValidate(t *testing.T) {
 			name:        "invalid adapter-address",
 			modify:      func(z *ZKConsensusUpdater) { z.AdapterAddress = "0x1234" },
 			errContains: "invalid adapter-address",
-		},
-		{
-			name:        "missing subgraph-url",
-			modify:      func(z *ZKConsensusUpdater) { z.SubgraphURL = "" },
-			errContains: "subgraph-url required",
 		},
 	}
 
@@ -142,7 +136,6 @@ func TestZKConsensusUpdaterRejectsSharedSender(t *testing.T) {
 				RPCEndpoint:    "https://rpc.example.com",
 				PrivateKey:     zkKey,
 				AdapterAddress: "0x0000000000000000000000000000000000000001",
-				SubgraphURL:    "https://subgraph.example.com",
 			}
 			err := updater.Validate(tc.cfg.senderAccountAddresses())
 			if tc.errContains == "" {

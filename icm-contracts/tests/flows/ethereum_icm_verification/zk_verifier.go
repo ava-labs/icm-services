@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	risczerogroth16verifier "github.com/ava-labs/icm-services/abi-bindings/go/risc0/groth16/RiscZeroGroth16Verifier"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
 	zkstatemanager "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKStateManager"
 	localnetwork "github.com/ava-labs/icm-services/icm-contracts/tests/network"
@@ -47,14 +46,6 @@ type ReceiptProofFixture struct {
 	ExpectedTopic0  string   `json:"expectedTopic0"`
 }
 
-type BoundlessFixture struct {
-	PreState      string `json:"preState"`
-	PostState     string `json:"postState"`
-	JournalData   string `json:"journalData"`
-	Seal          string `json:"seal"`
-	FinalizedSlot uint64 `json:"finalizedSlot,string"`
-}
-
 // Helpers
 func loadEthereumFixture(path string) EthereumFixture {
 	data, err := os.ReadFile(path)
@@ -63,39 +54,6 @@ func loadEthereumFixture(path string) EthereumFixture {
 	err = json.Unmarshal(data, &fixture)
 	Expect(err).Should(BeNil())
 	return fixture
-}
-
-func loadBoundlessFixture(path string) BoundlessFixture {
-	data, err := os.ReadFile(path)
-	Expect(err).Should(BeNil())
-	var fixture BoundlessFixture
-	err = json.Unmarshal(data, &fixture)
-	Expect(err).Should(BeNil())
-	return fixture
-}
-
-func parseConsensusState(hexStr string) zkstatemanager.ConsensusState {
-	data := common.FromHex(hexStr)
-	Expect(len(data)).Should(BeNumerically(">=", 128))
-
-	justifiedEpoch := new(big.Int).SetBytes(data[0:32]).Uint64()
-	var justifiedRoot [32]byte
-	copy(justifiedRoot[:], data[32:64])
-
-	finalizedEpoch := new(big.Int).SetBytes(data[64:96]).Uint64()
-	var finalizedRoot [32]byte
-	copy(finalizedRoot[:], data[96:128])
-
-	return zkstatemanager.ConsensusState{
-		CurrentJustifiedCheckpoint: zkstatemanager.ConsensusCheckpoint{
-			Epoch: justifiedEpoch,
-			Root:  justifiedRoot,
-		},
-		FinalizedCheckpoint: zkstatemanager.ConsensusCheckpoint{
-			Epoch: finalizedEpoch,
-			Root:  finalizedRoot,
-		},
-	}
 }
 
 func hexStringsToBytes32Array(hexStrings []string) [][32]byte {
@@ -114,11 +72,8 @@ func hexStringsToByteSlices(hexStrings []string) [][]byte {
 	return result
 }
 
-// Beacon chain timing, matching ZKStateManager's SLOT_PER_EPOCH and SECONDS_PER_SLOT.
-const (
-	slotsPerEpoch  = 32
-	secondsPerSlot = 12
-)
+// mainnetBeaconGenesisTime is the Unix timestamp of Ethereum mainnet's beacon chain genesis.
+const mainnetBeaconGenesisTime = 1_606_824_023
 
 // Fulu Ethereum Beacon Config
 var fuluBeaconConfig = zkstatemanager.ExecutionBeaconConfig{
@@ -132,38 +87,25 @@ var fuluBeaconConfig = zkstatemanager.ExecutionBeaconConfig{
 
 // ZKAdapterVerifier tests the full ZKAdapter verification flow:
 // 1. Deploy ZKAdapter on Avalanche C-Chain
-// 2. Submit a trusted beacon block root into the contract state via transition
+// 2. Start it from the fixture's anchor beacon block root, which the constructor confirms
 // 3. Verify an Ethereum event using pre-generated SSZ and MPT Merkle proofs from test fixtures
+//
+// TODO: Confirm the anchor via transition with a real SP1 Helios proof fixture, once a proof
+// source for SP1 Helios proofs exists. Issue: https://github.com/ava-labs/icm-services/issues/1627
 func ZKAdapterVerifier(
 	ctx context.Context,
 	localAvalancheNetwork *localnetwork.LocalAvalancheNetwork,
 	zkAdapterByteCodeFile string,
 	ethereumFixturePath string,
-	boundlessFixturePath string,
 ) {
 	// Initialize
 	fundedAddress, fundedAvalancheKey := localAvalancheNetwork.GetFundedAccountInfo()
 	primaryNetworkInfo := localAvalancheNetwork.GetPrimaryNetworkInfo()
 	fixture := loadEthereumFixture(ethereumFixturePath)
-	boundlessFixture := loadBoundlessFixture(boundlessFixturePath)
-	startingState := parseConsensusState(boundlessFixture.PreState)
 
 	// Create a transaction signer
 	opts, err := bind.NewKeyedTransactorWithChainID(fundedAvalancheKey, primaryNetworkInfo.EVMChainID)
 	Expect(err).Should(BeNil())
-
-	// Deploy RISC Zero Groth16 Verifier
-	controlRoot := common.HexToHash("0xa54dc85ac99f851c92d7c96d7318af41dbe7c0194edfcc37eb4d422a998c1f56")
-	bn254ControlId := common.HexToHash("0x04446e66d300eb7fb45c9726bb53c793dda407a62e9601618bb43c5c14657ac0")
-
-	riscZeroVerifierAddress, tx, _, err := risczerogroth16verifier.DeployRiscZeroGroth16Verifier(
-		opts,
-		primaryNetworkInfo.EthClient,
-		controlRoot,
-		bn254ControlId,
-	)
-	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
 
 	// Extract, encode, and construct transaction
 	byteCode, err := deploymentUtils.ExtractByteCodeFromFile(zkAdapterByteCodeFile)
@@ -172,17 +114,12 @@ func ZKAdapterVerifier(
 	zkAdapterABI, err := zkadapter.ZKAdapterMetaData.GetAbi()
 	Expect(err).Should(BeNil())
 
-	var signalImageID = common.HexToHash("0x0ccb3d146a7f64e78cc1d146acc26912138ea39bb79b4ca74423389d61b2c30e")
-
-	// The fixture proof finalizes a fixed historical epoch, while ZKStateManager rejects a post-state
-	// whose finalized epoch began more than permissibleTimespan before the current block time. Anchor
-	// the beacon genesis so that the fixture's post-state finalized epoch reads as one hour old, which
-	// keeps it inside the timespan regardless of when the fixture was generated.
-	journalPostState := parseConsensusState(boundlessFixture.PostState)
-	postEpochStart := int64(journalPostState.FinalizedCheckpoint.Epoch) * slotsPerEpoch * secondsPerSlot
-	block, err := primaryNetworkInfo.EthClient.BlockByNumber(ctx, nil)
-	Expect(err).Should(BeNil())
-	genesisTime := big.NewInt(int64(block.Time()) - postEpochStart - int64(time.Hour.Seconds()))
+	// Start from the fixture's anchor, which the constructor confirms as a trusted beacon block root.
+	// The sync committee is only used to verify transitions, which this test does not submit.
+	startingState := zkstatemanager.ConsensusState{
+		Head:   fixture.ExecutionProof.AnchorSlot,
+		Header: common.HexToHash(fixture.AnchorBeaconBlockRoot),
+	}
 	permissibleTimespan := big.NewInt(int64((24 * time.Hour).Seconds()))
 	byteCode, err = deploymentUtils.AddConstructorArgsToByteCode(
 		zkAdapterABI,
@@ -190,10 +127,12 @@ func ZKAdapterVerifier(
 		big.NewInt(1), // Ethereum Mainnet
 		startingState,
 		fuluBeaconConfig,
-		genesisTime,
+		big.NewInt(mainnetBeaconGenesisTime),
 		permissibleTimespan,
-		riscZeroVerifierAddress,
-		signalImageID,
+		// The verifier and light client vkey are only used by transition(), which this test does
+		// not submit.
+		common.Address{}, // verifier
+		[32]byte{},       // light client vkey
 		fundedAddress,
 		fundedAddress,
 	)
@@ -224,22 +163,14 @@ func ZKAdapterVerifier(
 	avalancheZkadapter, err := zkadapter.NewZKAdapter(zkadapterContractAddress, primaryNetworkInfo.EthClient)
 	Expect(err).Should(BeNil())
 
-	// Submit the Boundless ZK proof to transition consensus state
-	tx, err = avalancheZkadapter.Transition(opts, zkadapter.ConsensusData{
-		JournalData: common.FromHex(boundlessFixture.JournalData),
-		Seal:        common.FromHex(boundlessFixture.Seal),
-	})
-	Expect(err).Should(BeNil())
-	utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
-
-	// Verify the beacon block root was stored after transition
+	// Verify the starting beacon block root was confirmed as an anchor
 	result, err := avalancheZkadapter.GetBeaconBlockRoot(
 		&bind.CallOpts{},
-		boundlessFixture.FinalizedSlot,
+		fixture.ExecutionProof.AnchorSlot,
 	)
 	Expect(err).Should(BeNil())
 	Expect(result.Valid).Should(BeTrue())
-	Expect(result.Root).Should(Equal(journalPostState.FinalizedCheckpoint.Root))
+	Expect(result.Root).Should(Equal(common.HexToHash(fixture.AnchorBeaconBlockRoot)))
 
 	// Construct execution and receipt proofs from the fixtures
 	execProof := zkadapter.ExecutionProof{
@@ -265,7 +196,7 @@ func ZKAdapterVerifier(
 	}
 
 	// Submit the proofs to the contract
-	tx, err = avalancheZkadapter.VerifyLogAndExtract(opts, execProof, receiptProof)
+	tx, err := avalancheZkadapter.VerifyLogAndExtract(opts, execProof, receiptProof)
 	Expect(err).Should(BeNil())
 	receipt := utils.WaitForTransactionSuccess(ctx, primaryNetworkInfo.EthClient, tx.Hash())
 

@@ -14,14 +14,11 @@ import {RLPUtils} from "../../utilities/RLPUtils.sol";
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 library Consensus {
-    struct Checkpoint {
-        uint64 epoch;
-        bytes32 root; // beacon block root for epoch boundary block
-    }
-
+    /// @notice The light client state that the next update's previous values must match.
     struct State {
-        Checkpoint currentJustifiedCheckpoint;
-        Checkpoint finalizedCheckpoint;
+        uint64 head; // slot of the latest finalized beacon block
+        bytes32 header; // beacon block root at head
+        bytes32 syncCommitteeHash; // sync committee hash of head's period
     }
 
     /**
@@ -31,28 +28,8 @@ library Consensus {
         State memory a,
         State memory b
     ) internal pure returns (bool) {
-        return compareCheckpoint(a.currentJustifiedCheckpoint, b.currentJustifiedCheckpoint)
-            && compareCheckpoint(a.finalizedCheckpoint, b.finalizedCheckpoint);
-    }
-
-    /**
-     * @notice Compares two consensus checkpoints by checking if they have the same epoch number and root.
-     */
-    function compareCheckpoint(
-        Checkpoint memory a,
-        Checkpoint memory b
-    ) internal pure returns (bool) {
-        return a.epoch == b.epoch && a.root == b.root;
-    }
-
-    /**
-     * @notice Generates a unique hash for block that was included in the chain at the given slot
-     */
-    function checkpointHash(
-        uint64 slot,
-        bytes32 root
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(slot, root));
+        return a.head == b.head && a.header == b.header
+            && a.syncCommitteeHash == b.syncCommitteeHash;
     }
 }
 

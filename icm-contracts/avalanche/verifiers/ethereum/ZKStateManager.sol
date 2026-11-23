@@ -5,12 +5,14 @@
 
 // Based on code from: https://github.com/boundless-xyz/boundless-transceiver/blob/fa9d4c67872ad6ea916e647da3cc971c8eeee209/src/BlockRootOracle.sol
 // Original code licensed under Apache-2.0 (see external/LICENSE)
-// Modified: Added execution layer and receipt proof verification
+// Modified: Added execution layer and receipt proof verification, and replaced the RISC Zero
+// consensus proof with an SP1 Helios light client proof (https://github.com/succinctlabs/sp1-helios)
 
 pragma solidity ^0.8.30;
 
 import {AccessControl} from "@openzeppelin/contracts@5.1.0/access/AccessControl.sol";
-import {IRiscZeroVerifier} from "@risc0/IRiscZeroVerifier.sol";
+import {SafeCast} from "@openzeppelin/contracts@5.1.0/utils/math/SafeCast.sol";
+import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 import {Consensus, Execution, Receipt} from "./StateManagerLibrary.sol";
 
 /**
@@ -20,27 +22,52 @@ import {Consensus, Execution, Receipt} from "./StateManagerLibrary.sol";
 
 /**
  * @notice Contains the data required to verify and perform a beacon chain state transition.
- * @dev This struct bundles the ZK proof (seal) with the public inputs (journal) required to
- * verify that the Beacon Chain has successfully advanced to a new finalized state.
+ * @dev This struct bundles the SP1 proof with the public values it commits to, which attest that
+ * the beacon chain's sync committee signed a new finalized header.
  */
 struct ConsensusData {
-    /// @dev Encoded Journal struct containing pre- and post-consensus states and finalized slot
-    bytes journalData;
-    /// @dev The RISC Zero ZK proof validating the beacon state transition
-    bytes seal;
+    /// @dev ABI-encoded ProofOutputs committed by the SP1 Helios light client program
+    bytes publicValues;
+    /// @dev The SP1 proof validating the light client update
+    bytes proof;
 }
 
 /**
- * @notice Contains the complete state transition data for ZK proof verification
- * @dev Used as journal data in RISC Zero proofs to validate beacon state transitions
+ * @notice A storage slot attested by the SP1 Helios program.
+ * @dev Not used by this contract, but part of the ProofOutputs encoding.
  */
-struct Journal {
-    /// @dev The consensus state before the transition (must match the contract's stored `_currentState`).
-    Consensus.State preState;
-    /// @dev The consensus state after the transition
-    Consensus.State postState;
-    /// @dev The beacon chain slot that was finalized in this transition
-    uint64 finalizedSlot;
+struct StorageSlot {
+    bytes32 key;
+    bytes32 value;
+    address contractAddress;
+}
+
+/**
+ * @notice The public values committed by the SP1 Helios light client program.
+ * @dev Must match the program's output exactly, as the proof commits to its ABI encoding.
+ * See ProofOutputs in https://github.com/succinctlabs/sp1-helios/blob/main/contracts/src/SP1Helios.sol
+ */
+struct ProofOutputs {
+    /// @dev The previous beacon block header hash (beacon block root)
+    bytes32 prevHeader;
+    /// @dev The slot of the previous head
+    uint256 prevHead;
+    /// @dev The sync committee hash which was used to verify the proof
+    bytes32 prevSyncCommitteeHash;
+    /// @dev The slot of the new head
+    uint256 newHead;
+    /// @dev The new beacon block header hash (beacon block root)
+    bytes32 newHeader;
+    /// @dev The execution state root of the new beacon block. Unused by this contract.
+    bytes32 executionStateRoot;
+    /// @dev The execution block number of the new beacon block. Unused by this contract.
+    uint256 executionBlockNumber;
+    /// @dev The sync committee hash of the new head's period
+    bytes32 syncCommitteeHash;
+    /// @dev The sync committee hash of the next period, or zero if not yet known
+    bytes32 nextSyncCommitteeHash;
+    /// @dev Attested storage slots. Unused by this contract.
+    StorageSlot[] storageSlots;
 }
 
 /**
@@ -61,6 +88,9 @@ contract ZKStateManager is AccessControl {
     /// @notice Number of slots per epoch in the beacon chain
     uint64 public constant SLOT_PER_EPOCH = 32;
 
+    /// @notice Number of slots per sync committee period in the beacon chain
+    uint64 public constant SLOTS_PER_PERIOD = 8192;
+
     /// @notice Seconds per slot on the Ethereum beacon chain
     uint64 public constant SECONDS_PER_SLOT = 12;
 
@@ -68,7 +98,7 @@ contract ZKStateManager is AccessControl {
 
     /**
      * @notice Unix timestamp of the tracked beacon chain's genesis, i.e. the start of slot 0
-     * @dev Converts the epochs carried in consensus states to wall-clock time for the
+     * @dev Converts the slots carried in consensus states to wall-clock time for the
      * staleness check in {_permissibleTransition}.
      */
     uint256 public immutable genesisTime;
@@ -91,6 +121,13 @@ contract ZKStateManager is AccessControl {
     mapping(uint64 slot => bytes32 beaconBlockRoot) internal _allowedBeaconBlocks;
 
     /**
+     * @notice Maps a sync committee period to the hash of its sync committee
+     * @dev Helios learns the next period's committee ahead of time, so an update can be verified
+     * once the head crosses into a new period.
+     */
+    mapping(uint256 period => bytes32 syncCommitteeHash) public syncCommittees;
+
+    /**
      * @notice The slot of the most recently confirmed beacon block
      * @dev Proof-driven transitions must confirm a higher slot than this (see transition()), so
      * consumers of ConfirmedBeaconBlock events can rely on anchors arriving in slot order. Admin
@@ -99,35 +136,35 @@ contract ZKStateManager is AccessControl {
     uint64 public lastConfirmedSlot;
 
     /**
-     * @notice The RISC Zero program ID used to verify Ethereum consensus transitions
-     * @dev This image ID corresponds to the ZK program (Signal Ethereum) that validates state transitions.
-     * Normally it stays constant, but it can be updated if the consensus program is upgraded, for example.
+     * @notice The SP1 verification key of the Helios light client program
+     * @dev Normally it stays constant, but it can be updated if the light client program is upgraded, for example.
      * All proofs are verified against this program.
      */
-    bytes32 public imageID;
+    bytes32 public lightClientVkey;
 
     /**
-     * @notice The address of the RISC Zero verifier contract
+     * @notice The address of the SP1 verifier contract
      * @dev Used to validate zero-knowledge proofs of beacon state transitions
      */
     address public verifier;
 
     /**
      * @notice Maximum age of a state transition, in seconds
-     * @dev Bounds both how far behind the current block time a post-state's finalized epoch may
+     * @dev Bounds both how far behind the current block time a post-state's head may
      * lie and how much chain time a single transition may span. See {_permissibleTransition}.
      */
     uint24 public permissibleTimespan;
 
     /// @notice Events
     event Transitioned(
-        uint64 indexed preEpoch,
-        uint64 indexed postEpoch,
+        uint64 indexed preHead,
+        uint64 indexed postHead,
         Consensus.State preState,
         Consensus.State postState
     );
     event ConfirmedBeaconBlock(uint64 indexed slot, bytes32 indexed root);
-    event ImageIDUpdated(bytes32 indexed newImageID, bytes32 indexed oldImageID);
+    event SyncCommitteeUpdated(uint256 indexed period, bytes32 indexed root);
+    event LightClientVkeyUpdated(bytes32 indexed newVkey, bytes32 indexed oldVkey);
     event PermissibleTimespanUpdated(uint24 indexed permissibleTimespan);
     event ZKEventImported(
         uint256 indexed sourceChainId,
@@ -142,6 +179,8 @@ contract ZKStateManager is AccessControl {
     error InvalidPreState();
     error PermissibleTimespanLapsed();
     error NonIncreasingSlot(uint64 slot, uint64 lastConfirmedSlot);
+    error NonCheckpointSlot(uint64 slot);
+    error NextSyncCommitteeMismatch(bytes32 given, bytes32 expected);
 
     /**
      * @notice Initializes the ZKStateManager contract with all required parameters
@@ -152,8 +191,8 @@ contract ZKStateManager is AccessControl {
      * @param beaconConfig The beacon config used to verify execution layer data
      * @param genesisTime_ Unix timestamp of the beacon chain's genesis (start of slot 0)
      * @param permissibleTimespan_ Maximum age of a state transition in seconds
-     * @param verifier_ Address of the RISC Zero verifier contract for proof validation
-     * @param imageID_ The RISC Zero image ID for the beacon state transition program
+     * @param verifier_ Address of the SP1 verifier contract for proof validation
+     * @param lightClientVkey_ The SP1 verification key of the Helios light client program
      * @param admin Address to be granted the ADMIN_ROLE
      * @param superAdmin Address to be granted the DEFAULT_ADMIN_ROLE
      */
@@ -164,7 +203,7 @@ contract ZKStateManager is AccessControl {
         uint256 genesisTime_,
         uint24 permissibleTimespan_,
         address verifier_,
-        bytes32 imageID_,
+        bytes32 lightClientVkey_,
         address admin,
         address superAdmin
     ) {
@@ -178,37 +217,39 @@ contract ZKStateManager is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, superAdmin);
 
         require(
-            epochTimestamp(startingState.finalizedCheckpoint.epoch) <= block.timestamp,
-            "Starting state in the future"
+            slotTimestamp(startingState.head) <= block.timestamp, "Starting state in the future"
         );
         _currentState = startingState;
+        syncCommittees[_syncCommitteePeriod(startingState.head)] = startingState.syncCommitteeHash;
+        // The starting header is trusted, so it can anchor messages before the first transition.
+        _confirmBeaconBlock(startingState.head, startingState.header);
         _beaconConfig = beaconConfig;
         permissibleTimespan = permissibleTimespan_;
         verifier = verifier_;
-        imageID = imageID_;
+        lightClientVkey = lightClientVkey_;
     }
 
     /**
-     * @notice Performs a full state transition from a trusted beacon checkpoint to a new finalized state.
+     * @notice Performs a light client update from the trusted head to a new finalized header.
      * @dev The function performs the following steps:
-     * 1. Verifies the ZK proof of the beacon (consensus) state transition to the new finalized checkpoint.
-     * 2. Validates the Merkle chain of execution state roots from the prior epoch boundary to the new finalized execution state root.
-     * 3. Verifies that all receipt roots are included in their respective execution state roots using Merkle proofs.
-     * 4. Updates the global state to reflect the new trusted consensus, execution, and receipt roots.
+     * 1. Verifies the SP1 proof that the current sync committee signed the new finalized header.
+     * 2. Stores any newly learned sync committees.
+     * 3. Updates the consensus state and confirms the new header as an anchor.
      */
     function transition(
         ConsensusData calldata consensus
     ) external {
-        // Decode the journal data.
-        Journal memory journal = abi.decode(consensus.journalData, (Journal));
-        // Verify the beacon state transition.
-        _verify(journal, consensus);
+        // Decode the public values.
+        ProofOutputs memory outputs = abi.decode(consensus.publicValues, (ProofOutputs));
+        uint64 newHead = SafeCast.toUint64(outputs.newHead);
+        // Verify the light client update.
+        _verify(outputs, newHead, consensus);
         // Proof-driven confirmations must move forward, but admin recovery via manualTransition may rewind.
-        if (journal.finalizedSlot <= lastConfirmedSlot) {
-            revert NonIncreasingSlot(journal.finalizedSlot, lastConfirmedSlot);
+        if (newHead <= lastConfirmedSlot) {
+            revert NonIncreasingSlot(newHead, lastConfirmedSlot);
         }
         // Update the contract state to reflect the transition.
-        _transition(journal, journal.finalizedSlot);
+        _transition(outputs, newHead, false);
     }
 
     /**
@@ -238,11 +279,11 @@ contract ZKStateManager is AccessControl {
         return logData;
     }
 
-    function updateImageID(
-        bytes32 newImageID
+    function updateLightClientVkey(
+        bytes32 newLightClientVkey
     ) external onlyRole(ADMIN_ROLE) {
-        if (newImageID == imageID) revert InvalidArgument();
-        imageID = newImageID;
+        if (newLightClientVkey == lightClientVkey) revert InvalidArgument();
+        lightClientVkey = newLightClientVkey;
     }
 
     function updateVerifier(
@@ -262,13 +303,15 @@ contract ZKStateManager is AccessControl {
 
     /**
      * @notice Manually applies a beacon state transition without proof verification
-     * @dev Admin-only function for emergency state updates.
+     * @dev Admin-only function for emergency state updates, for example when no update landed
+     * within a sync committee period. The previous values in `publicValues` are ignored, and the
+     * sync committees it carries overwrite any stored ones.
      */
     function manualTransition(
-        bytes calldata journalData
+        bytes calldata publicValues
     ) external onlyRole(ADMIN_ROLE) {
-        Journal memory journal = abi.decode(journalData, (Journal));
-        _transition(journal, journal.finalizedSlot);
+        ProofOutputs memory outputs = abi.decode(publicValues, (ProofOutputs));
+        _transition(outputs, SafeCast.toUint64(outputs.newHead), true);
     }
 
     /**
@@ -283,8 +326,8 @@ contract ZKStateManager is AccessControl {
     }
 
     /**
-     * @notice Returns the current trusted consensus state, which the `preState` of the next
-     * transition's journal must match.
+     * @notice Returns the current trusted consensus state, which the previous values of the next
+     * transition's public values must match.
      * @dev Lets off-chain updaters select the proof that extends this state. `lastConfirmedSlot`
      * alone cannot, as it is zero until the first transition.
      */
@@ -293,29 +336,59 @@ contract ZKStateManager is AccessControl {
     }
 
     /**
-     * @notice Returns the wall-clock time at which `epoch` begins on the tracked beacon chain.
+     * @notice Returns the wall-clock time at which `slot` begins on the tracked beacon chain.
      */
-    function epochTimestamp(
-        uint64 epoch
+    function slotTimestamp(
+        uint64 slot
     ) public view returns (uint256) {
-        return genesisTime + uint256(epoch) * SLOT_PER_EPOCH * SECONDS_PER_SLOT;
+        return genesisTime + uint256(slot) * SECONDS_PER_SLOT;
     }
 
     /**
-     * @notice Transitions and updates the consensus state of the contract to the new post-state.
+     * @notice Transitions and updates the consensus state of the contract to the new head.
+     * @dev Stores the sync committees of the new head's period and the next period if unset. A
+     * conflicting next sync committee reverts, unless `overwrite` is set for admin recovery.
      */
     function _transition(
-        Journal memory journal,
-        uint64 finalizedSlot
+        ProofOutputs memory outputs,
+        uint64 newHead,
+        bool overwrite
     ) internal {
-        _currentState = journal.postState;
-        emit Transitioned(
-            journal.preState.finalizedCheckpoint.epoch,
-            journal.postState.finalizedCheckpoint.epoch,
-            journal.preState,
-            journal.postState
-        );
-        _confirmBeaconBlock(finalizedSlot, journal.postState.finalizedCheckpoint.root);
+        // Helios only proves checkpoint slots, as CL nodes typically only serve proofs for those.
+        if (newHead % SLOT_PER_EPOCH != 0) {
+            revert NonCheckpointSlot(newHead);
+        }
+
+        uint256 period = _syncCommitteePeriod(newHead);
+        if (overwrite || syncCommittees[period] == bytes32(0)) {
+            _setSyncCommittee(period, outputs.syncCommitteeHash);
+        }
+        if (outputs.nextSyncCommitteeHash != bytes32(0)) {
+            bytes32 storedNext = syncCommittees[period + 1];
+            if (overwrite || storedNext == bytes32(0)) {
+                _setSyncCommittee(period + 1, outputs.nextSyncCommitteeHash);
+            } else if (storedNext != outputs.nextSyncCommitteeHash) {
+                revert NextSyncCommitteeMismatch(outputs.nextSyncCommitteeHash, storedNext);
+            }
+        }
+
+        Consensus.State memory preState = _currentState;
+        Consensus.State memory postState = Consensus.State({
+            head: newHead,
+            header: outputs.newHeader,
+            syncCommitteeHash: syncCommittees[period]
+        });
+        _currentState = postState;
+        emit Transitioned(preState.head, postState.head, preState, postState);
+        _confirmBeaconBlock(newHead, outputs.newHeader);
+    }
+
+    function _setSyncCommittee(
+        uint256 period,
+        bytes32 syncCommitteeHash
+    ) internal {
+        syncCommittees[period] = syncCommitteeHash;
+        emit SyncCommitteeUpdated(period, syncCommitteeHash);
     }
 
     /**
@@ -333,59 +406,60 @@ contract ZKStateManager is AccessControl {
     }
 
     /**
-     * @notice Verifies the consensus state transition using the provided ZK proof and journal data.
-     * @dev Verifies that the transition from `journal.preState` to `journal.postState` is valid using the cryptographic ZK proof.
-     *
-     * This function implements two key checks:
-     * 1. The consensus pre-state of the journal matches the current trusted state of the contract.
-     * 2. The consensus post-state can be transitioned to following Ethereum consensus rules (Casper FFG) starting at the pre-state.
-     * This step is verified by the ZK proof. Note: This function solely performs verification. The state update must be handled by the caller.
+     * @notice Verifies the light client update using the provided SP1 proof and public values.
+     * @dev This function implements two key checks:
+     * 1. The previous values of the public values match the current trusted state of the contract.
+     * 2. The current sync committee signed the new finalized header. This step is verified by the
+     * SP1 proof. Note: This function solely performs verification. The state update must be
+     * handled by the caller.
      */
     function _verify(
-        Journal memory journal,
+        ProofOutputs memory outputs,
+        uint64 newHead,
         ConsensusData calldata consensus
     ) internal view {
         // Ensure the proof is anchored to the current contract state.
-        // The `preState` claimed in the ZK journal must match the `_currentState` actually stored in this contract.
-        if (!Consensus.compareState(_currentState, journal.preState)) {
+        // The previous values in the public values must match the `_currentState` actually stored in this contract.
+        Consensus.State memory preState = Consensus.State({
+            head: SafeCast.toUint64(outputs.prevHead),
+            header: outputs.prevHeader,
+            syncCommitteeHash: outputs.prevSyncCommitteeHash
+        });
+        if (!Consensus.compareState(_currentState, preState)) {
             revert InvalidPreState();
         }
         // Ensure the transition is not stale.
-        if (!_permissibleTransition(journal.preState, journal.postState)) {
+        if (!_permissibleTransition(preState.head, newHead)) {
             revert PermissibleTimespanLapsed();
         }
 
-        // Verify the seal (proof) against the Image ID (circuit verification key) and the Journal (public inputs/outputs).
-        // A successful verification confirms that `journal.postState` is the correct result of applying the beacon chain consensus rules to `journal.preState`.
-        bytes32 journalHash = sha256(consensus.journalData);
-        IRiscZeroVerifier(verifier).verify(consensus.seal, imageID, journalHash);
+        // Verify the proof against the verification key and the public values. This reverts if the proof is invalid.
+        ISP1Verifier(verifier).verifyProof(lightClientVkey, consensus.publicValues, consensus.proof);
     }
 
     /**
-     * @notice Checks that a transition advances finality, is recent, and does not span more chain
+     * @notice Checks that a transition advances the head, is recent, and does not span more chain
      * time than `permissibleTimespan`.
      * @dev Three conditions must hold:
-     * 1. The post-state's finalized epoch is later than the pre-state's, so finality only advances.
-     * 2. The post-state's finalized epoch began no more than `permissibleTimespan` seconds before
+     * 1. The post-state's head is later than the pre-state's, so the head only advances.
+     * 2. The post-state's head began no more than `permissibleTimespan` seconds before
      *    the current block time, and not in the future. This is what makes a proof unusable once
      *    it is stale: a valid historical proof whose pre-state happens to match the contract's
      *    state again, for example after an admin recovery via {manualTransition}, is rejected
      *    rather than replayed to move the contract onto an outdated view of the chain.
-     * 3. The chain time between the pre- and post-state finalized epochs is at most
+     * 3. The chain time between the pre- and post-state heads is at most
      *    `permissibleTimespan`, so a single transition cannot jump the contract across a long gap.
-     * Epochs are converted to seconds with {epochTimestamp}.
+     * Slots are converted to seconds with {slotTimestamp}.
      */
     function _permissibleTransition(
-        Consensus.State memory preState,
-        Consensus.State memory postState
+        uint64 preHead,
+        uint64 postHead
     ) internal view returns (bool) {
-        uint64 preEpoch = preState.finalizedCheckpoint.epoch;
-        uint64 postEpoch = postState.finalizedCheckpoint.epoch;
-        if (postEpoch <= preEpoch) {
+        if (postHead <= preHead) {
             return false;
         }
 
-        uint256 postTimestamp = epochTimestamp(postEpoch);
+        uint256 postTimestamp = slotTimestamp(postHead);
         if (postTimestamp > block.timestamp) {
             return false;
         }
@@ -393,8 +467,13 @@ contract ZKStateManager is AccessControl {
             return false;
         }
 
-        uint256 transitionTimespan =
-            uint256(postEpoch - preEpoch) * SLOT_PER_EPOCH * SECONDS_PER_SLOT;
+        uint256 transitionTimespan = uint256(postHead - preHead) * SECONDS_PER_SLOT;
         return transitionTimespan <= permissibleTimespan;
+    }
+
+    function _syncCommitteePeriod(
+        uint64 slot
+    ) internal pure returns (uint256) {
+        return slot / SLOTS_PER_PERIOD;
     }
 }

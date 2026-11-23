@@ -35,8 +35,7 @@ const (
 )
 
 var (
-	ethereumFixturePath  = envOrDefault("ETHEREUM_FIXTURE_PATH", "./tests/testdata/ethereum_fixture.json")
-	boundlessFixturePath = envOrDefault("BOUNDLESS_FIXTURE_PATH", "./tests/testdata/boundless_fixture.json")
+	ethereumFixturePath = envOrDefault("ETHEREUM_FIXTURE_PATH", "./tests/testdata/ethereum_fixture.json")
 )
 
 var (
@@ -203,7 +202,6 @@ var _ = ginkgo.Describe("[Ethereum ICM Verification integration tests]", func() 
 				localAvalancheNetworkInstance,
 				zkAdapterByteCodeFile,
 				ethereumFixturePath,
-				boundlessFixturePath,
 			)
 		})
 

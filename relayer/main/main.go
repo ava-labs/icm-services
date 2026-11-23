@@ -736,6 +736,11 @@ func startZKConsensusUpdater(
 	logger logging.Logger,
 	zkCfg *config.ZKConsensusUpdater,
 ) error {
+	proofSource, err := newZKProofSource(zkCfg)
+	if err != nil {
+		return err
+	}
+
 	ethClient, err := ethclient.DialContext(ctx, zkCfg.RPCEndpoint)
 	if err != nil {
 		return fmt.Errorf(
@@ -765,7 +770,7 @@ func startZKConsensusUpdater(
 
 	updater := validatorupdater.NewConsensusUpdater(
 		logger,
-		validatorupdater.NewSubgraphClient(zkCfg.SubgraphURL),
+		proofSource,
 		ethClient,
 		contract,
 		contractAddr,
@@ -774,4 +779,13 @@ func startZKConsensusUpdater(
 		zkCfg.MaxGasPriceGwei,
 	)
 	return updater.Start(ctx)
+}
+
+// newZKProofSource returns the source of SP1 Helios consensus proofs for a zk consensus updater.
+//
+// TODO: Return an SP1 Helios ProofSource once one is implemented. Until then, a configured zk
+// consensus updater fails at startup rather than running without proofs.
+// Issue: https://github.com/ava-labs/icm-services/issues/1626
+func newZKProofSource(*config.ZKConsensusUpdater) (validatorupdater.ProofSource, error) {
+	return nil, fmt.Errorf("zk consensus updater is not supported yet: no SP1 Helios proof source is implemented")
 }

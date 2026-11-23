@@ -43,7 +43,7 @@ contract ZKAdapter is ZKStateManager, IAdapter {
         uint256 genesisTime_,
         uint24 permissibleTimespan_,
         address verifier,
-        bytes32 imageID_,
+        bytes32 lightClientVkey_,
         address admin,
         address superAdmin
     )
@@ -54,7 +54,7 @@ contract ZKAdapter is ZKStateManager, IAdapter {
             genesisTime_,
             permissibleTimespan_,
             verifier,
-            imageID_,
+            lightClientVkey_,
             admin,
             superAdmin
         )

@@ -12,4 +12,3 @@
 @solidity-merkle-trees/=lib/solidity-merkle-trees/src/
 @solidity-merkle-trees-local/=lib/vendored/solidity-merkle-trees/
 @sp1-contracts/=lib/vendored/sp1-contracts/
-@risc0/=lib/vendored/risc0/

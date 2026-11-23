@@ -6,195 +6,315 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {IRiscZeroVerifier, Receipt as RiscZeroReceipt} from "@risc0/IRiscZeroVerifier.sol";
-import {ZKStateManager, ConsensusData, Journal} from "../ZKStateManager.sol";
+import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
+import {
+    ZKStateManager, ConsensusData, ProofOutputs, StorageSlot
+} from "../ZKStateManager.sol";
 import {Consensus, Execution} from "../StateManagerLibrary.sol";
 
-/// @dev Accepts every seal, so the tests exercise the contract's own checks rather than proof
-/// validity.
-// solhint-disable no-empty-blocks
-contract AcceptAllVerifier is IRiscZeroVerifier {
-    function verify(
-        bytes calldata,
-        bytes32,
-        bytes32
-    ) external pure {}
+/// @dev Accepts every proof unless told to reject, so the tests exercise the contract's own
+/// checks rather than proof validity.
+contract MockSP1Verifier is ISP1Verifier {
+    bool public shouldRevert;
 
-    function verifyIntegrity(
-        RiscZeroReceipt calldata
-    ) external pure {}
+    function setShouldRevert(
+        bool v
+    ) external {
+        shouldRevert = v;
+    }
+
+    function verifyProof(
+        bytes32,
+        bytes calldata,
+        bytes calldata
+    ) external view {
+        require(!shouldRevert, "mock: invalid proof");
+    }
 }
-// solhint-enable no-empty-blocks
 
 contract ZKStateManagerTest is Test {
     uint64 private constant _SLOT_PER_EPOCH = 32;
+    uint64 private constant _SLOTS_PER_PERIOD = 8192;
     uint64 private constant _SECONDS_PER_SLOT = 12;
-    uint64 private constant _EPOCH_SECONDS = _SLOT_PER_EPOCH * _SECONDS_PER_SLOT;
     // Ethereum mainnet beacon genesis.
     uint256 private constant _GENESIS_TIME = 1_606_824_023;
-    // One day, which is 225 epochs.
+    // One day, which is 7200 slots.
     uint24 private constant _PERMISSIBLE_TIMESPAN = 86_400;
-    uint64 private constant _MAX_EPOCH_SPAN = _PERMISSIBLE_TIMESPAN / _EPOCH_SECONDS;
-    uint64 private constant _START_EPOCH = 1_000;
+    uint64 private constant _MAX_SLOT_SPAN = _PERMISSIBLE_TIMESPAN / _SECONDS_PER_SLOT;
+    // Four checkpoints before the start of period 100, so tests can cross into the next period.
+    uint64 private constant _START_SLOT = 100 * _SLOTS_PER_PERIOD - 4 * _SLOT_PER_EPOCH;
+    bytes32 private constant _VKEY = bytes32(uint256(1));
 
     ZKStateManager private _manager;
-    address private _verifier;
+    MockSP1Verifier private _verifier;
     address private _admin = makeAddr("admin");
 
     function setUp() public {
         // Finality lags the chain head by about two epochs, so start the clock there. The
-        // constructor rejects a starting checkpoint that lies in the future, so warp first.
-        vm.warp(_epochTimestamp(_START_EPOCH + 2));
+        // constructor rejects a starting head that lies in the future, so warp first.
+        vm.warp(_slotTimestamp(_START_SLOT + 2 * _SLOT_PER_EPOCH));
         // Deployed once here so that `vm.expectRevert` in the constructor tests targets the
         // manager's creation rather than the verifier's.
-        _verifier = address(new AcceptAllVerifier());
-        _manager = _deploy(_START_EPOCH, _GENESIS_TIME);
+        _verifier = new MockSP1Verifier();
+        _manager = _deploy(_START_SLOT, _GENESIS_TIME);
     }
 
     function testConstructorRejectsZeroGenesisTime() public {
         vm.expectRevert("Invalid genesis time");
-        _deploy(_START_EPOCH, 0);
+        _deploy(_START_SLOT, 0);
     }
 
     function testConstructorRejectsStartingStateInTheFuture() public {
-        vm.warp(_epochTimestamp(_START_EPOCH) - 1);
+        vm.warp(_slotTimestamp(_START_SLOT) - 1);
         vm.expectRevert("Starting state in the future");
-        _deploy(_START_EPOCH, _GENESIS_TIME);
+        _deploy(_START_SLOT, _GENESIS_TIME);
     }
 
     function testConstructorAcceptsStartingStateAtCurrentTime() public {
-        vm.warp(_epochTimestamp(_START_EPOCH));
-        _deploy(_START_EPOCH, _GENESIS_TIME);
+        vm.warp(_slotTimestamp(_START_SLOT));
+        _deploy(_START_SLOT, _GENESIS_TIME);
     }
 
-    /// @dev A genesis time that is too far ahead makes the starting checkpoint read as future.
+    /// @dev A genesis time that is too far ahead makes the starting head read as future.
     function testConstructorRejectsGenesisTimeTooFarAhead() public {
-        uint256 age = block.timestamp - _epochTimestamp(_START_EPOCH);
+        uint256 age = block.timestamp - _slotTimestamp(_START_SLOT);
         vm.expectRevert("Starting state in the future");
-        _deploy(_START_EPOCH, _GENESIS_TIME + age + 1);
+        _deploy(_START_SLOT, _GENESIS_TIME + age + 1);
     }
 
     function testTransitionSucceedsWhenRecent() public {
-        uint64 postEpoch = _START_EPOCH + 1;
-        vm.warp(_manager.epochTimestamp(postEpoch + 2));
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
 
-        _manager.transition(_consensusData(_START_EPOCH, postEpoch));
+        _manager.transition(_consensusData(_START_SLOT, newHead));
 
-        (bytes32 root, bool valid) = _manager.getBeaconBlockRoot(postEpoch * _SLOT_PER_EPOCH);
+        (bytes32 root, bool valid) = _manager.getBeaconBlockRoot(newHead);
         assertTrue(valid);
-        assertEq(root, _checkpoint(postEpoch).root);
+        assertEq(root, _header(newHead));
+        assertEq(_manager.lastConfirmedSlot(), newHead);
+        _assertState(newHead);
     }
 
-    function testAcceptsPostStateExactlyAtPermissibleTimespan() public {
-        uint64 postEpoch = _START_EPOCH + 1;
-        vm.warp(_manager.epochTimestamp(postEpoch) + _PERMISSIBLE_TIMESPAN);
+    function testTransitionVerifiesPublicValuesAgainstVkey() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
+        ConsensusData memory data = _consensusData(_START_SLOT, newHead);
 
-        _manager.transition(_consensusData(_START_EPOCH, postEpoch));
+        vm.expectCall(
+            address(_verifier),
+            abi.encodeCall(ISP1Verifier.verifyProof, (_VKEY, data.publicValues, data.proof))
+        );
+        _manager.transition(data);
+    }
 
-        (, bool valid) = _manager.getBeaconBlockRoot(postEpoch * _SLOT_PER_EPOCH);
+    function testRevertsWhenProofInvalid() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
+        _verifier.setShouldRevert(true);
+
+        vm.expectRevert("mock: invalid proof");
+        _manager.transition(_consensusData(_START_SLOT, newHead));
+    }
+
+    function testStoresNextSyncCommittee() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
+        uint256 nextPeriod = _period(newHead) + 1;
+        assertEq(_manager.syncCommittees(nextPeriod), bytes32(0));
+
+        _manager.transition(_consensusData(_START_SLOT, newHead));
+
+        assertEq(_manager.syncCommittees(nextPeriod), _committee(nextPeriod));
+    }
+
+    /// @dev Once the head crosses into a new period, the state tracks that period's committee.
+    function testTransitionIntoNextPeriod() public {
+        uint64 newHead = _START_SLOT + 4 * _SLOT_PER_EPOCH;
+        assertEq(_period(newHead), _period(_START_SLOT) + 1);
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
+
+        _manager.transition(_consensusData(_START_SLOT, newHead));
+
+        _assertState(newHead);
+        assertEq(_manager.syncCommittees(_period(newHead) + 1), _committee(_period(newHead) + 1));
+    }
+
+    function testRevertsOnNextSyncCommitteeMismatch() public {
+        uint64 firstHead = _START_SLOT + _SLOT_PER_EPOCH;
+        uint64 secondHead = firstHead + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(secondHead + 2 * _SLOT_PER_EPOCH));
+        _manager.transition(_consensusData(_START_SLOT, firstHead));
+
+        ProofOutputs memory outputs = _outputs(firstHead, secondHead);
+        bytes32 wrongNext = keccak256("wrong");
+        outputs.nextSyncCommitteeHash = wrongNext;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ZKStateManager.NextSyncCommitteeMismatch.selector,
+                wrongNext,
+                _committee(_period(secondHead) + 1)
+            )
+        );
+        _manager.transition(_toConsensusData(outputs));
+    }
+
+    function testRevertsOnNonCheckpointSlot() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH + 1;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ZKStateManager.NonCheckpointSlot.selector, newHead)
+        );
+        _manager.transition(_consensusData(_START_SLOT, newHead));
+    }
+
+    function testAcceptsHeadExactlyAtPermissibleTimespan() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead) + _PERMISSIBLE_TIMESPAN);
+
+        _manager.transition(_consensusData(_START_SLOT, newHead));
+
+        (, bool valid) = _manager.getBeaconBlockRoot(newHead);
         assertTrue(valid);
     }
 
-    function testRevertsWhenPostStateOlderThanPermissibleTimespan() public {
-        uint64 postEpoch = _START_EPOCH + 1;
-        vm.warp(_manager.epochTimestamp(postEpoch) + _PERMISSIBLE_TIMESPAN + 1);
+    function testRevertsWhenHeadOlderThanPermissibleTimespan() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead) + _PERMISSIBLE_TIMESPAN + 1);
 
         vm.expectRevert(ZKStateManager.PermissibleTimespanLapsed.selector);
-        _manager.transition(_consensusData(_START_EPOCH, postEpoch));
+        _manager.transition(_consensusData(_START_SLOT, newHead));
     }
 
-    function testRevertsWhenPostStateIsInTheFuture() public {
-        uint64 postEpoch = _START_EPOCH + 1;
-        vm.warp(_manager.epochTimestamp(postEpoch) - 1);
+    function testRevertsWhenHeadIsInTheFuture() public {
+        uint64 newHead = _START_SLOT + 4 * _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead) - 1);
 
         vm.expectRevert(ZKStateManager.PermissibleTimespanLapsed.selector);
-        _manager.transition(_consensusData(_START_EPOCH, postEpoch));
+        _manager.transition(_consensusData(_START_SLOT, newHead));
     }
 
-    function testRevertsWhenFinalityDoesNotAdvance() public {
-        // The pre-state matches the stored state, so only the finality check can reject this.
+    function testRevertsWhenHeadDoesNotAdvance() public {
+        // The pre-state matches the stored state, so only the advance check can reject this.
         vm.expectRevert(ZKStateManager.PermissibleTimespanLapsed.selector);
-        _manager.transition(_consensusData(_START_EPOCH, _START_EPOCH));
+        _manager.transition(_consensusData(_START_SLOT, _START_SLOT));
     }
 
     function testAcceptsTransitionSpanningExactlyPermissibleTimespan() public {
-        uint64 postEpoch = _START_EPOCH + _MAX_EPOCH_SPAN;
-        vm.warp(_manager.epochTimestamp(postEpoch + 2));
+        uint64 newHead = _START_SLOT + _MAX_SLOT_SPAN;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
 
-        _manager.transition(_consensusData(_START_EPOCH, postEpoch));
+        _manager.transition(_consensusData(_START_SLOT, newHead));
 
-        (, bool valid) = _manager.getBeaconBlockRoot(postEpoch * _SLOT_PER_EPOCH);
+        (, bool valid) = _manager.getBeaconBlockRoot(newHead);
         assertTrue(valid);
     }
 
     function testRevertsWhenTransitionSpansMoreThanPermissibleTimespan() public {
-        uint64 postEpoch = _START_EPOCH + _MAX_EPOCH_SPAN + 1;
-        // The post-state itself is recent; only the span is too long.
-        vm.warp(_manager.epochTimestamp(postEpoch + 2));
+        uint64 newHead = _START_SLOT + _MAX_SLOT_SPAN + _SLOT_PER_EPOCH;
+        // The new head itself is recent; only the span is too long.
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
 
         vm.expectRevert(ZKStateManager.PermissibleTimespanLapsed.selector);
-        _manager.transition(_consensusData(_START_EPOCH, postEpoch));
+        _manager.transition(_consensusData(_START_SLOT, newHead));
     }
 
-    function testRevertsOnPreStateMismatch() public {
-        uint64 postEpoch = _START_EPOCH + 2;
-        vm.warp(_manager.epochTimestamp(postEpoch + 2));
+    function testRevertsOnPrevHeadMismatch() public {
+        uint64 newHead = _START_SLOT + 2 * _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
 
         vm.expectRevert(ZKStateManager.InvalidPreState.selector);
-        _manager.transition(_consensusData(_START_EPOCH + 1, postEpoch));
+        _manager.transition(_consensusData(_START_SLOT + _SLOT_PER_EPOCH, newHead));
     }
 
-    /// @dev The confirmed slot is read from the journal and must strictly increase across
-    /// proof-driven transitions, so event consumers can rely on anchors being in slot order.
-    function testRevertsWhenJournalSlotDoesNotIncrease() public {
-        uint64 firstEpoch = _START_EPOCH + 1;
-        vm.warp(_manager.epochTimestamp(firstEpoch + 3));
-        _manager.transition(_consensusData(_START_EPOCH, firstEpoch));
+    function testRevertsOnPrevHeaderMismatch() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
+        ProofOutputs memory outputs = _outputs(_START_SLOT, newHead);
+        outputs.prevHeader = keccak256("wrong");
 
-        // Finality advances, but the journal repeats the previous slot.
-        uint64 repeatedSlot = firstEpoch * _SLOT_PER_EPOCH;
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ZKStateManager.NonIncreasingSlot.selector, repeatedSlot, repeatedSlot
-            )
-        );
-        _manager.transition(_consensusDataWithSlot(firstEpoch, firstEpoch + 1, repeatedSlot));
+        vm.expectRevert(ZKStateManager.InvalidPreState.selector);
+        _manager.transition(_toConsensusData(outputs));
     }
 
-    /// @dev The scenario from the staleness finding. A proof that was valid when first applied
-    /// becomes applicable again after an admin resets the contract to that proof's pre-state.
-    /// While the proof's post-state is still recent, re-applying it is harmless and allowed. Once
-    /// the post-state is older than permissibleTimespan, replaying it would move the contract onto
-    /// an outdated view of the chain, so it must be rejected.
+    function testRevertsOnPrevSyncCommitteeMismatch() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
+        ProofOutputs memory outputs = _outputs(_START_SLOT, newHead);
+        outputs.prevSyncCommitteeHash = keccak256("wrong");
+
+        vm.expectRevert(ZKStateManager.InvalidPreState.selector);
+        _manager.transition(_toConsensusData(outputs));
+    }
+
+    /// @dev A proof that was valid when first applied becomes applicable again after an admin
+    /// resets the contract to that proof's pre-state. While the proof's new head is still recent,
+    /// re-applying it is harmless and allowed. Once the new head is older than
+    /// permissibleTimespan, replaying it would move the contract onto an outdated view of the
+    /// chain, so it must be rejected.
     function testReplayedProofRejectedOnceStaleAfterManualRecovery() public {
-        uint64 postEpoch = _START_EPOCH + 1;
-        ConsensusData memory proof = _consensusData(_START_EPOCH, postEpoch);
-        vm.warp(_manager.epochTimestamp(postEpoch + 2));
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        ConsensusData memory proof = _consensusData(_START_SLOT, newHead);
+        vm.warp(_manager.slotTimestamp(newHead + 2 * _SLOT_PER_EPOCH));
         _manager.transition(proof);
 
         // Admin recovery back to the proof's pre-state, then an immediate replay is still fresh.
-        _manualTransition(postEpoch, _START_EPOCH);
+        _manualTransition(_START_SLOT);
         _manager.transition(proof);
 
-        // Recover again, let the post-state go stale, and the replay is now rejected.
-        _manualTransition(postEpoch, _START_EPOCH);
-        vm.warp(_manager.epochTimestamp(postEpoch) + _PERMISSIBLE_TIMESPAN + 1);
+        // Recover again, let the new head go stale, and the replay is now rejected.
+        _manualTransition(_START_SLOT);
+        vm.warp(_manager.slotTimestamp(newHead) + _PERMISSIBLE_TIMESPAN + 1);
         vm.expectRevert(ZKStateManager.PermissibleTimespanLapsed.selector);
         _manager.transition(proof);
     }
 
     function testManualTransitionBypassesStalenessCheck() public {
-        // Far in the future relative to the starting state, and to an old post-state.
-        vm.warp(_manager.epochTimestamp(_START_EPOCH) + 365 days);
-        _manualTransition(_START_EPOCH, _START_EPOCH - 100);
+        // Far in the future relative to the starting state, and to an old head.
+        vm.warp(_manager.slotTimestamp(_START_SLOT) + 365 days);
+        uint64 oldHead = _START_SLOT - 100 * _SLOT_PER_EPOCH;
+        _manualTransition(oldHead);
 
-        (, bool valid) = _manager.getBeaconBlockRoot((_START_EPOCH - 100) * _SLOT_PER_EPOCH);
+        (, bool valid) = _manager.getBeaconBlockRoot(oldHead);
         assertTrue(valid);
+        _assertState(oldHead);
     }
 
-    function testEpochTimestamp() public view {
-        assertEq(_manager.epochTimestamp(0), _GENESIS_TIME);
-        assertEq(_manager.epochTimestamp(10), _GENESIS_TIME + 10 * _EPOCH_SECONDS);
+    /// @dev Admin recovery must be able to replace a stored sync committee, for example after
+    /// no update landed within a period.
+    function testManualTransitionOverwritesSyncCommittees() public {
+        uint64 newHead = _START_SLOT + _SLOT_PER_EPOCH;
+        uint256 period = _period(newHead);
+        ProofOutputs memory outputs = _outputs(_START_SLOT, newHead);
+        outputs.syncCommitteeHash = keccak256("replaced current");
+        outputs.nextSyncCommitteeHash = keccak256("replaced next");
+
+        vm.prank(_admin);
+        _manager.manualTransition(abi.encode(outputs));
+
+        assertEq(_manager.syncCommittees(period), outputs.syncCommitteeHash);
+        assertEq(_manager.syncCommittees(period + 1), outputs.nextSyncCommitteeHash);
+    }
+
+    function testManualTransitionRequiresAdmin() public {
+        vm.expectRevert();
+        _manager.manualTransition(abi.encode(_outputs(_START_SLOT, _START_SLOT + _SLOT_PER_EPOCH)));
+    }
+
+    function testConstructorStoresStartingState() public view {
+        _assertState(_START_SLOT);
+        assertEq(_manager.syncCommittees(_period(_START_SLOT)), _committee(_period(_START_SLOT)));
+        assertEq(_manager.lastConfirmedSlot(), _START_SLOT);
+
+        // The trusted starting header anchors messages before the first transition.
+        (bytes32 root, bool valid) = _manager.getBeaconBlockRoot(_START_SLOT);
+        assertTrue(valid);
+        assertEq(root, _header(_START_SLOT));
+    }
+
+    function testSlotTimestamp() public view {
+        assertEq(_manager.slotTimestamp(0), _GENESIS_TIME);
+        assertEq(_manager.slotTimestamp(10), _GENESIS_TIME + 10 * _SECONDS_PER_SLOT);
         assertEq(_manager.genesisTime(), _GENESIS_TIME);
     }
 
@@ -203,80 +323,102 @@ contract ZKStateManagerTest is Test {
     // ---------------------------------------------------------------------------------------
 
     function _deploy(
-        uint64 startEpoch,
+        uint64 startSlot,
         uint256 genesisTime
     ) private returns (ZKStateManager) {
         // Execution-layer verification is not exercised here, so the beacon config can be empty.
         Execution.BeaconConfig memory config;
         return new ZKStateManager({
             newSourceChainId: 1,
-            startingState: _state(startEpoch),
+            startingState: _state(startSlot),
             beaconConfig: config,
             genesisTime_: genesisTime,
             permissibleTimespan_: _PERMISSIBLE_TIMESPAN,
-            verifier_: _verifier,
-            imageID_: bytes32(uint256(1)),
+            verifier_: address(_verifier),
+            lightClientVkey_: _VKEY,
             admin: _admin,
             superAdmin: _admin
         });
     }
 
     function _manualTransition(
-        uint64 preEpoch,
-        uint64 postEpoch
+        uint64 newHead
     ) private {
-        Journal memory journal = Journal({
-            preState: _state(preEpoch),
-            postState: _state(postEpoch),
-            finalizedSlot: postEpoch * _SLOT_PER_EPOCH
-        });
         vm.prank(_admin);
-        _manager.manualTransition(abi.encode(journal));
+        _manager.manualTransition(abi.encode(_outputs(newHead, newHead)));
     }
 
-    function _consensusDataWithSlot(
-        uint64 preEpoch,
-        uint64 postEpoch,
-        uint64 finalizedSlot
-    ) private pure returns (ConsensusData memory) {
-        Journal memory journal = Journal({
-            preState: _state(preEpoch), postState: _state(postEpoch), finalizedSlot: finalizedSlot
-        });
-        return ConsensusData({journalData: abi.encode(journal), seal: ""});
+    function _assertState(
+        uint64 head
+    ) private view {
+        Consensus.State memory state = _manager.getCurrentState();
+        assertEq(state.head, head);
+        assertEq(state.header, _header(head));
+        assertEq(state.syncCommitteeHash, _committee(_period(head)));
     }
 
-    /// @dev Mirrors {ZKStateManager.epochTimestamp} for use before the manager is deployed.
-    function _epochTimestamp(
-        uint64 epoch
+    /// @dev Mirrors {ZKStateManager.slotTimestamp} for use before the manager is deployed.
+    function _slotTimestamp(
+        uint64 slot
     ) private pure returns (uint256) {
-        return _GENESIS_TIME + uint256(epoch) * _EPOCH_SECONDS;
+        return _GENESIS_TIME + uint256(slot) * _SECONDS_PER_SLOT;
     }
 
     function _consensusData(
-        uint64 preEpoch,
-        uint64 postEpoch
+        uint64 prevHead,
+        uint64 newHead
     ) private pure returns (ConsensusData memory) {
-        Journal memory journal = Journal({
-            preState: _state(preEpoch),
-            postState: _state(postEpoch),
-            finalizedSlot: postEpoch * _SLOT_PER_EPOCH
-        });
-        return ConsensusData({journalData: abi.encode(journal), seal: ""});
+        return _toConsensusData(_outputs(prevHead, newHead));
     }
 
-    /// @dev A consensus state finalized at `finalizedEpoch`, with justification one epoch later.
+    function _toConsensusData(
+        ProofOutputs memory outputs
+    ) private pure returns (ConsensusData memory) {
+        return ConsensusData({publicValues: abi.encode(outputs), proof: ""});
+    }
+
+    /// @dev Public values for an update from `prevHead` to `newHead`, consistent with {_state}.
+    function _outputs(
+        uint64 prevHead,
+        uint64 newHead
+    ) private pure returns (ProofOutputs memory) {
+        return ProofOutputs({
+            prevHeader: _header(prevHead),
+            prevHead: prevHead,
+            prevSyncCommitteeHash: _committee(_period(prevHead)),
+            newHead: newHead,
+            newHeader: _header(newHead),
+            executionStateRoot: bytes32(0),
+            executionBlockNumber: 0,
+            syncCommitteeHash: _committee(_period(newHead)),
+            nextSyncCommitteeHash: _committee(_period(newHead) + 1),
+            storageSlots: new StorageSlot[](0)
+        });
+    }
+
     function _state(
-        uint64 finalizedEpoch
+        uint64 head
     ) private pure returns (Consensus.State memory) {
         return Consensus.State({
-            currentJustifiedCheckpoint: _checkpoint(finalizedEpoch + 1),
-            finalizedCheckpoint: _checkpoint(finalizedEpoch)
+            head: head, header: _header(head), syncCommitteeHash: _committee(_period(head))
         });
     }
 
-    function _checkpoint(
-        uint64 epoch
-    ) private pure returns (Consensus.Checkpoint memory) {
-        return Consensus.Checkpoint({epoch: epoch, root: keccak256(abi.encode("root", epoch))});
+    function _period(
+        uint64 slot
+    ) private pure returns (uint256) {
+        return slot / _SLOTS_PER_PERIOD;
+    }
+
+    function _header(
+        uint64 slot
+    ) private pure returns (bytes32) {
+        return keccak256(abi.encode("header", slot));
+    }
+
+    function _committee(
+        uint256 period
+    ) private pure returns (bytes32) {
+        return keccak256(abi.encode("committee", period));
     }
 }

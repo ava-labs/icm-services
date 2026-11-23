@@ -16,20 +16,20 @@ import (
 // Messages originating on Ethereum are verified on the destination chain by a ZKAdapter
 // that is called by TeleporterMessengerV2.ReceiveCrossChainMessage. The relayer updates
 // the state of the destination-side ZKAdapter in 2 possible (independent) ways:
-// 1. It provides a Boundless zero-knowledge proof of a beacon state (consensus) transition that
+// 1. It provides an SP1 Helios zero-knowledge proof of a beacon state (consensus) transition that
 // ZKAdapter verifies and stores as a confirmed beacon anchor.
 // 2. It provides a Merkle proof tuple (SSZ execution state proof, MPT receipt proof)
 // against an already verified beacon state anchor stored in ZKAdapter.
 //
 // In summary, the relayer will periodically update ZKAdapter with consensus state transitions by
-// submitting proofs as they are made available on the Boundless network. Additionally, when it sees
+// submitting proofs as they are made available by its proof source. Additionally, when it sees
 // a TeleporterV2 message sent on the source chain, it will submit a Merkle proof tuple to ZKAdapter.
 type Config struct {
 	// RewardAddress is the address credited as the relayer reward recipient on the source chain.
 	RewardAddress string `json:"reward-address"`
 	// Destination AdapterAddress is the ZKAdapter deployed on the destination chain. It is queried for
 	// confirmed beacon anchors (getBeaconBlockRoot) so the relayer builds proofs against a slot
-	// the contract has verified via Boundless consensus transitions. This is the same contract
+	// the contract has verified via SP1 Helios consensus transitions. This is the same contract
 	// as the source-side adapter emitting TeleporterV2MessageSent deployed via Nick's method.
 	AdapterAddress string `json:"adapter-address"`
 	// TeleporterAddress is the TeleporterMessengerV2 contract on the destination chain. It is a
