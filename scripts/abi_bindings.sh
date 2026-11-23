@@ -273,7 +273,10 @@ done
 
 contract_names=(${AVALANCHE_CONTRACT_LIST[@]})
 cd $AVALANCHE_ICM_PATH
-generate_bindings "$AVALANCHE_EVM_VERSION" "--via-ir" "$EXPANDED_DIR" "${contract_names[@]}"
+# Audited avalanche contracts stay on the legacy pipeline (no --via-ir) so their
+# bytecode is unchanged. Some of them (e.g. WarpAdapter) import macro-annotated
+# common/ sources, so still compile from the expanded tree.
+generate_bindings "$AVALANCHE_EVM_VERSION" "" "$EXPANDED_DIR" "${contract_names[@]}"
 
 contract_names=(${COMMON_CONTRACT_LIST[@]})
 cd $COMMON_ICM_PATH
