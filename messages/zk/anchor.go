@@ -176,7 +176,7 @@ func selectAnchor(anchors []anchor, targetSlot uint64) (anchor, error) {
 	// Newer anchors exist but all are beyond the 8192-slot window, and anchors only move
 	// forward, so no future anchor can cover the target either. The contract proves inclusion
 	// only through the state_roots vector, which reaches back 8192 slots from an anchor.
-	// This only happens if Boundless produced no proof for over 8192 slots between consecutive
+	// This only happens if no consensus proof was applied for over 8192 slots between consecutive
 	// anchors. Messages in that gap are unprovable and are abandoned rather than retried.
 	return anchor{}, fmt.Errorf(
 		"%w: target slot %d is outside every confirmed anchor's %d-slot window",

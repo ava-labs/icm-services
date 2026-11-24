@@ -28,7 +28,7 @@ DEFAULT_COMMON_CONTRACT_LIST="TeleporterMessengerV2 Adapter"
 
 DEFAULT_ETHEREUM_CONTRACT_LIST="MerkleValidatorSetRegistry ZKValidatorSetRegistry"
 
-VENDORED_CONTRACT_LIST="RiscZeroGroth16Verifier SP1VerifierGroth16"
+VENDORED_CONTRACT_LIST="SP1VerifierGroth16"
 
 PROXY_LIST="TransparentUpgradeableProxy ProxyAdmin"
 ACCESS_LIST="OwnableUpgradeable"

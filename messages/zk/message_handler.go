@@ -3,7 +3,7 @@
 
 // Package zk implements the message handler for Teleporter messages
 // originating on Ethereum and verified on an Avalanche destination via the
-// ZKAdapter (an IAdapter implementation), using Boundless zero-knowledge proofs
+// ZKAdapter (an IAdapter implementation), using SP1 Helios zero-knowledge proofs
 // of Ethereum consensus.
 
 // THIS IS AN EXAMPLE OF UNAUDITED CODE. DO NOT USE THIS IN PRODUCTION.
@@ -132,8 +132,9 @@ func (f *factory) GetMessageRoutingInfo(
 // network calls: the relayer skips messages whose handler cannot be built and still checkpoints
 // their block, so a transient RPC failure here would drop the message. The source chain lookups
 // happen in ProcessMessage instead. The signature aggregator,
-// signing subnet, and quorum numerator are unused as the attestation is a Boundless
-// consensus proof verified on-chain. Issue: https://github.com/ava-labs/icm-services/issues/1462
+// signing subnet, and quorum numerator are unused as the attestation is a Merkle proof
+// against a beacon block root the adapter confirmed from an SP1 Helios consensus proof.
+// Issue: https://github.com/ava-labs/icm-services/issues/1462
 func (f *factory) NewMessageHandler(
 	logger logging.Logger,
 	message *messages.SourceMessage,

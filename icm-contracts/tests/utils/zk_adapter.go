@@ -48,9 +48,9 @@ var zkAdapterFuluBeaconConfig = zkadapter.ExecutionBeaconConfig{
 // [admin] on several chains gives the adapter the same address on each, which verifyMessage
 // requires of the source-side adapter.
 //
-// The adapter starts from an empty consensus state at epoch 0 and is not given a verifier, so
+// The adapter starts from an empty consensus state at slot 0 and is not given a verifier, so
 // it accepts no proven transition. Tests set its anchors with the admin's manualTransition.
-// The constructor rejects a starting epoch that begins in the future, so [beaconGenesisTime]
+// The constructor rejects a starting slot that begins in the future, so [beaconGenesisTime]
 // must not be later than the latest block time on any chain the adapter is deployed to.
 func DeployZKAdapter(
 	ctx context.Context,
@@ -73,12 +73,13 @@ func DeployZKAdapter(
 		zkAdapterFuluBeaconConfig,
 		new(big.Int).SetUint64(beaconGenesisTime),
 		big.NewInt(int64(zkAdapterPermissibleTimespan.Seconds())),
-		// The verifier and image ID are only used by transition(), which checks consensus proofs.
-		// Tests set anchors with manualTransition, which skips that check.
-		// TODO: deploy a mock verifier and set its image ID once the e2e tests cover the
+		// The verifier and light client vkey are only used by transition(), which checks consensus
+		// proofs. Tests set anchors with manualTransition, which skips that check.
+		// TODO: deploy a mock verifier and set its light client vkey once the e2e tests cover the
 		// consensus updater applying proven transitions.
+		// Issue: https://github.com/ava-labs/icm-services/issues/1627
 		common.Address{}, // verifier
-		[32]byte{},       // image ID
+		[32]byte{},       // light client vkey
 		admin,
 		admin, // super admin
 	)

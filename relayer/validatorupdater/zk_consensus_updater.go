@@ -26,37 +26,34 @@ const (
 	// chain applied per poll interval
 	maxTransitionsPerTick = 4
 
-	// subgraphPageSize is how many proofs one subgraph query fetches. It exceeds
-	// maxTransitionsPerTick because the subgraph may index several proofs over the same slots
+	// proofPageSize is how many proofs one proof source query fetches. It exceeds
+	// maxTransitionsPerTick because the source may hold several proofs over the same slots
 	// (e.g. from other provers, or extending other states), of which only the one whose
-	// preState matches the contract's current state can be applied.
-	subgraphPageSize = 100
-
-	// slotsPerEpoch matches ZKStateManager's SLOT_PER_EPOCH.
-	slotsPerEpoch = 32
+	// previous values match the contract's current state can be applied.
+	proofPageSize = 100
 )
 
 // ConsensusUpdater keeps the destination ZKAdapter's view of Ethereum
-// consensus up to sync by applying Boundless proofs of beacon chain
-// finality, fetched from the Boundless subgraph tool.
+// consensus up to sync by applying SP1 Helios light client proofs of beacon
+// chain finality, fetched from a ProofSource.
 //
 // The ZKStateManager imposes two properties this updater is built around:
 //
-//  1. Transitions are sequential: each proof's journal preState must match
-//     the contract's stored state. The updater therefore selects proofs by
-//     state, not by slot alone: it applies the proof whose preState equals the
-//     contract's current state, then the one extending that proof's postState,
-//     and so on. Slot order alone is not enough, as lastConfirmedSlot is zero on
-//     a fresh deployment and the subgraph may index proofs of other states.
+//  1. Transitions are sequential: each proof's previous head, header, and sync
+//     committee must match the contract's stored state. The updater therefore
+//     selects proofs by state, not by slot alone: it applies the proof whose
+//     pre-state equals the contract's current state, then the one extending
+//     that proof's post-state, and so on, as the source may hold proofs of
+//     other states.
 //
 //  2. Transitions are time-bounded: a single transition may span at most
-//     permissibleTimespan of chain time, so this updater must run
-//     continuously regardless of message traffic. The permissible timespan
-//     is also enforced at the contract level. A stalled updater bricks
+//     permissibleTimespan of chain time, and each must be verified by the
+//     sync committee of the current head's period, so this updater must run
+//     continuously regardless of message traffic. A stalled updater bricks
 //     the contract into admin-only (manualTransition) recovery mode.
 type ConsensusUpdater struct {
 	logger          logging.Logger
-	subgraphClient  *SubgraphClient
+	proofSource     ProofSource
 	ethClient       *ethclient.Client
 	contract        *zkadapter.ZKAdapter
 	contractAddress common.Address
@@ -70,7 +67,7 @@ type ConsensusUpdater struct {
 	maxGasPriceWei *big.Int
 	// lastAppliedSlot is the contract's lastConfirmedSlot. It is read from the contract at the
 	// start of each tick and advances with each transition this updater applies. It is also
-	// used as the subgraph query lower bound.
+	// used as the proof source query lower bound.
 	lastAppliedSlot uint64
 	// currentState is the contract's consensus state: the preState the next applied proof must
 	// carry. It is read from the contract at the start of each tick, so a change made outside
@@ -88,7 +85,7 @@ type ConsensusUpdater struct {
 
 func NewConsensusUpdater(
 	logger logging.Logger,
-	subgraphClient *SubgraphClient,
+	proofSource ProofSource,
 	ethClient *ethclient.Client,
 	contract *zkadapter.ZKAdapter,
 	contractAddress common.Address,
@@ -99,7 +96,7 @@ func NewConsensusUpdater(
 	maxGasPriceWei := new(big.Int).Mul(new(big.Int).SetUint64(maxGasPriceGwei), weiPerGwei)
 	return &ConsensusUpdater{
 		logger:          logger,
-		subgraphClient:  subgraphClient,
+		proofSource:     proofSource,
 		ethClient:       ethClient,
 		contract:        contract,
 		contractAddress: contractAddress,
@@ -146,29 +143,30 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 		return err
 	}
 
-	// Fetch the indexed proofs that may extend the contract's current state.
-	proofs, err := u.subgraphClient.ConsensusProofsAfterSlot(ctx, u.queryLowerBound(), subgraphPageSize)
+	// Fetch the proofs that may extend the contract's current state. The contract's head is its
+	// lastConfirmedSlot, so any such proof finalizes a later slot.
+	proofs, err := u.proofSource.ConsensusProofsAfterSlot(ctx, u.lastAppliedSlot, proofPageSize)
 	if err != nil {
-		return fmt.Errorf("failed to query subgraph: %w", err)
+		return fmt.Errorf("failed to query proof source: %w", err)
 	}
 
-	proof, journal := u.nextProof(proofs)
+	proof, transition := u.nextProof(proofs)
 	if proof == nil && len(u.failedProofs) > 0 {
 		// Every proof extending the current state has failed. Retry them from the first, as
 		// their failures may have been transient.
 		u.failedProofs = nil
-		proof, journal = u.nextProof(proofs)
+		proof, transition = u.nextProof(proofs)
 	}
 	if proof == nil {
 		logFn := u.logger.Debug
 		if len(proofs) > 0 {
-			// Proofs exist past the contract's position, yet none extends its state: the subgraph
-			// is missing the next link of the chain.
+			// Proofs exist past the contract's position, yet none extends its state: the proof
+			// source is missing the next link of the chain.
 			logFn = u.logger.Warn
 		}
-		logFn("No indexed consensus proof extends the contract's current state",
+		logFn("No consensus proof extends the contract's current state",
 			zap.Uint64("lastAppliedSlot", u.lastAppliedSlot),
-			zap.Uint64("finalizedEpoch", u.currentState.FinalizedCheckpoint.Epoch),
+			zap.Uint64("head", u.currentState.Head),
 			zap.Int("candidates", len(proofs)),
 		)
 		return nil
@@ -187,7 +185,7 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 			// The next tick re-reads the contract's state. If it moved (e.g. another party
 			// applied a proof first), the updater continues from there.
 			u.logger.Warn("Transition failed, retrying on the next tick",
-				zap.Uint64("finalizedSlot", proof.FinalizedSlot),
+				zap.Uint64("newHead", proof.NewHead),
 				zap.Error(err),
 			)
 			// The contract may also have rejected the proof itself, in which case the next tick
@@ -195,45 +193,31 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 			u.markProofFailed(proof)
 			return nil
 		}
-		u.currentState = journal.PostState
-		proof, journal = u.nextProof(proofs)
+		u.currentState = transition.PostState
+		proof, transition = u.nextProof(proofs)
 	}
 	return nil
 }
 
-// queryLowerBound returns the slot after which the subgraph is queried for proofs extending
-// currentState. Such a proof finalizes a slot after lastAppliedSlot and after the state's own
-// finalized checkpoint. The checkpoint bound is what matters on a fresh deployment, where
-// lastAppliedSlot is still zero and querying from it would return the oldest indexed proofs.
-// It is taken one epoch early, as a checkpoint's block may precede its epoch's first slot when
-// slots were skipped.
-func (u *ConsensusUpdater) queryLowerBound() uint64 {
-	bound := u.lastAppliedSlot
-	if epoch := u.currentState.FinalizedCheckpoint.Epoch; epoch > 1 {
-		bound = max(bound, (epoch-1)*slotsPerEpoch)
-	}
-	return bound
-}
-
-// nextProof returns the first of proofs, with its decoded journal, that extends currentState
+// nextProof returns the first of proofs, with its decoded transition, that extends currentState
 // and finalizes a slot after lastAppliedSlot, or nil if none does. The contract rejects any
-// other proof, so the rest are not applied. Proofs whose journal cannot be decoded, and proofs
-// that already failed from currentState, are skipped.
-func (u *ConsensusUpdater) nextProof(proofs []*ConsensusProof) (*ConsensusProof, *consensusJournal) {
+// other proof, so the rest are not applied. Proofs whose public values cannot be decoded, and
+// proofs that already failed from currentState, are skipped.
+func (u *ConsensusUpdater) nextProof(proofs []*ConsensusProof) (*ConsensusProof, *consensusTransition) {
 	for _, proof := range proofs {
 		if _, failed := u.failedProofs[proofKey(proof)]; failed {
 			continue
 		}
-		journal, err := decodeJournal(proof.JournalData)
+		transition, err := decodePublicValues(proof.PublicValues)
 		if err != nil {
-			u.logger.Warn("Skipping consensus proof with undecodable journal",
-				zap.Uint64("finalizedSlot", proof.FinalizedSlot),
+			u.logger.Warn("Skipping consensus proof with undecodable public values",
+				zap.Uint64("newHead", proof.NewHead),
 				zap.Error(err),
 			)
 			continue
 		}
-		if journal.PreState == u.currentState && journal.FinalizedSlot > u.lastAppliedSlot {
-			return proof, journal
+		if transition.PreState == u.currentState && transition.PostState.Head > u.lastAppliedSlot {
+			return proof, transition
 		}
 	}
 	return nil, nil
@@ -248,17 +232,17 @@ func (u *ConsensusUpdater) markProofFailed(proof *ConsensusProof) {
 	u.failedProofs[proofKey(proof)] = struct{}{}
 }
 
-// proofKey identifies a proof by its journal and seal, which together are what the contract
-// verifies.
+// proofKey identifies a proof by its public values and proof bytes, which together are what the
+// contract verifies.
 func proofKey(proof *ConsensusProof) common.Hash {
-	return crypto.Keccak256Hash(proof.JournalData, proof.Seal)
+	return crypto.Keccak256Hash(proof.PublicValues, proof.Proof)
 }
 
 // applyTransition submits one consensus transition and waits for it to mine.
 func (u *ConsensusUpdater) applyTransition(ctx context.Context, proof *ConsensusProof) error {
 	tx, err := u.contract.Transition(u.txOpts, zkadapter.ConsensusData{
-		JournalData: proof.JournalData,
-		Seal:        proof.Seal,
+		PublicValues: proof.PublicValues,
+		Proof:        proof.Proof,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to submit transition: %w", err)
@@ -271,9 +255,9 @@ func (u *ConsensusUpdater) applyTransition(ctx context.Context, proof *Consensus
 		return fmt.Errorf("transition tx reverted: %s", tx.Hash().Hex())
 	}
 
-	u.lastAppliedSlot = proof.FinalizedSlot
+	u.lastAppliedSlot = proof.NewHead
 	u.logger.Info("Consensus transition applied",
-		zap.Uint64("finalizedSlot", proof.FinalizedSlot),
+		zap.Uint64("newHead", proof.NewHead),
 		zap.String("txHash", tx.Hash().Hex()),
 	)
 	return nil
@@ -296,7 +280,7 @@ func (u *ConsensusUpdater) syncLocalState(ctx context.Context) error {
 	if slot != u.lastAppliedSlot || state != u.currentState {
 		u.logger.Info("Synced the consensus state from contract",
 			zap.Uint64("lastAppliedSlot", slot),
-			zap.Uint64("finalizedEpoch", state.FinalizedCheckpoint.Epoch),
+			zap.Uint64("head", state.Head),
 		)
 	}
 	u.lastAppliedSlot = slot

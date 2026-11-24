@@ -14,9 +14,9 @@ import (
 )
 
 // ZKConsensusUpdater configures a consensus updater for a ZKAdapter deployed on a destination
-// chain. The updater polls the Boundless subgraph for Ethereum consensus proofs and submits them
-// to the adapter as transitions, keeping its confirmed beacon anchors current so that zk messages
-// from Ethereum can be proven against them.
+// chain. The updater polls a proof source for SP1 Helios Ethereum consensus proofs and submits
+// them to the adapter as transitions, keeping its confirmed beacon anchors current so that zk
+// messages from Ethereum can be proven against them.
 type ZKConsensusUpdater struct {
 	// RPC endpoint of the destination chain the ZKAdapter is deployed on.
 	RPCEndpoint string `mapstructure:"rpc-endpoint" json:"rpc-endpoint"`
@@ -25,8 +25,6 @@ type ZKConsensusUpdater struct {
 	PrivateKey string `mapstructure:"private-key" json:"private-key" sensitive:"true"`
 	// Address of the deployed ZKAdapter contract.
 	AdapterAddress string `mapstructure:"adapter-address" json:"adapter-address"`
-	// GraphQL endpoint of the Boundless subgraph indexing consensus proofs.
-	SubgraphURL string `mapstructure:"subgraph-url" json:"subgraph-url"`
 	// Poll interval in seconds (default 10)
 	PollIntervalSeconds uint64 `mapstructure:"poll-interval-seconds" json:"poll-interval-seconds"`
 	// Maximum suggested gas price (in gwei) on the destination chain at which the updater will
@@ -65,9 +63,6 @@ func (z *ZKConsensusUpdater) Validate(otherSenders map[common.Address]string) er
 	if !common.IsHexAddress(z.AdapterAddress) {
 		return fmt.Errorf("invalid adapter-address %q", z.AdapterAddress)
 	}
-	if z.SubgraphURL == "" {
-		return errors.New("subgraph-url required for zk consensus updater")
-	}
 	return nil
 }
 
@@ -97,7 +92,7 @@ func (c *Config) senderAccountAddresses() map[common.Address]string {
 	return senders
 }
 
-// GetPollInterval returns how often the updater polls the subgraph for new proofs, falling
+// GetPollInterval returns how often the updater polls the proof source for new proofs, falling
 // back to defaultPollInterval when PollIntervalSeconds is unset.
 func (z *ZKConsensusUpdater) GetPollInterval() time.Duration {
 	if z.PollIntervalSeconds == 0 {

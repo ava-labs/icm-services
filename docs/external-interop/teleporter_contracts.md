@@ -59,7 +59,7 @@ interface IMessageSender {
 interface IAdapter is IMessageSender, IMessageVerifier {}
 ```
 
-Note the attestation field of the `TeleporterICMMessage` is a generic blob of bytes, giving it flexibility to be a BLS signature, a certificate for CCIP, a tuple including a ZK proof, state root, Merkle path to an event for a Boundless ZK Proof, or something entirely different.
+Note the attestation field of the `TeleporterICMMessage` is a generic blob of bytes, giving it flexibility to be a BLS signature, a certificate for CCIP, a tuple including a ZK proof, state root, Merkle path to an event for an SP1 Helios ZK proof, or something entirely different.
 
 This design maintains interface compatibility with applications already built on top of the Teleporter protocol. The architecture looks as follows.
 
