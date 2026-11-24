@@ -170,7 +170,7 @@ func ZKAdapterVerifier(
 	)
 	Expect(err).Should(BeNil())
 	Expect(result.Valid).Should(BeTrue())
-	Expect(result.Root).Should(Equal(common.HexToHash(fixture.AnchorBeaconBlockRoot)))
+	Expect(common.Hash(result.Root)).Should(Equal(common.HexToHash(fixture.AnchorBeaconBlockRoot)))
 
 	// Construct execution and receipt proofs from the fixtures
 	execProof := zkadapter.ExecutionProof{
