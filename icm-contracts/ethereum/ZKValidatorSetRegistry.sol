@@ -133,6 +133,10 @@ contract ZKValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             require(pChainSigned, "Initial registration must be signed by the P-Chain");
         } else {
             require(selfSigned || (pChainSigned && allowPChainFallback), "Invalid signing chain");
+            require(
+                _valSetCommitments[payloadBlockchainID].pChainHeight < newCommitment.pChainHeight,
+                "Block height of commitment is too old"
+            );
         }
 
         verifyICMMessage(message, signingChainID);
