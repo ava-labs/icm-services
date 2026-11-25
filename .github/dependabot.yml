@@ -38,6 +38,16 @@ updates:
       weekly-github-actions:
         patterns:
           - "*"
+  - package-ecosystem: "pip"
+    directory: "/.github/requirements"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      weekly-pip:
+        patterns:
+          - "*"
   - package-ecosystem: "cargo"
     directories:
       - "/icm-macros"

@@ -29,7 +29,7 @@ jobs:
 
       - name: Install Slither
         run: |
-          pip install slither-analyzer
+          pip install --require-hashes --no-deps -r .github/requirements/slither.txt
 
       # Foundry is pinned in scripts/install_foundry.sh, so the key changes with the pin.
       - name: Cache Foundry
