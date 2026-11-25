@@ -403,6 +403,12 @@ func (m *messageHandler) sendMessage(
 		return common.Hash{}, fmt.Errorf("failed to pack receiveCrossChainMessage: %w", err)
 	}
 
+	// The proof is part of the calldata, so an oversized delivery would be refused by the
+	// destination node on every attempt. Abandon it before estimating gas or signing.
+	if err := messages.CheckDeliverySize(callData); err != nil {
+		return common.Hash{}, err
+	}
+
 	teleporterAddress := m.messageConfig.teleporterAddress()
 	sender := messages.SelectSenderAddress(
 		m.destinationClient.SenderAddresses(), m.teleporterMessage.AllowedRelayerAddresses,
@@ -425,7 +431,7 @@ func (m *messageHandler) sendMessage(
 		callData,
 	)
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to send transaction: %w", err)
+		return common.Hash{}, fmt.Errorf("failed to send transaction: %w", messages.WrapSendError(err))
 	}
 
 	if err := messages.CheckReceiptStatus(receipt, gasLimit); err != nil {

@@ -154,3 +154,52 @@ func TestEstimateGasLimit(t *testing.T) {
 		require.Equal(t, blockGasLimit, gasLimit)
 	})
 }
+
+func TestCheckDeliverySize(t *testing.T) {
+	nonZero := func(n int) []byte {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = 1
+		}
+		return b
+	}
+	tests := []struct {
+		name     string
+		callData []byte
+		tooLarge bool
+	}{
+		{"small", nonZero(1000), false},
+		{"oversized", nonZero(MaxDeliveryTxSize), true},
+		{"just under size limit", nonZero(MaxDeliveryTxSize - minTxEnvelopeSize), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := CheckDeliverySize(tt.callData)
+			if tt.tooLarge {
+				require.ErrorIs(t, err, ErrDeliveryTooLarge)
+				require.ErrorIs(t, err, ErrNonRetryable)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestWrapSendError(t *testing.T) {
+	require.NoError(t, WrapSendError(nil))
+
+	transient := errors.New("connection refused")
+	require.Equal(t, transient, WrapSendError(transient))
+	require.NotErrorIs(t, WrapSendError(transient), ErrNonRetryable)
+
+	for _, msg := range []string{
+		"oversized data: transaction size 200000, limit 131072",
+		"exceeds block gas limit",
+		"intrinsic gas too low: have 21000, want 3000000",
+	} {
+		err := WrapSendError(errors.New(msg))
+		require.ErrorIs(t, err, ErrDeliveryTooLarge)
+		require.ErrorIs(t, err, ErrNonRetryable)
+		require.Equal(t, "delivery too large", NonRetryableReason(err))
+	}
+}
