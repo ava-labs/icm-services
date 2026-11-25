@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/vms"
@@ -29,7 +30,53 @@ const (
 	// to absorb state drift between estimation and inclusion.
 	gasLimitBufferNumerator   = 5
 	gasLimitBufferDenominator = 4
+
+	// MaxDeliveryTxSize is the largest transaction, in bytes, that the EVM transaction pool
+	// accepts (4 slots of 32KiB). Larger transactions are refused before execution.
+	MaxDeliveryTxSize = 4 * 32 * 1024
+
+	// minTxEnvelopeSize is a lower bound on the non-calldata bytes of a signed transaction
+	// (type byte, list header, nonce, fees, gas, recipient and signature). It is deliberately
+	// low so that the pre-check never rejects a transaction the node would accept; anything it
+	// misses is caught by [WrapSendError].
+	minTxEnvelopeSize = 100
 )
+
+// nodeRefusalMarkers are fragments of the errors a node returns when it refuses a transaction
+// for its size or gas limits. These are properties of the transaction, so a resend is refused
+// identically.
+var nodeRefusalMarkers = []string{
+	"oversized data",
+	"exceeds block gas limit",
+	"intrinsic gas too low",
+}
+
+// CheckDeliverySize returns [ErrDeliveryTooLarge] if a transaction carrying [callData] exceeds
+// [MaxDeliveryTxSize], so the destination node would refuse it on every attempt. Gas limits are
+// not checked here: gas estimation covers them, and [WrapSendError] catches node refusals.
+func CheckDeliverySize(callData []byte) error {
+	if size := len(callData) + minTxEnvelopeSize; size > MaxDeliveryTxSize {
+		return fmt.Errorf("%w: transaction size at least %d bytes, limit %d",
+			ErrDeliveryTooLarge, size, MaxDeliveryTxSize)
+	}
+	return nil
+}
+
+// WrapSendError marks an error from broadcasting the delivery as [ErrDeliveryTooLarge] when the
+// node refused the transaction for its size or gas, which no retry can change. Other errors are
+// returned unchanged and stay retryable.
+func WrapSendError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	for _, marker := range nodeRefusalMarkers {
+		if strings.Contains(msg, marker) {
+			return fmt.Errorf("%w: node refused transaction: %w", ErrDeliveryTooLarge, err)
+		}
+	}
+	return err
+}
 
 // IsAllowedRelayer reports whether the EOA may deliver a message restricted to
 // [allowedRelayers]. An empty restriction allows every relayer.
