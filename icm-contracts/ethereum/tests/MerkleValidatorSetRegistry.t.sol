@@ -374,6 +374,36 @@ contract MerkleValidatorSetRegistryRegisterUpdateTest is MerkleValidatorSetRegis
         assertEq(stored.pChainHeight, newCommitment.pChainHeight);
     }
 
+    /// @dev Update of P-chain validator set reverts, signed by the currently stored P-chain validators.
+    /// Here we update the P-chain's own commitment, since it's already registered at construction.
+    /// We use a stale block height causing a revert.
+    function testUpdateExistingChainRevertsOldBlockheight() public {
+        ValidatorSetMerkleCommitment memory newCommitment = ValidatorSetMerkleCommitment({
+            avalancheBlockchainID: PCHAIN_BLOCKCHAIN_ID,
+            root: bytes32(uint256(0xababa)),
+            totalWeight: 10,
+            pChainHeight: 1,
+            pChainTimestamp: 2
+        });
+
+        ValidatorSetMerkleCommitment memory oldCommitment =
+            _registry.getValidatorSetCommitment(PCHAIN_BLOCKCHAIN_ID);
+        ICMMessage memory message = _signedRegistrationMessage(
+            PCHAIN_BLOCKCHAIN_ID,
+            ValidatorSets.serializeMerkleCommitment(newCommitment),
+            dummyPChainValidatorSetSecretKeys()
+        );
+
+        vm.expectRevert(bytes("Block height of commitment is too old"));
+        _registry.registerValidatorSet(message, PCHAIN_BLOCKCHAIN_ID);
+
+        ValidatorSetMerkleCommitment memory stored =
+            _registry.getValidatorSetCommitment(PCHAIN_BLOCKCHAIN_ID);
+        assertEq(stored.root, oldCommitment.root);
+        assertEq(stored.totalWeight, oldCommitment.totalWeight);
+        assertEq(stored.pChainHeight, oldCommitment.pChainHeight);
+    }
+
     /// @dev regValidatorSet reverts when the payload chain isn't yet registered.
     function testUpdateRevertsOnUnregisteredChain() public {
         ValidatorSetMerkleCommitment memory newCommitment = ValidatorSetMerkleCommitment({
