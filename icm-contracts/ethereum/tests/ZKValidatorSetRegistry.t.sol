@@ -371,8 +371,7 @@ contract ZKValidatorSetRegistryRegisterUpdateTest is ZKValidatorSetRegistryCommo
     function testUpdateExistingChainRevertsOldBlockheight() public {
         ValidatorSetMerkleCommitment memory oldCommitment =
             _registry.getValidatorSetCommitment(PCHAIN_BLOCKCHAIN_ID);
-        bytes memory raw =
-            _commitmentAt(PCHAIN_BLOCKCHAIN_ID, bytes32(uint256(0xABABA)), 10, 1);
+        bytes memory raw = _commitmentAt(PCHAIN_BLOCKCHAIN_ID, bytes32(uint256(0xABABA)), 10, 1);
         ICMMessage memory message =
             _signedICMMessage(PCHAIN_BLOCKCHAIN_ID, raw, PCHAIN_GENESIS_ROOT, 100);
 
