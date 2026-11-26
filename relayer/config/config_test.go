@@ -369,6 +369,46 @@ func TestIndividualSignersConfig(t *testing.T) {
 	}
 }
 
+// Each entry of the KMS key list must name both a key and its region, and the error must say
+// which of the two is missing.
+func TestKMSKeyListValidation(t *testing.T) {
+	testCases := []struct {
+		name        string
+		key         KMSKey
+		expectedErr string
+	}{
+		{
+			name:        "missing key ID",
+			key:         KMSKey{AWSRegion: awsRegion},
+			expectedErr: "KMS AWS region provided without a key ID",
+		},
+		{
+			name:        "missing AWS region",
+			key:         KMSKey{KeyID: kmsKey1},
+			expectedErr: "KMS key ID provided without an AWS region",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dstCfg := *TestValidConfig.DestinationBlockchains[0]
+			dstCfg.KMSKeys = []KMSKey{testCase.key}
+			require.ErrorContains(t, dstCfg.Validate(), testCase.expectedErr)
+		})
+	}
+}
+
+// A top-level API section left out of the configuration must fail validation with an error
+// naming the section, not a nil pointer dereference.
+func TestValidateMissingAPIConfig(t *testing.T) {
+	cfg := TestValidConfig
+	cfg.PChainAPI = nil
+	require.ErrorContains(t, cfg.Validate(), "failed to validate p-chain API config")
+
+	cfg = TestValidConfig
+	cfg.InfoAPI = nil
+	require.ErrorContains(t, cfg.Validate(), "failed to validate info API config")
+}
+
 func TestGetWarpConfig(t *testing.T) {
 	// This is necessary to support fetching warp config from the genesis block
 	evm.RegisterAllLibEVMExtras()
@@ -1187,6 +1227,62 @@ func TestConfigSanitizationRedactsEndpointCredentials(t *testing.T) {
 	ext := ExternalEVMDestination{RPCEndpoint: "https://eth-mainnet.g.alchemy.com/v2/" + pathKey}
 	extSanitized := sanitizeStruct(reflect.ValueOf(ext), reflect.TypeOf(ext))
 	require.Equal(t, "https://eth-mainnet.g.alchemy.com/"+redactedValue, extSanitized["rpc-endpoint"])
+}
+
+// A message contract's settings are a map[string]any, so every value reaches the sanitizer
+// wrapped in an interface. Endpoint URLs in them, at any depth, must be redacted like any other
+// string, and non-string values must survive unchanged.
+func TestConfigSanitizationRedactsMessageContractSettings(t *testing.T) {
+	const (
+		beaconKey = "BEACON_PATH_KEY_0123456789"
+		nestedKey = "NESTED_QUERY_KEY_abcdef"
+		headerVal = "Bearer SETTINGS_TOKEN_xyz"
+	)
+	rewardAddress := "0x0123456789abcdef0123456789abcdef01234567"
+	cfg := &Config{
+		SourceBlockchains: []*SourceBlockchain{{
+			MessageContracts: map[string]MessageProtocolConfig{
+				"0xabc": {
+					MessageFormat: "zk",
+					Settings: map[string]any{
+						"beacon-api-url":   "https://beacon.provider.example/v1/" + beaconKey,
+						"reward-address":   rewardAddress,
+						"seconds-per-slot": float64(12),
+						"unset":            nil,
+						"fallbacks":        []any{"https://backup.example/?key=" + nestedKey},
+						"headers":          map[string]string{"Authorization": headerVal},
+						"nested":           map[string]any{"url": "https://nested.example/v2/" + nestedKey},
+					},
+				},
+			},
+		}},
+	}
+
+	sanitized := cfg.sanitizeForLogging()
+	sources, ok := sanitized["source-blockchains"].([]any)
+	require.True(t, ok)
+	source, ok := sources[0].(map[string]any)
+	require.True(t, ok)
+	contracts, ok := source["message-contracts"].(map[string]any)
+	require.True(t, ok)
+	contract, ok := contracts["0xabc"].(map[string]any)
+	require.True(t, ok)
+	settings, ok := contract["settings"].(map[string]any)
+	require.True(t, ok)
+
+	require.Equal(t, "https://beacon.provider.example/"+redactedValue, settings["beacon-api-url"])
+	require.Equal(t, rewardAddress, settings["reward-address"])
+	require.Equal(t, float64(12), settings["seconds-per-slot"])
+	require.Nil(t, settings["unset"])
+	require.Equal(t, []any{"https://backup.example/" + redactedValue}, settings["fallbacks"])
+	require.Equal(t, map[string]any{"Authorization": redactedValue}, settings["headers"])
+	require.Equal(t, map[string]any{"url": "https://nested.example/" + redactedValue}, settings["nested"])
+
+	logged, err := json.Marshal(sanitized)
+	require.NoError(t, err)
+	for _, secret := range []string{beaconKey, nestedKey, headerVal} {
+		require.NotContains(t, string(logged), secret)
+	}
 }
 
 func TestGetJSONTag(t *testing.T) {

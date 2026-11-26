@@ -23,6 +23,7 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
 )
 
@@ -207,6 +208,15 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 			zap.Error(err),
 		)
 		return common.Hash{}, err
+	}
+	// A mined transaction is not necessarily a registered version: the receipt of a reverted
+	// transaction is returned without an error.
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		m.logger.Error(
+			"Transaction failed",
+			zap.Stringer("txID", receipt.TxHash),
+		)
+		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
 	}
 	m.logger.Info("Sent message to destination chain")
 	return receipt.TxHash, nil

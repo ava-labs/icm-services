@@ -513,7 +513,9 @@ func createApplicationRelayers(
 	applicationRelayers := make(map[common.Hash]*relayer.ApplicationRelayer)
 	minHeights := make(map[ids.ID]uint64)
 	for _, sourceBlockchain := range cfg.SourceBlockchains {
-		logger = logger.With(
+		// Shadow the logger rather than reassign it, so that each source chain's logs carry
+		// only its own ID and not those of the chains processed before it.
+		logger := logger.With(
 			zap.Stringer("sourceBlockchainID", sourceBlockchain.GetBlockchainID()),
 		)
 		currentHeight, err := sourceClients[sourceBlockchain.GetBlockchainID()].BlockNumber(ctx)

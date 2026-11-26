@@ -1215,12 +1215,14 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
     // Delegator cannot initiate end delegation when validator is pending removed.
     function testInitiateDelegatorRemovalValidatorPendingRemoved() public {
         bytes32 validationID = _registerDefaultValidator();
+        bytes32 delegationID = _initiateDefaultDelegatorRegistration(validationID);
 
         bytes memory setWeightMessage =
-            ValidatorMessages.packL1ValidatorWeightMessage(validationID, 1, 0);
+            ValidatorMessages.packL1ValidatorWeightMessage(validationID, 2, 0);
         bytes memory uptimeMessage = ValidatorMessages.packValidationUptimeMessage(
             validationID, DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
         );
+
         _initiateValidatorRemoval({
             validationID: validationID,
             completionTimestamp: DEFAULT_COMPLETION_TIMESTAMP,
@@ -1230,19 +1232,17 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
             force: false
         });
 
-        _beforeSend(_weightToValue(DEFAULT_DELEGATOR_WEIGHT), DEFAULT_DELEGATOR_ADDRESS);
+        _setUpCompleteDelegatorRegistrationWithChecks(
+            validationID, delegationID, DEFAULT_COMPLETION_TIMESTAMP + 1, 0, 2
+        );
 
         vm.expectRevert(
             abi.encodeWithSelector(
                 IValidatorManager.InvalidValidatorStatus.selector, ValidatorStatus.PendingRemoved
             )
         );
-        _initiateDelegatorRegistration(
-            validationID,
-            DEFAULT_DELEGATOR_ADDRESS,
-            DEFAULT_DELEGATOR_WEIGHT,
-            DEFAULT_DELEGATOR_ADDRESS
-        );
+
+        stakingManager.initiateDelegatorRemoval(delegationID, false, 0);
     }
 
     // Delegator may complete end delegation while validator is pending removed.
@@ -2210,38 +2210,6 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         stakingManager.completeDelegatorRemoval(delegationID, 0);
     }
 
-    function testCompleteDelegatorRegistrationValidatorPendingRemoved() public {
-        bytes32 validationID = _registerDefaultValidator();
-        bytes32 delegationID = _initiateDefaultDelegatorRegistration(validationID);
-
-        bytes memory setWeightMessage =
-            ValidatorMessages.packL1ValidatorWeightMessage(validationID, 2, 0);
-        bytes memory uptimeMessage = ValidatorMessages.packValidationUptimeMessage(
-            validationID, DEFAULT_COMPLETION_TIMESTAMP - DEFAULT_REGISTRATION_TIMESTAMP
-        );
-
-        _initiateValidatorRemoval({
-            validationID: validationID,
-            completionTimestamp: DEFAULT_COMPLETION_TIMESTAMP,
-            setWeightMessage: setWeightMessage,
-            includeUptime: true,
-            uptimeMessage: uptimeMessage,
-            force: false
-        });
-
-        _setUpCompleteDelegatorRegistrationWithChecks(
-            validationID, delegationID, DEFAULT_COMPLETION_TIMESTAMP + 1, 0, 2
-        );
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IValidatorManager.InvalidValidatorStatus.selector, ValidatorStatus.PendingRemoved
-            )
-        );
-
-        stakingManager.initiateDelegatorRemoval(delegationID, false, 0);
-    }
-
     function testResendEndDelegationWhileActive() public {
         bytes32 validationID = _registerDefaultValidator();
         bytes32 delegationID = _registerDefaultDelegator(validationID);
@@ -2349,6 +2317,18 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         uint32 messageIndex
     ) internal virtual override returns (bytes32) {
         return stakingManager.completeValidatorRegistration(messageIndex);
+    }
+
+    // A staking validator can only be removed without force once it has proven enough uptime to
+    // be eligible for rewards, so it is ended with an uptime proof rather than without one.
+    function _registerAndCompleteDefaultValidator()
+        internal
+        virtual
+        override
+        returns (bytes32 validationID)
+    {
+        validationID = _registerDefaultValidator();
+        _endDefaultValidatorWithChecks(validationID, 1);
     }
 
     function _initiateValidatorRemoval(

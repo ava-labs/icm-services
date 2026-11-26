@@ -386,15 +386,15 @@ func (c *Config) sanitizeForLogging() map[string]any {
 
 // sanitizeValue recursively sanitizes any value based on struct tags
 func sanitizeValue(v reflect.Value, t reflect.Type) any {
-	// Handle nil pointers
-	if v.Kind() == reflect.Ptr && v.IsNil() {
-		return nil
-	}
-
-	// Dereference pointers
-	if v.Kind() == reflect.Ptr {
+	// Unwrap pointers and interfaces down to the value they hold. A map[string]any, such as a
+	// message contract's settings, holds its values as interfaces, so without unwrapping them
+	// their strings would skip the redaction below and be logged as is.
+	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return nil
+		}
 		v = v.Elem()
-		t = t.Elem()
+		t = v.Type()
 	}
 
 	switch v.Kind() {

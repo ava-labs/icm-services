@@ -19,6 +19,7 @@ import (
 	mock_evm "github.com/ava-labs/icm-services/vms/evm/mocks"
 	mock_vms "github.com/ava-labs/icm-services/vms/mocks"
 	"github.com/ava-labs/libevm/common"
+	"github.com/ava-labs/libevm/core/types"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -191,6 +192,80 @@ func TestShouldSendMessage(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, test.expectedResult, result)
 			}
+		})
+	}
+}
+
+// A transaction that is mined but reverts registered nothing, so SendMessage must report it as a
+// failure rather than return its hash as a successful delivery.
+func TestSendMessageChecksReceiptStatus(t *testing.T) {
+	txHash := common.HexToHash("0x1234")
+	testCases := []struct {
+		name          string
+		status        uint64
+		expectedHash  common.Hash
+		expectedError bool
+	}{
+		{
+			name:         "successful transaction",
+			status:       types.ReceiptStatusSuccessful,
+			expectedHash: txHash,
+		},
+		{
+			name:          "reverted transaction",
+			status:        types.ReceiptStatusFailed,
+			expectedError: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			mockClient := mock_vms.NewMockDestinationClient(ctrl)
+			mockClient.EXPECT().DestinationBlockchainID().Return(destinationBlockchainID).AnyTimes()
+			mockClient.EXPECT().
+				SendTx(
+					gomock.Any(),
+					gomock.Any(),
+					gomock.Any(),
+					teleporterRegistryAddress,
+					addProtocolVersionGasLimit,
+					gomock.Any(),
+				).
+				Return(&types.Receipt{Status: test.status, TxHash: txHash}, nil).
+				Times(1)
+
+			factory, err := NewMessageHandlerFactory(messageProtocolConfig)
+			require.NoError(t, err)
+			unsignedMessage := createRegistryUnsignedWarpMessage(
+				t,
+				teleporterregistry.ProtocolRegistryEntry{
+					Version:         big.NewInt(1),
+					ProtocolAddress: common.HexToAddress("0x1"),
+				},
+				teleporterRegistryAddress,
+				destinationBlockchainID,
+			)
+			handler, err := factory.NewMessageHandler(
+				logging.NoLog{},
+				toSourceMessage(unsignedMessage),
+				mockClient,
+				nil,
+				mocks.NewMockMetrics(ctrl),
+				ids.Empty,
+				0,
+			)
+			require.NoError(t, err)
+			signedMessage, err := warp.NewMessage(unsignedMessage, &warp.BitSetSignature{})
+			require.NoError(t, err)
+
+			hash, err := handler.(*messageHandler).SendMessage(signedMessage)
+			if test.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, test.expectedHash, hash)
 		})
 	}
 }
