@@ -27,7 +27,7 @@ struct TeleporterMessageV2 {
     bytes32 destinationBlockchainID;
     address destinationAddress;
     uint256 requiredGasLimit;
-    // #[pack(length="uint32")]
+    // #[pack(method="serializeAddresses")]
     // #[unpack(length="uint32")]
     address[] allowedRelayerAddresses;
     // #[pack(method="serializeTeleporterReceipts")]
@@ -94,6 +94,28 @@ library TeleporterV2Parsing {
     }
 
     /**
+     * @notice serialize an array of `address` instances, prefixed with a uint32 count.
+     * @dev Single linear pass over a preallocated buffer. Packing each element with
+     * abi.encodePacked in a loop would re-copy the whole buffer per element.
+     */
+    function serializeAddresses(address[] memory addresses) internal pure returns (bytes memory) {
+        bytes memory serialized = new bytes(addresses.length * 20);
+        /* solhint-disable no-inline-assembly */
+        assembly ("memory-safe") {
+            let s := add(serialized, 32)
+            let r := add(addresses, 44)
+            let l := mload(addresses)
+            for { let i := 0 } lt(i, l) { i := add(i, 1) } {
+                mstore(s, mload(r))
+                s := add(s, 20)
+                r := add(r, 32)
+            }
+        }
+        /* solhint-enable no-inline-assembly */
+        return abi.encodePacked(uint32(addresses.length), serialized);
+    }
+
+    /**
      * @notice serialize an array of `TeleporterMessageReceipt` instances
      */
     function serializeTeleporterReceipts(TeleporterMessageReceipt[] memory receipts)
@@ -124,22 +146,6 @@ library TeleporterV2Parsing {
     }
 
     function packTeleporterMessageV2(TeleporterMessageV2 memory obj) internal pure returns (bytes memory) {
-        /* solhint-disable var-name-mixedcase */
-
-        bytes memory allowedRelayerAddresses_bytes;
-        {
-            uint256 allowedRelayerAddresses_0_count = obj.allowedRelayerAddresses.length;
-            allowedRelayerAddresses_bytes = abi.encodePacked(uint32(allowedRelayerAddresses_0_count));
-            for (uint256 i_0 = 0; i_0 < allowedRelayerAddresses_0_count;) {
-                bytes memory allowedRelayerAddresses_1_bytes;
-                allowedRelayerAddresses_1_bytes = abi.encodePacked(obj.allowedRelayerAddresses[i_0]);
-                allowedRelayerAddresses_bytes =
-                    abi.encodePacked(allowedRelayerAddresses_bytes, allowedRelayerAddresses_1_bytes);
-                unchecked {
-                    ++i_0;
-                }
-            }
-        }
         return abi.encodePacked(
             abi.encodePacked(obj.messageNonce),
             abi.encodePacked(obj.originSenderAddress),
@@ -147,11 +153,10 @@ library TeleporterV2Parsing {
             abi.encodePacked(obj.destinationBlockchainID),
             abi.encodePacked(obj.destinationAddress),
             abi.encodePacked(obj.requiredGasLimit),
-            allowedRelayerAddresses_bytes,
+            serializeAddresses(obj.allowedRelayerAddresses),
             serializeTeleporterReceipts(obj.receipts),
             abi.encodePacked(obj.message.length, obj.message)
         );
-        /* solhint-enable var-name-mixedcase */
     }
 
     function packTeleporterICMMessage(TeleporterICMMessage memory obj) internal pure returns (bytes memory) {
