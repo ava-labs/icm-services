@@ -88,7 +88,7 @@ library TeleporterV2Parsing {
             });
             offsetReceipts += 52;
             unchecked {
-                i++;
+                ++i;
             }
         }
         return (offsetReceipts, receipts);
