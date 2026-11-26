@@ -14,7 +14,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/set"
 	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	"github.com/ava-labs/icm-services/vms/evm/signer"
-	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -25,8 +24,6 @@ import (
 const (
 	// externalEVMPoolTxsPerAccount limits pending txs per account in mempool
 	externalEVMPoolTxsPerAccount = 16
-	// gasLimitForSimulation is the gas limit used when simulating calls
-	gasLimitForSimulation = 2_000_000
 )
 
 // ExternalEVMDestinationClient handles communication with external EVM chains
@@ -35,10 +32,8 @@ const (
 // Implements vms.DestinationClient interface.
 type ExternalEVMDestinationClient struct {
 	ethClient       EthClient
-	chainID         string
 	evmChainID      *big.Int
 	registryAddress common.Address
-	rpcEndpointURL  string
 	blockGasLimit   uint64
 
 	// Gas fee configuration
@@ -106,10 +101,8 @@ func NewExternalEVMDestinationClient(
 	}
 	destClient := &ExternalEVMDestinationClient{
 		ethClient:          wrappedClient,
-		chainID:            chainID,
 		evmChainID:         evmChainID,
 		registryAddress:    registryAddress,
-		rpcEndpointURL:     rpcEndpointURL,
 		blockGasLimit:      blockGasLimit,
 		gasFeeConfig:       gasFeeData,
 		txInclusionTimeout: time.Duration(txInclusionTimeoutSeconds) * time.Second,
@@ -164,12 +157,6 @@ func NewExternalEVMDestinationClient(
 	return destClient, nil
 }
 
-// getFeePerGas calculates the gas fee cap and gas tip cap for transactions.
-// nolint:unused
-func (c *ExternalEVMDestinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c.ethClient, c.gasFeeConfig)
-}
-
 // SendTx sends a transaction to an external EVM chain.
 // Uses channel-based concurrency for nonce management.
 func (c *ExternalEVMDestinationClient) SendTx(
@@ -217,16 +204,6 @@ func (c *ExternalEVMDestinationClient) BlockGasLimit() uint64 {
 	return c.blockGasLimit
 }
 
-// GetRPCEndpointURL returns the RPC endpoint URL for this external chain.
-func (c *ExternalEVMDestinationClient) GetRPCEndpointURL() string {
-	return c.rpcEndpointURL
-}
-
-// RegistryAddress returns the registry contract address for this external chain.
-func (c *ExternalEVMDestinationClient) RegistryAddress() common.Address {
-	return c.registryAddress
-}
-
 // GetPChainHeightForDestination queries the registry contract for its known P-chain height.
 func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 	ctx context.Context,
@@ -245,54 +222,4 @@ func (c *ExternalEVMDestinationClient) GetPChainHeightForDestination(
 		return 0, fmt.Errorf("failed to read merkle commitment: %w", err)
 	}
 	return commitment.PChainHeight, nil
-}
-
-// SimulateCall simulates a contract call and returns the revert reason if it fails.
-// This is useful for debugging why a transaction might fail before sending it.
-func (c *ExternalEVMDestinationClient) SimulateCall(
-	ctx context.Context,
-	toAddress string,
-	callData []byte,
-) ([]byte, error) {
-	to := common.HexToAddress(toAddress)
-
-	// Use the first sender's address as the "from" address for simulation
-	var fromAddress common.Address
-	if len(c.concurrentSenders) > 0 {
-		fromAddress = c.concurrentSenders[0].signer.Address()
-	}
-
-	callMsg := ethereum.CallMsg{
-		From: fromAddress,
-		To:   &to,
-		Gas:  gasLimitForSimulation, // Use same gas limit as actual transactions
-		Data: callData,
-	}
-
-	return c.ethClient.CallContract(ctx, callMsg, nil) // nil = latest block
-}
-
-// SimulateCallAtBlock simulates a contract call at a specific block number.
-func (c *ExternalEVMDestinationClient) SimulateCallAtBlock(
-	ctx context.Context,
-	toAddress string,
-	callData []byte,
-	blockNumber *big.Int,
-) ([]byte, error) {
-	to := common.HexToAddress(toAddress)
-
-	var fromAddress common.Address
-	if len(c.concurrentSenders) > 0 {
-		fromAddress = c.concurrentSenders[0].signer.Address()
-	}
-
-	callMsg := ethereum.CallMsg{
-		From: fromAddress,
-		To:   &to,
-		Gas:  gasLimitForSimulation,
-		Data: callData,
-	}
-
-	result, err := c.ethClient.CallContract(ctx, callMsg, blockNumber)
-	return result, err
 }

@@ -42,7 +42,6 @@ abstract contract TokenTransferrerTest is Test {
     address public constant DEFAULT_TOKEN_REMOTE_ADDRESS =
         0xd878229c9c3575F224784DE610911B5607a3ad15;
     address public constant DEFAULT_TOKEN_HOME_ADDRESS = 0xd54e3E251b9b0EEd3ed70A858e927bbC2659587d;
-    address public constant DEFAULT_SENDER_ADDRESS = 0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5;
     address public constant DEFAULT_RECIPIENT_ADDRESS = 0xABCDabcdABcDabcDaBCDAbcdABcdAbCdABcDABCd;
     address public constant DEFAULT_RECIPIENT_CONTRACT_ADDRESS =
         0xa83114A443dA1CecEFC50368531cACE9F37fCCcb;
@@ -62,7 +61,6 @@ abstract contract TokenTransferrerTest is Test {
     bytes32 internal constant _MOCK_MESSAGE_ID =
         bytes32(hex"1111111111111111111111111111111111111111111111111111111111111111");
 
-    uint256 internal constant _DEFAULT_FEE_AMOUNT = 123456;
     uint256 internal constant _DEFAULT_TRANSFER_AMOUNT = 1e18;
     uint256 internal constant _DEFAULT_INITIAL_RESERVE_IMBALANCE = 1e18;
     uint256 internal constant _DEFAULT_BURN_FEE_REWARDS_PERCENTAGE = 1;
@@ -323,14 +321,6 @@ abstract contract TokenTransferrerTest is Test {
             MOCK_TELEPORTER_MESSENGER_ADDRESS,
             abi.encodeCall(ITeleporterMessenger.sendCrossChainMessage, (expectedMessageInput))
         );
-    }
-
-    // This function is overridden by TeleporterTokenDestinationTests
-    function _scaleTokens(
-        uint256 amount,
-        bool
-    ) internal virtual returns (uint256) {
-        return amount;
     }
 
     function _createDefaultSendTokensInput() internal view virtual returns (SendTokensInput memory);

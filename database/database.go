@@ -44,7 +44,7 @@ type RelayerDatabase interface {
 
 func NewDatabase(logger logging.Logger, cfg *config.Config) (RelayerDatabase, error) {
 	if cfg.RedisURL != "" {
-		db, err := NewRedisDatabase(logger, cfg.RedisURL, GetConfigRelayerIDs(cfg))
+		db, err := NewRedisDatabase(logger, cfg.RedisURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create redis database: %w", err)
 		}

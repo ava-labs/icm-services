@@ -23,7 +23,7 @@ type RedisDatabase struct {
 	client *redis.Client
 }
 
-func NewRedisDatabase(logger logging.Logger, redisURL string, relayerIDs []RelayerID) (*RedisDatabase, error) {
+func NewRedisDatabase(logger logging.Logger, redisURL string) (*RedisDatabase, error) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
 		err = redactURLError(err)

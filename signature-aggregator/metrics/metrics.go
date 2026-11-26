@@ -4,15 +4,7 @@
 package metrics
 
 import (
-	"errors"
-
 	"github.com/prometheus/client_golang/prometheus"
-)
-
-var (
-	ErrFailedToCreateSignatureAggregatorMetrics = errors.New(
-		"failed to create signature aggregator metrics",
-	)
 )
 
 var Opts = struct {

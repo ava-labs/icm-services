@@ -34,11 +34,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	DefaultTeleporterTransactionGas   uint64 = 300_000
-	DefaultTeleporterTransactionValue        = common.Big0
-)
-
 // Supported Message Protocols
 type TeleporterProtocol int
 
@@ -872,35 +867,6 @@ func GetOutstandingReceiptCount(
 //
 // Transaction utils
 //
-
-// Constructs a transaction to call sendCrossChainMessage
-// Returns the signed transaction.
-func CreateSendCrossChainMessageTransaction(
-	ctx context.Context,
-	source testinfo.L1TestInfo,
-	input teleportermessenger.TeleporterMessageInput,
-	senderKey *ecdsa.PrivateKey,
-	teleporterContractAddress common.Address,
-) *types.Transaction {
-	data, err := teleportermessenger.PackSendCrossChainMessage(input)
-	Expect(err).Should(BeNil())
-
-	gasFeeCap, gasTipCap, nonce := CalculateTxParams(ctx, source.EthClient, PrivateKeyToAddress(senderKey))
-
-	// Send a transaction to the Teleporter contract
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   source.EVMChainID,
-		Nonce:     nonce,
-		To:        &teleporterContractAddress,
-		Gas:       DefaultTeleporterTransactionGas,
-		GasFeeCap: gasFeeCap,
-		GasTipCap: gasTipCap,
-		Value:     DefaultTeleporterTransactionValue,
-		Data:      data,
-	})
-
-	return SignTransaction(tx, senderKey, source.EVMChainID)
-}
 
 // Constructs a transaction to call receiveCrossChainMessage
 // Returns the signed transaction.

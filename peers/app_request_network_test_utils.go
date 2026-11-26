@@ -40,7 +40,6 @@ func NewAppRequestNetworkForTesting(
 		network:            mockNetwork,
 		handler:            handler,
 		logger:             logger,
-		metrics:            metrics,
 		trackedSubnets:     set.NewSet[ids.ID](0),
 		lruSubnets:         linked.NewHashmap[ids.ID, interface{}](),
 		trackedSubnetsLock: new(sync.RWMutex),

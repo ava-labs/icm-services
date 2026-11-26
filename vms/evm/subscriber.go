@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/utils"
 	ethereum "github.com/ava-labs/libevm"
@@ -115,13 +114,12 @@ type ICMBlockInfo struct {
 }
 
 type Subscriber struct {
-	wsClient     SubscriberWSClient
-	rpcClient    SubscriberRPCClient
-	blockchainID ids.ID
-	filter       EventFilter
-	logs         chan types.Log
-	icmBlocks    chan *ICMBlockInfo
-	sub          ethereum.Subscription
+	wsClient  SubscriberWSClient
+	rpcClient SubscriberRPCClient
+	filter    EventFilter
+	logs      chan types.Log
+	icmBlocks chan *ICMBlockInfo
+	sub       ethereum.Subscription
 
 	// highestDispatchedBlock is the highest source chain block that has been
 	// dispatched for processing, either by catch-up or from the subscription.
@@ -145,7 +143,6 @@ type Subscriber struct {
 // [startingHeight] onward.
 func NewSubscriber(
 	logger logging.Logger,
-	blockchainID ids.ID,
 	wsClient SubscriberWSClient,
 	rpcClient SubscriberRPCClient,
 	errChan chan error,
@@ -158,7 +155,6 @@ func NewSubscriber(
 	}
 
 	subscriber := &Subscriber{
-		blockchainID:           blockchainID,
 		filter:                 filter,
 		wsClient:               wsClient,
 		rpcClient:              rpcClient,
@@ -581,10 +577,4 @@ func (s *Subscriber) ICMBlocks() <-chan *ICMBlockInfo {
 // SubscribeErr returns the error channel for the underlying subscription
 func (s *Subscriber) SubscribeErr() <-chan error {
 	return s.sub.Err()
-}
-
-// Err returns the error channel for miscellaneous errors not recoverable from
-// by resubscribing.
-func (s *Subscriber) Err() <-chan error {
-	return s.errChan
 }

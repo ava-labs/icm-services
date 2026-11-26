@@ -22,7 +22,6 @@ import (
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
-	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/ava-labs/libevm/ethclient"
 	"go.uber.org/zap"
@@ -54,7 +53,6 @@ type MerkleSetUpdater struct {
 	signatureAggregator *aggregator.SignatureAggregator
 	ethClient           *ethclient.Client
 	contract            *merklevalidatorsetregistry.MerkleValidatorSetRegistry
-	contractAddress     common.Address
 	txOpts              *bind.TransactOpts
 
 	networkID    uint32
@@ -83,7 +81,6 @@ func NewMerkleSetUpdater(
 	signatureAggregator *aggregator.SignatureAggregator,
 	ethClient *ethclient.Client,
 	contract *merklevalidatorsetregistry.MerkleValidatorSetRegistry,
-	contractAddress common.Address,
 	txOpts *bind.TransactOpts,
 	networkID uint32,
 	blockchainID ids.ID,
@@ -99,7 +96,6 @@ func NewMerkleSetUpdater(
 		signatureAggregator: signatureAggregator,
 		ethClient:           ethClient,
 		contract:            contract,
-		contractAddress:     contractAddress,
 		txOpts:              txOpts,
 		networkID:           networkID,
 		blockchainID:        blockchainID,

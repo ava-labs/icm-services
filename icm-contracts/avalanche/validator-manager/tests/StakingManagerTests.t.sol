@@ -15,7 +15,6 @@ import {WarpMessage, IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {PChainOwner} from "../ACP99Manager.sol";
 
 abstract contract StakingManagerTest is ValidatorManagerTest {
-    uint64 public constant DEFAULT_UPTIME = uint64(100);
     uint64 public constant DEFAULT_DELEGATOR_WEIGHT = uint64(1e5);
     uint64 public constant DEFAULT_DELEGATOR_INIT_REGISTRATION_TIMESTAMP =
         DEFAULT_REGISTRATION_TIMESTAMP + 1000;
@@ -25,15 +24,12 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP + DEFAULT_MINIMUM_STAKE_DURATION;
     address public constant DEFAULT_DELEGATOR_ADDRESS =
         address(0x1234123412341234123412341234123412341234);
-    address public constant DEFAULT_VALIDATOR_OWNER_ADDRESS =
-        address(0x2345234523452345234523452345234523452345);
     uint64 public constant DEFAULT_REWARD_RATE = uint64(10);
     uint64 public constant DEFAULT_MINIMUM_STAKE_DURATION = 24 hours;
     uint16 public constant DEFAULT_MINIMUM_DELEGATION_FEE_BIPS = 100;
     uint16 public constant DEFAULT_DELEGATION_FEE_BIPS = 150;
     uint8 public constant DEFAULT_MAXIMUM_STAKE_MULTIPLIER = 4;
     uint256 public constant DEFAULT_WEIGHT_TO_VALUE_FACTOR = 1e12;
-    uint256 public constant SECONDS_IN_YEAR = 31536000;
 
     StakingManager public stakingManager;
     IRewardCalculator public rewardCalculator;
@@ -2512,20 +2508,6 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         });
     }
 
-    function _completeDefaultDelegatorRegistration(
-        bytes32 validationID,
-        bytes32 delegationID
-    ) internal {
-        bytes memory setValidatorWeightPayload = ValidatorMessages.packL1ValidatorWeightMessage(
-            validationID, 1, DEFAULT_DELEGATOR_WEIGHT + DEFAULT_WEIGHT
-        );
-        _setUpCompleteDelegatorRegistration({
-            delegationID: delegationID,
-            completeRegistrationTimestamp: DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP,
-            setValidatorWeightPayload: setValidatorWeightPayload
-        });
-    }
-
     function _completeDefaultDelegator(
         bytes32 validationID,
         bytes32 delegationID
@@ -2682,22 +2664,6 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
         });
     }
 
-    function _endDefaultValidator(
-        bytes32 validationID,
-        uint64 expectedNonce
-    ) internal {
-        address validatorOwner = address(this);
-        _endValidationWithChecks({
-            validationID: validationID,
-            validatorOwner: validatorOwner,
-            completeRegistrationTimestamp: DEFAULT_REGISTRATION_TIMESTAMP,
-            completionTimestamp: DEFAULT_COMPLETION_TIMESTAMP,
-            validatorWeight: DEFAULT_WEIGHT,
-            expectedNonce: expectedNonce,
-            rewardRecipient: validatorOwner
-        });
-    }
-
     function _endValidationWithChecks(
         bytes32 validationID,
         address validatorOwner,
@@ -2844,48 +2810,6 @@ abstract contract StakingManagerTest is ValidatorManagerTest {
     ) internal {
         _mockGetPChainWarpMessage(weightUpdateMessage, true);
         stakingManager.completeDelegatorRemoval(delegationID, 0);
-    }
-
-    function _initiateAndCompleteDelegatorRemovalWithChecks(
-        bytes32 validationID,
-        bytes32 delegationID
-    ) internal {
-        _initiateDelegatorRemovalValidatorActiveWithChecks({
-            validationID: validationID,
-            sender: DEFAULT_DELEGATOR_ADDRESS,
-            delegationID: delegationID,
-            startDelegationTimestamp: DEFAULT_DELEGATOR_INIT_REGISTRATION_TIMESTAMP,
-            endDelegationTimestamp: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
-            expectedValidatorWeight: DEFAULT_WEIGHT,
-            expectedNonce: 2,
-            includeUptime: true,
-            force: false
-        });
-
-        uint256 expectedTotalReward = rewardCalculator.calculateReward({
-            stakeAmount: _weightToValue(DEFAULT_DELEGATOR_WEIGHT),
-            validatorStartTime: 0,
-            stakingStartTime: DEFAULT_DELEGATOR_COMPLETE_REGISTRATION_TIMESTAMP,
-            stakingEndTime: DEFAULT_DELEGATOR_END_DELEGATION_TIMESTAMP,
-            uptimeSeconds: 0
-        });
-
-        uint256 expectedValidatorFees =
-            _calculateValidatorFeesFromDelegator(expectedTotalReward, DEFAULT_DELEGATION_FEE_BIPS);
-        uint256 expectedDelegatorReward = expectedTotalReward - expectedValidatorFees;
-        address delegator = DEFAULT_DELEGATOR_ADDRESS;
-
-        _completeDelegatorRemovalWithChecks({
-            validationID: validationID,
-            delegationID: delegationID,
-            delegator: delegator,
-            delegatorWeight: DEFAULT_DELEGATOR_WEIGHT,
-            expectedValidatorFees: expectedValidatorFees,
-            expectedDelegatorReward: expectedDelegatorReward,
-            validatorWeight: DEFAULT_WEIGHT,
-            expectedValidatorWeight: DEFAULT_WEIGHT,
-            expectedNonce: 2
-        });
     }
 
     function _getStakeAssetBalance(

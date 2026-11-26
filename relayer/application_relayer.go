@@ -12,7 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/icm-services/database"
 	"github.com/ava-labs/icm-services/messages"
-	"github.com/ava-labs/icm-services/peers"
 	"github.com/ava-labs/icm-services/relayer/checkpoint"
 	"github.com/ava-labs/icm-services/relayer/config"
 	"github.com/ava-labs/icm-services/signature-aggregator/aggregator"
@@ -22,10 +21,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	retryTimeout  = 10 * time.Second
-	maxRetryCount = 5
-)
+const maxRetryCount = 5
 
 // ApplicationRelayers define a Warp message route from a specific source address on a specific source blockchain
 // to a specific destination address on a specific destination blockchain. This routing information is
@@ -33,7 +29,6 @@ const (
 type ApplicationRelayer struct {
 	logger                  logging.Logger
 	metrics                 messages.Metrics
-	network                 *peers.AppRequestNetwork
 	signingSubnetID         ids.ID
 	destinationClient       vms.DestinationClient
 	relayerID               database.RelayerID
@@ -46,7 +41,6 @@ type ApplicationRelayer struct {
 func NewApplicationRelayer(
 	logger logging.Logger,
 	metrics *ApplicationRelayerMetrics,
-	network *peers.AppRequestNetwork,
 	relayerID database.RelayerID,
 	destinationClient vms.DestinationClient,
 	sourceBlockchain *config.SourceBlockchain,
@@ -80,7 +74,6 @@ func NewApplicationRelayer(
 	return &ApplicationRelayer{
 		logger:                  logger.With(zap.Stringer("signingSubnetID", signingSubnet)),
 		metrics:                 metrics.forRelayer(relayerID),
-		network:                 network,
 		destinationClient:       destinationClient,
 		relayerID:               relayerID,
 		signingSubnetID:         signingSubnet,

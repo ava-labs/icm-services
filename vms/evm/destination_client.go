@@ -32,10 +32,9 @@ import (
 
 const (
 	// If the max base fee is not explicitly set, use 3x the current base fee estimate
-	defaultBaseFeeFactor          = 3
-	poolTxsPerAccount             = 16
-	pendingTxRefreshInterval      = 2 * time.Second
-	defaultBlockAcceptanceTimeout = 30 * time.Second
+	defaultBaseFeeFactor     = 3
+	poolTxsPerAccount        = 16
+	pendingTxRefreshInterval = 2 * time.Second
 
 	// epochCacheKey is the singleflight key for epoch caching
 	// Since we only cache one epoch per destination, the key is constant
@@ -55,7 +54,6 @@ type destinationClient struct {
 	readonlyConcurrentSigners []*readonlyConcurrentSigner
 
 	destinationBlockchainID ids.ID
-	rpcEndpointURL          string
 	evmChainID              *big.Int
 	blockGasLimit           uint64
 	gasFeeConfig            *GasFeeConfig
@@ -122,7 +120,6 @@ func NewDestinationClient(
 		ethClient:                 ethClient,
 		readonlyConcurrentSigners: make([]*readonlyConcurrentSigner, len(signers)),
 		destinationBlockchainID:   destinationID,
-		rpcEndpointURL:            destinationBlockchain.RPCEndpoint.BaseURL,
 		evmChainID:                evmChainID,
 		logger:                    logger,
 		blockGasLimit:             destinationBlockchain.BlockGasLimit,
@@ -196,14 +193,6 @@ func NewDestinationClient(
 	return destClient, nil
 }
 
-func (c *destinationClient) RPCClient() DestinationRPCClient {
-	return c.avaRPCClient
-}
-
-func (c *destinationClient) getFeePerGas() (*big.Int, *big.Int, error) {
-	return getFeePerGas(c.avaRPCClient, c.gasFeeConfig)
-}
-
 // SendTx constructs, signs, and broadcast a transaction to deliver the given {signedMessage}
 // to this chain with the provided {callData}.
 func (c *destinationClient) SendTx(
@@ -243,10 +232,6 @@ func (c *destinationClient) DestinationBlockchainID() ids.ID {
 
 func (c *destinationClient) BlockGasLimit() uint64 {
 	return c.blockGasLimit
-}
-
-func (c *destinationClient) GetRPCEndpointURL() string {
-	return c.rpcEndpointURL
 }
 
 // GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
