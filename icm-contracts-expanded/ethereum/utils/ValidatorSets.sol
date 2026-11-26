@@ -123,8 +123,11 @@ library ValidatorSets {
 
         // Stake-weighted quorum threshold check
         uint64 signerWeight = 0;
-        for (uint256 i = 0; i < numSigners; ++i) {
+        for (uint256 i = 0; i < numSigners;) {
             signerWeight += att.signers[i].weight;
+            unchecked {
+                ++i;
+            }
         }
         if (!ValidatorSets.verifyWeight(signerWeight, comm.totalWeight)) {
             return false;
@@ -132,8 +135,11 @@ library ValidatorSets {
 
         // Aggregate pubkeys and verify BLS signature over the warp preimage.
         bytes memory aggregateKey = att.signers[0].blsPublicKey;
-        for (uint256 i = 1; i < numSigners; ++i) {
+        for (uint256 i = 1; i < numSigners;) {
             aggregateKey = BLST.addG1(aggregateKey, att.signers[i].blsPublicKey);
+            unchecked {
+                ++i;
+            }
         }
         return BLST.verifySignature(aggregateKey, att.aggregateBlsSig, signedData);
     }
@@ -172,9 +178,12 @@ library ValidatorSets {
         uint32 numFlags = uint32(flags.length);
         uint256 flagBytesLen = Math.ceilDiv(numFlags, 8);
         bytes memory packedFlags = new bytes(flagBytesLen);
-        for (uint256 i = 0; i < numFlags; i++) {
+        for (uint256 i = 0; i < numFlags;) {
             if (flags[i]) {
                 packedFlags[i >> 3] |= bytes1(uint8(1) << uint8(i & 7));
+            }
+            unchecked {
+                ++i;
             }
         }
         return abi.encodePacked(numFlags, packedFlags);

@@ -832,8 +832,9 @@ fn element_assert_loop(
         })
         .collect();
     Ok(format!(
-        "\nfor (uint256 _j = 0; _j < {length_expr}; _j++){{\
+        "\nfor (uint256 _j = 0; _j < {length_expr};){{\
         \n    bytes1 _elem = {access_expr};{assert_lines}\
+        \n    unchecked {{ ++_j;}}\
         \n}}"
     ))
 }
