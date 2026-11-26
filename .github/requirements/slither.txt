@@ -617,9 +617,9 @@ ckzg==2.1.8 \
     --hash=sha256:fef164b9a0c7ed57935bf78bd23e701ba82efcca180e9b29814a94928a2d5880 \
     --hash=sha256:ff48587f541b625dd0e471ecc866cf91462100a4429e3c21cf4f099e7dff9150
     # via eth-account
-crytic-compile==0.3.11 \
-    --hash=sha256:10f99c5f03ab124a14603093d65e534b58f078999bc3a39997cb3588fa82f80b \
-    --hash=sha256:d4e2253d5d81ec3a75deb3ab9fc2c2d2db56e835001cf07f3703911d74b56716
+crytic-compile==0.4.2 \
+    --hash=sha256:161325e40785d8e42cdd8846b98d4f82c291ca5bcd07b5feae1a84d5a18c59fb \
+    --hash=sha256:18025359f0f615fac0ff10c706933860fdac12b5edd534ff6a47346a44ff9024
     # via slither-analyzer
 cytoolz==1.0.1 \
     --hash=sha256:0317681dd065532d21836f860b0563b199ee716f55d0c1f10de3ce7100c78a3b \
@@ -734,7 +734,7 @@ eth-account==0.13.7 \
     --hash=sha256:39727de8c94d004ff61d10da7587509c04d2dc7eac71e04830135300bdfc6d24 \
     --hash=sha256:5853ecbcbb22e65411176f121f5f24b8afeeaf13492359d254b16d8b18c77a46
     # via web3
-eth-hash==0.7.1 \
+eth-hash[pycryptodome]==0.7.1 \
     --hash=sha256:0fb1add2adf99ef28883fd6228eb447ef519ea72933535ad1a0b28c6f65f868a \
     --hash=sha256:d2411a403a0b0a62e8247b4117932d900ffb4c8c64b15f92620547ca5ce46be5
     # via
@@ -1407,10 +1407,10 @@ rlp==4.1.0 \
     # via
     #   eth-account
     #   eth-rlp
-slither-analyzer==0.11.3 \
-    --hash=sha256:09953ddb89d9ab182aa5826bda6fa3da482c82b5ffa371e34b35ba766044616e \
-    --hash=sha256:16bf8208a6ec68fc405c212be2a01308ea713d4a6113d355d5325d03cb25d315
-    # via -r .github/requirements/slither.in
+slither-analyzer==0.11.6 \
+    --hash=sha256:01f809198d3f171e2d768569c0054c96af5736614e183c64f42c9b51636c33c1 \
+    --hash=sha256:72aff6c1924a8641c1c8e4d84f9a4e6c97b5bfb3221bf71a11ffaee46d2f7da2
+    # via -r slither.in
 solc-select==1.2.0 \
     --hash=sha256:ad0a7afcae05061ce5e7632950b1fa0193ba9eaf05e4956f86effee024c6fb07 \
     --hash=sha256:dd00cab29229570c4399058852a4052f2120d87c7e341e35f04794a13cfdd1de
@@ -1427,8 +1427,6 @@ typing-extensions==4.13.2 \
     --hash=sha256:a439e7c04b49fec3e5d3e2beaa21755cadbbdc391694e28ccdd36ca4a1408f8c \
     --hash=sha256:e6c81219bd689f51865d9e372991c540bda33a0379d5573cddb9a3a23f7caaef
     # via
-    #   aiohttp
-    #   aiosignal
     #   eth-typing
     #   pydantic
     #   pydantic-core
