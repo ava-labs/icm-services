@@ -26,14 +26,19 @@ library PackMethods {
     }
 
     function packFixed(Fixed memory obj) public pure returns (bytes memory) {
+        /* solhint-disable reason-string */
+
         bytes memory result = abi.encodePacked(abi.encodePacked(obj.addr));
         {
             require(result.length == 20);
         }
         return result;
+        /* solhint-enable reason-string */
     }
 
     function packMultiAssert(MultiAssert memory obj) public pure returns (bytes memory) {
+        /* solhint-disable reason-string */
+
         bytes memory result = abi.encodePacked(abi.encodePacked(obj.data.length, obj.data));
         {
             require(result.length > 0);
@@ -42,21 +47,27 @@ library PackMethods {
             require(result.length % 2 == 0);
         }
         return result;
+        /* solhint-enable reason-string */
     }
 
     function serializeNamed(Named memory obj) public pure returns (bytes memory) {
+        /* solhint-disable reason-string */
+
         bytes memory result = abi.encodePacked(abi.encodePacked(obj.data.length, obj.data));
         {
             require(result.length == 48);
         }
         return result;
+        /* solhint-enable reason-string */
     }
 
     function packStatus(Status obj) public pure returns (bytes memory) {
+        /* solhint-disable reason-string */
         bytes memory result = abi.encodePacked(obj);
         {
             require(result.length == 1);
         }
         return result;
+        /* solhint-enable reason-string */
     }
 }
