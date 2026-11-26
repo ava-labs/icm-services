@@ -5,13 +5,11 @@ package clients
 
 import (
 	"context"
-	"net/netip"
 
 	"github.com/ava-labs/avalanchego/api/info"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/upgrade"
 	"github.com/ava-labs/avalanchego/utils/rpc"
-	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/icm-services/config"
 )
 
@@ -32,44 +30,12 @@ func NewInfoAPI(apiConfig *config.APIConfig) (*InfoAPI, error) {
 	}, nil
 }
 
-func (i *InfoAPI) GetBlockchainID(ctx context.Context, alias string) (ids.ID, error) {
-	return i.client.GetBlockchainID(ctx, alias, i.options...)
-}
-
 func (i *InfoAPI) GetNetworkID(ctx context.Context) (uint32, error) {
 	return i.client.GetNetworkID(ctx, i.options...)
 }
 
-func (i *InfoAPI) GetNetworkName(ctx context.Context) (string, error) {
-	return i.client.GetNetworkName(ctx, i.options...)
-}
-
-func (i *InfoAPI) GetNodeID(ctx context.Context) (ids.NodeID, *signer.ProofOfPossession, error) {
-	return i.client.GetNodeID(ctx, i.options...)
-}
-
-func (i *InfoAPI) GetNodeIP(ctx context.Context) (netip.AddrPort, error) {
-	return i.client.GetNodeIP(ctx, i.options...)
-}
-
-func (i *InfoAPI) GetNodeVersion(ctx context.Context) (*info.GetNodeVersionReply, error) {
-	return i.client.GetNodeVersion(ctx, i.options...)
-}
-
-func (i *InfoAPI) GetVMs(ctx context.Context) (map[ids.ID][]string, error) {
-	return i.client.GetVMs(ctx, i.options...)
-}
-
-func (i *InfoAPI) IsBootstrapped(ctx context.Context, chainID string) (bool, error) {
-	return i.client.IsBootstrapped(ctx, chainID, i.options...)
-}
-
 func (i *InfoAPI) Peers(ctx context.Context, nodeIDs []ids.NodeID) ([]info.Peer, error) {
 	return i.client.Peers(ctx, nodeIDs, i.options...)
-}
-
-func (i *InfoAPI) Uptime(ctx context.Context) (*info.UptimeResponse, error) {
-	return i.client.Uptime(ctx, i.options...)
 }
 
 func (i *InfoAPI) Upgrades(ctx context.Context) (*upgrade.Config, error) {

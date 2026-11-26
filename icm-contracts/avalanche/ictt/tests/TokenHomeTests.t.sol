@@ -890,19 +890,6 @@ abstract contract TokenHomeTest is TokenTransferrerTest {
         });
     }
 
-    function _createDefaultReceiveTokensInput() internal view returns (SendTokensInput memory) {
-        return SendTokensInput({
-            destinationBlockchainID: DEFAULT_TOKEN_HOME_BLOCKCHAIN_ID,
-            destinationTokenTransferrerAddress: address(tokenHome),
-            recipient: DEFAULT_RECIPIENT_ADDRESS,
-            primaryFeeTokenAddress: address(transferredToken),
-            primaryFee: 0,
-            secondaryFee: 0,
-            requiredGasLimit: 0,
-            multiHopFallback: DEFAULT_MULTIHOP_FALLBACK_ADDRESS
-        });
-    }
-
     function _getDefaultMessageSourceBlockchainID() internal pure override returns (bytes32) {
         return DEFAULT_TOKEN_HOME_BLOCKCHAIN_ID;
     }

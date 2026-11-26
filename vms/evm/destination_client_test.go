@@ -137,7 +137,7 @@ func TestGetFeePerGas(t *testing.T) {
 				).Times(suggestGasTipCapTimes),
 			)
 
-			gasFeeCap, gasTipCap, err := destClient.getFeePerGas()
+			gasFeeCap, gasTipCap, err := getFeePerGas(destClient.avaRPCClient, destClient.gasFeeConfig)
 			require.ErrorIs(t, err, test.expectedError)
 			require.Equal(t, test.expectedGasFeeCap, gasFeeCap)
 			require.Equal(t, test.expectedGasTipCap, gasTipCap)

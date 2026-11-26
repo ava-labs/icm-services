@@ -988,11 +988,6 @@ func (s *SignatureAggregator) isValidSignatureResponse(
 	pubKey *bls.PublicKey,
 ) (blsSignatureBuf, bool) {
 	log = log.With(zap.Stringer("nodeID", response.NodeID))
-	// If the handler returned an error response, count the response and continue
-	if response.Op == message.AppErrorOp {
-		log.Debug("Relayer async response failed")
-		return blsSignatureBuf{}, false
-	}
 
 	appResponse, ok := response.Message.(*p2p.AppResponse)
 	if !ok {

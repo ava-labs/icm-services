@@ -40,8 +40,6 @@ abstract contract ValidatorManagerTest is Test {
     );
     bytes32 public constant DEFAULT_SOURCE_BLOCKCHAIN_ID =
         bytes32(hex"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd");
-    bytes32 public constant DEFAULT_SUBNET_CONVERSION_ID =
-        bytes32(hex"67e8531265d8e97bd5c23534a37f4ea42d41934ddf8fe2c77c27fac9ef89f973");
     address public constant WARP_PRECOMPILE_ADDRESS = 0x0200000000000000000000000000000000000005;
 
     uint64 public constant DEFAULT_WEIGHT = 1e6;
@@ -53,15 +51,12 @@ abstract contract ValidatorManagerTest is Test {
     uint256 public constant DEFAULT_MAXIMUM_STAKE_AMOUNT = 1e22;
     uint64 public constant DEFAULT_CHURN_PERIOD = 1 hours;
     uint8 public constant DEFAULT_MAXIMUM_CHURN_PERCENTAGE = 20;
-    uint8 public constant DEFAULT_MAXIMUM_HOURLY_CHURN = 0;
     uint64 public constant DEFAULT_REGISTRATION_TIMESTAMP = 1000;
     uint256 public constant DEFAULT_STARTING_TOTAL_WEIGHT = 1e10 + DEFAULT_WEIGHT;
-    uint64 public constant DEFAULT_MINIMUM_VALIDATION_DURATION = 24 hours;
     uint64 public constant DEFAULT_COMPLETION_TIMESTAMP = 100_000;
     // Foundry's default block.timestamp at the start of each test (before any vm.warp calls).
     // Used to replay validator registrations with the same validationID.
     uint64 public constant DEFAULT_INITIAL_TIMESTAMP = 1;
-    uint64 public constant REGISTRATION_EXPIRY_LENGTH = 1 days;
     // solhint-disable-next-line var-name-mixedcase
     PChainOwner public DEFAULT_P_CHAIN_OWNER;
 
@@ -101,13 +96,6 @@ abstract contract ValidatorManagerTest is Test {
     );
 
     event CompletedValidatorWeightUpdate(bytes32 indexed validationID, uint64 nonce, uint64 weight);
-
-    event ValidatorWeightUpdate(
-        bytes32 indexed validationID,
-        uint64 indexed nonce,
-        uint64 weight,
-        bytes32 setWeightMessageID
-    );
 
     receive() external payable {}
     fallback() external payable {}

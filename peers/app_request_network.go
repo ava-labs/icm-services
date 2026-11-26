@@ -39,9 +39,8 @@ import (
 )
 
 const (
-	InboundMessageChannelSize = 1000
-	ValidatorPreFetchPeriod   = time.Second * 5
-	NumBootstrapNodes         = 5
+	ValidatorPreFetchPeriod = time.Second * 5
+	NumBootstrapNodes       = 5
 	// Maximum number of subnets that can be tracked by the app request network
 	// This value is defined in avalanchego peers package
 	// TODO: use the avalanchego constant when it is exported
@@ -58,8 +57,6 @@ type AppRequestNetwork struct {
 	nodeID  ids.NodeID
 	handler *RelayerExternalHandler
 	logger  logging.Logger
-
-	metrics *AppRequestNetworkMetrics
 
 	// The set of subnetIDs to track. Shared with the underlying Network object, so access
 	// must be protected by the trackedSubnetsLock
@@ -226,7 +223,6 @@ func NewNetwork(
 		nodeID:                 nodeID,
 		handler:                handler,
 		logger:                 logger,
-		metrics:                metrics,
 		trackedSubnets:         localTrackedSubnets,
 		trackedSubnetsLock:     trackedSubnetsLock,
 		lruSubnets:             lruSubnets,

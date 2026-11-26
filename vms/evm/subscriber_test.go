@@ -11,10 +11,7 @@ import (
 	"time"
 
 	"github.com/ava-labs/avalanchego/graft/subnet-evm/precompile/contracts/warp"
-	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	basecfg "github.com/ava-labs/icm-services/config"
-	"github.com/ava-labs/icm-services/relayer/config"
 	ethereum "github.com/ava-labs/libevm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/common/hexutil"
@@ -95,20 +92,9 @@ func stubLog(blockNumber uint64, index uint) types.Log {
 const testStartingHeight = 1
 
 func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscriber, *subscriberClientStub) {
-	sourceSubnet := config.SourceBlockchain{
-		SubnetID:     "2TGBXcnwx5PqiXWiqxAKUaNSqDguXNh1mxnp82jui68hxJSZAx",
-		BlockchainID: "S4mMqUXe7vHsGiRAma6bv3CKnyaLssyAxmQ2KvFpX1KEvfFCD",
-		RPCEndpoint: basecfg.APIConfig{
-			BaseURL: "https://subnets.avax.network/mysubnet/rpc",
-		},
-	}
-
 	stubRPCClient := &subscriberClientStub{}
-	blockchainID, err := ids.FromString(sourceSubnet.BlockchainID)
-	require.NoError(t, err)
 	subscriber := NewSubscriber(
 		logging.NoLog{},
-		blockchainID,
 		stubRPCClient,
 		stubRPCClient,
 		errChan,
@@ -124,7 +110,6 @@ func makeSubscriberWithMockEthClient(t *testing.T, errChan chan error) (*Subscri
 func TestNewSubscriberStartingHeightZero(t *testing.T) {
 	subscriber := NewSubscriber(
 		logging.NoLog{},
-		ids.Empty,
 		&subscriberClientStub{},
 		&subscriberClientStub{},
 		make(chan error, 1),

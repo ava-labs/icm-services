@@ -244,7 +244,6 @@ func main() {
 	relayerHealth := createHealthTrackers(cfg)
 
 	messageHandlerFactories, err := createMessageHandlerFactories(
-		logger,
 		cfg,
 		sourceClients,
 	)
@@ -279,7 +278,6 @@ func main() {
 		checkpoint.NewCheckpointManagerMetrics(relayerMetricsRegistry),
 		db,
 		ticker,
-		network,
 		cfg,
 		sourceClients,
 		destinationClients,
@@ -437,7 +435,6 @@ func buildConfig() (*config.Config, error) {
 }
 
 func createMessageHandlerFactories(
-	logger logging.Logger,
 	globalConfig *config.Config,
 	sourceClients map[ids.ID]*ethclient.Client,
 ) (map[ids.ID]map[common.Address]messages.MessageHandlerFactory, error) {
@@ -503,7 +500,6 @@ func createApplicationRelayers(
 	checkpointMetrics *checkpoint.CheckpointManagerMetrics,
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
-	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 	sourceClients map[ids.ID]*ethclient.Client,
 	destinationClients map[ids.ID]vms.DestinationClient,
@@ -524,14 +520,12 @@ func createApplicationRelayers(
 
 		// Create the ApplicationRelayers
 		applicationRelayersForSource, minHeight, err := createApplicationRelayersForSourceChain(
-			ctx,
 			logger,
 			relayerMetrics,
 			checkpointMetrics,
 			db,
 			ticker,
 			sourceBlockchain,
-			network,
 			cfg,
 			currentHeight,
 			destinationClients,
@@ -554,14 +548,12 @@ func createApplicationRelayers(
 
 // createApplicationRelayersForSourceChain creates Application Relayers for a given source blockchain.
 func createApplicationRelayersForSourceChain(
-	ctx context.Context,
 	logger logging.Logger,
 	metrics *relayer.ApplicationRelayerMetrics,
 	checkpointMetrics *checkpoint.CheckpointManagerMetrics,
 	db database.RelayerDatabase,
 	ticker *utils.Ticker,
 	sourceBlockchain *config.SourceBlockchain,
-	network *peers.AppRequestNetwork,
 	cfg *config.Config,
 	currentHeight uint64,
 	destinationClients map[ids.ID]vms.DestinationClient,
@@ -631,7 +623,6 @@ func createApplicationRelayersForSourceChain(
 			applicationRelayer, err := relayer.NewApplicationRelayer(
 				log,
 				metrics,
-				network,
 				relayerID,
 				destinationClients[relayerID.DestinationBlockchainID],
 				sourceBlockchain,
@@ -718,7 +709,6 @@ func startMerkleSetUpdater(
 		signatureAggregator,
 		ethClient,
 		contract,
-		contractAddr,
 		txOpts,
 		networkID,
 		blockchainID,

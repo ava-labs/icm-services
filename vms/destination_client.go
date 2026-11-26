@@ -58,9 +58,6 @@ type DestinationClient interface {
 	// BlockGasLimit returns destination blockchain block gas limit
 	BlockGasLimit() uint64
 
-	// GetRPCEndpointURL returns the RPC endpoint URL for this destination blockchain
-	GetRPCEndpointURL() string
-
 	// GetPChainHeightForDestination determines the appropriate P-Chain height for validator set selection.
 	// The epoch is cached per destination blockchain to avoid per-message fetches.
 	GetPChainHeightForDestination(

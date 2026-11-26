@@ -66,7 +66,6 @@ type LocalAvalancheNetwork struct {
 
 const (
 	fundedKeyStr         = "56289e99c94b6912bfc12adc093c9b51124f0dc54ac7a766b2bc5ccf558d8027"
-	timeout              = 120 * time.Second
 	defaultEpochDuration = 4 * time.Second
 )
 
@@ -504,10 +503,6 @@ func (n *LocalAvalancheNetwork) GetExtraNodes(count int) []*tmpnet.Node {
 	nodes := n.extraNodes[0:count]
 	n.extraNodes = n.extraNodes[count:]
 	return nodes
-}
-
-func (n *LocalAvalancheNetwork) GetPrimaryNetworkValidators() []*tmpnet.Node {
-	return n.primaryNetworkValidators
 }
 
 func (n *LocalAvalancheNetwork) GetPrimaryNetworkInfo() testinfo.L1TestInfo {

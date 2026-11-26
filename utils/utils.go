@@ -25,9 +25,6 @@ import (
 var (
 	ZeroAddress = common.Address{}
 
-	// Errors
-	ErrNilInput = errors.New("nil input")
-	ErrTooLarge = errors.New("exceeds uint256 maximum value")
 	// Generic private key parsing error used to obfuscate the actual error
 	ErrInvalidPrivateKeyHex = errors.New("invalid account private key hex string")
 )
@@ -129,20 +126,6 @@ func PrivateKeyToString(key *ecdsa.PrivateKey) string {
 // Otherwise, returns the original string.
 func SanitizeHexString(hex string) string {
 	return strings.TrimPrefix(hex, "0x")
-}
-
-// StripFromString strips the input string starting from the first occurrence of the substring.
-func StripFromString(input, substring string) string {
-	index := strings.Index(input, substring)
-	if index == -1 {
-		// Substring not found, return the original string
-		return input
-	}
-
-	// Strip the string starting from the found substring
-	strippedString := input[:index]
-
-	return strippedString
 }
 
 // Converts a '0x'-prefixed hex string or cb58-encoded string to an ID.

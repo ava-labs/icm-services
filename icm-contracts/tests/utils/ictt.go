@@ -19,7 +19,6 @@ import (
 	wrappednativetoken "github.com/ava-labs/icm-services/abi-bindings/go/ictt/WrappedNativeToken"
 	exampleerc20 "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/ExampleERC20Decimals"
 	mockERC20SACR "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/MockERC20SendAndCallReceiver"
-	mockNSACR "github.com/ava-labs/icm-services/abi-bindings/go/ictt/mocks/MockNativeSendAndCallReceiver"
 	testinfo "github.com/ava-labs/icm-services/icm-contracts/tests/test-info"
 	"github.com/ava-labs/icm-services/log"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
@@ -233,28 +232,6 @@ func DeployWrappedNativeToken(
 	WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
 
 	return address, token
-}
-
-func DeployMockNativeSendAndCallReceiver(
-	ctx context.Context,
-	senderKey *ecdsa.PrivateKey,
-	l1 testinfo.L1TestInfo,
-) (common.Address, *mockNSACR.MockNativeSendAndCallReceiver) {
-	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
-	Expect(err).Should(BeNil())
-
-	// Deploy MockNativeSendAndCallReceiver contract
-	address, tx, contract, err := mockNSACR.DeployMockNativeSendAndCallReceiver(opts, l1.EthClient)
-	Expect(err).Should(BeNil())
-	log.Info("Deployed MockNativeSendAndCallReceiver contract",
-		zap.String("address", address.Hex()),
-		zap.String("txHash", tx.Hash().Hex()),
-	)
-
-	// Wait for the transaction to be mined
-	WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
-
-	return address, contract
 }
 
 func DeployMockERC20SendAndCallReceiver(
@@ -725,77 +702,6 @@ func SendAndCallERC20TokenHome(
 		amount,
 	)
 	ExpectBigEqual(event.Amount, scaledAmount)
-
-	return receipt, event.Amount
-}
-
-func SendAndCallNativeTokenHome(
-	ctx context.Context,
-	l1 testinfo.L1TestInfo,
-	nativeTokenHome *nativetokenhome.NativeTokenHome,
-	input nativetokenhome.SendAndCallInput,
-	amount *big.Int,
-	senderKey *ecdsa.PrivateKey,
-) (*types.Receipt, *big.Int) {
-	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
-	Expect(err).Should(BeNil())
-	opts.Value = amount
-
-	tx, err := nativeTokenHome.SendAndCall(
-		opts,
-		input,
-	)
-	Expect(err).Should(BeNil())
-
-	receipt := WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
-	event, err := GetEventFromLogs(receipt.Logs, nativeTokenHome.ParseTokensAndCallSent)
-	Expect(err).Should(BeNil())
-	Expect(event.Input.RecipientContract).Should(Equal(input.RecipientContract))
-
-	// Compute the scaled amount
-	remoteSettings, err := nativeTokenHome.GetRemoteTokenTransferrerSettings(
-		&bind.CallOpts{},
-		input.DestinationBlockchainID,
-		input.DestinationTokenTransferrerAddress)
-	Expect(err).Should(BeNil())
-
-	scaledAmount := ApplyTokenScaling(
-		remoteSettings.TokenMultiplier,
-		remoteSettings.MultiplyOnRemote,
-		amount,
-	)
-	ExpectBigEqual(event.Amount, scaledAmount)
-
-	return receipt, event.Amount
-}
-
-func SendAndCallNativeTokenRemote(
-	ctx context.Context,
-	l1 testinfo.L1TestInfo,
-	nativeTokenRemote *nativetokenremote.NativeTokenRemote,
-	input nativetokenremote.SendAndCallInput,
-	amount *big.Int,
-	senderKey *ecdsa.PrivateKey,
-	tokenMultiplier *big.Int,
-	multiplyOnRemote bool,
-) (*types.Receipt, *big.Int) {
-	opts, err := bind.NewKeyedTransactorWithChainID(senderKey, l1.EVMChainID)
-	Expect(err).Should(BeNil())
-	opts.Value = amount
-
-	tx, err := nativeTokenRemote.SendAndCall(
-		opts,
-		input,
-	)
-	Expect(err).Should(BeNil())
-
-	transferredAmount := big.NewInt(0).Sub(amount, input.PrimaryFee)
-
-	receipt := WaitForTransactionSuccess(ctx, l1.EthClient, tx.Hash())
-	event, err := GetEventFromLogs(receipt.Logs, nativeTokenRemote.ParseTokensAndCallSent)
-	Expect(err).Should(BeNil())
-	Expect(event.Input.RecipientContract).Should(Equal(input.RecipientContract))
-	ExpectBigEqual(event.Amount, transferredAmount)
 
 	return receipt, event.Amount
 }

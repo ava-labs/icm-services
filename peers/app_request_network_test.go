@@ -145,7 +145,6 @@ func TestConnectToCanonicalValidators(t *testing.T) {
 			arNetwork := AppRequestNetwork{
 				network:          mockNetwork,
 				logger:           logging.NoLog{},
-				metrics:          metrics,
 				validatorManager: &validatorManager,
 			}
 
@@ -195,7 +194,6 @@ func TestTrackSubnets(t *testing.T) {
 	arNetwork := AppRequestNetwork{
 		network:            mockNetwork,
 		logger:             logging.NoLog{},
-		metrics:            metrics,
 		validatorManager:   &validatorManager,
 		lruSubnets:         linked.NewHashmapWithSize[ids.ID, interface{}](maxNumSubnets),
 		trackedSubnetsLock: new(sync.RWMutex),

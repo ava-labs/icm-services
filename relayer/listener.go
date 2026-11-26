@@ -6,7 +6,6 @@ package relayer
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -32,13 +31,10 @@ const (
 // Listener handles all messages sent from a given source chain
 type Listener struct {
 	Subscriber         *evm.Subscriber
-	currentRequestID   uint32
 	logger             logging.Logger
 	sourceBlockchainID ids.ID
 	healthStatus       *atomic.Bool
-	ethClient          *ethclient.Client
 	messageCoordinator *MessageCoordinator
-	maxConcurrentMsg   uint64
 	errChan            chan error
 	protocol           config.Protocol
 }
@@ -133,7 +129,6 @@ func newListener(
 	errChan := make(chan error, maxConcurrentMsg)
 	sub := evm.NewSubscriber(
 		logger,
-		blockchainID,
 		ethclient.NewClient(wsRPCClient),
 		evm.NewRPCHeaderClient(ethRPCClient),
 		errChan,
@@ -144,14 +139,11 @@ func newListener(
 	logger.Info("Creating relayer")
 	lstnr := Listener{
 		Subscriber:         sub,
-		currentRequestID:   rand.Uint32(), // Initialize to a random value to mitigate requestID collision
 		logger:             logger,
 		sourceBlockchainID: blockchainID,
 		errChan:            errChan,
 		healthStatus:       relayerHealth,
-		ethClient:          ethRPCClient,
 		messageCoordinator: messageCoordinator,
-		maxConcurrentMsg:   maxConcurrentMsg,
 		protocol:           protocol,
 	}
 

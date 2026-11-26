@@ -231,16 +231,6 @@ func WaitForTransactionSuccess(
 }
 
 // Waits for a transaction to be mined.
-// Asserts Receipt.status equals false.
-func WaitForTransactionFailure(
-	ctx context.Context,
-	client *ethclient.Client,
-	txHash common.Hash,
-) *types.Receipt {
-	return waitForTransaction(ctx, client, txHash, false)
-}
-
-// Waits for a transaction to be mined.
 // Asserts Receipt.status equals success.
 func waitForTransaction(
 	ctx context.Context,
@@ -419,21 +409,6 @@ func waitForBlockHeight(
 //
 // Log utils
 //
-
-// Returns the first log in 'logs' that is successfully parsed by 'parser'
-// Errors and prints a trace of the transaction if no log is found.
-func GetEventFromLogsOrTrace[T any](
-	ctx context.Context,
-	receipt *types.Receipt,
-	client *ethclient.Client,
-	parser func(log types.Log) (T, error),
-) T {
-	log, err := GetEventFromLogs(receipt.Logs, parser)
-	if err != nil {
-		TraceTransactionAndExit(ctx, client, receipt.TxHash)
-	}
-	return log
-}
 
 // Returns the first log in 'logs' that is successfully parsed by 'parser'
 func GetEventFromLogs[T any](logs []*types.Log, parser func(log types.Log) (T, error)) (T, error) {

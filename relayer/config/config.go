@@ -27,7 +27,6 @@ import (
 const (
 	accountPrivateKeyEnvVarName     = "ACCOUNT_PRIVATE_KEY"
 	accountPrivateKeyListEnvVarName = "ACCOUNT_PRIVATE_KEYS_LIST"
-	cChainIdentifierString          = "C"
 	warpConfigKey                   = "warpConfig"
 	suppliedSubnetsLimit            = 16
 )
@@ -269,15 +268,6 @@ func getWarpConfig(client configRPCClient) (*warp.Config, error) {
 		return nil, fmt.Errorf("no Warp config found in chain config")
 	}
 	return warpConfig, nil
-}
-
-func (c *Config) GetDestinationAPIConfig(blockchainID string) (*basecfg.APIConfig, error) {
-	for _, dest := range c.DestinationBlockchains {
-		if blockchainID == dest.BlockchainID {
-			return &dest.RPCEndpoint, nil
-		}
-	}
-	return nil, fmt.Errorf("blockchain %s not configured as a destination", blockchainID)
 }
 
 // Initializes Warp configurations (quorum and self-signing settings) for each destination subnet
