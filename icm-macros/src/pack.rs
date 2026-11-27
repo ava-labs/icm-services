@@ -166,6 +166,7 @@ fn generated_fn(args: &PackArgs, item_name: &str, placed_in: Option<ContractId>)
         fn_name: pack_fn_name(args.name.as_deref(), item_name),
         contract: placed_in,
         visibility: args.visibility.clone(),
+        calldata: false,
         fields: args
             .fields
             .iter()

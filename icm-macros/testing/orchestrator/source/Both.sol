@@ -9,7 +9,7 @@ library Messages {
     }
 
     // #[pack(name="encodeHeader", visibility="internal")]
-    // #[unpack(name="decodeHeader", visibility="internal")]
+    // #[unpack(name="decodeHeader", visibility="internal", calldata)]
     struct Header {
         uint64 height;
         Kind kind;

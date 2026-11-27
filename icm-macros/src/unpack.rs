@@ -213,6 +213,7 @@ fn generated_fn(args: &UnpackArgs, item_name: &str, placed_in: Option<ContractId
         fn_name: unpack_fn_name(args.name.as_deref(), item_name),
         contract: placed_in,
         visibility: args.visibility.clone(),
+        calldata: args.calldata,
         fields: args
             .fields
             .iter()

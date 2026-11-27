@@ -42,6 +42,11 @@ pub struct GeneratedFn {
     pub contract: Option<ContractId>,
     /// The visibility keyword as annotated. Empty for file-level functions.
     pub visibility: String,
+    /// Whether the function takes `bytes calldata data` instead of `bytes memory data`. Always
+    /// `false` for pack. A caller has to know: a calldata parameter can only be passed calldata,
+    /// and the memory form overwrites the buffer it is given as it reads, so a caller that still
+    /// needs the original bytes must pass a copy.
+    pub calldata: bool,
     /// One entry per struct field in declaration order. Empty for enums.
     pub fields: Vec<FieldMode>,
 }
@@ -138,8 +143,8 @@ mod tests {
                     .contract
                     .map_or("-".to_string(), |id| ctx.hir.contract(id).name.to_string());
                 format!(
-                    "{direction} {} in {contract} [{}] {:?}",
-                    g.fn_name, g.visibility, g.fields
+                    "{direction} {} in {contract} [{}] calldata={} {:?}",
+                    g.fn_name, g.visibility, g.calldata, g.fields
                 )
             })
         };
@@ -230,9 +235,12 @@ mod tests {
         assert_eq!(
             captured,
             vec![
-                "Kind: pack packKind in Messages [public] [] | unpack unpackKind in Messages [public] []",
-                "Header: pack encodeHeader in Messages [internal] [Auto, Auto, Skipped, Method] \
-                 | unpack decodeHeader in Messages [internal] [Auto, Auto, Skipped, Method]",
+                "Kind: pack packKind in Messages [public] calldata=false [] \
+                 | unpack unpackKind in Messages [public] calldata=false []",
+                "Header: pack encodeHeader in Messages [internal] calldata=false \
+                 [Auto, Auto, Skipped, Method] \
+                 | unpack decodeHeader in Messages [internal] calldata=true \
+                 [Auto, Auto, Skipped, Method]",
             ]
         );
     }

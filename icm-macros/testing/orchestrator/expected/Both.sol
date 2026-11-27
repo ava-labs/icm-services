@@ -9,7 +9,7 @@ library Messages {
     }
 
     // #[pack(name="encodeHeader", visibility="internal")]
-    // #[unpack(name="decodeHeader", visibility="internal")]
+    // #[unpack(name="decodeHeader", visibility="internal", calldata)]
     struct Header {
         uint64 height;
         Kind kind;
@@ -37,51 +37,30 @@ library Messages {
         return abi.encodePacked(obj);
     }
 
-    function decodeHeader(bytes memory data) internal pure returns (uint256, Header memory) {
-        /* solhint-disable no-inline-assembly */
+    function decodeHeader(bytes calldata data) internal pure returns (uint256, Header memory) {
         /* solhint-disable var-name-mixedcase */
-        uint256 _initial_length;
-        assembly { _initial_length := mload(data) }
+        uint256 _initial_length = data.length;
         Header memory result;
 
-        uint64 height;
-        assembly {
-            height := shr(192, mload(add(data, 32)))
-        }
-        assembly {
-            let _data_new_len := sub(mload(data), 8)
-            data := add(data, 8)
-            mstore(data, _data_new_len)
-        }
+        uint64 height = uint64(bytes8(data[0:8]));
+        data = data[8:];
         result.height = height;
         Kind kind;
         {
-            uint256 _len_before;
-            assembly { _len_before := mload(data) }
             uint256 read;
             (read, kind) = unpackKind(data);
-            assembly {
-                data := add(data, read)
-                mstore(data, sub(_len_before, read))
-            }
+            data = data[read:];
         }
         result.kind = kind;
         bytes4 tag;
         {
-            uint256 _len_before;
-            assembly { _len_before := mload(data) }
             uint256 read;
             (read, tag) = decodeTag(data);
-            assembly {
-                data := add(data, read)
-                mstore(data, sub(_len_before, read))
-            }
+            data = data[read:];
         }
         result.tag = tag;
-        uint256 _final_length;
-        assembly { _final_length := mload(data) }
-        return (_initial_length - _final_length, result);
-        /* solhint-enable no-inline-assembly */
+
+        return (_initial_length - data.length, result);
         /* solhint-enable var-name-mixedcase */
     }
 
