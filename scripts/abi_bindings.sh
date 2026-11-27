@@ -54,9 +54,9 @@ if [ "$HELP" = true ]; then
     echo "Build contracts and generate Go bindings"
     echo ""
     echo "Options:"
-    echo "  -ac, --avalanche-contracts contract1 contract2    Generate Go bindings for the contract. If empty, generate Go bindings for a default list of Avalanche contracts"
-    echo "  -cc, --common-contracts contract1 contract2       Generate Go bindings for the contract. If empty, generate Go bindings for a default list of Common contracts"
-    echo "  -ec, --ethereum-contracts contract1 contract      Generate Go bindings for the contract. If empty, generate Go bindings for a default list of Ethereum contracts"
+    echo "  -ac, --avalanche-contracts \"contract1 contract2\"  Generate Go bindings for the contracts. If empty, generate Go bindings for a default list of Avalanche contracts"
+    echo "  -cc, --common-contracts \"contract1 contract2\"     Generate Go bindings for the contracts. If empty, generate Go bindings for a default list of Common contracts"
+    echo "  -ec, --ethereum-contracts \"contract1 contract2\"   Generate Go bindings for the contracts. If empty, generate Go bindings for a default list of Ethereum contracts"
     echo "  -h, --help                              Print this help message"
     exit 0
 fi
@@ -188,12 +188,12 @@ function generate_bindings() {
 }
 
 # If AVALANCHE_CONTRACT_LIST is empty, use DEFAULT_AVALANCHE_CONTRACT_LIST
-if [[ -z "${CONTRACT_LIST}" ]]; then
+if [[ -z "${AVALANCHE_CONTRACT_LIST}" ]]; then
     AVALANCHE_CONTRACT_LIST=($DEFAULT_AVALANCHE_CONTRACT_LIST)
 fi
 
 # If COMMON_CONTRACT_LIST is empty, use DEFAULT_COMMON_CONTRACT_LIST
-if [[ -z "${CONTRACT_LIST}" ]]; then
+if [[ -z "${COMMON_CONTRACT_LIST}" ]]; then
     COMMON_CONTRACT_LIST=($DEFAULT_COMMON_CONTRACT_LIST)
 fi
 

@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -18,6 +19,10 @@ type APIConfig struct {
 }
 
 func (c *APIConfig) Validate() error {
+	// An API section left out of the configuration decodes to a nil pointer.
+	if c == nil {
+		return errors.New("API configuration is missing")
+	}
 	if _, err := url.ParseRequestURI(c.BaseURL); err != nil {
 		return fmt.Errorf("invalid base URL: %w", err)
 	}

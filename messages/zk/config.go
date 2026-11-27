@@ -7,6 +7,7 @@ package zk
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/ava-labs/libevm/common"
 )
@@ -71,15 +72,16 @@ func ConfigFromMap(m map[string]any) (*Config, error) {
 	if !common.IsHexAddress(teleporterAddress) {
 		return nil, fmt.Errorf("invalid teleporter-address: %s", teleporterAddress)
 	}
-	beaconGenesisTime, ok := m["beacon-genesis-time"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("beacon-genesis-time not found")
+	beaconGenesisTime, err := uintSetting(m, "beacon-genesis-time")
+	if err != nil {
+		return nil, err
 	}
-	secondsPerSlot, ok := m["seconds-per-slot"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("seconds-per-slot not found")
+	secondsPerSlot, err := uintSetting(m, "seconds-per-slot")
+	if err != nil {
+		return nil, err
 	}
-	if secondsPerSlot <= 0 {
+	// The slot of a source block is computed by dividing by the slot duration.
+	if secondsPerSlot == 0 {
 		return nil, fmt.Errorf("seconds-per-slot must be greater than 0")
 	}
 	beaconAPIURL, ok := m["beacon-api-url"].(string)
@@ -91,10 +93,26 @@ func ConfigFromMap(m map[string]any) (*Config, error) {
 		RewardAddress:     rewardAddress,
 		AdapterAddress:    adapterAddress,
 		TeleporterAddress: teleporterAddress,
-		BeaconGenesisTime: uint64(beaconGenesisTime),
-		SecondsPerSlot:    uint64(secondsPerSlot),
+		BeaconGenesisTime: beaconGenesisTime,
+		SecondsPerSlot:    secondsPerSlot,
 		BeaconAPIURL:      beaconAPIURL,
 	}, nil
+}
+
+// uintSetting reads the whole, non-negative number stored under [key]. Numbers in the settings
+// map are decoded from JSON as float64, and converting one to uint64 unchecked would silently
+// truncate a fraction (0.5 becomes 0) and has no defined result for a negative value.
+func uintSetting(m map[string]any, key string) (uint64, error) {
+	value, ok := m[key].(float64)
+	if !ok {
+		return 0, fmt.Errorf("%s not found", key)
+	}
+	// The comparison with Trunc also rejects NaN. MaxUint64 rounds up to 2^64 as a float64, the
+	// first value that no longer fits.
+	if value < 0 || value != math.Trunc(value) || value >= math.MaxUint64 {
+		return 0, fmt.Errorf("%s must be a non-negative integer, got %v", key, value)
+	}
+	return uint64(value), nil
 }
 
 func (c *Config) adapterAddress() common.Address {

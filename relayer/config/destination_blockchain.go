@@ -68,10 +68,10 @@ func (s *DestinationBlockchain) Validate() error {
 	}
 	for _, id := range s.KMSKeys {
 		if id.KeyID == "" {
-			return errors.New("KMS key ID provided without an AWS region")
+			return errors.New("KMS AWS region provided without a key ID")
 		}
 		if id.AWSRegion == "" {
-			return errors.New("KMS AWS region provided without a key ID")
+			return errors.New("KMS key ID provided without an AWS region")
 		}
 	}
 

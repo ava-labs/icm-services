@@ -25,8 +25,6 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable@5.1.0/access/OwnableUpgradeable.sol";
 
-// TODO: Remove this once all unit tests implemented
-// solhint-disable no-empty-blocks
 abstract contract ValidatorManagerTest is Test {
     bytes32 public constant DEFAULT_SUBNET_ID =
         bytes32(hex"1234567812345678123456781234567812345678123456781234567812345678");
@@ -126,22 +124,6 @@ abstract contract ValidatorManagerTest is Test {
             DEFAULT_BLS_PUBLIC_KEY,
             address(this)
         );
-    }
-
-    function testInitiateValidatorRegistrationExcessiveChurn() public {
-        // TODO: implement
-    }
-
-    function testInitiateValidatorRegistrationInsufficientStake() public {
-        // TODO: implement
-    }
-
-    function testInitiateValidatorRegistrationExcessiveStake() public {
-        // TODO: implement
-    }
-
-    function testInitiateValidatorRegistrationInsufficientDuration() public {
-        // TODO: implement
     }
 
     function testInitiateValidatorRegistrationPChainOwnerThresholdTooLarge() public {
@@ -582,9 +564,12 @@ abstract contract ValidatorManagerTest is Test {
         validatorManager.initiateValidatorWeightUpdate(bytes32(0), 0);
     }
 
-    function initiateValidatorWeightUpdateInactiveValidator() public {
+    function testInitiateValidatorWeightUpdateInactiveValidator() public {
         bytes32 validationID = _registerAndCompleteDefaultValidator();
 
+        // Only the owner may update a validator's weight. Depending on the suite, that is this
+        // test contract or the manager contract deployed in front of the ValidatorManager.
+        vm.prank(validatorManager.owner());
         vm.expectRevert(
             abi.encodeWithSelector(
                 IValidatorManager.InvalidValidatorStatus.selector, ValidatorStatus.Completed
@@ -834,7 +819,13 @@ abstract contract ValidatorManagerTest is Test {
         });
     }
 
-    function _registerAndCompleteDefaultValidator() internal returns (bytes32 validationID) {
+    // Registers the default validator and takes it all the way through removal, leaving it
+    // Completed. Virtual because what a removal requires differs between the suites.
+    function _registerAndCompleteDefaultValidator()
+        internal
+        virtual
+        returns (bytes32 validationID)
+    {
         validationID = _registerDefaultValidator();
         bytes memory setWeightMessage =
             ValidatorMessages.packL1ValidatorWeightMessage(validationID, 1, 0);
@@ -1112,4 +1103,3 @@ abstract contract ValidatorManagerTest is Test {
         return fixedID;
     }
 }
-// solhint-enable no-empty-blocks

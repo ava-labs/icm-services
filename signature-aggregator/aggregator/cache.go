@@ -4,6 +4,7 @@
 package aggregator
 
 import (
+	"maps"
 	"math"
 	"sync"
 
@@ -16,8 +17,9 @@ import (
 type SignatureCache struct {
 	// map of warp message ID to a map of public keys to signatures
 	signatures *lru.Cache[ids.ID, map[PublicKeyBytes]SignatureBytes]
-	// protects against the race condition where multiple goroutines are trying to
-	// add a signature for a message ID that is not currently in the cache.
+	// Guards the per-message maps. The LRU synchronizes its own entries but not the maps it
+	// stores, which Add writes to (including the first write for a message ID that is not yet
+	// cached) and Get copies.
 	mu sync.Mutex
 }
 
@@ -39,8 +41,18 @@ func NewSignatureCache(size uint64) (*SignatureCache, error) {
 	}, nil
 }
 
+// Get returns a copy of the signatures cached for [msgID]. The cached map itself is never handed
+// out: [SignatureCache.Add] keeps writing to it, and an unsynchronized read of a map that is
+// being written to is a fatal error.
 func (c *SignatureCache) Get(msgID ids.ID) (map[PublicKeyBytes]SignatureBytes, bool) {
-	return c.signatures.Get(msgID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	sigs, ok := c.signatures.Get(msgID)
+	if !ok {
+		return nil, false
+	}
+	return maps.Clone(sigs), true
 }
 
 func (c *SignatureCache) Add(
@@ -52,11 +64,12 @@ func (c *SignatureCache) Add(
 	// by the number of validators registered on-chain.
 	// As a result, uncontrolled memory growth is not a concern.
 	c.mu.Lock()
-	sigs, ok := c.Get(msgID)
+	defer c.mu.Unlock()
+
+	sigs, ok := c.signatures.Get(msgID)
 	if !ok {
 		sigs = make(map[PublicKeyBytes]SignatureBytes)
 	}
 	sigs[pubKey] = signature
 	c.signatures.Add(msgID, sigs)
-	c.mu.Unlock()
 }

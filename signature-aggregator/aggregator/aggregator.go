@@ -219,7 +219,9 @@ func (s *SignatureAggregator) getUnderfundedL1Nodes(
 
 		underfundedL1Nodes := set.NewSet[ids.NodeID](0)
 		for _, v := range validators {
-			log = log.With(zap.Stringer("nodeID", v.NodeID))
+			// Shadow the logger rather than reassign it, so that each validator's logs carry
+			// only its own node ID and not those of every validator before it.
+			log := log.With(zap.Stringer("nodeID", v.NodeID))
 			if v.ClientL1Validator.ValidationID == nil {
 				log.Debug("Skipping non-L1 validator")
 				continue
