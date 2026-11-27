@@ -7,12 +7,14 @@ package validatorupdater
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
 	zkadapter "github.com/ava-labs/icm-services/abi-bindings/go/verifiers/ethereum/ZKAdapter"
+	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
@@ -61,6 +63,13 @@ type ConsensusUpdater struct {
 	contract        *zkadapter.ZKAdapter
 	contractAddress common.Address
 	txOpts          *bind.TransactOpts
+	// txTracker follows the transition transactions the updater broadcasts. A
+	// wait for one to be mined is bounded, since the updater has a single
+	// goroutine and a transaction that never mines would otherwise stall it. One
+	// that is not mined in time stays with the tracker as unconfirmed, and no
+	// further transition is sent until it is settled, because the next one builds
+	// on it and its transaction would only queue behind the same nonce.
+	txTracker txTracker
 
 	pollInterval time.Duration
 	// maxGasPriceWei is the maximum suggested gas price (in wei) at which a
@@ -95,6 +104,7 @@ func NewConsensusUpdater(
 	txOpts *bind.TransactOpts,
 	pollInterval time.Duration,
 	maxGasPriceGwei uint64,
+	txInclusionTimeout time.Duration,
 ) *ConsensusUpdater {
 	maxGasPriceWei := new(big.Int).Mul(new(big.Int).SetUint64(maxGasPriceGwei), weiPerGwei)
 	return &ConsensusUpdater{
@@ -104,6 +114,7 @@ func NewConsensusUpdater(
 		contract:        contract,
 		contractAddress: contractAddress,
 		txOpts:          txOpts,
+		txTracker:       evm.NewTxTracker(logger, ethClient, txOpts.From, txOpts.Signer, txInclusionTimeout),
 		pollInterval:    pollInterval,
 		maxGasPriceWei:  maxGasPriceWei,
 	}
@@ -139,9 +150,21 @@ func (u *ConsensusUpdater) Start(ctx context.Context) error {
 }
 
 func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
+	// A transition whose transaction has not been seen mined comes first. If it is
+	// outbid it may be replaced, which like any transition transaction waits for
+	// the gas price to be within bounds.
+	if u.txTracker.Unconfirmed() != nil {
+		settled, err := u.txTracker.Resolve(ctx, u.gasPriceWithinBounds)
+		if err != nil || !settled {
+			return err
+		}
+	}
+
 	// Re-read the contract's position every tick rather than trusting the cached one. Both are
 	// view calls, and without this a state change made outside this updater would leave no
-	// proof matching the cached state, stalling the updater for good.
+	// proof matching the cached state, stalling the updater for good. It is also how the outcome
+	// of a transaction settled just above is learned, as whether its transition was applied is
+	// not known.
 	if err := u.syncLocalState(ctx); err != nil {
 		return err
 	}
@@ -184,6 +207,13 @@ func (u *ConsensusUpdater) checkAndUpdate(ctx context.Context) error {
 
 	for applied := 0; proof != nil && applied < maxTransitionsPerTick; applied++ {
 		if err := u.applyTransition(ctx, proof); err != nil {
+			if errors.Is(err, evm.ErrTxUnconfirmed) {
+				// The transaction is out and may yet be mined, so the transition has
+				// not failed and the proof is not marked as such. The remaining proofs
+				// build on it, so they wait for the next poll, which follows up on this
+				// one first.
+				return nil
+			}
 			// The next tick re-reads the contract's state. If it moved (e.g. another party
 			// applied a proof first), the updater continues from there.
 			u.logger.Warn("Transition failed, retrying on the next tick",
@@ -254,7 +284,9 @@ func proofKey(proof *ConsensusProof) common.Hash {
 	return crypto.Keccak256Hash(proof.JournalData, proof.Seal)
 }
 
-// applyTransition submits one consensus transition and waits for it to mine.
+// applyTransition submits one consensus transition and waits for it to be mined,
+// for at most the tracker's inclusion timeout. The error wraps
+// evm.ErrTxUnconfirmed if the transaction was not mined in time.
 func (u *ConsensusUpdater) applyTransition(ctx context.Context, proof *ConsensusProof) error {
 	tx, err := u.contract.Transition(u.txOpts, zkadapter.ConsensusData{
 		JournalData: proof.JournalData,
@@ -263,7 +295,7 @@ func (u *ConsensusUpdater) applyTransition(ctx context.Context, proof *Consensus
 	if err != nil {
 		return fmt.Errorf("failed to submit transition: %w", err)
 	}
-	receipt, err := bind.WaitMined(ctx, u.ethClient, tx)
+	receipt, err := u.txTracker.WaitMined(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("waiting for transition tx: %w", err)
 	}

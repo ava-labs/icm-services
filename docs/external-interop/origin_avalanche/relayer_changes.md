@@ -14,6 +14,11 @@ One `MerkleSetUpdater` is started per configured external EVM destination. Each 
 2. Sorts the validators into canonical order (ascending by uncompressed BLS public key) and computes the Merkle root over them.
 3. Posts an update when either the root differs from the last one it posted, or the last update is older than `max-update-interval-seconds`. Because the commitment is a fixed-size struct, the update is always a single transaction.
 4. Skips the update when the destination chain's suggested gas price exceeds `max-gas-price-gwei`, retrying on the next poll.
+5. Waits up to `tx-inclusion-timeout-seconds` (default 30) for the update transaction to be mined. If it is not, the updater goes back to polling and follows the transaction up before it builds another update:
+   - once the transaction is mined, the updater re-reads the registry's stored commitment and resumes;
+   - if the node no longer knows the transaction (it was dropped from the transaction pool), the updater does the same once three polls in a row have found it missing. A single such answer is not acted on, because an RPC endpoint that fronts several nodes can be answered by one that has not seen a transaction the others hold. An update that did not land is then rebuilt and sent as a new transaction;
+   - while the transaction is still pending and still pays the tip the node currently suggests, the updater waits for it. A base fee that has risen since it was sent, but that its fee cap still covers, changes nothing;
+   - if its tip is below the suggested one, or its fee cap no longer pays the suggested tip at the current base fee, the updater replaces it at the same nonce with the same call at the suggested fees, raised by at least the 10% that nodes require of a replacement. `max-gas-price-gwei` applies to the replacement too.
 
 To post an update the relayer builds a `ValidatorSetMerkleCommitment` payload, has it signed by the appropriate Avalanche validator set, and submits it to the registry's `registerValidatorSet` function. The same function handles both the first registration for a blockchain ID and all subsequent updates; see [Validator set registry](validator_set_registry.md) for which validator set must sign in each case.
 
@@ -36,7 +41,8 @@ External EVM chains are configured with `external-evm-destinations` blocks in th
     "private-key": "...",
     "poll-interval-seconds": 10,
     "max-update-interval-seconds": 3600,
-    "max-gas-price-gwei": 50
+    "max-gas-price-gwei": 50,
+    "tx-inclusion-timeout-seconds": 30
   }]
 }
 ```

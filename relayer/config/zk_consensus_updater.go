@@ -33,6 +33,10 @@ type ZKConsensusUpdater struct {
 	// submit a transition. When exceeded the transition is deferred to the next poll. 0 disables
 	// the check.
 	MaxGasPriceGwei uint64 `mapstructure:"max-gas-price-gwei" json:"max-gas-price-gwei,omitempty"`
+	// TxInclusionTimeoutSeconds bounds how long the updater waits for a transition transaction
+	// to be mined. One that is not mined in time is followed up on the next poll. Defaults to 30
+	// when unset.
+	TxInclusionTimeoutSeconds uint64 `mapstructure:"tx-inclusion-timeout-seconds" json:"tx-inclusion-timeout-seconds,omitempty"` //nolint:lll
 
 	// senderAddress is the address derived from PrivateKey, set by Validate.
 	senderAddress common.Address
@@ -104,4 +108,13 @@ func (z *ZKConsensusUpdater) GetPollInterval() time.Duration {
 		return defaultPollInterval
 	}
 	return time.Duration(z.PollIntervalSeconds) * time.Second
+}
+
+// GetTxInclusionTimeout returns how long the updater waits for a transition transaction to be
+// mined, falling back to the default when TxInclusionTimeoutSeconds is unset.
+func (z *ZKConsensusUpdater) GetTxInclusionTimeout() time.Duration {
+	if z.TxInclusionTimeoutSeconds == 0 {
+		return defaultTxInclusionTimeoutSeconds * time.Second
+	}
+	return time.Duration(z.TxInclusionTimeoutSeconds) * time.Second
 }
