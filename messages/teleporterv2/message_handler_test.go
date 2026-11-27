@@ -16,6 +16,7 @@ import (
 	merkleregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
 	"github.com/ava-labs/icm-services/messages"
 	"github.com/ava-labs/icm-services/relayer/validatorupdater"
+	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/common"
 	"github.com/ava-labs/libevm/core/types"
 	"github.com/stretchr/testify/require"
@@ -69,7 +70,8 @@ func testCommitment() merkleregistry.ValidatorSetMerkleCommitment {
 // Gas estimation executes the delivery, so a revert there is the delivery reverting. Against an
 // unchanged commitment it is reproducible and the message must be abandoned as non-retryable
 // without broadcasting: no SendTx expectation is registered, so the mock fails the test if the
-// handler falls back to sending at the block gas limit.
+// handler falls back to sending at the block gas limit. The estimate's raw node error is
+// classified on the way (covered by the vms/evm tests), so a classified one is injected here.
 func TestMerkleSendMessageEstimationRevertIsNonRetryable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	handler, handlerMocks := newTestMerkleHandler(t, ctrl)
@@ -78,7 +80,7 @@ func TestMerkleSendMessageEstimationRevertIsNonRetryable(t *testing.T) {
 
 	handlerMocks.ethClient.EXPECT().
 		EstimateGas(gomock.Any(), gomock.Any()).
-		Return(uint64(0), panicRevert(t, 0x11)).
+		Return(uint64(0), &evm.RevertError{Reason: "arithmetic underflow or overflow"}).
 		Times(1)
 	handlerMocks.routeCalls(t, callRoutes{delivered: false, commitment: &commitment})
 
@@ -102,7 +104,7 @@ func TestMerkleSendMessageEstimationRevertAfterCommitmentChangeIsRetryable(t *te
 
 	handlerMocks.ethClient.EXPECT().
 		EstimateGas(gomock.Any(), gomock.Any()).
-		Return(uint64(0), revertWithReason(t, "TeleporterMessenger: message verification failed")).
+		Return(uint64(0), &evm.RevertError{Reason: "TeleporterMessenger: message verification failed"}).
 		Times(1)
 	handlerMocks.routeCalls(t, callRoutes{delivered: false, commitment: &current})
 
@@ -122,7 +124,7 @@ func TestMerkleSendMessageEstimationRevertAlreadyDelivered(t *testing.T) {
 
 	handlerMocks.ethClient.EXPECT().
 		EstimateGas(gomock.Any(), gomock.Any()).
-		Return(uint64(0), revertWithReason(t, "TeleporterMessenger: message already received")).
+		Return(uint64(0), &evm.RevertError{Reason: "TeleporterMessenger: message already received"}).
 		Times(1)
 	handlerMocks.routeCalls(t, callRoutes{delivered: true, commitment: &commitment})
 

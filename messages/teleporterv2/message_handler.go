@@ -256,7 +256,7 @@ func (m *messageHandler) SendMessage(
 	}
 
 	// No access list: verification reads the attestation from calldata, not a predicate.
-	return m.sendTxAndConfirm(nil, gasLimit, callData)
+	return m.sender().SendTxAndConfirm(nil, gasLimit, callData)
 }
 
 // resolveEstimationRevert decides what a delivery that reverted during gas estimation means. The
@@ -284,7 +284,7 @@ func (m *messageHandler) resolveEstimationRevert(
 		)
 		return common.Hash{}, fmt.Errorf("validator set commitment changed during delivery: %w", revert)
 	}
-	return m.abandonSimulatedRevert(revert)
+	return m.sender().AbandonRevert(revert)
 }
 
 // fetchCommitment reads the registry's stored validator set commitment for the source chain,
@@ -319,7 +319,7 @@ func (m *messageHandler) fetchCommitment(
 // Any other estimation failure is returned as is; the delivery is never broadcast unsimulated.
 func (m *messageHandler) estimateGasLimit(ctx context.Context, callData []byte) (uint64, error) {
 	estimated, err := m.destinationClient.Client().EstimateGas(ctx, ethereum.CallMsg{
-		From: m.selectSenderAddress(),
+		From: m.sender().SenderAddress(),
 		To:   &m.teleporterAddress,
 		Data: callData,
 	})
