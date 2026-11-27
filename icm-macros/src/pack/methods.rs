@@ -78,6 +78,7 @@ pub fn pack_enum(enum_def: &Enum, args: PackArgs, type_name: &str) -> eyre::Resu
             format!("\n{}", emit_assert(&a.comment, &expr))
         })
         .collect();
+    let (open, close) = crate::solhint::solhint_guards(&["reason-string"]);
     Ok(if assert_lines.is_empty() {
         format!(
             "function {fn_name}({type_name} obj) {vis}pure returns (bytes memory) {{\n    return abi.encodePacked(obj);\n}}"
@@ -85,8 +86,8 @@ pub fn pack_enum(enum_def: &Enum, args: PackArgs, type_name: &str) -> eyre::Resu
     } else {
         format!(
             "function {fn_name}({type_name} obj) {vis}pure returns (bytes memory) {{\
-            \n    bytes memory result = abi.encodePacked(obj);{assert_lines}\
-            \n    return result;\
+            \n    {open}bytes memory result = abi.encodePacked(obj);{assert_lines}\
+            \n    return result;{close}\
             \n}}"
         )
     })
@@ -117,6 +118,8 @@ pub fn pack_struct(
     let mut recursive_packings = Vec::new();
     // the body of the packing function
     let mut body = String::new();
+    // whether any `{name}_bytes` local was emitted, which trips solhint's var-name-mixedcase
+    let mut has_bytes_locals = false;
 
     for (&field_id, field_args) in struct_def.fields.iter().zip(args.fields.iter()) {
         if field_args.ignore {
@@ -133,6 +136,7 @@ pub fn pack_struct(
                 // constrains that output rather than the field itself.
                 LengthSpec::Constant(expr) => {
                     let output = format!("{name}_bytes");
+                    has_bytes_locals = true;
                     body.push_str(&format!("\nbytes memory {output} = {packed};"));
                     body.push_str(&length_guard(
                         &fn_name,
@@ -164,6 +168,7 @@ pub fn pack_struct(
                         ));
                     }
                     let output = format!("{name}_bytes");
+                    has_bytes_locals = true;
                     // this will need to be handled recursively
                     recursive_packings.push(PackingTreeNode {
                         root: name,
@@ -210,6 +215,20 @@ pub fn pack_struct(
         body.push_str(&format!("\n{{{expansion}\n}}"));
     }
     let vis = vis_prefix(&args.visibility);
+    let mut rules: Vec<&str> = Vec::new();
+    if has_bytes_locals {
+        rules.push("var-name-mixedcase");
+    }
+    if !args.assert.is_empty() {
+        rules.push("reason-string");
+    }
+    let (open, close) = crate::solhint::solhint_guards(&rules);
+    let body_prefix = if body.is_empty() {
+        String::new()
+    } else {
+        format!("{body}\n    ")
+    };
+
     let assert_lines: String = args
         .assert
         .iter()
@@ -221,12 +240,12 @@ pub fn pack_struct(
     Ok(if assert_lines.is_empty() {
         format!(
             "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
-            {{\n    {body}\n    return abi.encodePacked({encode_packed_args});\n}}"
+        {{\n    {open}{body_prefix}return abi.encodePacked({encode_packed_args});{close}\n}}"
         )
     } else {
         format!(
             "\nfunction {fn_name}({type_name} memory obj) {vis}pure returns (bytes memory)\
-            {{\n    {body}\n    bytes memory result = abi.encodePacked({encode_packed_args});{assert_lines}\n    return result;\n}}"
+            {{\n    {open}{body_prefix}\n    bytes memory result = abi.encodePacked({encode_packed_args});{assert_lines}\n    return result;{close}\n}}"
         )
     })
 }

@@ -41,10 +41,15 @@ jobs:
         if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: ./scripts/install_foundry.sh
 
+      # The contract sources use icm-macros annotations that plain forge cannot compile,
+      # so release artifacts are built from macro-expanded sources via reforge.
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
+
       - name: Build Contracts
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          forge build --force --extra-output-files bin
+          reforge build --force --extra-output-files bin
 
       - name: Build changelog
         id: build_changelog

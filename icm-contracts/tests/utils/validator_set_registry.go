@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/binary"
+	"math/big"
 
 	"github.com/ava-labs/avalanchego/ids"
 	merklevalidatorsetregistry "github.com/ava-labs/icm-services/abi-bindings/go/MerkleValidatorSetRegistry"
@@ -108,6 +109,9 @@ func SerializeTeleporterMessageV2(message teleportermessengerv2.TeleporterMessag
 		result = append(result, receipt.RelayerRewardAddress.Bytes()...)
 	}
 
+	msgLenBytes := make([]byte, 32)
+	new(big.Int).SetInt64(int64(len(message.Message))).FillBytes(msgLenBytes)
+	result = append(result, msgLenBytes...)
 	result = append(result, message.Message...)
 
 	return result

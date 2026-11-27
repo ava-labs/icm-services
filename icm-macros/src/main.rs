@@ -1,5 +1,6 @@
 mod common;
 mod pack;
+mod solhint;
 mod unpack;
 
 use reforge::MacroRules;

@@ -11,7 +11,7 @@ import {ICMMessage} from "../../common/ICM.sol";
 import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {
     TeleporterMessageV2,
-    TeleporterMessageV2Parsing,
+    TeleporterV2Parsing,
     TeleporterICMMessage
 } from "../../common/TeleporterMessageV2.sol";
 
@@ -293,8 +293,7 @@ contract ZKValidatorSetRegistryVerifyMessageTest is ZKValidatorSetRegistryCommon
         bytes32 sourceBlockchainID
     ) internal view returns (TeleporterICMMessage memory, bytes memory) {
         TeleporterMessageV2 memory inner;
-        bytes memory innerSerialized =
-            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(inner);
+        bytes memory innerSerialized = TeleporterV2Parsing.packTeleporterMessageV2(inner);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
             NETWORK_ID, sourceBlockchainID, address(_registry), innerSerialized
         );
