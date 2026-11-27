@@ -95,30 +95,6 @@ library TeleporterV2Parsing {
     }
 
     /**
-     * @notice serialize an array of `address` instances, prefixed with a uint32 count.
-     * @dev Single linear pass over a preallocated buffer. Packing each element with
-     * abi.encodePacked in a loop would re-copy the whole buffer per element.
-     */
-    function serializeAddresses(
-        address[] memory addresses
-    ) internal pure returns (bytes memory) {
-        bytes memory serialized = new bytes(addresses.length * 20);
-        /* solhint-disable no-inline-assembly */
-        assembly ("memory-safe") {
-            let s := add(serialized, 32)
-            let r := add(addresses, 44)
-            let l := mload(addresses)
-            for { let i := 0 } lt(i, l) { i := add(i, 1) } {
-                mstore(s, mload(r))
-                s := add(s, 20)
-                r := add(r, 32)
-            }
-        }
-        /* solhint-enable no-inline-assembly */
-        return abi.encodePacked(uint32(addresses.length), serialized);
-    }
-
-    /**
      * @notice serialize an array of `TeleporterMessageReceipt` instances
      */
     function serializeTeleporterReceipts(
@@ -144,5 +120,29 @@ library TeleporterV2Parsing {
         }
         /* solhint-enable no-inline-assembly */
         return abi.encodePacked(uint32(receipts.length), serialized);
+    }
+
+    /**
+     * @notice serialize an array of `address` instances, prefixed with a uint32 count.
+     * @dev Single linear pass over a preallocated buffer. Packing each element with
+     * abi.encodePacked in a loop would re-copy the whole buffer per element.
+     */
+    function serializeAddresses(
+        address[] memory addresses
+    ) internal pure returns (bytes memory) {
+        bytes memory serialized = new bytes(addresses.length * 20);
+        /* solhint-disable no-inline-assembly */
+        assembly ("memory-safe") {
+            let s := add(serialized, 32)
+            let r := add(addresses, 44)
+            let l := mload(addresses)
+            for { let i := 0 } lt(i, l) { i := add(i, 1) } {
+                mstore(s, mload(r))
+                s := add(s, 20)
+                r := add(r, 32)
+            }
+        }
+        /* solhint-enable no-inline-assembly */
+        return abi.encodePacked(uint32(addresses.length), serialized);
     }
 }
