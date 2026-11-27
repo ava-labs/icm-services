@@ -13,11 +13,13 @@ optimizer_runs = 200
 src = 'icm-contracts/common/'
 solc_version = '0.8.30'
 evm_version = 'shanghai'
+via_ir = true
 
 [profile.ethereum]
 src = 'icm-contracts/ethereum/'
 solc_version = '0.8.30'
 evm_version = 'prague'
+via_ir = true
 
 [profile.macros]
 src = 'icm-macros/testing/e2e'
