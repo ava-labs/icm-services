@@ -318,9 +318,9 @@ mod tests {
 
     #[test]
     fn test_basic() {
-        let raw = parse_comment("#[pack]", &vec![None, None, None, None], "").unwrap();
+        let raw = parse_comment("#[pack]", &[None, None, None, None], "").unwrap();
         assert!(raw.is_none());
-        let raw = parse_comment("#[pack()]", &vec![None, None, None, None], "")
+        let raw = parse_comment("#[pack()]", &[None, None, None, None], "")
             .unwrap()
             .expect("Test failed");
         assert_eq!(raw.contract, None);
@@ -335,7 +335,7 @@ mod tests {
     fn test_all_keys() {
         let raw = parse_comment(
             "#[pack(contract=\"Foo\", name=\"Bar\", visibility=\"private\")]",
-            &vec![None, None, None, None],
+            &[None, None, None, None],
             "",
         )
         .unwrap()
@@ -353,7 +353,7 @@ mod tests {
         // length = "uint32" (with quotes) must behave identically to length = uint32
         let raw = parse_comment(
             "#[pack()]",
-            &vec![
+            &[
                 Some("#[pack(length = \"uint32\")]".to_string()),
                 Some("#[pack(method=\"Foo.bar\", length = \"uint64\")]".to_string()),
             ],
@@ -383,7 +383,7 @@ mod tests {
     fn test_field_args() {
         let raw = parse_comment(
             "#[pack(visibility=\"private\", name=\"Foo\")]",
-            &vec![
+            &[
                 Some("#[pack(method=\"Foo.bar\")]".to_string()),
                 Some("#[pack(ignore)]".to_string()),
                 Some("#[pack(ignore, method=\"Foo.bar\")]".to_string()),
@@ -453,7 +453,7 @@ mod tests {
         // or swallowing the arguments after it.
         let raw = parse_comment(
             "#[pack()]",
-            &vec![
+            &[
                 Some("#[pack(length = type(uint16).max)]".to_string()),
                 Some("#[pack(length = Lib.f(a, b) * 2, method = \"g\")]".to_string()),
             ],

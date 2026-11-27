@@ -81,7 +81,9 @@ use solar::ast::Span;
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, SourceId};
 
-use crate::pack::methods::{pack_enum, pack_struct};
+use crate::orchestrator::{FieldMode, GeneratedFn, PackState};
+use crate::pack::hooks::PackArgs;
+use crate::pack::methods::{pack_enum, pack_fn_name, pack_struct};
 
 /// Returns the `(SourceId, offset)` at which derived code should be inserted.
 /// If a target contract is specified (either via `arg_contract` or the item's own `item_contract`),
@@ -157,9 +159,34 @@ fn qualified_type_name(
     }
 }
 
-pub fn derive_pack(
+/// Describes the function generated from `args`, for recording in the [`PackState`].
+/// `placed_in` is the contract the function is emitted into.
+fn generated_fn(args: &PackArgs, item_name: &str, placed_in: Option<ContractId>) -> GeneratedFn {
+    GeneratedFn {
+        fn_name: pack_fn_name(args.name.as_deref(), item_name),
+        contract: placed_in,
+        visibility: args.visibility.clone(),
+        fields: args
+            .fields
+            .iter()
+            .map(|field| {
+                if field.ignore {
+                    FieldMode::Skipped
+                } else if field.method.is_some() {
+                    FieldMode::Method
+                } else {
+                    FieldMode::Auto
+                }
+            })
+            .collect(),
+    }
+}
+
+/// Generates the pack functions, recording each one in `state` as it is emitted.
+pub fn derive_pack_with(
     ctx: &Gcx,
     data: &mut PreprocessingData<'_>,
+    state: &mut PackState,
 ) -> foundry_compilers::error::Result<()> {
     for struct_def in ctx.hir.structs() {
         let Some(arg) = hooks::parse_args(ctx, struct_def.source, struct_def.span, data) else {
@@ -186,8 +213,14 @@ pub fn derive_pack(
             struct_def.contract,
             arg.contract,
         );
+        let generated = generated_fn(
+            &arg,
+            struct_def.name.as_str(),
+            arg.contract.or(struct_def.contract),
+        );
         let code = pack_struct(ctx, struct_def, arg, &type_name)
             .map_err(foundry_compilers::error::SolcError::msg)?;
+        state.record_pack(struct_def.span, generated);
 
         let path = ctx
             .sources
@@ -227,8 +260,14 @@ pub fn derive_pack(
 
         let type_name =
             qualified_type_name(ctx, enum_def.name.as_str(), enum_def.contract, arg.contract);
+        let generated = generated_fn(
+            &arg,
+            enum_def.name.as_str(),
+            arg.contract.or(enum_def.contract),
+        );
         let code = pack_enum(enum_def, arg, &type_name)
             .map_err(foundry_compilers::error::SolcError::msg)?;
+        state.record_pack(enum_def.span, generated);
 
         let path = ctx
             .sources
@@ -252,6 +291,15 @@ pub fn derive_pack(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Runs the pack rule on its own, with a throwaway [`PackState`], so it can be tested in
+    /// isolation. The registered rule is [`crate::orchestrator::derive_all`].
+    fn derive_pack(
+        ctx: &Gcx,
+        data: &mut PreprocessingData<'_>,
+    ) -> foundry_compilers::error::Result<()> {
+        derive_pack_with(ctx, data, &mut PackState::default())
+    }
 
     #[test]
     fn test_suite() {

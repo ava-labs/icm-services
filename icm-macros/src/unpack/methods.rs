@@ -143,6 +143,13 @@ pub fn unpack_elementary(
     }
 }
 
+/// The name of the generated unpack function for the item called `item_name`: the `name`
+/// override if one was given, otherwise `unpack{item_name}`. Shared with the orchestrator's
+/// scratchpad so that the recorded name cannot drift from the emitted one.
+pub fn unpack_fn_name(name_override: Option<&str>, item_name: &str) -> String {
+    name_override.map_or_else(|| format!("unpack{item_name}"), str::to_string)
+}
+
 pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::Result<String> {
     if args
         .assert
@@ -154,9 +161,7 @@ pub fn unpack_enum(enum_def: &Enum, args: UnpackArgs, type_name: &str) -> eyre::
             enum_def.name,
         );
     }
-    let fn_name = args
-        .name
-        .unwrap_or_else(|| format!("unpack{}", enum_def.name));
+    let fn_name = unpack_fn_name(args.name.as_deref(), enum_def.name.as_str());
     let input = if args.calldata {
         "bytes calldata data"
     } else {
@@ -201,9 +206,7 @@ pub fn unpack_struct(
     args: UnpackArgs,
     type_name: &str,
 ) -> eyre::Result<String> {
-    let fn_name = args
-        .name
-        .unwrap_or_else(|| format!("unpack{}", struct_def.name));
+    let fn_name = unpack_fn_name(args.name.as_deref(), struct_def.name.as_str());
     let input = if args.calldata {
         "bytes calldata data"
     } else {
@@ -856,11 +859,22 @@ fn render_expr(expr: &str, var_spans: &[std::ops::Range<usize>], replacement: &s
 mod tests {
     use super::*;
 
+    /// Builds the byte ranges `render_expr` splices at from `(start, end)` pairs.
+    fn spans(pairs: &[(usize, usize)]) -> Vec<std::ops::Range<usize>> {
+        pairs.iter().map(|&(start, end)| start..end).collect()
+    }
+
     #[test]
     fn test_render_expr_basic() {
-        assert_eq!(render_expr("x > 0", &[0..1], "result"), "result > 0");
+        assert_eq!(
+            render_expr("x > 0", &spans(&[(0, 1)]), "result"),
+            "result > 0"
+        );
         assert_eq!(render_expr("v == v", &[0..1, 5..6], "out"), "out == out");
-        assert_eq!(render_expr("1 + x", &[4..5], "result"), "1 + result");
+        assert_eq!(
+            render_expr("1 + x", &spans(&[(4, 5)]), "result"),
+            "1 + result"
+        );
     }
 
     #[test]
@@ -884,7 +898,7 @@ mod tests {
     #[test]
     fn test_render_expr_member_access() {
         // span covers only the leading var, not the member name after `.`
-        assert_eq!(render_expr("x.foo", &[0..1], "v"), "v.foo");
+        assert_eq!(render_expr("x.foo", &spans(&[(0, 1)]), "v"), "v.foo");
         // no span for `.x` member — untouched
         assert_eq!(render_expr("a.x", &[], "v"), "a.x");
     }

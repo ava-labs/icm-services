@@ -53,6 +53,13 @@ fn length_guard(fn_name: &str, field_name: &str, len_expr: &str, expr: &str) -> 
     format!("\nrequire({len_expr} == ({expr}), \"{fn_name}: invalid {field_name} length\");")
 }
 
+/// The name of the generated pack function for the item called `item_name`: the `name`
+/// override if one was given, otherwise `pack{item_name}`. Shared with the orchestrator's
+/// scratchpad so that the recorded name cannot drift from the emitted one.
+pub fn pack_fn_name(name_override: Option<&str>, item_name: &str) -> String {
+    name_override.map_or_else(|| format!("pack{item_name}"), str::to_string)
+}
+
 /// Generates a Solidity `pack` function for an enum type.
 /// Enums are value types that are encoded directly via abi.encodePacked.
 pub fn pack_enum(enum_def: &Enum, args: PackArgs, type_name: &str) -> eyre::Result<String> {
@@ -66,9 +73,7 @@ pub fn pack_enum(enum_def: &Enum, args: PackArgs, type_name: &str) -> eyre::Resu
             enum_def.name,
         );
     }
-    let fn_name = args
-        .name
-        .unwrap_or_else(|| format!("pack{}", enum_def.name));
+    let fn_name = pack_fn_name(args.name.as_deref(), enum_def.name.as_str());
     let vis = vis_prefix(&args.visibility);
     let assert_lines: String = args
         .assert
@@ -109,9 +114,7 @@ pub fn pack_struct(
             struct_def.name,
         );
     }
-    let fn_name = args
-        .name
-        .unwrap_or_else(|| format!("pack{}", struct_def.name));
+    let fn_name = pack_fn_name(args.name.as_deref(), struct_def.name.as_str());
     // the arguments that will be passed to abi.encodePacked
     let mut encode_packed_args = Vec::new();
     // packing functions that need to be expanded recursively
