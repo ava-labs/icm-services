@@ -7,7 +7,7 @@ import {IMerkleValidatorSetRegistry} from "./interfaces/IMerkleValidatorSetRegis
 import {ICMMessage} from "@common/ICM.sol";
 import {ValidatorSetMerkleCommitment, ValidatorSets} from "./utils/ValidatorSets.sol";
 import {
-    TeleporterMessageV2Parsing,
+    TeleporterV2Parsing,
     TeleporterICMMessage,
     TeleporterMessageV2
 } from "@common/TeleporterMessageV2.sol";
@@ -105,7 +105,7 @@ contract ZKValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             "unauthorized sender"
         );
         IWarpMessenger(_WARP_PRECOMPILE_ADDRESS)
-            .sendWarpMessage(TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message));
+            .sendWarpMessage(TeleporterV2Parsing.packTeleporterMessageV2(message));
     }
 
     /**
@@ -133,6 +133,10 @@ contract ZKValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             require(pChainSigned, "Initial registration must be signed by the P-Chain");
         } else {
             require(selfSigned || (pChainSigned && allowPChainFallback), "Invalid signing chain");
+            require(
+                _valSetCommitments[payloadBlockchainID].pChainHeight < newCommitment.pChainHeight,
+                "Block height of commitment is too old"
+            );
         }
 
         verifyICMMessage(message, signingChainID);
@@ -160,7 +164,7 @@ contract ZKValidatorSetRegistry is IMerkleValidatorSetRegistry, IAdapter {
             message.sourceNetworkID,
             message.sourceBlockchainID,
             address(this),
-            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(message.message)
+            TeleporterV2Parsing.packTeleporterMessageV2(message.message)
         );
         _verifyZKAttestation(message.attestation, signedData, message.sourceBlockchainID);
         return true;

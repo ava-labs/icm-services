@@ -15,7 +15,7 @@ concurrency:
 jobs:
   solidity-unit-tests:
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - name: Checkout repository and submodules
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,20 +34,23 @@ jobs:
         if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: ./scripts/install_foundry.sh
 
+      - name: Setup reforge
+        uses: ./.github/actions/setup-reforge
+
       - name: Run Avalanche unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          forge test -vvv
+          reforge test -vvv
 
       - name: Run Ethereum unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          FOUNDRY_PROFILE=ethereum forge test -vvv
+          FOUNDRY_PROFILE=ethereum reforge test -vvv
 
       - name: Run Common unit tests
         run: |
           export PATH=$PATH:$HOME/.foundry/bin:$HOME/.local/bin
-          FOUNDRY_PROFILE=common forge test -vvv
+          FOUNDRY_PROFILE=common reforge test -vvv
 
   unit_tests:
     name: Unit tests
@@ -60,7 +63,7 @@ jobs:
           submodules: recursive
 
       - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: 'go.mod'
 

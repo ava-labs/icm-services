@@ -11,7 +11,7 @@ import {ICMMessage} from "../../common/ICM.sol";
 import {IWarpMessenger} from "@subnet-evm/IWarpMessenger.sol";
 import {
     TeleporterMessageV2,
-    TeleporterMessageV2Parsing,
+    TeleporterV2Parsing,
     TeleporterICMMessage
 } from "../../common/TeleporterMessageV2.sol";
 
@@ -131,12 +131,21 @@ contract ZKValidatorSetRegistryCommon is Test {
         bytes32 root,
         uint64 totalWeight
     ) internal pure returns (bytes memory) {
+        return _commitmentAt(blockchainID, root, totalWeight, 2);
+    }
+
+    function _commitmentAt(
+        bytes32 blockchainID,
+        bytes32 root,
+        uint64 totalWeight,
+        uint64 pChainHeight
+    ) internal pure returns (bytes memory) {
         return ValidatorSets.serializeMerkleCommitment(
             ValidatorSetMerkleCommitment({
                 avalancheBlockchainID: blockchainID,
                 root: root,
                 totalWeight: totalWeight,
-                pChainHeight: 2,
+                pChainHeight: pChainHeight,
                 pChainTimestamp: 2
             })
         );
@@ -284,8 +293,7 @@ contract ZKValidatorSetRegistryVerifyMessageTest is ZKValidatorSetRegistryCommon
         bytes32 sourceBlockchainID
     ) internal view returns (TeleporterICMMessage memory, bytes memory) {
         TeleporterMessageV2 memory inner;
-        bytes memory innerSerialized =
-            TeleporterMessageV2Parsing.serializeTeleporterMessageV2(inner);
+        bytes memory innerSerialized = TeleporterV2Parsing.packTeleporterMessageV2(inner);
         bytes memory signedData = ValidatorSets.buildUnsignedWarpMessage(
             NETWORK_ID, sourceBlockchainID, address(_registry), innerSerialized
         );
@@ -355,6 +363,25 @@ contract ZKValidatorSetRegistryRegisterUpdateTest is ZKValidatorSetRegistryCommo
             _registry.getValidatorSetCommitment(PCHAIN_BLOCKCHAIN_ID);
         assertEq(stored.root, bytes32(uint256(0xABABA)));
         assertEq(stored.totalWeight, 10);
+    }
+
+    /// @dev Update of the P-chain's own commitment (registered at construction with height 1)
+    /// reverts when the new commitment's height doesn't exceed the stored one.
+    function testUpdateExistingChainRevertsOldBlockheight() public {
+        ValidatorSetMerkleCommitment memory oldCommitment =
+            _registry.getValidatorSetCommitment(PCHAIN_BLOCKCHAIN_ID);
+        bytes memory raw = _commitmentAt(PCHAIN_BLOCKCHAIN_ID, bytes32(uint256(0xABABA)), 10, 1);
+        ICMMessage memory message =
+            _signedICMMessage(PCHAIN_BLOCKCHAIN_ID, raw, PCHAIN_GENESIS_ROOT, 100);
+
+        vm.expectRevert(bytes("Block height of commitment is too old"));
+        _registry.registerValidatorSet(message, PCHAIN_BLOCKCHAIN_ID);
+
+        ValidatorSetMerkleCommitment memory stored =
+            _registry.getValidatorSetCommitment(PCHAIN_BLOCKCHAIN_ID);
+        assertEq(stored.root, oldCommitment.root);
+        assertEq(stored.totalWeight, oldCommitment.totalWeight);
+        assertEq(stored.pChainHeight, oldCommitment.pChainHeight);
     }
 
     /// @dev Reverts when the payload chain isn't registered and the signer isn't the P-chain.
@@ -450,7 +477,7 @@ contract ZKValidatorSetRegistryRegisterUpdateTest is ZKValidatorSetRegistryCommo
         _registry.registerValidatorSet(
             _signedICMMessage(
                 PCHAIN_BLOCKCHAIN_ID,
-                _commitment(_NEW_CHAIN_ID, bytes32(uint256(0xCAFE)), 20),
+                _commitmentAt(_NEW_CHAIN_ID, bytes32(uint256(0xCAFE)), 20, 3),
                 PCHAIN_GENESIS_ROOT,
                 100
             ),
@@ -506,7 +533,10 @@ contract ZKValidatorSetRegistryRegisterUpdateTest is ZKValidatorSetRegistryCommo
         // Self-signed update: signer is the L1, pvRoot is the L1's stored root.
         _registry.registerValidatorSet(
             _signedICMMessage(
-                _NEW_CHAIN_ID, _commitment(_NEW_CHAIN_ID, bytes32(uint256(0x2222)), 50), l1Root, 100
+                _NEW_CHAIN_ID,
+                _commitmentAt(_NEW_CHAIN_ID, bytes32(uint256(0x2222)), 50, 3),
+                l1Root,
+                100
             ),
             _NEW_CHAIN_ID
         );

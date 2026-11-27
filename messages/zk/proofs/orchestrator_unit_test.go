@@ -8,7 +8,9 @@ package proofs
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/OffchainLabs/go-bitfield"
 	"github.com/attestantio/go-eth2-client/spec/altair"
@@ -28,6 +30,21 @@ type mockBeaconClient struct {
 	blocks       map[uint64][]byte
 	states       map[uint64][]byte
 	stateFetches map[uint64]int // Tracks the number of times each state's been fetched from the client
+
+	// stateGate, when set, holds every State call until it is closed, so tests can keep
+	// fetches in flight at once.
+	stateGate chan struct{}
+	// mu guards stateFetches and the in-flight counts, as State may be called concurrently.
+	mu          sync.Mutex
+	inFlight    int
+	maxInFlight int
+}
+
+// fetches returns how many times the state at slot has been fetched.
+func (m *mockBeaconClient) fetches(slot uint64) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.stateFetches[slot]
 }
 
 func (m *mockBeaconClient) Block(_ context.Context, slot uint64) ([]byte, error) {
@@ -39,7 +56,20 @@ func (m *mockBeaconClient) Block(_ context.Context, slot uint64) ([]byte, error)
 }
 
 func (m *mockBeaconClient) State(_ context.Context, slot uint64) ([]byte, error) {
+	m.mu.Lock()
 	m.stateFetches[slot]++
+	m.inFlight++
+	m.maxInFlight = max(m.maxInFlight, m.inFlight)
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.inFlight--
+		m.mu.Unlock()
+	}()
+
+	if m.stateGate != nil {
+		<-m.stateGate
+	}
 	s, ok := m.states[slot]
 	if !ok {
 		return nil, errors.New("no state at slot")
@@ -196,6 +226,70 @@ func TestProofBuilderCachesLiteStates(t *testing.T) {
 
 	require.Equal(t, 1, f.client.stateFetches[f.anchorSlot])
 	require.Equal(t, 1, f.client.stateFetches[f.targetSlot])
+}
+
+// Concurrent cache misses for the same slot, as when messages sharing an anchor are processed
+// together, must share one fetch rather than each downloading the state.
+func TestProofBuilderDeduplicatesConcurrentStateFetches(t *testing.T) {
+	f := newMockFixture(t)
+	f.client.stateGate = make(chan struct{})
+	builder := NewProofBuilder(f.client)
+
+	const callers = 5
+	errs := make(chan error, callers)
+	for range callers {
+		go func() {
+			_, err := builder.getLiteState(context.Background(), f.anchorSlot)
+			errs <- err
+		}()
+	}
+
+	// Hold the fetch open while the callers miss the cache. Without deduplication each would
+	// start its own fetch.
+	require.Eventually(t, func() bool { return f.client.fetches(f.anchorSlot) == 1 }, time.Second, time.Millisecond)
+	require.Never(t, func() bool { return f.client.fetches(f.anchorSlot) > 1 }, 100*time.Millisecond, time.Millisecond)
+	close(f.client.stateGate)
+
+	for range callers {
+		require.NoError(t, <-errs)
+	}
+	require.Equal(t, 1, f.client.fetches(f.anchorSlot))
+}
+
+// Fetches of different slots must not run more than maxConcurrentStateFetches at once, however
+// many callers miss the cache.
+func TestProofBuilderLimitsConcurrentStateFetches(t *testing.T) {
+	client := &mockBeaconClient{
+		stateFetches: map[uint64]int{},
+		stateGate:    make(chan struct{}),
+	}
+	builder := NewProofBuilder(client)
+
+	const callers = 5
+	errs := make(chan error, callers)
+	for slot := range uint64(callers) {
+		go func() {
+			_, err := builder.getLiteState(context.Background(), slot)
+			errs <- err
+		}()
+	}
+
+	// Hold the fetches open while the callers start. Without the limit all of them would be in
+	// flight at once.
+	inFlight := func() int {
+		client.mu.Lock()
+		defer client.mu.Unlock()
+		return client.inFlight
+	}
+	require.Eventually(t, func() bool { return inFlight() == maxConcurrentStateFetches }, time.Second, time.Millisecond)
+	require.Never(t, func() bool { return inFlight() > maxConcurrentStateFetches }, 100*time.Millisecond, time.Millisecond)
+	close(client.stateGate)
+
+	// The mock serves no states, so every fetch fails once released.
+	for range callers {
+		require.Error(t, <-errs)
+	}
+	require.Equal(t, maxConcurrentStateFetches, client.maxInFlight)
 }
 
 // newMockFixture builds the default fixture: anchor slot 200, target slot 100.
