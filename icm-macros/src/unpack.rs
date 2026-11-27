@@ -128,6 +128,10 @@ use solar::ast::Span;
 use solar::sema::Gcx;
 use solar::sema::hir::{ContractId, SourceId};
 
+use crate::orchestrator::{FieldMode, GeneratedFn, PackState};
+use crate::unpack::hooks::UnpackArgs;
+use crate::unpack::methods::unpack_fn_name;
+
 /// Returns the `(SourceId, byte_offset)` at which derived code should be inserted.
 /// If a target contract is specified (either via `arg_contract` or the item's own `item_contract`),
 /// the offset is just before the contract's closing `}`. Otherwise it falls back to just after
@@ -202,9 +206,35 @@ fn qualified_type_name(
     }
 }
 
-pub fn derive_unpack(
+/// Describes the function generated from `args`, for recording in the [`PackState`].
+/// `placed_in` is the contract the function is emitted into.
+fn generated_fn(args: &UnpackArgs, item_name: &str, placed_in: Option<ContractId>) -> GeneratedFn {
+    GeneratedFn {
+        fn_name: unpack_fn_name(args.name.as_deref(), item_name),
+        contract: placed_in,
+        visibility: args.visibility.clone(),
+        calldata: args.calldata,
+        fields: args
+            .fields
+            .iter()
+            .map(|field| {
+                if field.default {
+                    FieldMode::Skipped
+                } else if field.method.is_some() {
+                    FieldMode::Method
+                } else {
+                    FieldMode::Auto
+                }
+            })
+            .collect(),
+    }
+}
+
+/// Generates the unpack functions, recording each one in `state` as it is emitted.
+pub fn derive_unpack_with(
     ctx: &Gcx,
     data: &mut PreprocessingData<'_>,
+    state: &mut PackState,
 ) -> foundry_compilers::error::Result<()> {
     for struct_def in ctx.hir.structs() {
         let Some(arg) = hooks::parse_args(ctx, struct_def.source, struct_def.span, data) else {
@@ -231,8 +261,14 @@ pub fn derive_unpack(
             struct_def.contract,
             arg.contract,
         );
+        let generated = generated_fn(
+            &arg,
+            struct_def.name.as_str(),
+            arg.contract.or(struct_def.contract),
+        );
         let code = methods::unpack_struct(ctx, struct_def, arg, &type_name)
             .map_err(foundry_compilers::error::SolcError::msg)?;
+        state.record_unpack(struct_def.span, generated);
 
         let path = ctx
             .sources
@@ -272,8 +308,14 @@ pub fn derive_unpack(
 
         let type_name =
             qualified_type_name(ctx, enum_def.name.as_str(), enum_def.contract, arg.contract);
+        let generated = generated_fn(
+            &arg,
+            enum_def.name.as_str(),
+            arg.contract.or(enum_def.contract),
+        );
         let code = methods::unpack_enum(enum_def, arg, &type_name)
             .map_err(foundry_compilers::error::SolcError::msg)?;
+        state.record_unpack(enum_def.span, generated);
 
         let path = ctx
             .sources
@@ -298,6 +340,16 @@ pub fn derive_unpack(
 mod tests {
 
     use super::*;
+
+    /// Runs the unpack rule on its own, with a throwaway [`PackState`], so it can be tested in
+    /// isolation. The registered rule is [`crate::orchestrator::derive_all`].
+    fn derive_unpack(
+        ctx: &Gcx,
+        data: &mut PreprocessingData<'_>,
+    ) -> foundry_compilers::error::Result<()> {
+        derive_unpack_with(ctx, data, &mut PackState::default())
+    }
+
     #[test]
     fn test_suite() {
         let mismatched = "testing/unpack/mismatched";

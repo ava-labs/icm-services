@@ -462,7 +462,7 @@ mod tests {
         // length = "uint32" (with quotes) must behave identically to length = uint32
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![
+            &[
                 (
                     Some("#[unpack(length = \"uint32\")]".to_string()),
                     false,
@@ -581,7 +581,7 @@ mod tests {
         // field-level assert
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![(
+            &[(
                 Some(r#"#[unpack(assert = "|b| { b.length == 48 }")]"#.to_string()),
                 true,
                 String::new(),
@@ -603,7 +603,7 @@ mod tests {
         // element-level assert using `each` keyword
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![(
+            &[(
                 Some(r#"#[unpack(assert = "|each x| { x > 0 }")]"#.to_string()),
                 false,
                 String::new(),
@@ -625,7 +625,7 @@ mod tests {
         // `each` prefix on a variable name that starts with "each" is not treated as the keyword
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![(
+            &[(
                 Some(r#"#[unpack(assert = "|eachItem| { eachItem > 0 }")]"#.to_string()),
                 false,
                 String::new(),
@@ -650,7 +650,7 @@ mod tests {
         // Assert body contains a Solidity string literal with a comma.
         let raw = parse_comment(
             r#"#[unpack(assert = "|each c| { c != "," }")]"#,
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -668,7 +668,7 @@ mod tests {
         // Assert body contains a Solidity string literal with a `)`.
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { keccak256(")") == hash }")]"#,
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -686,7 +686,7 @@ mod tests {
         // Assert body contains a Solidity string literal with `//`.
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.url != "http://" }")]"#,
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -704,7 +704,7 @@ mod tests {
         // Other args after a string-literal assert are still parsed.
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.sep != "," }", calldata)]"#,
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -715,7 +715,7 @@ mod tests {
         // Field-level: same handling.
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![(
+            &[(
                 Some(r#"#[unpack(assert = "|each c| { c != "," }")]"#.to_string()),
                 false,
                 String::new(),
@@ -740,7 +740,7 @@ mod tests {
         // Single-line assert with a Solidity string literal containing `//`.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| { r.url != \"http://\" }\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -758,7 +758,7 @@ mod tests {
         // Multi-line assert: `//` comment prefixes on continuation lines must be stripped.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| {\n//     r.version == 1\n// }\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -778,7 +778,7 @@ mod tests {
         // inside the string literal on its own line is preserved.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| {\n//     r.url != \"http://\"\n// }\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .expect("annotation present")
@@ -796,7 +796,7 @@ mod tests {
         // Block comment style with `*` prefixes on continuation lines.
         let raw = parse_comment(
             "/**\n * #[unpack(assert = \"|r| {\n *    r.value == 0\n *  }\")]\n */",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -814,7 +814,7 @@ mod tests {
         // Star-less `/* */` outer with no inner comment — body lines have no prefix to strip.
         let raw = parse_comment(
             "/* #[unpack(assert = \"|r| {\n   r.version == 1\n}\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -835,7 +835,7 @@ mod tests {
         // `//` comment lines inside a multi-line closure body must be preserved.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| {\n//    // this value\n//    // should always be zero\n//    r.value == 0\n//  }\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -854,7 +854,7 @@ mod tests {
         // interfere with the comment-preserving on the lines around it.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| {\n//    // this value\n//\n//    r.value == 0\n//  }\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .expect("annotation present")
@@ -872,7 +872,7 @@ mod tests {
         // /* */ outer + // inner.
         let raw = parse_comment(
             "/**\n * #[unpack(assert = \"|r| {\n *    // this comment\n *    r.value == 0\n *  }\")]\n */",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -891,7 +891,7 @@ mod tests {
         // not stripped as an annotation prefix.
         let raw = parse_comment(
             "/* #[unpack(assert = \"|r| {\n   // version check\n   r.version == 1\n}\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .unwrap()
@@ -914,7 +914,7 @@ mod tests {
         // the expression was silently dropped, emitting no require().
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { /* v1 only */ r.version == 1 }")]"#,
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .expect("annotation present")
@@ -933,7 +933,7 @@ mod tests {
         // `/* \n */ expr` — the expression after `*/` must not be dropped.
         let raw = parse_comment(
             "#[unpack(assert = \"|r| {\n//    /*\n//     */ r.version == 1\n//  }\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .expect("annotation present")
@@ -952,7 +952,7 @@ mod tests {
         // Solidity accepts block comments inside require() arguments, so this is valid.
         let raw = parse_comment(
             r#"#[unpack(assert = "|r| { r.version == 1 /* v1 only */ }")]"#,
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .expect("annotation present")
@@ -970,7 +970,7 @@ mod tests {
         // `/* */` outer with `* ` prefixes + inline `/* */` inner on a continuation line.
         let raw = parse_comment(
             "/**\n * #[unpack(assert = \"|r| {\n *    /* v1 only */ r.version == 1\n *  }\")]\n */",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .expect("annotation present")
@@ -988,7 +988,7 @@ mod tests {
         // Star-less `/* */` outer + inline `/* */` inner on a continuation line.
         let raw = parse_comment(
             "/* #[unpack(assert = \"|r| {\n   /* v1 only */ r.version == 1\n}\")]",
-            &vec![(None, false, String::new())],
+            &[(None, false, String::new())],
             "",
         )
         .expect("annotation present")
@@ -1008,7 +1008,7 @@ mod tests {
     fn test_field_args() {
         let raw = parse_comment(
             "#[unpack(visibility=\"private\", name=\"Foo\")]",
-            &vec![
+            &[
                 (
                     Some("#[unpack(method=\"Foo.bar\")]".to_string()),
                     false,
@@ -1110,7 +1110,7 @@ mod tests {
         // or swallowing the arguments after it.
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![
+            &[
                 (
                     Some("#[unpack(length = uint256(Lengths.HASH_LENGTH))]".to_string()),
                     true,
@@ -1150,7 +1150,7 @@ mod tests {
         // A function call with multiple arguments must not be split on the inner comma.
         let raw = parse_comment(
             "#[unpack()]",
-            &vec![(
+            &[(
                 Some("#[unpack(length = Lib.f(a, b) * 2, method = \"g\")]".to_string()),
                 true,
                 String::new(),
@@ -1292,7 +1292,7 @@ mod tests {
         // Previously this silently returned default FieldArgs, dropping method/length/assert.
         let err = parse_comment(
             "#[unpack()]",
-            &vec![(
+            &[(
                 Some(r#"#[unpack(method = "parseField)]"#.to_string()),
                 false,
                 "myField".to_string(),

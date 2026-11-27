@@ -59,3 +59,6 @@ icm-contracts/coverage/
 
 TeleporterRegistryAddress.json
 ValidatorAddresses.json
+
+# Personal helper scripts
+.local/
