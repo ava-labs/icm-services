@@ -23,7 +23,6 @@ import (
 	"github.com/ava-labs/icm-services/vms/evm"
 	"github.com/ava-labs/libevm/accounts/abi/bind"
 	"github.com/ava-labs/libevm/common"
-	"github.com/ava-labs/libevm/core/types"
 	"go.uber.org/zap"
 )
 
@@ -210,13 +209,15 @@ func (m *messageHandler) SendMessage(signedMessage *warp.Message) (common.Hash, 
 		return common.Hash{}, err
 	}
 	// A mined transaction is not necessarily a registered version: the receipt of a reverted
-	// transaction is returned without an error.
-	if receipt.Status != types.ReceiptStatusSuccessful {
+	// transaction is returned without an error. A revert that ran out of gas is non-retryable,
+	// since a resend at the same fixed gas limit would run out again.
+	if err := messages.CheckReceiptStatus(receipt, addProtocolVersionGasLimit); err != nil {
 		m.logger.Error(
 			"Transaction failed",
 			zap.Stringer("txID", receipt.TxHash),
+			zap.Error(err),
 		)
-		return common.Hash{}, fmt.Errorf("transaction failed with status: %d", receipt.Status)
+		return common.Hash{}, err
 	}
 	m.logger.Info("Sent message to destination chain")
 	return receipt.TxHash, nil

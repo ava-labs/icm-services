@@ -203,18 +203,33 @@ func TestSendMessageChecksReceiptStatus(t *testing.T) {
 	testCases := []struct {
 		name          string
 		status        uint64
+		gasUsed       uint64
 		expectedHash  common.Hash
 		expectedError bool
+		// nonRetryable is whether the error must stop the relayer from re-broadcasting.
+		nonRetryable bool
 	}{
 		{
 			name:         "successful transaction",
 			status:       types.ReceiptStatusSuccessful,
+			gasUsed:      100_000,
 			expectedHash: txHash,
 		},
 		{
+			// A revert with gas to spare may succeed on a resend, for example once a fresh
+			// signature accounts for validator churn.
 			name:          "reverted transaction",
 			status:        types.ReceiptStatusFailed,
+			gasUsed:       100_000,
 			expectedError: true,
+		},
+		{
+			// The gas limit is fixed, so a resend would run out of gas again.
+			name:          "reverted out of gas",
+			status:        types.ReceiptStatusFailed,
+			gasUsed:       addProtocolVersionGasLimit,
+			expectedError: true,
+			nonRetryable:  true,
 		},
 	}
 	for _, test := range testCases {
@@ -232,7 +247,7 @@ func TestSendMessageChecksReceiptStatus(t *testing.T) {
 					addProtocolVersionGasLimit,
 					gomock.Any(),
 				).
-				Return(&types.Receipt{Status: test.status, TxHash: txHash}, nil).
+				Return(&types.Receipt{Status: test.status, GasUsed: test.gasUsed, TxHash: txHash}, nil).
 				Times(1)
 
 			factory, err := NewMessageHandlerFactory(messageProtocolConfig)
@@ -260,12 +275,19 @@ func TestSendMessageChecksReceiptStatus(t *testing.T) {
 			require.NoError(t, err)
 
 			hash, err := handler.(*messageHandler).SendMessage(signedMessage)
-			if test.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
 			require.Equal(t, test.expectedHash, hash)
+			if !test.expectedError {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			if test.nonRetryable {
+				require.ErrorIs(t, err, messages.ErrDeliveryOutOfGas)
+				require.ErrorIs(t, err, messages.ErrNonRetryable)
+			} else {
+				require.NotErrorIs(t, err, messages.ErrNonRetryable)
+				require.ErrorContains(t, err, txHash.Hex())
+			}
 		})
 	}
 }
